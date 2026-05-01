@@ -41,3 +41,8 @@ build/
 
 # Generated music tracks (binaries — re-create via scripts/generate_placeholder_music.sh)
 assets/music/*.mp3
+
+# Local reference materials (e.g. downloaded TikTok videos used for style analysis)
+Download.mp4
+reference.mp4
+*.reference.mp4
