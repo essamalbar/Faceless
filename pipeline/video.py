@@ -19,10 +19,14 @@ from pipeline.types import Beat, Script
 # Style suffix appended to every Veo prompt for visual consistency across clips.
 # Veo on Kie.ai does NOT accept a separate negative_prompt — guidance about what
 # NOT to show must be baked directly into the prompt text.
+#
+# This suffix targets @sunstoriz-style: 2D drawn illustrated cartoon for TikTok
+# story channels — vibrant colors, expressive characters, fast pacing.
 VIDEO_STYLE_SUFFIX = (
-    "vertical cinematic horror aesthetic, dim moonlight, slight film grain, "
-    "9:16, photorealistic, eerie atmosphere, "
-    "no text, no captions, no watermark, no logo, no cartoon, no illustration"
+    "2D illustrated cartoon animation, hand-drawn style, vibrant flat colors, "
+    "expressive character faces, simple backgrounds, vertical 9:16 frame, "
+    "fast snappy pacing, modern Egyptian/Arab everyday setting, "
+    "no text, no watermark, no logo, no photorealistic faces"
 )
 VIDEO_NEGATIVE_PROMPT = ""  # unused (Veo ignores it); kept for API stability
 REROLL_SEED_BUMP = 100_000

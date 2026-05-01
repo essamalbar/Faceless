@@ -263,19 +263,23 @@ def _stage_video(args, cfg: Config, script: Script, paths: RunPaths) -> None:
     )
 
 
-def _stage_shorts_captions(cfg: Config, timings: list[WordTiming], paths: RunPaths) -> Path:
-    """TikTok-style burn-in is mandatory for Shorts mode."""
+def _stage_shorts_captions(cfg: Config, timings: list[WordTiming], paths: RunPaths) -> Path | None:
+    """Generate captions artifacts but DON'T return a burn-in path (Shorts default = voice-only).
+
+    The .srt is still produced for archival / future use. To enable burned-in
+    captions, pass --burn-captions on the CLI.
+    """
     generate_captions(
         timings=timings, srt_path=paths.captions_srt,
         ass_path=paths.captions_ass,
         font="Cairo-Black", font_size=90,
         style="tiktok", play_res_x=1080, play_res_y=1920,
     )
-    return paths.captions_ass
+    return None  # voice-only by default
 
 
 def _stage_shorts_assemble(cfg: Config, script: Script, paths: RunPaths,
-                            burn_caption_ass: Path) -> None:
+                            burn_caption_ass: Path | None) -> None:
     clip_paths = [paths.clips_dir / f"{i+1:02d}.mp4" for i in range(len(script.beats))]
     clip_durations = [float(cfg.kie.clip_duration_s)] * len(script.beats)
     assemble_shorts_video(
@@ -341,6 +345,9 @@ def main_with_args(argv: list[str]) -> int:
                 _stage_music(script, music_bundle, paths)
             with log.stage("captions"):
                 burn_ass = _stage_shorts_captions(cfg, timings, paths)
+                # If user explicitly opts in to burned captions, use the .ass file.
+                if args.burn_captions:
+                    burn_ass = paths.captions_ass
             with log.stage("assemble"):
                 _stage_shorts_assemble(cfg, script, paths, burn_ass)
         else:

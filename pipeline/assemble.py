@@ -78,10 +78,18 @@ def build_filter_graph(
             last_label = new_label
 
     # Optional subtitle burn-in.
+    # FFmpeg 8.x rejects subtitles='...' quote-wrapping; use the explicit
+    # `filename=` form and only escape FFmpeg-special chars in the path.
     if burn_caption_ass is not None:
-        # Escape colon and backslash for ffmpeg filter arg.
-        ass_path = str(burn_caption_ass).replace("\\", "\\\\").replace(":", r"\:")
-        parts.append(f"[{last_label}]subtitles='{ass_path}'[vout]")
+        raw = str(burn_caption_ass)
+        ass_path = (raw
+                    .replace("\\", "\\\\")
+                    .replace(":", "\\:")
+                    .replace(",", "\\,")
+                    .replace("[", "\\[")
+                    .replace("]", "\\]")
+                    .replace(";", "\\;"))
+        parts.append(f"[{last_label}]subtitles=filename={ass_path}[vout]")
     else:
         parts.append(f"[{last_label}]copy[vout]")
 
@@ -203,9 +211,18 @@ def build_shorts_filter_graph(
             last_v = new_label
 
     # 3. Optional captions burn-in (TikTok karaoke .ass).
+    # FFmpeg 8.x rejects `subtitles='...'` quote-wrapping; use the explicit
+    # `filename=` form and only escape FFmpeg-special chars in the path.
     if burn_caption_ass is not None:
-        ass_path = str(burn_caption_ass).replace("\\", "\\\\").replace(":", r"\:")
-        parts.append(f"[{last_v}]subtitles='{ass_path}'[vout]")
+        raw = str(burn_caption_ass)
+        ass_path = (raw
+                    .replace("\\", "\\\\")
+                    .replace(":", "\\:")
+                    .replace(",", "\\,")
+                    .replace("[", "\\[")
+                    .replace("]", "\\]")
+                    .replace(";", "\\;"))
+        parts.append(f"[{last_v}]subtitles=filename={ass_path}[vout]")
     else:
         parts.append(f"[{last_v}]copy[vout]")
 

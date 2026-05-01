@@ -68,4 +68,5 @@ def test_default_config_yaml_loads():
     root = Path(__file__).parent.parent
     cfg = load_config(root / "config.yaml")
     assert isinstance(cfg, Config)
-    assert cfg.voice.name == "ar-SA-HamedNeural"
+    # Voice depends on current style; just confirm a valid Edge TTS voice loads.
+    assert cfg.voice.name.startswith("ar-")

@@ -1,7 +1,7 @@
 voice:
-  name: ar-SA-HamedNeural
-  rate: -20%
-  pitch: -10Hz
+  name: ar-EG-SalmaNeural        # Egyptian female, dramatic — for @sunstoriz-style Shorts
+  rate: 0%                       # natural conversational pace; Egyptian dialect doesn't need slowing
+  pitch: 0Hz
 
 script:
   word_count_target: 320       # 2-min video target (was 2200 for 10-15 min)
@@ -31,10 +31,10 @@ captions:
 
 kie:
   model: veo3_fast               # Kie.ai model identifier — also: veo3, veo3_lite
-  num_clips: 4                   # 4 × ~8s clips (Veo's max output) → ~32s
-  clip_duration_s: 8             # Veo determines real duration; this is for assembler timing
+  num_clips: 6                   # 6 × ~10s clips → ~60s for fast-cut TikTok pacing
+  clip_duration_s: 10
   aspect_ratio: "9:16"           # vertical for TikTok / Shorts / Reels
-  cost_per_second_usd: 0.10      # used for the orchestrator budget guard
-  max_spend_usd: 3.50            # hard cap per video — refuses to start if exceeded
+  cost_per_second_usd: 0.10
+  max_spend_usd: 6.50            # 6 × 10 × $0.10 = $6.00; small buffer
   poll_interval_s: 5
-  poll_timeout_s: 300            # give up on a clip after 5 min
+  poll_timeout_s: 300

@@ -258,37 +258,49 @@ def generate_script_with_uniqueness(
 # ============================================================================
 
 SHORTS_WRITER_SYSTEM = (
-    "أنت كاتب قصص رعب قصيرة جداً بالعربية الفصحى (MSA) لـ TikTok و YouTube Shorts. "
-    "بضمير المتكلم. خطاف فوري، تصاعد سريع، ذروة قصيرة، نهاية مفاجئة أو مفتوحة. "
-    "ممنوع: 'فجأة سمعت صوتاً'، 'كان كل شيء حلماً'، شرح زائد، حوار طويل."
+    "أنت كاتب قصص قصيرة بأسلوب TikTok للقنوات العربية اللي بتحكي قصص واقعية درامية. "
+    "اكتب باللهجة المصرية (Egyptian Arabic) — كأن صديقة بتحكي حصلت معاها أو مع حد تعرفه. "
+    "بضمير المتكلم (أنا/أنا حصل لي). الإيقاع سريع، الجمل قصيرة، التفاصيل محددة. "
+    "النهاية لازم تكون صادمة وحاسمة (مش مفتوحة) — كشف صادم، خيانة مكشوفة، حقيقة مرعبة. "
+    "ممنوع: 'فجأة سمعت صوتاً'، 'كان كل شيء حلماً'، شرح زائد، حوار طويل. "
+    "ممنوع نهاية مفتوحة — لازم تخلص القصة بحدث ملموس."
 )
 
 SHORTS_WRITER_PROMPT_TEMPLATE = """\
-اكتب قصة رعب قصيرة (Shorts/TikTok) لمدة ~28 ثانية، مقسمة إلى {num_beats} مشاهد متساوية.
+اكتب قصة واقعية درامية قصيرة لـ TikTok مدتها ~60 ثانية، مقسمة لـ {num_beats} مشاهد متساوية.
 
 الفرضية: {premise}
 الفئة: {theme}
 
+أسلوب القصة:
+- لهجة مصرية conversational، كأن صاحبتك بتحكي حاجة حصلت لها.
+- قصة واقعية ممكن تحصل لأي حد (مش رعب خرافي، مش جن، مش أساطير).
+- موضوعات شائعة: خيانة، اكتشاف صادم في العيلة، خداع، صدمة في حياة عادية، سر مدفون يطلع.
+- بضمير المتكلم: "أنا"، "حصل لي"، "كنت قاعدة"، "اكتشفت".
+
 البنية المطلوبة (التزم بها):
-- مشهد 1 (الخطاف): جملة واحدة قوية تضع المشاهد في قلب اللحظة الغريبة فوراً.
-- المشاهد الوسطى: تصاعد سريع، تفاصيل غريبة محددة.
-- المشهد الأخير (الذروة + النهاية): جملة تكشف أو تلمح لشيء صادم. لا تشرح.
+- مشهد 1 (الخطاف): جملة واحدة قوية تحط المشاهد جوه الموقف على طول.
+- المشاهد الوسطى: تصاعد سريع، تفاصيل واقعية محددة.
+- المشهد الأخير (الذروة + النهاية الصادمة): الكشف الحاسم — حقيقة مدمرة أو خيانة مكشوفة. **لازم تكون نهاية حاسمة مش مفتوحة**. القصة تخلص بحاجة ملموسة (هربت، مات، اكتشفت، طلقها، إلخ).
 
 كل مشهد:
-- نص عربي ~{words_per_beat} كلمة (جملة كاملة، MSA الفصحى).
-- وصف حركة بالإنجليزية ~20 كلمة يصف ما يجب أن نراه في الفيديو لهذا المشهد:
-  - كاميرا (slow push-in / dolly / static / tracking / pull-back)
-  - عنصر بصري واحد محدد (شخص بمعطف، بئر قديم، باب مفتوح، يد، إلخ)
-  - الإضاءة والوقت من اليوم (moonlit, dusk, candlelight, etc)
-- ملاحظة: الإعداد العالمي ({global_setting_hint}) سيُضاف تلقائياً، لا تكرره في كل مشهد.
+- نص عربي ~{words_per_beat} كلمة بالعامية المصرية (جملة كاملة، إيقاع سريع).
+- وصف بصري بالإنجليزية ~20 كلمة لمشهد رسوم متحركة (cartoon / 2D illustrated):
+  - **CRITICAL: hand-drawn 2D cartoon style, illustrated animation, vibrant colors**
+  - شخصية واحدة أو موقف بسيط (woman crying at table, child running, hand reaching, etc.)
+  - تعبير وجهي قوي (shock / fear / sadness / anger)
+  - حركة كاميرا سريعة (snap zoom / quick pan / hard cut to close-up)
+- ملاحظة: الإعداد العالمي ({global_setting_hint}) سيُضاف تلقائياً، لا تكرره.
 
 أرجع JSON صالح فقط (بدون markdown أو ``` أو شرح) بهذه الحقول بالضبط:
 {{
-  "title": "عنوان قصير جذاب",
+  "title": "عنوان قصير جذاب بالمصرية",
   "theme": "{theme}",
-  "global_setting": "وصف الموقع/الزمن/الجو بالإنجليزية المختصرة (يُحقن في كل لقطة)",
+  "global_setting": "وصف بصري قصير بالإنجليزية للجو العام (مثل: 'modern Cairo apartment, daytime, warm lighting, 2D illustrated cartoon style')",
   "music_mood": "اختر كلمة واحدة فقط: drone أو dread أو cosmic أو discovery (بدون شرح أو رمز |)",
   "beats": [
+    {{"arabic": "...", "english_motion": "..."}},
+    {{"arabic": "...", "english_motion": "..."}},
     {{"arabic": "...", "english_motion": "..."}},
     {{"arabic": "...", "english_motion": "..."}},
     {{"arabic": "...", "english_motion": "..."}},
@@ -298,7 +310,7 @@ SHORTS_WRITER_PROMPT_TEMPLATE = """\
 """
 
 
-def build_shorts_writer_prompt(seed: ThemeSeed, num_beats: int = 4, words_per_beat: int = 20) -> str:
+def build_shorts_writer_prompt(seed: ThemeSeed, num_beats: int = 6, words_per_beat: int = 25) -> str:
     return SHORTS_WRITER_PROMPT_TEMPLATE.format(
         premise=seed.premise,
         theme=seed.theme,
@@ -349,7 +361,7 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
 
 
 def generate_shorts_script(
-    gemini, seed: ThemeSeed, num_beats: int = 4, words_per_beat: int = 20,
+    gemini, seed: ThemeSeed, num_beats: int = 6, words_per_beat: int = 25,
 ) -> Script:
     """Single Gemini call → Script with beats[]. No critique pass for Shorts (story is short enough)."""
     prompt = build_shorts_writer_prompt(seed, num_beats=num_beats, words_per_beat=words_per_beat)
