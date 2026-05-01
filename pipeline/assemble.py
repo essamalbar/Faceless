@@ -43,11 +43,18 @@ def build_filter_graph(
     """
     parts: list[str] = []
     # Per-shot zoompan + scale to output resolution.
+    # NOTE: FFmpeg's zoompan filter does NOT expose `d` (the duration param) as a
+    # variable inside z/x/y expressions. We substitute the literal frame count
+    # so the generated filter uses e.g. `1.0+0.10*on/120` instead of `.../d`.
+    # Replace `/d` (the only place `d` appears in our patterns) with `/<frames>`.
+    import re as _re
     for i, shot in enumerate(shots):
         duration_s = max((shot.end_ms - shot.start_ms) / 1000.0, 0.2)
-        z, x, y = pick_motion_pattern(i)
-        # Zoompan: 30 fps, total frames = duration_s * 30.
-        d_frames = int(duration_s * 30)
+        z_template, x_template, y_template = pick_motion_pattern(i)
+        d_frames = max(int(duration_s * 30), 1)
+        # Word-boundary substitution: only `d` as a standalone variable, not within other words.
+        sub = lambda s: _re.sub(r"\bd\b", str(d_frames), s)
+        z, x, y = sub(z_template), sub(x_template), sub(y_template)
         parts.append(
             f"[{i}:v]scale={output_w * 2}:{output_h * 2},"
             f"zoompan=z='{z}':x='{x}':y='{y}':d={d_frames}:s={output_w}x{output_h}:fps=30,"

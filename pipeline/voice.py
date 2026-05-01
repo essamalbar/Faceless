@@ -139,8 +139,10 @@ def generate_narration(
         timings = []  # force fallback to duration-based synthesis
 
     if not timings:
+        # Pass the ORIGINAL text (not ssml_text) so sentence-ending punctuation
+        # is preserved on words — the downstream shot chunker snaps to those.
         duration_ms = _audio_duration_ms(mp3_path)
-        timings = _synthesize_timings_from_duration(ssml_text, duration_ms)
+        timings = _synthesize_timings_from_duration(text, duration_ms)
     timings_path.write_text(
         json.dumps(timings, ensure_ascii=False, indent=2),
         encoding="utf-8",
