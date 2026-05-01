@@ -20,13 +20,17 @@ from pipeline.types import Beat, Script
 # Veo on Kie.ai does NOT accept a separate negative_prompt — guidance about what
 # NOT to show must be baked directly into the prompt text.
 #
-# This suffix targets @sunstoriz-style: 2D drawn illustrated cartoon for TikTok
-# story channels — vibrant colors, expressive characters, fast pacing.
+# This suffix targets @sunstoriz-style: 3D Pixar-quality animation with
+# anthropomorphic fruit characters as humans (lemon mother, strawberry son,
+# apple doctor, etc.). Photorealistic textures + dramatic emotional lighting.
 VIDEO_STYLE_SUFFIX = (
-    "2D illustrated cartoon animation, hand-drawn style, vibrant flat colors, "
-    "expressive character faces, simple backgrounds, vertical 9:16 frame, "
-    "fast snappy pacing, modern Egyptian/Arab everyday setting, "
-    "no text, no watermark, no logo, no photorealistic faces"
+    "3D Pixar-style animation, photorealistic CGI textures, "
+    "anthropomorphic fruit characters wearing human clothing "
+    "(hijab, traditional thobe, doctor coat, casual t-shirt), "
+    "expressive emotional faces with sad detailed eyes, "
+    "dramatic cinematic lighting, vertical 9:16 aspect ratio, "
+    "high detail, professional rendering, "
+    "no text overlay, no watermark, no logo, no captions burned into video"
 )
 VIDEO_NEGATIVE_PROMPT = ""  # unused (Veo ignores it); kept for API stability
 REROLL_SEED_BUMP = 100_000

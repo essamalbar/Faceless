@@ -274,25 +274,39 @@ def _stage_video(args, cfg: Config, script: Script, paths: RunPaths) -> None:
     )
 
 
-def _stage_shorts_captions(cfg: Config, timings: list[WordTiming], paths: RunPaths) -> Path | None:
-    """Generate captions artifacts but DON'T return a burn-in path (Shorts default = voice-only).
+def _stage_shorts_captions(cfg: Config, timings: list[WordTiming], paths: RunPaths) -> Path:
+    """Generate yellow burned-in Arabic captions in @sunstoriz style.
 
-    The .srt is still produced for archival / future use. To enable burned-in
-    captions, pass --burn-captions on the CLI.
+    Returns the .ass path so the assembler burns it into the final mp4.
+    Set --no-burn-captions if you want voice-only (overrides this default).
     """
     generate_captions(
         timings=timings, srt_path=paths.captions_srt,
         ass_path=paths.captions_ass,
-        font="Cairo-Black", font_size=90,
+        font="Cairo-Black", font_size=110,  # bigger for vertical readability
         style="tiktok", play_res_x=1080, play_res_y=1920,
     )
-    return None  # voice-only by default
+    return paths.captions_ass
+
+
+def _probe_duration_s(path: Path) -> float:
+    """ffprobe a media file's duration in seconds."""
+    import subprocess
+    out = subprocess.check_output([
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "csv=p=0",
+        str(path),
+    ], text=True).strip()
+    return float(out)
 
 
 def _stage_shorts_assemble(cfg: Config, script: Script, paths: RunPaths,
                             burn_caption_ass: Path | None) -> None:
     clip_paths = [paths.clips_dir / f"{i+1:02d}.mp4" for i in range(len(script.beats))]
-    clip_durations = [float(cfg.kie.clip_duration_s)] * len(script.beats)
+    # Probe ACTUAL clip durations — Veo often returns 8s even when we ask for 10s,
+    # and using config's expected duration breaks xfade offsets.
+    clip_durations = [_probe_duration_s(p) for p in clip_paths]
     assemble_shorts_video(
         clip_paths=clip_paths,
         clip_durations_s=clip_durations,
@@ -327,6 +341,8 @@ def main_with_args(argv: list[str]) -> int:
                    help="Use placeholder black mp4 clips (Shorts dev only)")
     p.add_argument("--max-spend", type=float, default=None,
                    help="Override config.kie.max_spend_usd for this run")
+    p.add_argument("--no-burn-captions", action="store_true",
+                   help="Skip burned-in Arabic captions (Shorts default = burn-in)")
     args = p.parse_args(argv)
 
     cfg = load_config(Path(args.config))
@@ -356,9 +372,9 @@ def main_with_args(argv: list[str]) -> int:
                 _stage_music(script, music_bundle, paths)
             with log.stage("captions"):
                 burn_ass = _stage_shorts_captions(cfg, timings, paths)
-                # If user explicitly opts in to burned captions, use the .ass file.
-                if args.burn_captions:
-                    burn_ass = paths.captions_ass
+                # @sunstoriz style burns yellow captions by default; allow opt-out.
+                if args.no_burn_captions:
+                    burn_ass = None
             with log.stage("assemble"):
                 _stage_shorts_assemble(cfg, script, paths, burn_ass)
         else:

@@ -207,9 +207,10 @@ def test_shorts_prompt_includes_seed_and_beat_count():
     p = build_shorts_writer_prompt(seed, num_beats=4, words_per_beat=20)
     assert "بئر قديم" in p
     assert "folkloric" in p
-    assert "4 مشاهد" in p or "{num_beats}" not in p  # template substitution worked
-    # Confirm key Shorts constraints are present
-    assert "الخطاف" in p  # hook
+    assert "4 مشاهد" in p
+    # Confirm @sunstoriz-style constraints are present
+    assert "ميلودراما" in p or "مأساوية" in p  # tragic-family-drama theme
+    assert "FRUIT" in p                          # anthropomorphic fruit characters
     assert "english_motion" in p
 
 

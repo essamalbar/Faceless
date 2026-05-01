@@ -149,13 +149,17 @@ def format_ass_tiktok_karaoke(
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, "
         "Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
         "MarginL, MarginR, MarginV, Encoding\n"
-        # PrimaryColour: white;  SecondaryColour: yellow (used for already-spoken words during karaoke);
-        # OutlineColour: black;  BackColour: 50% black shadow.
-        # Alignment 5 = middle-center.
-        # Outline 6, Shadow 4 — chunky for vertical readability.
+        # @sunstoriz reference uses bright YELLOW Arabic captions, centered,
+        # ~70% down the frame. ASS color format is &HBBGGRR (BGR + alpha).
+        # PrimaryColour:  &H0000FFFF  = pure yellow (FF FF 00 in RGB).
+        # SecondaryColour: same yellow (no karaoke color shift — read-on-read).
+        # OutlineColour: &H00000000   = black outline.
+        # BackColour: &H80000000      = 50% black shadow for legibility.
+        # Alignment 2 = bottom-center; MarginV 600 = ~30% from bottom (560/1920).
+        # Outline 8, Shadow 4 — chunky for vertical readability over busy 3D scenes.
         f"Style: Default,{font},{font_size},"
-        "&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,"
-        "1,0,0,0,100,100,0,0,1,6,4,5,40,40,0,1\n"
+        "&H0000FFFF,&H0000FFFF,&H00000000,&H80000000,"
+        "1,0,0,0,100,100,0,0,1,8,4,2,60,60,560,1\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"

@@ -95,6 +95,9 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
         out.write_bytes(b"\x00\x00\x00\x18ftypmp42")
     monkeypatch.setattr("pipeline.assemble._run_ffmpeg", fake_ffmpeg)
 
+    # ffprobe can't read our 12-byte stub mp4s; fake the duration probe.
+    monkeypatch.setattr("run._probe_duration_s", lambda p: 8.0)
+
     # ---- 5) Run orchestrator ----
     from run import main_with_args
     out_root = tmp_path / "out"

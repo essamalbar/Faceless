@@ -77,8 +77,9 @@ def test_build_veo_prompt_combines_setting_and_motion():
     p = build_veo_prompt(b, global_setting="abandoned village at night")
     assert "abandoned village at night" in p
     assert "lone hooded figure" in p
-    # Style suffix appended (cartoon/illustrated for @sunstoriz-style TikTok)
-    assert "2D illustrated cartoon" in p
+    # Style suffix appended (3D Pixar fruit-character for @sunstoriz-style TikTok)
+    assert "3D Pixar" in p
+    assert "anthropomorphic fruit characters" in p
 
 
 def test_generate_all_clips(monkeypatch, tmp_path: Path, fixtures_dir: Path):

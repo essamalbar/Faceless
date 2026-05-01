@@ -258,47 +258,64 @@ def generate_script_with_uniqueness(
 # ============================================================================
 
 SHORTS_WRITER_SYSTEM = (
-    "أنت كاتب قصص قصيرة بأسلوب TikTok للقنوات العربية اللي بتحكي قصص واقعية درامية. "
-    "اكتب باللهجة المصرية (Egyptian Arabic) — كأن صديقة بتحكي حصلت معاها أو مع حد تعرفه. "
-    "بضمير المتكلم (أنا/أنا حصل لي). الإيقاع سريع، الجمل قصيرة، التفاصيل محددة. "
-    "النهاية لازم تكون صادمة وحاسمة (مش مفتوحة) — كشف صادم، خيانة مكشوفة، حقيقة مرعبة. "
-    "ممنوع: 'فجأة سمعت صوتاً'، 'كان كل شيء حلماً'، شرح زائد، حوار طويل. "
-    "ممنوع نهاية مفتوحة — لازم تخلص القصة بحدث ملموس."
+    "أنت كاتب قصص ميلودراما عائلية للـTikTok بأسلوب قنوات Sunstoriz — "
+    "قصص مأساوية واقعية: فقر، تضحية، مرض، خيانة، إدمان، حسرة الأمومة. "
+    "اكتب باللهجة المصرية أو الخليجية البسيطة. ضمير الراوي / المشاهد. "
+    "البطلة عادةً أم فقيرة. الابن غدّار أو ضعيف. "
+    "الإيقاع متوازن، الجمل قصيرة، التفاصيل ملموسة (نقود، مستشفى، بيت قديم، شارع، قمامة). "
+    "النهاية لازم تكون مأساوية حاسمة (موت، انكسار، فقدان أبدي) — مش مفتوحة. "
+    "ممنوع: 'فجأة سمعت صوتاً'، 'كان حلماً'، الجن، الخوارق، شرح زائد. "
+    "ممنوع نهاية مفتوحة — لازم تخلص القصة بحدث نهائي ملموس."
 )
 
 SHORTS_WRITER_PROMPT_TEMPLATE = """\
-اكتب قصة واقعية درامية قصيرة لـ TikTok مدتها ~60 ثانية، مقسمة لـ {num_beats} مشاهد متساوية.
+اكتب قصة ميلودراما عائلية مأساوية لـ TikTok مدتها ~75 ثانية، مقسمة لـ {num_beats} مشاهد.
 
 الفرضية: {premise}
 الفئة: {theme}
 
-أسلوب القصة:
-- لهجة مصرية conversational، كأن صاحبتك بتحكي حاجة حصلت لها.
-- قصة واقعية ممكن تحصل لأي حد (مش رعب خرافي، مش جن، مش أساطير).
-- موضوعات شائعة: خيانة، اكتشاف صادم في العيلة، خداع، صدمة في حياة عادية، سر مدفون يطلع.
-- بضمير المتكلم: "أنا"، "حصل لي"، "كنت قاعدة"، "اكتشفت".
+أسلوب القصة (المهم):
+- ميلودراما عائلية واقعية: فقر، تضحية الأم، مرض، إدمان، خيانة الابن، حسرة.
+- لهجة مصرية أو خليجية بسيطة، جمل قصيرة عاطفية.
+- ضمير الراوي (يحكي عن شخصيات، مش بضمير المتكلم).
+- البطلة أم فقيرة تضحي. ابنها يكبر ويتنكر لها أو يدمن أو يضيع المال.
+- الأب مات أو مريض. الجار غني ومتجاهل.
+- النهاية مأساوية حاسمة (الأم بتموت، الابن بيندم متأخر، تدمير العائلة).
 
-البنية المطلوبة (التزم بها):
-- مشهد 1 (الخطاف): جملة واحدة قوية تحط المشاهد جوه الموقف على طول.
-- المشاهد الوسطى: تصاعد سريع، تفاصيل واقعية محددة.
-- المشهد الأخير (الذروة + النهاية الصادمة): الكشف الحاسم — حقيقة مدمرة أو خيانة مكشوفة. **لازم تكون نهاية حاسمة مش مفتوحة**. القصة تخلص بحاجة ملموسة (هربت، مات، اكتشفت، طلقها، إلخ).
+CRITICAL — ALL CHARACTERS ARE ANTHROPOMORPHIC FRUIT (Sunstoriz signature style):
+- الأم = LEMON character (yellow lemon-head body, sad eyes, wears black hijab/dress)
+- الابن (طفل) = small STRAWBERRY character (red strawberry head with green leaves, child clothes)
+- الابن (كبير) = adult STRAWBERRY character (with beard, traditional thobe or casual clothes)
+- الأب = older LEMON character (with beard) أو APPLE
+- الدكتور = APPLE character (red apple head, white coat, stethoscope)
+- الجار / صاحب المحل = MANGO أو POMEGRANATE
+- الزوجة = PEACH أو ORANGE
+- استخدم نفس الشخصية (نفس الفاكهة) عبر كل المشاهد للحفاظ على التطابق
+
+البنية الدرامية:
+- مشهد 1 (الفقر/البداية): الأم وابنها الصغير في بيت متواضع، تعطيه آخر فلوس
+- مشاهد 2-4 (التصاعد): الابن يكبر، يبدأ في التغيير — يدمن، يقامر، يهجر الأم
+- مشاهد 5-6 (الأزمة): الأم تكتشف، تنكسر، تواجه مأساة (مرض الأب، الفقر المدقع)
+- المشهد الأخير (النهاية الحاسمة المأساوية): موت أو فقدان نهائي. **لازم نهاية حاسمة وملموسة — موت، خراب، فقدان أبدي. مش مفتوحة.**
 
 كل مشهد:
-- نص عربي ~{words_per_beat} كلمة بالعامية المصرية (جملة كاملة، إيقاع سريع).
-- وصف بصري بالإنجليزية ~20 كلمة لمشهد رسوم متحركة (cartoon / 2D illustrated):
-  - **CRITICAL: hand-drawn 2D cartoon style, illustrated animation, vibrant colors**
-  - شخصية واحدة أو موقف بسيط (woman crying at table, child running, hand reaching, etc.)
-  - تعبير وجهي قوي (shock / fear / sadness / anger)
-  - حركة كاميرا سريعة (snap zoom / quick pan / hard cut to close-up)
-- ملاحظة: الإعداد العالمي ({global_setting_hint}) سيُضاف تلقائياً، لا تكرره.
+- نص عربي ~{words_per_beat} كلمة (جملة أو جملتين، عاطفية، تفاصيل ملموسة).
+- وصف بصري بالإنجليزية ~30 كلمة:
+  - **CRITICAL: 3D Pixar-style animation, photorealistic textures, anthropomorphic fruit characters with human clothing**
+  - شخصية معينة من الفاكهة (lemon mother in black hijab, strawberry son, apple doctor, etc.)
+  - تعبير وجهي عاطفي قوي (sad eyes, crying, angry, shocked, smug)
+  - بيئة محددة (poor humble home, hospital corridor, gambling den with hookah, junkyard at sunset, dump trucks)
+  - إضاءة درامية (dim warm lamp, fluorescent hospital, golden sunset, dark shadows)
 
 أرجع JSON صالح فقط (بدون markdown أو ``` أو شرح) بهذه الحقول بالضبط:
 {{
-  "title": "عنوان قصير جذاب بالمصرية",
+  "title": "عنوان مأساوي قصير",
   "theme": "{theme}",
-  "global_setting": "وصف بصري قصير بالإنجليزية للجو العام (مثل: 'modern Cairo apartment, daytime, warm lighting, 2D illustrated cartoon style')",
+  "global_setting": "وصف بصري قصير بالإنجليزية: '3D Pixar animation, anthropomorphic fruit characters as humans, dramatic emotional lighting, vertical 9:16, cinematic quality'",
   "music_mood": "اختر كلمة واحدة فقط: drone أو dread أو cosmic أو discovery (بدون شرح أو رمز |)",
   "beats": [
+    {{"arabic": "...", "english_motion": "..."}},
+    {{"arabic": "...", "english_motion": "..."}},
     {{"arabic": "...", "english_motion": "..."}},
     {{"arabic": "...", "english_motion": "..."}},
     {{"arabic": "...", "english_motion": "..."}},
@@ -310,7 +327,7 @@ SHORTS_WRITER_PROMPT_TEMPLATE = """\
 """
 
 
-def build_shorts_writer_prompt(seed: ThemeSeed, num_beats: int = 6, words_per_beat: int = 25) -> str:
+def build_shorts_writer_prompt(seed: ThemeSeed, num_beats: int = 8, words_per_beat: int = 30) -> str:
     return SHORTS_WRITER_PROMPT_TEMPLATE.format(
         premise=seed.premise,
         theme=seed.theme,
@@ -361,7 +378,7 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
 
 
 def generate_shorts_script(
-    gemini, seed: ThemeSeed, num_beats: int = 6, words_per_beat: int = 25,
+    gemini, seed: ThemeSeed, num_beats: int = 8, words_per_beat: int = 30,
 ) -> Script:
     """Single Gemini call → Script with beats[]. No critique pass for Shorts (story is short enough)."""
     prompt = build_shorts_writer_prompt(seed, num_beats=num_beats, words_per_beat=words_per_beat)
