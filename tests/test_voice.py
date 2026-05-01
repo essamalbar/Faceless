@@ -9,19 +9,22 @@ import pytest
 from pipeline.voice import generate_narration, inject_ssml_pauses
 
 
-def test_inject_ssml_period():
+def test_inject_ssml_period_no_break():
+    """Periods are NOT padded with SSML breaks (TTS handles them naturally)."""
     out = inject_ssml_pauses("جملة أولى. جملة ثانية.")
-    assert "<break time=\"600ms\"/>" in out
+    assert "<break" not in out
+    # Period itself preserved (downstream uses it for sentence-end detection)
+    assert "." in out
 
 
 def test_inject_ssml_ellipsis():
     out = inject_ssml_pauses("جملة... ثم")
-    assert "<break time=\"1200ms\"/>" in out
+    assert "<break time=\"400ms\"/>" in out
 
 
 def test_inject_ssml_paragraph():
     out = inject_ssml_pauses("فقرة1\n\nفقرة2")
-    assert "<break time=\"1500ms\"/>" in out
+    assert "<break time=\"600ms\"/>" in out
 
 
 def test_generate_narration_writes_outputs(monkeypatch, tmp_run_dir: Path, fixtures_dir: Path):
