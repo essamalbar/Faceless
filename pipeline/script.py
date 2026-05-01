@@ -50,7 +50,7 @@ MSA الفصحى — لا لهجة.
   "title": "...",
   "theme": "{theme}",
   "global_setting": "وصف موجز للموقع/الزمن/الجو الذي تجري فيه القصة كلها (إنجليزي مختصر) — يستخدم لاحقاً لتوليد الصور",
-  "music_mood": "drone | dread | cosmic | discovery — اختر واحد",
+  "music_mood": "اختر كلمة واحدة فقط من هذه الأربع: drone أو dread أو cosmic أو discovery (بدون شرح أو رمز |)",
   "hook": "الفقرة الافتتاحية (3-4 جمل)",
   "story": "النص الكامل من البداية للنهاية، فقرات مفصولة بـ \\n\\n",
   "word_count": <عدد كلمات story>
@@ -76,6 +76,25 @@ def _strip_code_fence(text: str) -> str:
     return s
 
 
+def _normalize_music_mood(raw: str) -> str:
+    """Extract a valid mood from a possibly-sloppy LLM response.
+
+    Gemini sometimes returns the literal placeholder string (e.g.
+    "drone | dread | cosmic | discovery") or wraps the value in extra
+    text (e.g. "dread - low rumble"). Scan for the first valid mood
+    word; fall back to "dread" if none found.
+    """
+    from pipeline.types import VALID_MOODS
+    if isinstance(raw, str) and raw.strip() in VALID_MOODS:
+        return raw.strip()
+    text = (raw or "").lower()
+    for mood in ("drone", "dread", "cosmic", "discovery"):
+        # Match the FIRST mood word that appears alone (word-boundary)
+        if re.search(rf"\b{mood}\b", text):
+            return mood
+    return "dread"  # safe fallback for horror genre
+
+
 def _parse_script_json(text: str, seed: ThemeSeed) -> Script:
     cleaned = _strip_code_fence(text)
     try:
@@ -84,6 +103,9 @@ def _parse_script_json(text: str, seed: ThemeSeed) -> Script:
         raise ValueError(f"script writer returned invalid JSON: {e}\n--- got ---\n{text[:500]}")
     # We trust the seed.theme over whatever Gemini returned (defensive).
     data["theme"] = seed.theme
+    # Normalize music_mood — Gemini often returns sloppy values (placeholder text or qualifiers).
+    if "music_mood" in data:
+        data["music_mood"] = _normalize_music_mood(data["music_mood"])
     # Recompute word_count from story to avoid LLM miscount.
     story = data.get("story", "")
     data["word_count"] = len([w for w in story.split() if w.strip()])
@@ -121,7 +143,7 @@ CRITIQUE_PROMPT_TEMPLATE = """\
   "title": "...",
   "theme": "{theme}",
   "global_setting": "...",
-  "music_mood": "drone | dread | cosmic | discovery",
+  "music_mood": "اختر كلمة واحدة فقط من: drone أو dread أو cosmic أو discovery (بدون شرح أو رمز |)",
   "hook": "...",
   "story": "...",
   "word_count": <int>
