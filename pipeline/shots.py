@@ -109,8 +109,44 @@ def _strip_code_fence(text: str) -> str:
     return s
 
 
+# Rotating motif used by the no-LLM fallback so consecutive shots vary visually.
+_FALLBACK_MOTIFS: tuple[str, ...] = (
+    "lone distant figure barely visible",
+    "empty doorway with darkness behind",
+    "ancient well in the foreground",
+    "crumbling stone wall, dust and shadow",
+    "faint candle flame, surrounding gloom",
+    "narrow corridor receding into black",
+    "barren ground with footprints leading away",
+    "ruined window letting in pale moonlight",
+    "abandoned room with overturned objects",
+    "twisted tree silhouette against night sky",
+    "fog rolling across empty terrain",
+    "dark stairwell descending downward",
+)
+
+
+def _fallback_prompts(script: Script, n: int) -> list[str]:
+    """Generic but visually coherent prompts when the LLM is unavailable.
+
+    Pinned to the script's global_setting so all shots feel like the same
+    world; rotates a small motif library so consecutive shots aren't identical.
+    """
+    setting = script.global_setting
+    out: list[str] = []
+    for i in range(n):
+        motif = _FALLBACK_MOTIFS[i % len(_FALLBACK_MOTIFS)]
+        out.append(f"{setting}, {motif}, dim moonlight, eerie mood, photographic")
+    return out
+
+
 def _translate_prompts_batched(gemini, script: Script, arabic_paragraphs: list[str]) -> list[str]:
-    """One Gemini call → N English prompts. Saves quota over per-shot calls."""
+    """One Gemini call → N English prompts. Saves quota over per-shot calls.
+
+    Falls back to templated prompts if (a) Gemini errors out (e.g. quota
+    exhausted) or (b) the response can't be parsed as a JSON list. The
+    pipeline is more valuable than perfect prompts.
+    """
     if not arabic_paragraphs:
         return []
     numbered = "\n\n".join(f"[{i+1}] {p}" for i, p in enumerate(arabic_paragraphs))
@@ -119,27 +155,24 @@ def _translate_prompts_batched(gemini, script: Script, arabic_paragraphs: list[s
         n=len(arabic_paragraphs),
         numbered_paragraphs=numbered,
     )
-    raw = _strip_code_fence(gemini.complete(prompt))
+    try:
+        raw = _strip_code_fence(gemini.complete(prompt))
+    except Exception as e:
+        print(f"[shots] LLM unavailable ({type(e).__name__}); using fallback prompts.")
+        return _fallback_prompts(script, len(arabic_paragraphs))
     try:
         prompts = json.loads(raw)
     except json.JSONDecodeError:
-        # Defensive fallback: produce a generic prompt per chunk so the pipeline
-        # still completes. Will look generic but won't fail.
-        return [
-            f"atmospheric horror scene in {script.global_setting}, dim moonlight, eerie mood"
-            for _ in arabic_paragraphs
-        ]
+        print("[shots] LLM returned non-JSON; using fallback prompts.")
+        return _fallback_prompts(script, len(arabic_paragraphs))
     if not isinstance(prompts, list):
-        return [
-            f"atmospheric horror scene in {script.global_setting}, dim moonlight, eerie mood"
-            for _ in arabic_paragraphs
-        ]
+        print("[shots] LLM did not return a list; using fallback prompts.")
+        return _fallback_prompts(script, len(arabic_paragraphs))
     # Pad/truncate to expected length to keep shot indexing aligned.
     if len(prompts) < len(arabic_paragraphs):
-        prompts = list(prompts) + [
-            f"atmospheric horror scene in {script.global_setting}, dim moonlight, eerie mood"
-            for _ in range(len(arabic_paragraphs) - len(prompts))
-        ]
+        prompts = list(prompts) + _fallback_prompts(
+            script, len(arabic_paragraphs) - len(prompts),
+        )
     return [str(p).strip().strip('"\'') for p in prompts[: len(arabic_paragraphs)]]
 
 
