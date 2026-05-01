@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,7 @@ from pipeline.config import Config, load_config
 from pipeline.images import generate_images
 from pipeline.kie import KieClient
 from pipeline.llm import GeminiClient
+from pipeline.llm_groq import GroqClient
 from pipeline.music import select_music_track
 from pipeline.runlog import RunLog
 from pipeline.script import generate_script_with_uniqueness, generate_shorts_script
@@ -49,8 +51,17 @@ PROJECT_THEME_LOG = DEFAULT_OUT_ROOT / "theme_log.json"
 PROJECT_STORY_HISTORY = DEFAULT_OUT_ROOT / "story_history.jsonl"
 
 
-def _build_gemini() -> GeminiClient:
-    """Indirection so tests can monkeypatch."""
+def _build_gemini():
+    """Build the LLM client used by stages.
+
+    Prefer Groq if GROQ_API_KEY is set (Groq's free tier has way more headroom
+    than Gemini's free tier — Llama 3.3 70B handles Arabic well). Otherwise
+    fall back to Gemini. Both expose the same .complete()/.embed() interface,
+    though Groq's .embed() raises NotImplementedError (only the long-form
+    repetition guard uses embeddings; Shorts path never calls it).
+    """
+    if os.environ.get("GROQ_API_KEY"):
+        return GroqClient()
     return GeminiClient()
 
 
