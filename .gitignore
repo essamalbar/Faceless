@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.uv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime artifacts
+out/
+*.log
+
+# Generated content history
+story_history.jsonl
+theme_log.json
+
+# Local secrets
+.env
+*.local
+
+# Existing Flutter ignores (mirrors typical Flutter .gitignore — keep additive)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Claude Code session state
+.claude/
