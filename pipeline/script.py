@@ -10,7 +10,10 @@ This file holds:
 from __future__ import annotations
 
 import json
+import math
 import re
+from datetime import datetime
+from pathlib import Path
 
 from pipeline.types import Script, ThemeSeed
 
@@ -147,3 +150,72 @@ def generate_script(
     if enable_critique:
         return critique_pass(gemini, seed, draft)
     return draft
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    if len(a) != len(b):
+        raise ValueError(f"vector dim mismatch: {len(a)} vs {len(b)}")
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def _read_history(path: Path, limit: int = 30) -> list[list[float]]:
+    if not path.exists():
+        return []
+    embeddings: list[list[float]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            embeddings.append(json.loads(line)["embedding"])
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return embeddings[-limit:]
+
+
+def check_and_record_uniqueness(
+    gemini, story_text: str, history_path: Path, threshold: float
+) -> tuple[bool, float]:
+    """Embed `story_text`, compare against history, append if unique. Returns (is_unique, max_sim)."""
+    new_emb = gemini.embed(story_text)
+    history = _read_history(history_path)
+    max_sim = max((_cosine(new_emb, prev) for prev in history), default=0.0)
+    is_unique = max_sim < threshold
+    if is_unique:
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        with history_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "embedding": new_emb,
+                "ts": datetime.now().isoformat(timespec="seconds"),
+            }) + "\n")
+    return is_unique, max_sim
+
+
+def generate_script_with_uniqueness(
+    gemini,
+    seed: ThemeSeed,
+    target_words: int,
+    tolerance: int,
+    enable_critique: bool,
+    history_path: Path,
+    repetition_threshold: float,
+    max_attempts: int = 3,
+) -> Script:
+    """Loop: generate → check uniqueness → accept or retry up to max_attempts."""
+    last_sim = 0.0
+    for attempt in range(max_attempts):
+        script = generate_script(gemini, seed, target_words, tolerance, enable_critique)
+        is_unique, sim = check_and_record_uniqueness(
+            gemini, script.story, history_path, repetition_threshold,
+        )
+        if is_unique:
+            return script
+        last_sim = sim
+    raise RuntimeError(
+        f"could not generate unique script after {max_attempts} attempts "
+        f"(last similarity {last_sim:.3f} >= threshold {repetition_threshold})"
+    )

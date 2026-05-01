@@ -122,3 +122,76 @@ def test_generate_script_skips_critique_when_disabled(fake_gemini):
     out = generate_script(fake_gemini, seed, target_words=100, tolerance=10, enable_critique=False)
     assert out.title == "v1"
     assert len(fake_gemini.complete_calls) == 1  # only first pass
+
+
+def test_cosine_similarity():
+    from pipeline.script import _cosine
+    assert abs(_cosine([1, 0], [1, 0]) - 1.0) < 1e-9
+    assert abs(_cosine([1, 0], [0, 1])) < 1e-9
+    assert abs(_cosine([1, 0], [-1, 0]) + 1.0) < 1e-9
+
+
+def test_repetition_guard_appends_when_unique(fake_gemini, tmp_path: Path):
+    from pipeline.script import check_and_record_uniqueness
+
+    # No history file → unique by default
+    fake_gemini.set_embedding("story text", [1.0, 0.0, 0.0])
+    history = tmp_path / "story_history.jsonl"
+
+    is_unique, similarity = check_and_record_uniqueness(
+        fake_gemini, "story text", history, threshold=0.85,
+    )
+    assert is_unique is True
+    assert similarity == 0.0
+    assert history.exists()
+    line = history.read_text().strip()
+    assert "[1.0" in line
+
+
+def test_repetition_guard_rejects_when_too_similar(fake_gemini, tmp_path: Path):
+    from pipeline.script import check_and_record_uniqueness
+    history = tmp_path / "story_history.jsonl"
+    history.write_text(json.dumps({"embedding": [1.0, 0.0, 0.0], "ts": "2026-04-30"}) + "\n")
+    fake_gemini.set_embedding("near-dup", [0.99, 0.01, 0.0])  # cos ≈ 1.0
+
+    is_unique, similarity = check_and_record_uniqueness(
+        fake_gemini, "near-dup", history, threshold=0.85,
+    )
+    assert is_unique is False
+    assert similarity > 0.85
+
+
+def test_run_full_regenerates_on_repetition(fake_gemini, tmp_path: Path):
+    """End-to-end: first attempt is too similar → regenerate, second succeeds."""
+    seed = ThemeSeed(theme="folkloric", premise="x")
+
+    # Two distinct payloads. Embeddings: first matches history, second is distant.
+    payload_a = json.dumps({
+        "title": "a", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "dread", "hook": "h", "story": "story-a" * 20, "word_count": 100,
+    }, ensure_ascii=False)
+    payload_b = json.dumps({
+        "title": "b", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "dread", "hook": "h", "story": "story-b" * 20, "word_count": 100,
+    }, ensure_ascii=False)
+
+    seq = [payload_a, payload_b]
+    fake_gemini._responses.clear()
+    fake_gemini._responses.append(lambda p: seq.pop(0) if seq else None)
+
+    fake_gemini.set_embedding("story-a" * 20, [1.0, 0.0])
+    fake_gemini.set_embedding("story-b" * 20, [0.0, 1.0])
+
+    history = tmp_path / "story_history.jsonl"
+    history.write_text(json.dumps({"embedding": [1.0, 0.0], "ts": "p"}) + "\n")
+
+    from pipeline.script import generate_script_with_uniqueness
+    out = generate_script_with_uniqueness(
+        fake_gemini, seed,
+        target_words=100, tolerance=10,
+        enable_critique=False,
+        history_path=history,
+        repetition_threshold=0.85,
+        max_attempts=3,
+    )
+    assert out.title == "b"
