@@ -61,9 +61,12 @@ def test_generate_shots_writes_shots_json(fake_gemini, tmp_run_dir: Path):
         _wt("الفقرة2", 1000), _wt(".", 1500),
         _wt("الفقرة3", 2000), _wt(".", 2500),
     ]
+    # New batched API: one Gemini call returns a JSON array of N prompts.
+    # The fake responds to any prompt mentioning "atmospheric" with a JSON array
+    # large enough to cover any plausible chunk count for this short timing input.
     fake_gemini.when(
-        lambda p: "image prompt" in p.lower() or "atmospheric" in p.lower(),
-        "lone figure on a moonlit dune"
+        lambda p: "atmospheric" in p.lower(),
+        json.dumps(["lone figure on a moonlit dune"] * 10),
     )
     out = tmp_run_dir / "shots.json"
     generate_shots(
@@ -80,6 +83,8 @@ def test_generate_shots_writes_shots_json(fake_gemini, tmp_run_dir: Path):
     assert STYLE_SUFFIX.split(",")[0] in first["english_prompt"]  # suffix appended
     assert first["negative_prompt"] == NEGATIVE_PROMPT
     assert first["seed"] != 0
+    # New invariant: only ONE Gemini call regardless of chunk count.
+    assert len(fake_gemini.complete_calls) == 1
 
 
 def test_generate_shots_skips_if_exists(fake_gemini, tmp_run_dir: Path):

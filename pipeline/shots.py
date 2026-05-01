@@ -21,21 +21,26 @@ NEGATIVE_PROMPT = (
 # Arabic + Latin sentence enders
 SENTENCE_END_CHARS = {".", "؟", "!", "…"}
 
-PROMPT_TRANSLATE_TEMPLATE = """\
-You are translating an Arabic horror story into atmospheric image prompts.
+BATCH_PROMPT_TEMPLATE = """\
+You are translating an Arabic horror story into a sequence of English atmospheric image prompts.
 
-Story global setting: {global_setting}
+Global story setting: {global_setting}
 
-Below is one Arabic paragraph (~15-20 seconds of narration). Output ONE
-English image prompt for an atmospheric horror image illustrating this moment.
-NO text in the image. Photographic, dark, eerie. Describe environment,
-lighting, time of day, key visual element. ~25 words. Plain text only,
-no quotes, no preamble.
+Below are {n} Arabic paragraphs from the story (one per shot, in order).
+For each, write one English image prompt for an atmospheric horror image
+illustrating that moment. Rules per prompt:
+- NO text in the image (no signs, no captions).
+- Photographic, dark, eerie aesthetic.
+- Describe environment, lighting, time of day, one key visual element.
+- ~25 words each.
+- Do NOT include quotes around the prompt.
+- Reuse the global setting consistently across all shots.
 
-Arabic paragraph:
-{arabic_text}
+Return STRICTLY a JSON array of {n} strings (one prompt per paragraph,
+in the same order). No commentary, no markdown fences, just the JSON.
 
-Output:
+Paragraphs:
+{numbered_paragraphs}
 """
 
 
@@ -95,6 +100,49 @@ def _arabic_text_for_chunk(timings: list[WordTiming], chunk: dict) -> str:
     return " ".join(w for w in words if w.strip())
 
 
+def _strip_code_fence(text: str) -> str:
+    """Remove ```json ... ``` or ``` ... ``` wrappers if present."""
+    s = text.strip()
+    fence = re.match(r"^```(?:json)?\s*\n(.*?)\n```\s*$", s, re.DOTALL)
+    if fence:
+        return fence.group(1).strip()
+    return s
+
+
+def _translate_prompts_batched(gemini, script: Script, arabic_paragraphs: list[str]) -> list[str]:
+    """One Gemini call → N English prompts. Saves quota over per-shot calls."""
+    if not arabic_paragraphs:
+        return []
+    numbered = "\n\n".join(f"[{i+1}] {p}" for i, p in enumerate(arabic_paragraphs))
+    prompt = BATCH_PROMPT_TEMPLATE.format(
+        global_setting=script.global_setting,
+        n=len(arabic_paragraphs),
+        numbered_paragraphs=numbered,
+    )
+    raw = _strip_code_fence(gemini.complete(prompt))
+    try:
+        prompts = json.loads(raw)
+    except json.JSONDecodeError:
+        # Defensive fallback: produce a generic prompt per chunk so the pipeline
+        # still completes. Will look generic but won't fail.
+        return [
+            f"atmospheric horror scene in {script.global_setting}, dim moonlight, eerie mood"
+            for _ in arabic_paragraphs
+        ]
+    if not isinstance(prompts, list):
+        return [
+            f"atmospheric horror scene in {script.global_setting}, dim moonlight, eerie mood"
+            for _ in arabic_paragraphs
+        ]
+    # Pad/truncate to expected length to keep shot indexing aligned.
+    if len(prompts) < len(arabic_paragraphs):
+        prompts = list(prompts) + [
+            f"atmospheric horror scene in {script.global_setting}, dim moonlight, eerie mood"
+            for _ in range(len(arabic_paragraphs) - len(prompts))
+        ]
+    return [str(p).strip().strip('"\'') for p in prompts[: len(arabic_paragraphs)]]
+
+
 def generate_shots(
     gemini,
     script: Script,
@@ -102,23 +150,23 @@ def generate_shots(
     out_path: Path,
     target_segment_ms: int = 18000,
 ) -> list[Shot]:
-    """Produce shots.json. Resumable (skips if file exists)."""
+    """Produce shots.json. Resumable (skips if file exists).
+
+    Uses ONE batched Gemini call to translate all Arabic chunks into English
+    image prompts. Avoids hitting the per-minute rate limit at ~40 shots/run.
+    """
     if out_path.exists():
         return [Shot.from_dict(d) for d in json.loads(out_path.read_text(encoding="utf-8"))]
 
     sentence_ends = _sentence_end_indices(timings)
     chunks = chunk_by_timing(timings, target_segment_ms, sentence_ends)
+    arabic_chunks = [_arabic_text_for_chunk(timings, c) for c in chunks]
+    english_cores = _translate_prompts_batched(gemini, script, arabic_chunks)
 
     shots: list[Shot] = []
     for i, chunk in enumerate(chunks):
-        arabic = _arabic_text_for_chunk(timings, chunk)
-        prompt = PROMPT_TRANSLATE_TEMPLATE.format(
-            global_setting=script.global_setting,
-            arabic_text=arabic,
-        )
-        english_core = gemini.complete(prompt).strip()
-        # strip surrounding quotes if Gemini ignored instructions
-        english_core = english_core.strip('"\'')
+        arabic = arabic_chunks[i]
+        english_core = english_cores[i]
         english_full = f"{english_core}, {STYLE_SUFFIX}"
         shots.append(Shot(
             index=i + 1,
