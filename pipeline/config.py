@@ -49,12 +49,26 @@ class CaptionsConfig:
 
 
 @dataclass(frozen=True)
+class KieConfig:
+    """Kie.ai video-generation config (used by --shorts mode)."""
+    model: str                  # e.g. "veo-3.1-fast"
+    num_clips: int              # how many clips per Shorts video (default 4)
+    clip_duration_s: int        # seconds per clip (default 7 → ~28s total)
+    aspect_ratio: str           # e.g. "9:16"
+    cost_per_second_usd: float  # used for budget guard estimation
+    max_spend_usd: float        # hard cap per video; orchestrator refuses runs exceeding
+    poll_interval_s: int        # seconds between job-status polls
+    poll_timeout_s: int         # give up on a single clip after this many seconds
+
+
+@dataclass(frozen=True)
 class Config:
     voice: VoiceConfig
     script: ScriptConfig
     flux: FluxConfig
     assemble: AssembleConfig
     captions: CaptionsConfig
+    kie: KieConfig
 
 
 def load_config(path: Path) -> Config:
@@ -68,4 +82,5 @@ def load_config(path: Path) -> Config:
         flux=FluxConfig(**raw["flux"]),
         assemble=AssembleConfig(**raw["assemble"]),
         captions=CaptionsConfig(**raw["captions"]),
+        kie=KieConfig(**raw["kie"]),
     )

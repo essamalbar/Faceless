@@ -195,3 +195,109 @@ def test_run_full_regenerates_on_repetition(fake_gemini, tmp_path: Path):
         max_attempts=3,
     )
     assert out.title == "b"
+
+
+# ============================================================================
+# Shorts mode tests
+# ============================================================================
+
+def test_shorts_prompt_includes_seed_and_beat_count():
+    from pipeline.script import build_shorts_writer_prompt
+    seed = ThemeSeed(theme="folkloric", premise="بئر قديم")
+    p = build_shorts_writer_prompt(seed, num_beats=4, words_per_beat=20)
+    assert "بئر قديم" in p
+    assert "folkloric" in p
+    assert "4 مشاهد" in p or "{num_beats}" not in p  # template substitution worked
+    # Confirm key Shorts constraints are present
+    assert "الخطاف" in p  # hook
+    assert "english_motion" in p
+
+
+def test_shorts_parse_valid_response(fake_gemini):
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="بئر")
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "صدى البئر",
+        "theme": "folkloric",
+        "global_setting": "abandoned village, night, desert",
+        "music_mood": "dread",
+        "beats": [
+            {"arabic": "كنتُ وحيداً عند البئر.", "english_motion": "lone hooded figure beside ancient well, slow push-in, moonlight"},
+            {"arabic": "سمعتُ بكاءً في الأعماق.", "english_motion": "close-up of dark well shaft, mist, faint glow rising"},
+            {"arabic": "ظهرتْ يدٌ عظمية.", "english_motion": "skeletal hand emerging from well rim, low angle, candlelight flicker"},
+            {"arabic": "ثم اختفى كل شيء.", "english_motion": "wide shot of empty village, fog rolling in, static camera"},
+        ],
+    }, ensure_ascii=False))
+    s = generate_shorts_script(fake_gemini, seed)
+    assert s.title == "صدى البئر"
+    assert len(s.beats) == 4
+    assert s.beats[0].arabic == "كنتُ وحيداً عند البئر."
+    assert "push-in" in s.beats[0].english_motion
+    assert s.story_combined.startswith("كنتُ وحيداً")
+    # All four arabic strings concatenated
+    assert "اختفى كل شيء" in s.story_combined
+    # Long-form fields stay empty
+    assert s.story == ""
+    assert s.hook == ""
+
+
+def test_shorts_overrides_theme_to_match_seed(fake_gemini):
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    # Gemini returns wrong theme — we must force it back to seed.theme
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "x", "theme": "domestic",  # WRONG
+        "global_setting": "x", "music_mood": "drone",
+        "beats": [{"arabic": "ج1", "english_motion": "m1"}],
+    }, ensure_ascii=False))
+    s = generate_shorts_script(fake_gemini, seed)
+    assert s.theme == "folkloric"
+
+
+def test_shorts_normalizes_sloppy_music_mood(fake_gemini):
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "x", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "drone | dread | cosmic | discovery",  # sloppy LLM output
+        "beats": [{"arabic": "ج1", "english_motion": "m1"}],
+    }, ensure_ascii=False))
+    s = generate_shorts_script(fake_gemini, seed)
+    assert s.music_mood == "drone"  # normalizer extracts first valid mood
+
+
+def test_shorts_rejects_empty_beats(fake_gemini):
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "x", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "dread", "beats": [],
+    }, ensure_ascii=False))
+    with pytest.raises(ValueError, match="non-empty 'beats'"):
+        generate_shorts_script(fake_gemini, seed)
+
+
+def test_shorts_rejects_beat_missing_field(fake_gemini):
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "x", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "dread",
+        "beats": [{"arabic": "only arabic"}],  # missing english_motion
+    }, ensure_ascii=False))
+    with pytest.raises(ValueError, match="missing"):
+        generate_shorts_script(fake_gemini, seed)
+
+
+def test_shorts_strips_code_fence(fake_gemini):
+    """Gemini sometimes wraps output in ```json ... ```."""
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    payload = json.dumps({
+        "title": "x", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "dread",
+        "beats": [{"arabic": "ج", "english_motion": "m"}],
+    }, ensure_ascii=False)
+    fake_gemini.when(lambda p: True, f"```json\n{payload}\n```")
+    s = generate_shorts_script(fake_gemini, seed)
+    assert len(s.beats) == 1

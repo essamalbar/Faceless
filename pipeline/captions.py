@@ -111,18 +111,110 @@ def format_ass(lines: list[dict], font: str, font_size: int) -> str:
     return header + "\n".join(events) + "\n"
 
 
+def chunk_into_tiktok_lines(
+    timings: list[WordTiming],
+    max_words: int = 3,
+    max_duration_ms: int = 2000,
+) -> list[dict]:
+    """Tighter chunker for TikTok / Shorts captions: ~3 words on screen at a time."""
+    return chunk_into_caption_lines(
+        timings, max_words=max_words, max_duration_ms=max_duration_ms,
+    )
+
+
+def format_ass_tiktok_karaoke(
+    lines: list[dict],
+    font: str,
+    font_size: int,
+    play_res_x: int = 1080,
+    play_res_y: int = 1920,
+) -> str:
+    """Vertical TikTok-style karaoke .ass.
+
+    Each line renders for its full span; individual words light up via {\\k<cs>}
+    karaoke tags. Style is centered horizontally, slightly above middle vertically
+    (Alignment=5 = middle-center; MarginV nudges toward the upper third).
+    Bold white text, thick black outline + shadow — readable on any background.
+    """
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        f"PlayResX: {play_res_x}\n"
+        f"PlayResY: {play_res_y}\n"
+        "WrapStyle: 0\n"
+        "ScaledBorderAndShadow: yes\n"
+        "\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, "
+        "Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
+        "MarginL, MarginR, MarginV, Encoding\n"
+        # PrimaryColour: white;  SecondaryColour: yellow (used for already-spoken words during karaoke);
+        # OutlineColour: black;  BackColour: 50% black shadow.
+        # Alignment 5 = middle-center.
+        # Outline 6, Shadow 4 — chunky for vertical readability.
+        f"Style: Default,{font},{font_size},"
+        "&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,"
+        "1,0,0,0,100,100,0,0,1,6,4,5,40,40,0,1\n"
+        "\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+
+    events: list[str] = []
+    for line in lines:
+        words: list[WordTiming] = list(line["words"])
+        if not words:
+            continue
+        # Build the karaoke text: {\k<cs>}<word> per word.
+        parts: list[str] = []
+        for w in words:
+            cs = max(int(round(w.duration_ms / 10)), 1)  # min 1cs to avoid zero
+            parts.append(f"{{\\k{cs}}}{w.word}")
+        text = " ".join(parts)
+        events.append(
+            f"Dialogue: 0,{_ms_to_ass_time(line['start_ms'])},"
+            f"{_ms_to_ass_time(line['end_ms'])},Default,,0,0,0,,{text}"
+        )
+    return header + "\n".join(events) + "\n"
+
+
 def generate_captions(
     timings: list[WordTiming],
     srt_path: Path,
     ass_path: Path | None,
     font: str,
     font_size: int,
+    style: str = "default",
+    play_res_x: int = 1920,
+    play_res_y: int = 1080,
 ) -> None:
-    """Resumable: skips if srt_path already exists. .ass written if path given."""
+    """Resumable: skips if srt_path already exists. .ass written if path given.
+
+    style:
+      - "default" — bottom subtitle bar, ~6-10 words/line, no per-word animation.
+      - "tiktok"  — vertical karaoke, ~3 words/line, word-by-word reveal,
+                    centered slightly above middle. Uses (play_res_x, play_res_y).
+    """
     if srt_path.exists():
         return
-    lines = chunk_into_caption_lines(timings)
+    if style == "tiktok":
+        lines = chunk_into_tiktok_lines(timings)
+    else:
+        lines = chunk_into_caption_lines(timings)
     srt_path.parent.mkdir(parents=True, exist_ok=True)
     srt_path.write_text(format_srt(lines), encoding="utf-8")
     if ass_path is not None:
-        ass_path.write_text(format_ass(lines, font=font, font_size=font_size), encoding="utf-8")
+        if style == "tiktok":
+            ass_path.write_text(
+                format_ass_tiktok_karaoke(
+                    lines, font=font, font_size=font_size,
+                    play_res_x=play_res_x, play_res_y=play_res_y,
+                ),
+                encoding="utf-8",
+            )
+        else:
+            ass_path.write_text(
+                format_ass(lines, font=font, font_size=font_size),
+                encoding="utf-8",
+            )

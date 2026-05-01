@@ -111,3 +111,93 @@ def test_assemble_skips_when_output_exists(monkeypatch, tmp_run_dir: Path):
         music_duck_db=-18, music_silence_db=-8, fade_in_s=3, fade_out_s=3,
     )
     assert called["n"] == 0
+
+
+# ============================================================================
+# Shorts assembler tests
+# ============================================================================
+
+def test_shorts_filter_graph_one_scale_per_clip():
+    from pipeline.assemble import build_shorts_filter_graph
+    g = build_shorts_filter_graph(
+        clip_durations_s=[7.0, 7.0, 7.0, 7.0],
+        output_w=1080, output_h=1920, crossfade_ms=350,
+        burn_caption_ass=None,
+    )
+    assert g.count("scale=1080:1920") == 4
+    # 4 clips → 3 xfade chains
+    assert g.count("xfade=") == 3
+
+
+def test_shorts_filter_graph_includes_caption_burn():
+    from pipeline.assemble import build_shorts_filter_graph
+    g = build_shorts_filter_graph(
+        clip_durations_s=[7.0],
+        output_w=1080, output_h=1920, crossfade_ms=350,
+        burn_caption_ass=Path("/tmp/x.ass"),
+    )
+    assert "subtitles=" in g
+    assert "x.ass" in g
+
+
+def test_shorts_filter_graph_audio_mix_three_inputs():
+    from pipeline.assemble import build_shorts_filter_graph
+    g = build_shorts_filter_graph(
+        clip_durations_s=[7.0, 7.0, 7.0, 7.0],
+        output_w=1080, output_h=1920, crossfade_ms=350,
+        burn_caption_ass=None,
+    )
+    # narration + music + ambient → amix=inputs=3
+    assert "amix=inputs=3" in g
+    # narration is at index N=4 (after the 4 video inputs)
+    assert "[4:a]" in g
+    # music is at index N+1=5
+    assert "[5:a]" in g
+
+
+def test_assemble_shorts_invokes_ffmpeg(monkeypatch, tmp_run_dir: Path):
+    from pipeline.assemble import assemble_shorts_video
+    captured: dict = {}
+    monkeypatch.setattr("pipeline.assemble._run_ffmpeg",
+                        lambda args: captured.update(args=args))
+
+    clips_dir = tmp_run_dir / "clips"
+    clips_dir.mkdir()
+    clip_paths = []
+    for i in range(1, 5):
+        p = clips_dir / f"{i:02d}.mp4"
+        p.write_bytes(b"x")
+        clip_paths.append(p)
+    narr = tmp_run_dir / "narration.mp3"; narr.write_bytes(b"x")
+    music = tmp_run_dir / "music.mp3"; music.write_bytes(b"x")
+
+    assemble_shorts_video(
+        clip_paths=clip_paths,
+        clip_durations_s=[7.0, 7.0, 7.0, 7.0],
+        narration_path=narr, music_path=music,
+        out_path=tmp_run_dir / "final.mp4",
+        burn_caption_ass=None,
+    )
+    args = captured["args"]
+    assert all(str(p) in args for p in clip_paths)
+    assert str(narr) in args
+    assert str(music) in args
+    assert str(tmp_run_dir / "final.mp4") in args
+
+
+def test_assemble_shorts_skips_if_output_exists(monkeypatch, tmp_run_dir: Path):
+    from pipeline.assemble import assemble_shorts_video
+    called = {"n": 0}
+    monkeypatch.setattr("pipeline.assemble._run_ffmpeg",
+                        lambda args: called.update(n=called["n"] + 1))
+    out = tmp_run_dir / "final.mp4"
+    out.write_bytes(b"existing")
+    assemble_shorts_video(
+        clip_paths=[tmp_run_dir / "01.mp4"],
+        clip_durations_s=[7.0],
+        narration_path=tmp_run_dir / "n.mp3",
+        music_path=tmp_run_dir / "m.mp3",
+        out_path=out,
+        burn_caption_ass=None,
+    )
+    assert called["n"] == 0

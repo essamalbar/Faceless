@@ -150,3 +150,128 @@ def assemble_video(
         str(out_path),
     ]
     _run_ffmpeg(args)
+
+
+# ============================================================================
+# Shorts assembler — concatenates Veo-generated MP4 clips into vertical TikTok video.
+# ============================================================================
+
+def build_shorts_filter_graph(
+    clip_durations_s: list[float],
+    output_w: int,
+    output_h: int,
+    crossfade_ms: int,
+    burn_caption_ass: Path | None,
+    ambient_volume: float = 0.15,
+) -> str:
+    """Build the FFmpeg -filter_complex graph for Shorts mode.
+
+    Inputs (in order):
+      [0:v][0:a]…[N-1:v][N-1:a]  : Veo clips (N of them, each has video + ambient audio)
+      [N:a]                      : narration mp3
+      [N+1:a]                    : music mp3
+    Output streams: [vout], [aout]
+    """
+    n = len(clip_durations_s)
+    if n == 0:
+        raise ValueError("no clips")
+    parts: list[str] = []
+    crossfade_s = crossfade_ms / 1000.0
+
+    # 1. Per-clip video: scale to vertical output and reset PTS.
+    for i in range(n):
+        parts.append(
+            f"[{i}:v]scale={output_w}:{output_h}:force_original_aspect_ratio=decrease,"
+            f"pad={output_w}:{output_h}:(ow-iw)/2:(oh-ih)/2:black,"
+            f"setsar=1,setpts=PTS-STARTPTS[v{i}]"
+        )
+
+    # 2. Crossfade chain.
+    if n == 1:
+        last_v = "v0"
+    else:
+        cumulative = clip_durations_s[0]
+        last_v = "v0"
+        for i in range(1, n):
+            new_label = f"vx{i}"
+            offset = max(cumulative - crossfade_s, 0.0)
+            parts.append(
+                f"[{last_v}][v{i}]xfade=transition=fade:"
+                f"duration={crossfade_s}:offset={offset:.3f}[{new_label}]"
+            )
+            cumulative += clip_durations_s[i] - crossfade_s
+            last_v = new_label
+
+    # 3. Optional captions burn-in (TikTok karaoke .ass).
+    if burn_caption_ass is not None:
+        ass_path = str(burn_caption_ass).replace("\\", "\\\\").replace(":", r"\:")
+        parts.append(f"[{last_v}]subtitles='{ass_path}'[vout]")
+    else:
+        parts.append(f"[{last_v}]copy[vout]")
+
+    # 4. Audio mix.
+    # Concat the N clips' ambient audio into one stream (very low volume),
+    # mix with narration (full volume) and music (looped + sidechain ducked).
+    if n == 1:
+        parts.append(f"[0:a]volume={ambient_volume}[ambient]")
+    else:
+        ambient_inputs = "".join(f"[{i}:a]" for i in range(n))
+        parts.append(
+            f"{ambient_inputs}concat=n={n}:v=0:a=1[amb_concat];"
+            f"[amb_concat]volume={ambient_volume}[ambient]"
+        )
+
+    parts.append(
+        f"[{n+1}:a]aloop=loop=-1:size=2e+09[mloop];"
+        f"[mloop][{n}:a]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];"
+        f"[{n}:a][ducked][ambient]amix=inputs=3:duration=first:dropout_transition=0[aout]"
+    )
+    return ";".join(parts)
+
+
+def assemble_shorts_video(
+    clip_paths: list[Path],
+    clip_durations_s: list[float],
+    narration_path: Path,
+    music_path: Path,
+    out_path: Path,
+    burn_caption_ass: Path | None,
+    output_width: int = 1080,
+    output_height: int = 1920,
+    crossfade_ms: int = 350,
+    ambient_volume: float = 0.15,
+) -> None:
+    """Stitch Veo clips into a vertical 9:16 final video. Resumable."""
+    if out_path.exists():
+        return
+    if len(clip_paths) != len(clip_durations_s):
+        raise ValueError("clip_paths and clip_durations_s must be same length")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    args: list[str] = ["ffmpeg", "-y"]
+    for p in clip_paths:
+        args += ["-i", str(p)]
+    args += ["-i", str(narration_path)]
+    args += ["-i", str(music_path)]
+
+    graph = build_shorts_filter_graph(
+        clip_durations_s=clip_durations_s,
+        output_w=output_width, output_h=output_height,
+        crossfade_ms=crossfade_ms,
+        burn_caption_ass=burn_caption_ass,
+        ambient_volume=ambient_volume,
+    )
+    args += [
+        "-filter_complex", graph,
+        "-map", "[vout]",
+        "-map", "[aout]",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "20",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-shortest",
+        str(out_path),
+    ]
+    _run_ffmpeg(args)

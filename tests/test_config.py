@@ -36,6 +36,15 @@ def test_load_full_config(tmp_path: Path):
           burn_in: false
           font: Cairo-Bold
           font_size: 60
+        kie:
+          model: veo-3.1-fast
+          num_clips: 4
+          clip_duration_s: 7
+          aspect_ratio: "9:16"
+          cost_per_second_usd: 0.10
+          max_spend_usd: 3.50
+          poll_interval_s: 5
+          poll_timeout_s: 300
     """))
     cfg = load_config(cfg_path)
     assert cfg.voice.name == "ar-SA-HamedNeural"
@@ -43,6 +52,9 @@ def test_load_full_config(tmp_path: Path):
     assert cfg.flux.steps == 25
     assert cfg.assemble.shot_crossfade_ms == 800
     assert cfg.captions.burn_in is False
+    assert cfg.kie.model == "veo-3.1-fast"
+    assert cfg.kie.num_clips == 4
+    assert cfg.kie.max_spend_usd == 3.50
 
 
 def test_missing_file_raises(tmp_path: Path):

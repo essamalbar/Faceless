@@ -31,14 +31,38 @@ class ThemeSeed:
 
 
 @dataclass(frozen=True)
+class Beat:
+    """One narration beat ↔ one Veo clip in the Shorts pipeline."""
+    arabic: str
+    english_motion: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Beat":
+        return cls(**d)
+
+
+@dataclass(frozen=True)
 class Script:
+    """Script artifact for both pipeline modes.
+
+    Long-form (slideshow): uses `story` + `hook` + `word_count`.
+    Shorts: uses `beats` + `story_combined` (concatenated arabic for TTS).
+    Both share title/theme/global_setting/music_mood metadata.
+    """
     title: str
     theme: str
     global_setting: str
     music_mood: str
-    hook: str
-    story: str
-    word_count: int
+    # Long-form fields (optional in shorts mode)
+    hook: str = ""
+    story: str = ""
+    word_count: int = 0
+    # Shorts-mode fields (optional in long-form mode)
+    beats: tuple[Beat, ...] = ()
+    story_combined: str = ""
 
     def __post_init__(self):
         if self.music_mood not in VALID_MOODS:
@@ -47,11 +71,16 @@ class Script:
             raise ValueError(f"invalid theme: {self.theme}")
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d["beats"] = [b for b in d["beats"]]  # asdict already turns Beats to dicts; tuple → list
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Script":
-        return cls(**d)
+        d = dict(d)
+        beats_raw = d.pop("beats", None) or ()
+        beats = tuple(Beat.from_dict(b) if isinstance(b, dict) else b for b in beats_raw)
+        return cls(**d, beats=beats) if "beats" not in d else cls(**d)
 
 
 @dataclass(frozen=True)
@@ -101,6 +130,10 @@ class RunPaths:
     def shots_json(self) -> Path: return self.root / "shots.json"
     @property
     def images_dir(self) -> Path: return self.root / "images"
+    @property
+    def clips_dir(self) -> Path: return self.root / "clips"
+    @property
+    def kie_spend_json(self) -> Path: return self.root / "kie_spend.json"
     @property
     def music_track_mp3(self) -> Path: return self.root / "music_track.mp3"
     @property

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from pipeline.types import Script, Shot, ThemeSeed, WordTiming
+from pipeline.types import Beat, Script, Shot, ThemeSeed, WordTiming
 
 
 def test_themeseed_roundtrip():
@@ -52,3 +52,39 @@ def test_script_invalid_mood_rejected():
             title="t", theme="domestic", global_setting="x",
             music_mood="not-a-mood", hook="h", story="s", word_count=100,
         )
+
+
+def test_beat_roundtrip():
+    b = Beat(arabic="كنتُ وحيداً.", english_motion="lone figure walking, push-in camera")
+    assert Beat.from_dict(b.to_dict()) == b
+
+
+def test_script_shorts_mode_roundtrip():
+    """Shorts script: beats[] populated; story/hook empty."""
+    s = Script(
+        title="بئر",
+        theme="folkloric",
+        global_setting="abandoned village, night",
+        music_mood="dread",
+        beats=(
+            Beat(arabic="ب1", english_motion="m1"),
+            Beat(arabic="ب2", english_motion="m2"),
+        ),
+        story_combined="ب1 ب2",
+    )
+    data = s.to_dict()
+    json.dumps(data, ensure_ascii=False)  # serializable
+    restored = Script.from_dict(data)
+    assert restored == s
+    assert len(restored.beats) == 2
+    assert restored.beats[0].english_motion == "m1"
+
+
+def test_script_long_form_mode_still_works():
+    """Long-form mode: empty beats tuple, story populated."""
+    s = Script(
+        title="t", theme="domestic", global_setting="x",
+        music_mood="dread", hook="h", story="long story", word_count=100,
+    )
+    assert s.beats == ()
+    assert s.story == "long story"

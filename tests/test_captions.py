@@ -87,3 +87,70 @@ def test_generate_captions_skips_when_srt_exists(tmp_run_dir: Path):
         font="Cairo-Bold", font_size=60,
     )
     assert srt_path.read_text() == "preexisting"
+
+
+# ============================================================================
+# TikTok-style karaoke captions
+# ============================================================================
+
+def test_chunk_tiktok_max_3_words_per_line():
+    from pipeline.captions import chunk_into_tiktok_lines
+    timings = [WordTiming(word=f"w{i}", offset_ms=i * 200, duration_ms=200) for i in range(10)]
+    lines = chunk_into_tiktok_lines(timings)
+    for line in lines:
+        assert len(line["words"]) <= 3
+
+
+def test_format_ass_tiktok_has_karaoke_tags():
+    from pipeline.captions import chunk_into_tiktok_lines, format_ass_tiktok_karaoke
+    timings = [
+        WordTiming(word="كنتُ", offset_ms=0, duration_ms=400),
+        WordTiming(word="وحيداً", offset_ms=400, duration_ms=500),
+        WordTiming(word="هناك.", offset_ms=900, duration_ms=600),
+    ]
+    lines = chunk_into_tiktok_lines(timings)
+    ass = format_ass_tiktok_karaoke(lines, font="Cairo-Black", font_size=90,
+                                     play_res_x=1080, play_res_y=1920)
+    # Vertical play resolution
+    assert "PlayResX: 1080" in ass
+    assert "PlayResY: 1920" in ass
+    # Karaoke tags present on each word (at least 3 \k tags)
+    assert ass.count("\\k") == 3
+    # Alignment 5 (middle-center) is in the Style line
+    assert "Cairo-Black" in ass
+    # Words preserved
+    assert "كنتُ" in ass
+    assert "وحيداً" in ass
+
+
+def test_generate_captions_tiktok_style(tmp_run_dir: Path):
+    from pipeline.captions import generate_captions
+    timings = [
+        WordTiming(word="كلمة1", offset_ms=0, duration_ms=400),
+        WordTiming(word="كلمة2", offset_ms=400, duration_ms=400),
+    ]
+    srt = tmp_run_dir / "captions.ar.srt"
+    ass = tmp_run_dir / "captions.ar.ass"
+    generate_captions(
+        timings=timings, srt_path=srt, ass_path=ass,
+        font="Cairo-Black", font_size=90,
+        style="tiktok", play_res_x=1080, play_res_y=1920,
+    )
+    assert ass.exists()
+    text = ass.read_text(encoding="utf-8")
+    assert "PlayResX: 1080" in text
+    assert "\\k" in text  # karaoke tag
+
+
+def test_generate_captions_default_style_unchanged(tmp_run_dir: Path):
+    """Existing default behavior must not break."""
+    from pipeline.captions import generate_captions
+    timings = [WordTiming(word="ك", offset_ms=0, duration_ms=400)]
+    srt = tmp_run_dir / "c.srt"
+    ass = tmp_run_dir / "c.ass"
+    generate_captions(
+        timings=timings, srt_path=srt, ass_path=ass,
+        font="Cairo-Bold", font_size=60,
+    )
+    assert "PlayResX: 1920" in ass.read_text()  # horizontal default
+    assert "\\k" not in ass.read_text()  # no karaoke

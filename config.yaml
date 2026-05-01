@@ -28,3 +28,13 @@ captions:
   burn_in: false
   font: Cairo-Bold
   font_size: 60
+
+kie:
+  model: veo-3.1-fast            # Veo 3.1 Fast on Kie.ai; ~$0.10/sec
+  num_clips: 4                   # 4 × 7s = 28s narration + 2s holds → 30s final
+  clip_duration_s: 7
+  aspect_ratio: "9:16"           # vertical for TikTok / Shorts / Reels
+  cost_per_second_usd: 0.10      # used for the orchestrator budget guard
+  max_spend_usd: 3.50            # hard cap per video — refuses to start if exceeded
+  poll_interval_s: 5
+  poll_timeout_s: 300            # give up on a clip after 5 min

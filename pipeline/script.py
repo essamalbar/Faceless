@@ -15,7 +15,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from pipeline.types import Script, ThemeSeed
+from pipeline.types import Beat, Script, ThemeSeed
 
 WRITER_SYSTEM = (
     "أنت كاتب قصص رعب محترف بالعربية الفصحى (MSA) بأسلوب أدبي تأملي. "
@@ -249,3 +249,108 @@ def generate_script_with_uniqueness(
         f"could not generate unique script after {max_attempts} attempts "
         f"(last similarity {last_sim:.3f} >= threshold {repetition_threshold})"
     )
+
+
+# ============================================================================
+# Shorts mode (TikTok / Reels) — different output shape, single Gemini call.
+# Produces both the Arabic narration AND English motion prompts for Veo.
+# ============================================================================
+
+SHORTS_WRITER_SYSTEM = (
+    "أنت كاتب قصص رعب قصيرة جداً بالعربية الفصحى (MSA) لـ TikTok و YouTube Shorts. "
+    "بضمير المتكلم. خطاف فوري، تصاعد سريع، ذروة قصيرة، نهاية مفاجئة أو مفتوحة. "
+    "ممنوع: 'فجأة سمعت صوتاً'، 'كان كل شيء حلماً'، شرح زائد، حوار طويل."
+)
+
+SHORTS_WRITER_PROMPT_TEMPLATE = """\
+اكتب قصة رعب قصيرة (Shorts/TikTok) لمدة ~28 ثانية، مقسمة إلى {num_beats} مشاهد متساوية.
+
+الفرضية: {premise}
+الفئة: {theme}
+
+البنية المطلوبة (التزم بها):
+- مشهد 1 (الخطاف): جملة واحدة قوية تضع المشاهد في قلب اللحظة الغريبة فوراً.
+- المشاهد الوسطى: تصاعد سريع، تفاصيل غريبة محددة.
+- المشهد الأخير (الذروة + النهاية): جملة تكشف أو تلمح لشيء صادم. لا تشرح.
+
+كل مشهد:
+- نص عربي ~{words_per_beat} كلمة (جملة كاملة، MSA الفصحى).
+- وصف حركة بالإنجليزية ~20 كلمة يصف ما يجب أن نراه في الفيديو لهذا المشهد:
+  - كاميرا (slow push-in / dolly / static / tracking / pull-back)
+  - عنصر بصري واحد محدد (شخص بمعطف، بئر قديم، باب مفتوح، يد، إلخ)
+  - الإضاءة والوقت من اليوم (moonlit, dusk, candlelight, etc)
+- ملاحظة: الإعداد العالمي ({global_setting_hint}) سيُضاف تلقائياً، لا تكرره في كل مشهد.
+
+أرجع JSON صالح فقط (بدون markdown أو ``` أو شرح) بهذه الحقول بالضبط:
+{{
+  "title": "عنوان قصير جذاب",
+  "theme": "{theme}",
+  "global_setting": "وصف الموقع/الزمن/الجو بالإنجليزية المختصرة (يُحقن في كل لقطة)",
+  "music_mood": "اختر كلمة واحدة فقط: drone أو dread أو cosmic أو discovery (بدون شرح أو رمز |)",
+  "beats": [
+    {{"arabic": "...", "english_motion": "..."}},
+    {{"arabic": "...", "english_motion": "..."}},
+    {{"arabic": "...", "english_motion": "..."}},
+    {{"arabic": "...", "english_motion": "..."}}
+  ]
+}}
+"""
+
+
+def build_shorts_writer_prompt(seed: ThemeSeed, num_beats: int = 4, words_per_beat: int = 20) -> str:
+    return SHORTS_WRITER_PROMPT_TEMPLATE.format(
+        premise=seed.premise,
+        theme=seed.theme,
+        num_beats=num_beats,
+        words_per_beat=words_per_beat,
+        global_setting_hint="نفس الإعداد عبر المشاهد",
+    )
+
+
+def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
+    """Parse Gemini's Shorts response into a Script with beats."""
+    cleaned = _strip_code_fence(text)
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"shorts writer returned invalid JSON: {e}\n--- got ---\n{text[:500]}")
+    # Trust the seed.theme defensively.
+    data["theme"] = seed.theme
+    # Normalize music_mood (handles sloppy LLM output — same logic as long-form path).
+    if "music_mood" in data:
+        data["music_mood"] = _normalize_music_mood(data["music_mood"])
+    beats_raw = data.get("beats") or []
+    if not isinstance(beats_raw, list) or not beats_raw:
+        raise ValueError("shorts script must contain a non-empty 'beats' list")
+    beats: tuple[Beat, ...] = tuple(
+        Beat(arabic=str(b.get("arabic", "")).strip(),
+             english_motion=str(b.get("english_motion", "")).strip())
+        for b in beats_raw
+    )
+    # Reject if any beat is missing both fields — clear LLM failure.
+    for i, b in enumerate(beats):
+        if not b.arabic or not b.english_motion:
+            raise ValueError(f"beat {i+1} missing arabic or english_motion: {b}")
+
+    story_combined = " ".join(b.arabic for b in beats)
+    try:
+        return Script(
+            title=str(data.get("title", "")).strip() or "بلا عنوان",
+            theme=data["theme"],
+            global_setting=str(data.get("global_setting", "")).strip(),
+            music_mood=data["music_mood"],
+            beats=beats,
+            story_combined=story_combined,
+            # Long-form fields stay default (empty)
+        )
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"shorts script construction failed: {e}; got keys={list(data.keys())}")
+
+
+def generate_shorts_script(
+    gemini, seed: ThemeSeed, num_beats: int = 4, words_per_beat: int = 20,
+) -> Script:
+    """Single Gemini call → Script with beats[]. No critique pass for Shorts (story is short enough)."""
+    prompt = build_shorts_writer_prompt(seed, num_beats=num_beats, words_per_beat=words_per_beat)
+    raw = gemini.complete(prompt, system=SHORTS_WRITER_SYSTEM)
+    return _parse_shorts_script_json(raw, seed)
