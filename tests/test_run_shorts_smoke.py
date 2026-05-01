@@ -147,8 +147,9 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     spend = json.loads((run_dir / "kie_spend.json").read_text(encoding="utf-8"))
     assert len(spend["entries"]) == 4
 
-    # Single Gemini call (script writer only) — saves quota
-    assert len(fake_g.complete_calls) == 1
+    # 1+ Gemini calls (writer plus possibly expand-pass retries when the
+    # canned beats are too short). Script writer is the only LLM stage.
+    assert len(fake_g.complete_calls) >= 1
 
 
 def test_run_shorts_skip_video_uses_placeholder_clips(

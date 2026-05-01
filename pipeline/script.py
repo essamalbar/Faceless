@@ -282,6 +282,15 @@ SHORTS_WRITER_PROMPT_TEMPLATE = """\
 - الأب مات أو مريض. الجار غني ومتجاهل.
 - النهاية مأساوية حاسمة (الأم بتموت، الابن بيندم متأخر، تدمير العائلة).
 
+CRITICAL WORD COUNT ENFORCEMENT — لا تتجاهل هذه القاعدة:
+- كل مشهد لازم يكون **{words_per_beat} كلمة على الأقل** ({min_words_per_beat} كحد أدنى مطلق).
+- المشاهد القصيرة (أقل من {min_words_per_beat} كلمة) سترفض ولن تستخدم.
+- مجموع كل المشاهد لازم ≥ {min_total_words} كلمة بالعربي.
+- اكتب جمل كاملة مفصلة. أضف تفاصيل بصرية، مشاعر، مكان، زمان.
+- مثال على مشهد بالعدد الصحيح للكلمات (~30 كلمة):
+  "الأم الفقيرة كانت قاعدة في المطبخ بتبكي في صمت، تبص للولد الصغير وهو بياكل آخر لقمة عيش في البيت، قلبها مكسور بس مخبية حزنها عشان ما يحسش بضعفها."
+  (this is 28 Arabic words — that's the target length per beat)
+
 CRITICAL — ALL CHARACTERS ARE ANTHROPOMORPHIC FRUIT (Sunstoriz signature style):
 - الأم = LEMON character (yellow lemon-head body, sad eyes, wears black hijab/dress)
 - الابن (طفل) = small STRAWBERRY character (red strawberry head with green leaves, child clothes)
@@ -328,11 +337,15 @@ CRITICAL — ALL CHARACTERS ARE ANTHROPOMORPHIC FRUIT (Sunstoriz signature style
 
 
 def build_shorts_writer_prompt(seed: ThemeSeed, num_beats: int = 8, words_per_beat: int = 30) -> str:
+    min_words_per_beat = max(int(words_per_beat * 0.7), 18)
+    min_total_words = num_beats * min_words_per_beat
     return SHORTS_WRITER_PROMPT_TEMPLATE.format(
         premise=seed.premise,
         theme=seed.theme,
         num_beats=num_beats,
         words_per_beat=words_per_beat,
+        min_words_per_beat=min_words_per_beat,
+        min_total_words=min_total_words,
         global_setting_hint="نفس الإعداد عبر المشاهد",
     )
 
@@ -377,10 +390,55 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
         raise ValueError(f"shorts script construction failed: {e}; got keys={list(data.keys())}")
 
 
+EXPAND_PROMPT_TEMPLATE = """\
+المسودة التالية قصيرة جداً. كل مشهد لازم يكون ~{target} كلمة، لكنك أنتجت مشاهد بـ
+{actual} كلمة بالمتوسط. أعد كتابة كل مشهد بنفس المعنى لكن أطول وأكثر تفصيلاً —
+أضف تفاصيل بصرية (المكان، الإضاءة، الأشخاص في الخلفية)، تفاصيل عاطفية (دموع،
+اهتزاز اليد، نبرة الصوت)، تفاصيل ملموسة (أسماء، أرقام، أسماء أماكن).
+
+المسودة:
+{draft_json}
+
+أرجع JSON صالح فقط بنفس الحقول السابقة، لكن مع مشاهد مفصلة (~{target} كلمة لكل مشهد).
+"""
+
+
+def _expand_short_script(gemini, draft: Script, target_words_per_beat: int) -> Script:
+    """If a script came back too short, ask the LLM to expand it without changing the plot."""
+    actual = sum(len(b.arabic.split()) for b in draft.beats) / max(len(draft.beats), 1)
+    prompt = EXPAND_PROMPT_TEMPLATE.format(
+        target=target_words_per_beat,
+        actual=int(actual),
+        draft_json=json.dumps(draft.to_dict(), ensure_ascii=False, indent=2),
+    )
+    raw = gemini.complete(prompt, system=SHORTS_WRITER_SYSTEM)
+    # Re-parse with same seed assumptions
+    from pipeline.types import VALID_THEMES  # noqa
+    seed_proxy = ThemeSeed(theme=draft.theme, premise="(expand pass)")
+    return _parse_shorts_script_json(raw, seed_proxy)
+
+
 def generate_shorts_script(
     gemini, seed: ThemeSeed, num_beats: int = 8, words_per_beat: int = 30,
+    *, min_total_words: int | None = None, max_expand_retries: int = 2,
 ) -> Script:
-    """Single Gemini call → Script with beats[]. No critique pass for Shorts (story is short enough)."""
+    """Single LLM call → Script with beats[]. If too short, ask to expand (no extra video cost)."""
+    if min_total_words is None:
+        min_total_words = int(num_beats * words_per_beat * 0.7)
+
     prompt = build_shorts_writer_prompt(seed, num_beats=num_beats, words_per_beat=words_per_beat)
     raw = gemini.complete(prompt, system=SHORTS_WRITER_SYSTEM)
-    return _parse_shorts_script_json(raw, seed)
+    script = _parse_shorts_script_json(raw, seed)
+
+    for attempt in range(max_expand_retries):
+        total = sum(len(b.arabic.split()) for b in script.beats)
+        if total >= min_total_words:
+            return script
+        print(f"[script] expand pass {attempt+1}/{max_expand_retries}: "
+              f"got {total} words, want ≥{min_total_words}")
+        try:
+            script = _expand_short_script(gemini, script, words_per_beat)
+        except Exception as e:
+            print(f"[script] expand failed ({type(e).__name__}: {e}); using shorter draft")
+            return script
+    return script
