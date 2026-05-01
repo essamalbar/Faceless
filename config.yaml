@@ -10,7 +10,7 @@ script:
   repetition_threshold: 0.85
 
 flux:
-  steps: 25
+  steps: 4          # 4 for schnell (default model); bump to 25 if switching to dev
   guidance: 3.5
   width: 1280
   height: 720

@@ -1,4 +1,13 @@
-"""Stage 5: image generation via Flux.1 dev (mflux on Apple Silicon)."""
+"""Stage 5: image generation via Flux (mflux on Apple Silicon).
+
+Default model: Flux.1-schnell (open license, no HuggingFace auth required, ~4 inference steps).
+To switch to Flux.1-dev (higher quality, requires HF token + license acceptance):
+  1. Visit https://huggingface.co/black-forest-labs/FLUX.1-dev and click "Agree".
+  2. Generate an HF token at https://huggingface.co/settings/tokens.
+  3. Run `huggingface-cli login` or set HF_TOKEN in .env.
+  4. Change FLUX_MODEL_ALIAS below to "dev".
+  5. Bump steps from ~4 to 25 in config.yaml for dev (schnell is optimized for 4 steps).
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,6 +15,7 @@ from pathlib import Path
 from pipeline.types import Shot
 
 REROLL_SEED_BUMP = 10_000
+FLUX_MODEL_ALIAS = "schnell"  # see header comment to switch to "dev"
 
 
 def _render_image(
@@ -18,26 +28,25 @@ def _render_image(
     height: int,
     out_path: Path,
 ) -> None:
-    """Run mflux. Replaceable in tests via monkeypatch."""
-    # mflux ≥ 0.4 API. Adjust if upstream API changes.
-    from mflux import Config, Flux1, ModelConfig
+    """Run mflux. Replaceable in tests via monkeypatch.
 
-    flux = Flux1(
-        model_config=ModelConfig.from_alias("dev"),
-        quantize=8,  # int8 quant; fits comfortably in 48GB unified memory and is faster
-    )
+    Tested against mflux 0.17.x. Keep the import path narrow so the rest of
+    the codebase doesn't depend on mflux's deep module layout.
+    """
+    from mflux.models.flux.variants.txt2img.flux import Flux1
+
+    flux = Flux1.from_name(FLUX_MODEL_ALIAS, quantize=8)
     image = flux.generate_image(
         seed=seed,
         prompt=prompt,
-        config=Config(
-            num_inference_steps=steps,
-            guidance=guidance,
-            height=height,
-            width=width,
-        ),
+        num_inference_steps=steps,
+        guidance=guidance,
+        height=height,
+        width=width,
+        negative_prompt=negative_prompt or None,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(path=out_path, export_json_metadata=False)
+    image.save(path=out_path, export_json_metadata=False, overwrite=True)
 
 
 def _shot_filename(images_dir: Path, index: int) -> Path:
