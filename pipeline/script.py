@@ -96,3 +96,54 @@ def generate_script_first_pass(
     prompt = build_writer_prompt(seed, target_words, tolerance)
     raw = gemini.complete(prompt, system=WRITER_SYSTEM)
     return _parse_script_json(raw, seed)
+
+
+CRITIQUE_PROMPT_TEMPLATE = """\
+أنت محرر صارم لقصص الرعب. اقرأ المسودة التالية وقم بتحسينها:
+
+المسودة:
+{draft_json}
+
+افحص:
+- هل الخطاف الافتتاحي قوي بما يكفي ليوقف المشاهد في أول 30 ثانية؟
+- هل النهاية مفتوحة وغير مفسرة؟ (إذا كانت تشرح كل شيء — أصلحها)
+- هل توجد كليشيهات ممنوعة مثل: "فجأة سمعت صوتاً"، "كان كل شيء حلماً"، "شعرت بأن أحداً يراقبني" المباشر؟
+- هل هناك لحظة "غريب لكن مألوف" واضحة؟
+- هل الإيقاع يتصاعد بشكل صحيح؟
+
+أعد كتابة المسودة كاملةً مع التحسينات. حافظ على عدد الكلمات تقريباً.
+
+أرجع JSON صالح فقط بنفس الحقول السابقة (نقد + إصلاح في خطوة واحدة):
+{{
+  "title": "...",
+  "theme": "{theme}",
+  "global_setting": "...",
+  "music_mood": "drone | dread | cosmic | discovery",
+  "hook": "...",
+  "story": "...",
+  "word_count": <int>
+}}
+"""
+
+
+def critique_pass(gemini, seed: ThemeSeed, draft: Script) -> Script:
+    prompt = CRITIQUE_PROMPT_TEMPLATE.format(
+        draft_json=json.dumps(draft.to_dict(), ensure_ascii=False, indent=2),
+        theme=seed.theme,
+    )
+    raw = gemini.complete(prompt, system=WRITER_SYSTEM)
+    return _parse_script_json(raw, seed)
+
+
+def generate_script(
+    gemini,
+    seed: ThemeSeed,
+    target_words: int,
+    tolerance: int,
+    enable_critique: bool = True,
+) -> Script:
+    """First pass + (optional) critique pass. No repetition guard yet — added in next task."""
+    draft = generate_script_first_pass(gemini, seed, target_words, tolerance)
+    if enable_critique:
+        return critique_pass(gemini, seed, draft)
+    return draft
