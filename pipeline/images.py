@@ -17,6 +17,17 @@ from pipeline.types import Shot
 REROLL_SEED_BUMP = 10_000
 FLUX_MODEL_ALIAS = "schnell"  # see header comment to switch to "dev"
 
+_FLUX_INSTANCE = None  # module-level singleton; reused across shots in one run
+
+
+def _get_flux():
+    """Lazy-init the Flux model once per process. Reused across all shots."""
+    global _FLUX_INSTANCE
+    if _FLUX_INSTANCE is None:
+        from mflux.models.flux.variants.txt2img.flux import Flux1
+        _FLUX_INSTANCE = Flux1.from_name(FLUX_MODEL_ALIAS, quantize=8)
+    return _FLUX_INSTANCE
+
 
 def _render_image(
     prompt: str,
@@ -33,10 +44,7 @@ def _render_image(
     Tested against mflux 0.17.x. Keep the import path narrow so the rest of
     the codebase doesn't depend on mflux's deep module layout.
     """
-    from mflux.models.flux.variants.txt2img.flux import Flux1
-
-    flux = Flux1.from_name(FLUX_MODEL_ALIAS, quantize=8)
-    image = flux.generate_image(
+    image = _get_flux().generate_image(
         seed=seed,
         prompt=prompt,
         num_inference_steps=steps,
