@@ -181,7 +181,7 @@ def generate_shots(
     script: Script,
     timings: list[WordTiming],
     out_path: Path,
-    target_segment_ms: int = 18000,
+    target_segment_ms: int = 2500,
 ) -> list[Shot]:
     """Produce shots.json. Resumable (skips if file exists).
 

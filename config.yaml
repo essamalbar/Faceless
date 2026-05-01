@@ -4,8 +4,8 @@ voice:
   pitch: -10Hz
 
 script:
-  word_count_target: 2200
-  word_count_tolerance: 200
+  word_count_target: 320       # 2-min video target (was 2200 for 10-15 min)
+  word_count_tolerance: 60
   enable_critique_pass: true
   repetition_threshold: 0.85
 
@@ -18,11 +18,11 @@ flux:
 assemble:
   output_width: 1920
   output_height: 1080
-  shot_crossfade_ms: 800
+  shot_crossfade_ms: 350       # snappier transitions for dense slideshow (was 800ms)
   music_duck_db: -18
   music_silence_db: -8
-  fade_in_s: 3
-  fade_out_s: 3
+  fade_in_s: 1
+  fade_out_s: 1
 
 captions:
   burn_in: false

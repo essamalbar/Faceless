@@ -11,14 +11,17 @@ from pathlib import Path
 def inject_ssml_pauses(text: str) -> str:
     """Convert plain Arabic text to text with SSML <break/> tags.
 
-    - Paragraph break (\\n\\n)  → 1500ms
-    - Ellipsis or em-dash    → 1200ms
-    - Period                 → 600ms
+    Pauses are kept very light to avoid choppy narration. TTS provides natural
+    sub-pauses on punctuation already; we only add explicit breaks for paragraph
+    transitions and ellipses (where the writer is signalling a longer beat).
+    Periods are NOT padded — TTS handles them naturally.
+
+    - Paragraph break (\\n\\n) → 600ms (atmospheric beat between sections)
+    - Ellipsis / em-dash      → 400ms (intentional dramatic pause)
+    - Period                  → no break (was 600ms — caused listener fatigue)
     """
-    # Order matters: handle long-form punctuation first.
-    text = text.replace("\n\n", '<break time="1500ms"/>')
-    text = re.sub(r"\.\.\.|…|—", '<break time="1200ms"/>', text)
-    text = re.sub(r"\.(?!\d)", '<break time="600ms"/>', text)  # avoid breaking decimals
+    text = text.replace("\n\n", '<break time="600ms"/>')
+    text = re.sub(r"\.\.\.|…|—", '<break time="400ms"/>', text)
     return text
 
 
