@@ -1,3 +1,4 @@
+
 """Stage 2: script generation.
 
 Pipeline: build prompt → Gemini call → parse JSON → optional critique pass → repetition check.

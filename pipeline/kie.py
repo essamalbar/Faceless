@@ -1,14 +1,22 @@
-"""Kie.ai HTTP client for video generation (Veo 3.1 family).
+"""Kie.ai HTTP client for Veo 3 video generation.
 
-Kie.ai's full API spec is paywalled / behind login, so this module
-isolates the HTTP details so they're easy to adjust once you have
-access to the dashboard. Replace `BASE_URL` and the three endpoint
-constants below with whatever the dashboard shows; everything else
-in the pipeline calls this module through `generate_clip`.
+Verified against Kie.ai's Veo 3 API docs (Nov 2025):
+  - POST /api/v1/veo/generate     submits a job, returns {data: {taskId}}
+  - GET  /api/v1/veo/record-info?taskId=...  polls; returns successFlag
+        (0=generating, 1=success, 2=failed, 3=gen-failed) and
+        data.response.fullResultUrls[] when complete.
 
 Auth: Bearer token (`Authorization: Bearer <KIE_API_KEY>`).
-Pattern: async — POST to submit returns a job_id, GET polled until
-status indicates done, then download the resulting MP4.
+Pattern: async — submit → poll until successFlag==1 → download mp4.
+
+Veo body fields supported (others rejected as 400):
+  - prompt (required)
+  - model: 'veo3' | 'veo3_fast' | 'veo3_lite'
+  - aspectRatio: '9:16' | '16:9' | 'Auto'
+  - generationType: 'TEXT_2_VIDEO' (default) | 'FIRST_AND_LAST_FRAMES_2_VIDEO' | 'REFERENCE_2_VIDEO'
+  - resolution: '720p' | '1080p' | '4k'
+  - imageUrls, callBackUrl, enableTranslation, watermark
+NOT supported: seed, negative_prompt, duration_seconds.
 """
 from __future__ import annotations
 
@@ -19,14 +27,13 @@ from pathlib import Path
 
 import requests
 
-# --- API surface (adjust to match your Kie.ai dashboard once you have access) ---
 BASE_URL = os.environ.get("KIE_BASE_URL", "https://api.kie.ai")
-SUBMIT_PATH = os.environ.get("KIE_SUBMIT_PATH", "/v1/video/generate")
-JOB_PATH_TPL = os.environ.get("KIE_JOB_PATH_TPL", "/v1/jobs/{job_id}")
+SUBMIT_PATH = os.environ.get("KIE_SUBMIT_PATH", "/api/v1/veo/generate")
+JOB_PATH_TPL = os.environ.get("KIE_JOB_PATH_TPL", "/api/v1/veo/record-info?taskId={job_id}")
 
-# Status string Kie.ai returns when the job is finished. Override via env if different.
-COMPLETED_STATUS = os.environ.get("KIE_COMPLETED_STATUS", "completed")
-FAILED_STATUSES = {"failed", "error", "cancelled"}
+# successFlag values Kie.ai returns; override via env if upstream changes.
+SUCCESS_FLAG = int(os.environ.get("KIE_SUCCESS_FLAG", "1"))
+FAILED_FLAGS = {2, 3}
 
 # Internal — replaceable in tests
 _SLEEP = time.sleep
@@ -52,64 +59,60 @@ class KieClient:
         self,
         prompt: str,
         model: str,
-        duration_s: int,
         aspect_ratio: str,
-        seed: int,
-        negative_prompt: str | None = None,
+        seed: int | None = None,           # ignored (Veo does not support seeds)
+        negative_prompt: str | None = None,  # ignored (Veo does not support neg prompts)
+        duration_s: int | None = None,       # ignored (Veo determines duration by model)
+        generation_type: str = "TEXT_2_VIDEO",
+        resolution: str = "720p",
     ) -> str:
-        """Submit a video-generation job; return the job_id."""
+        """Submit a Veo job; return the taskId."""
         body = {
             "model": model,
             "prompt": prompt,
-            "duration_seconds": duration_s,
-            "aspect_ratio": aspect_ratio,
-            "seed": seed,
+            "aspectRatio": aspect_ratio,
+            "generationType": generation_type,
+            "resolution": resolution,
         }
-        if negative_prompt:
-            body["negative_prompt"] = negative_prompt
         resp = self._post_json(SUBMIT_PATH, body)
-        # Kie.ai responses have varied wrapping in the wild; accept several common shapes.
-        job_id = (
-            resp.get("job_id")
-            or resp.get("id")
-            or (resp.get("data") or {}).get("job_id")
-            or (resp.get("data") or {}).get("id")
-        )
-        if not job_id:
-            raise KieError(f"submit response missing job_id: {resp}")
-        return str(job_id)
+        # Veo wrapper: {code, msg, data: {taskId}}
+        data = resp.get("data") or {}
+        task_id = data.get("taskId") or resp.get("taskId") or data.get("task_id")
+        if not task_id:
+            raise KieError(f"submit response missing taskId: {resp}")
+        return str(task_id)
 
     def poll_job(self, job_id: str) -> dict:
-        """Single GET on the job status endpoint. Returns parsed JSON."""
+        """Single GET on the record-info endpoint. Returns parsed JSON."""
         return self._get_json(JOB_PATH_TPL.format(job_id=job_id))
 
     def wait_for_video(
         self, job_id: str, poll_interval_s: int = 5, timeout_s: int = 300,
     ) -> str:
-        """Poll until the job succeeds. Returns the output video URL."""
+        """Poll until successFlag==1; return the output video URL."""
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            data = self.poll_job(job_id)
-            status = str(
-                data.get("status")
-                or (data.get("data") or {}).get("status")
-                or ""
-            ).lower()
-            if status == COMPLETED_STATUS:
-                url = (
-                    data.get("output_url")
-                    or data.get("video_url")
-                    or (data.get("output") or {}).get("url")
-                    or (data.get("data") or {}).get("output_url")
-                    or (data.get("data") or {}).get("video_url")
-                )
-                if not url:
-                    raise KieError(f"job {job_id} completed but no video URL: {data}")
-                return str(url)
-            if status in FAILED_STATUSES:
-                raise KieError(f"job {job_id} status={status}: {data}")
+            resp = self.poll_job(job_id)
+            data = resp.get("data") or {}
+            flag = data.get("successFlag")
+            if flag is None:
+                # Some payloads put it at top level
+                flag = resp.get("successFlag")
+            try:
+                flag_int = int(flag) if flag is not None else None
+            except (TypeError, ValueError):
+                flag_int = None
+
+            if flag_int == SUCCESS_FLAG:
+                response = data.get("response") or {}
+                urls = response.get("fullResultUrls") or response.get("resultUrls") or []
+                if not urls:
+                    raise KieError(f"task {job_id} succeeded but no fullResultUrls: {resp}")
+                return str(urls[0])
+            if flag_int in FAILED_FLAGS:
+                raise KieError(f"task {job_id} successFlag={flag_int}: {resp}")
             _SLEEP(poll_interval_s)
-        raise KieError(f"job {job_id} did not complete within {timeout_s}s")
+        raise KieError(f"task {job_id} did not complete within {timeout_s}s")
 
     def download(self, url: str, out_path: Path) -> None:
         """Stream-download the produced MP4 to disk."""
@@ -133,13 +136,53 @@ class KieClient:
         return resp.json()
 
     def _download(self, url: str, out_path: Path) -> None:
-        with requests.get(url, stream=True, timeout=120) as r:
-            if r.status_code >= 400:
-                raise KieError(f"download {url} → {r.status_code}")
-            with out_path.open("wb") as f:
-                for chunk in r.iter_content(chunk_size=1 << 16):
-                    if chunk:
-                        f.write(chunk)
+        """Stream a video URL to disk. Retries transient connection resets.
+
+        If KIE_DOWNLOAD_PROXY is set, route the GET through that Cloudflare
+        Worker (workaround for ISPs that block the upstream CDN host at the
+        SNI level). The proxy URL receives ?url=<encoded>&k=<secret>; the
+        worker fetches the upstream from inside Cloudflare and re-streams
+        the bytes — see cloudflare-worker/README.md.
+        """
+        from urllib.parse import quote
+        proxy_base = os.environ.get("KIE_DOWNLOAD_PROXY", "").rstrip("/")
+        if proxy_base:
+            secret = os.environ.get("KIE_DOWNLOAD_PROXY_SECRET", "")
+            request_url = f"{proxy_base}/?url={quote(url, safe='')}"
+            if secret:
+                request_url += f"&k={quote(secret, safe='')}"
+        else:
+            request_url = url
+
+        attempts = 4
+        backoffs = (2, 8, 30, 60)
+        last_exc: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                with requests.get(request_url, stream=True, timeout=180) as r:
+                    if r.status_code >= 400:
+                        raise KieError(f"download {url} → {r.status_code}: {r.text[:200]}")
+                    with out_path.open("wb") as f:
+                        for chunk in r.iter_content(chunk_size=1 << 16):
+                            if chunk:
+                                f.write(chunk)
+                return  # success
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.ChunkedEncodingError,
+                    requests.exceptions.Timeout) as e:
+                last_exc = e
+                # Make sure a partial file doesn't get accepted as 'done' by skip-logic
+                try:
+                    out_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                if attempt < attempts - 1:
+                    print(f"[kie] download retry {attempt+1}/{attempts} for {url}: "
+                          f"{type(e).__name__}: {e}")
+                    _SLEEP(backoffs[attempt])
+        raise KieError(
+            f"download failed after {attempts} attempts (URL: {url}): {last_exc}"
+        )
 
     def _headers(self) -> dict:
         return {
@@ -160,14 +203,19 @@ def generate_clip(
     poll_interval_s: int = 5,
     timeout_s: int = 300,
 ) -> None:
-    """End-to-end: submit → poll → download. Raises KieError on failure."""
+    """End-to-end: submit → poll → download. Raises KieError on failure.
+
+    duration_s, seed, negative_prompt are accepted for API stability but
+    ignored — Veo does not expose those parameters. Pre-bake any "no
+    text/watermark" guidance into `prompt` itself.
+    """
     job_id = client.submit_video_job(
         prompt=prompt,
         model=model,
-        duration_s=duration_s,
         aspect_ratio=aspect_ratio,
         seed=seed,
         negative_prompt=negative_prompt,
+        duration_s=duration_s,
     )
     url = client.wait_for_video(job_id, poll_interval_s=poll_interval_s, timeout_s=timeout_s)
     client.download(url, out_path)

@@ -19,95 +19,94 @@ def test_init_requires_api_key(monkeypatch):
         KieClient()
 
 
-def test_submit_extracts_job_id_from_top_level(monkeypatch):
+def test_submit_sends_veo_body_shape(monkeypatch):
     captured: dict = {}
 
     def fake_post(self, path, body):
         captured["path"] = path
         captured["body"] = body
-        return {"job_id": "abc-123"}
+        return {"code": 200, "msg": "success", "data": {"taskId": "veo_task_abc123"}}
 
     monkeypatch.setattr(KieClient, "_post_json", fake_post)
     c = _client()
-    job_id = c.submit_video_job(
-        prompt="P", model="veo-3.1-fast", duration_s=7,
-        aspect_ratio="9:16", seed=42,
+    task_id = c.submit_video_job(
+        prompt="P", model="veo3_fast",
+        aspect_ratio="9:16", seed=42, duration_s=8,
     )
-    assert job_id == "abc-123"
-    assert captured["body"]["model"] == "veo-3.1-fast"
-    assert captured["body"]["duration_seconds"] == 7
-    assert captured["body"]["aspect_ratio"] == "9:16"
-    assert captured["body"]["seed"] == 42
+    assert task_id == "veo_task_abc123"
+    assert captured["path"] == "/api/v1/veo/generate"
+    # Veo body uses aspectRatio (camelCase) and generationType
+    assert captured["body"]["model"] == "veo3_fast"
+    assert captured["body"]["aspectRatio"] == "9:16"
+    assert captured["body"]["generationType"] == "TEXT_2_VIDEO"
+    # Unsupported fields must NOT be in the body (Veo would 400)
+    assert "duration_seconds" not in captured["body"]
+    assert "seed" not in captured["body"]
     assert "negative_prompt" not in captured["body"]
 
 
-def test_submit_includes_negative_prompt_when_provided(monkeypatch):
-    captured: dict = {}
+def test_submit_raises_when_no_task_id(monkeypatch):
     monkeypatch.setattr(KieClient, "_post_json",
-                        lambda self, path, body: captured.update(body=body) or {"job_id": "x"})
-    _client().submit_video_job(
-        prompt="P", model="m", duration_s=5, aspect_ratio="9:16", seed=1,
-        negative_prompt="blurry, text",
-    )
-    assert captured["body"]["negative_prompt"] == "blurry, text"
-
-
-def test_submit_extracts_job_id_from_nested_data(monkeypatch):
-    monkeypatch.setattr(KieClient, "_post_json",
-                        lambda self, path, body: {"data": {"id": "nested-789"}})
-    assert _client().submit_video_job(
-        prompt="P", model="m", duration_s=5, aspect_ratio="9:16", seed=1,
-    ) == "nested-789"
-
-
-def test_submit_raises_when_no_job_id(monkeypatch):
-    monkeypatch.setattr(KieClient, "_post_json",
-                        lambda self, path, body: {"meaningless": "response"})
-    with pytest.raises(KieError, match="missing job_id"):
+                        lambda self, path, body: {"code": 200, "data": {}})
+    with pytest.raises(KieError, match="missing taskId"):
         _client().submit_video_job(
-            prompt="P", model="m", duration_s=5, aspect_ratio="9:16", seed=1,
+            prompt="P", model="veo3_fast", aspect_ratio="9:16",
         )
 
 
-def test_wait_polls_until_completed(monkeypatch):
+def test_wait_polls_until_success_flag_1(monkeypatch):
     responses = iter([
-        {"status": "queued"},
-        {"status": "processing"},
-        {"status": "completed", "video_url": "https://cdn.example/clip.mp4"},
+        {"data": {"successFlag": 0}},
+        {"data": {"successFlag": 0}},
+        {"data": {"successFlag": 1, "response": {"fullResultUrls": ["https://cdn.example/clip.mp4"]}}},
     ])
     monkeypatch.setattr(KieClient, "poll_job", lambda self, jid: next(responses))
     monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
-    url = _client().wait_for_video("job-1", poll_interval_s=1, timeout_s=10)
+    url = _client().wait_for_video("veo_task_1", poll_interval_s=1, timeout_s=10)
     assert url == "https://cdn.example/clip.mp4"
 
 
-def test_wait_finds_url_in_nested_data(monkeypatch):
+def test_wait_falls_back_to_resultUrls(monkeypatch):
+    monkeypatch.setattr(
+        KieClient, "poll_job",
+        lambda self, jid: {"data": {"successFlag": 1, "response": {"resultUrls": ["https://u/x.mp4"]}}},
+    )
+    monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
+    assert _client().wait_for_video("t-1") == "https://u/x.mp4"
+
+
+def test_wait_raises_on_failed_flag(monkeypatch):
     monkeypatch.setattr(KieClient, "poll_job",
-                        lambda self, jid: {"data": {"status": "completed", "output_url": "https://u/x.mp4"}})
+                        lambda self, jid: {"data": {"successFlag": 2, "msg": "censored"}})
     monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
-    assert _client().wait_for_video("job-1") == "https://u/x.mp4"
+    with pytest.raises(KieError, match="successFlag=2"):
+        _client().wait_for_video("t-1")
 
 
-def test_wait_raises_on_failed_status(monkeypatch):
-    monkeypatch.setattr(KieClient, "poll_job", lambda self, jid: {"status": "failed", "reason": "censored"})
+def test_wait_raises_on_gen_failed_flag(monkeypatch):
+    monkeypatch.setattr(KieClient, "poll_job",
+                        lambda self, jid: {"data": {"successFlag": 3}})
     monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
-    with pytest.raises(KieError, match="status=failed"):
-        _client().wait_for_video("job-1")
+    with pytest.raises(KieError, match="successFlag=3"):
+        _client().wait_for_video("t-1")
 
 
 def test_wait_raises_on_timeout(monkeypatch):
-    monkeypatch.setattr(KieClient, "poll_job", lambda self, jid: {"status": "processing"})
+    monkeypatch.setattr(KieClient, "poll_job",
+                        lambda self, jid: {"data": {"successFlag": 0}})
     monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
-    # Use a 0-second timeout so the loop body never executes (deadline reached on first check)
     with pytest.raises(KieError, match="did not complete"):
-        _client().wait_for_video("job-1", poll_interval_s=0, timeout_s=0)
+        _client().wait_for_video("t-1", poll_interval_s=0, timeout_s=0)
 
 
 def test_generate_clip_end_to_end(monkeypatch, tmp_path: Path):
     """submit → poll-completed → download — verified through the orchestrator helper."""
-    monkeypatch.setattr(KieClient, "_post_json", lambda self, p, b: {"job_id": "jid"})
-    monkeypatch.setattr(KieClient, "poll_job",
-                        lambda self, jid: {"status": "completed", "video_url": "https://cdn/clip.mp4"})
+    monkeypatch.setattr(KieClient, "_post_json",
+                        lambda self, p, b: {"code": 200, "data": {"taskId": "veo_task_e2e"}})
+    monkeypatch.setattr(
+        KieClient, "poll_job",
+        lambda self, jid: {"data": {"successFlag": 1, "response": {"fullResultUrls": ["https://cdn/clip.mp4"]}}},
+    )
     monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
 
     download_calls: list = []
@@ -115,7 +114,7 @@ def test_generate_clip_end_to_end(monkeypatch, tmp_path: Path):
     def fake_download(self, url, out_path):
         download_calls.append((url, out_path))
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(b"\x00\x00\x00\x18ftypmp42")  # mp4 magic
+        out_path.write_bytes(b"\x00\x00\x00\x18ftypmp42")
 
     monkeypatch.setattr(KieClient, "_download", fake_download)
 
@@ -123,8 +122,8 @@ def test_generate_clip_end_to_end(monkeypatch, tmp_path: Path):
     generate_clip(
         client=_client(),
         prompt="lone hooded figure walking",
-        model="veo-3.1-fast",
-        duration_s=7, aspect_ratio="9:16", seed=42,
+        model="veo3_fast",
+        duration_s=8, aspect_ratio="9:16", seed=42,
         out_path=out,
         poll_interval_s=1, timeout_s=10,
     )

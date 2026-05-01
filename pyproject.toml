@@ -12,6 +12,7 @@ dependencies = [
     "Pillow>=10.0",
     "pydub>=0.25",
     "click>=8.1",
+    "curl-cffi>=0.15.0",
 ]
 
 [dependency-groups]
