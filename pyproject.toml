@@ -1,0 +1,29 @@
+[project]
+name = "faceless-pipeline"
+version = "0.1.0"
+description = "Arabic horror faceless YouTube CLI"
+requires-python = ">=3.11"
+dependencies = [
+    "google-genai>=0.3.0",
+    "edge-tts>=6.1.0",
+    "mflux>=0.4.0",
+    "ffmpeg-python>=0.2.0",
+    "pyyaml>=6.0",
+    "Pillow>=10.0",
+    "pydub>=0.25",
+    "click>=8.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+pythonpath = ["."]
+
+[tool.uv]
+package = false
