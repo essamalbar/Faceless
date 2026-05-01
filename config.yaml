@@ -1,7 +1,7 @@
 voice:
   name: ar-SA-HamedNeural
   rate: -20%
-  pitch: -5%
+  pitch: -10Hz
 
 script:
   word_count_target: 2200
