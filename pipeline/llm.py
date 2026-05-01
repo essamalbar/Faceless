@@ -54,7 +54,7 @@ class GeminiClient:
         for attempt in range(_MAX_RETRIES):
             try:
                 resp = self._client.models.embed_content(
-                    model="text-embedding-004",
+                    model="gemini-embedding-001",
                     contents=text,
                 )
                 return list(resp.embeddings[0].values)

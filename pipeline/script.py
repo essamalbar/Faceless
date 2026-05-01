@@ -227,13 +227,24 @@ def generate_script_with_uniqueness(
     repetition_threshold: float,
     max_attempts: int = 3,
 ) -> Script:
-    """Loop: generate → check uniqueness → accept or retry up to max_attempts."""
+    """Loop: generate → check uniqueness → accept or retry up to max_attempts.
+
+    If the embedding API itself fails (network / model unavailable), we log
+    a warning and accept the script — uniqueness tracking is a nice-to-have,
+    not a hard requirement, and we don't want to throw away an expensive
+    Gemini script generation over an embedding-side outage.
+    """
     last_sim = 0.0
     for attempt in range(max_attempts):
         script = generate_script(gemini, seed, target_words, tolerance, enable_critique)
-        is_unique, sim = check_and_record_uniqueness(
-            gemini, script.story, history_path, repetition_threshold,
-        )
+        try:
+            is_unique, sim = check_and_record_uniqueness(
+                gemini, script.story, history_path, repetition_threshold,
+            )
+        except Exception as e:
+            # Degrade gracefully: keep the script, skip uniqueness check.
+            print(f"[script] uniqueness check skipped (embed failed: {type(e).__name__}: {e})")
+            return script
         if is_unique:
             return script
         last_sim = sim
