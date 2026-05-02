@@ -25,6 +25,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import pipeline.align
+import pipeline.character_sheet
+import pipeline.video as _pipeline_video
 from pipeline.assemble import assemble_shorts_video, assemble_video
 from pipeline.captions import generate_captions
 from pipeline.config import Config, load_config
@@ -230,6 +233,10 @@ def _stage_shorts_voice(args, cfg: Config, script: Script, paths: RunPaths) -> l
         text=script.story_combined,
         voice=voice, rate=cfg.voice.rate, pitch=cfg.voice.pitch,
         mp3_path=paths.narration_mp3, timings_path=paths.word_timings_json,
+        provider=cfg.voice.provider,
+        elevenlabs_voice_id=cfg.voice.elevenlabs_voice_id,
+        elevenlabs_model=cfg.voice.elevenlabs_model,
+        fallback_to_edge_tts=cfg.voice.fallback_to_edge_tts,
     )
     return [WordTiming.from_dict(d)
             for d in json.loads(paths.word_timings_json.read_text(encoding="utf-8"))]
@@ -267,6 +274,79 @@ def _stage_video(args, cfg: Config, script: Script, paths: RunPaths) -> None:
         spend_log_path=paths.kie_spend_json,
         model=cfg.kie.model,
         clip_duration_s=cfg.kie.clip_duration_s,
+        aspect_ratio=cfg.kie.aspect_ratio,
+        cost_per_second_usd=cfg.kie.cost_per_second_usd,
+        max_spend_usd=max_spend,
+        poll_interval_s=cfg.kie.poll_interval_s,
+        poll_timeout_s=cfg.kie.poll_timeout_s,
+        reroll_indices=reroll,
+    )
+
+
+def _stage_character_sheet(client, cfg: Config, paths: RunPaths, script: Script) -> None:
+    """Generate a Flux character sheet for visual consistency across Veo clips."""
+    pipeline.character_sheet.generate_character_sheet(
+        client=client,
+        out_path=paths.character_sheet_png,
+        global_setting=script.global_setting,
+        model=cfg.kie.flux_model,
+        poll_interval_s=cfg.kie.poll_interval_s,
+        poll_timeout_s=cfg.kie.poll_timeout_s,
+    )
+
+
+def _stage_align(paths: RunPaths, script: Script) -> list[WordTiming]:
+    """Refine word_timings.json with Whisper force-alignment."""
+    real_timings = pipeline.align.align_arabic(
+        audio_path=paths.narration_mp3,
+        expected_text=script.story_combined,
+    )
+    paths.word_timings_json.write_text(
+        json.dumps([t.to_dict() for t in real_timings], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return real_timings
+
+
+def _stage_video_chained(args, cfg: Config, script: Script, paths: RunPaths) -> None:
+    """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
+
+    Replaces _stage_video for the --shorts path. --skip-video uses the same
+    black-frame placeholder approach (per beat's clip_duration_s).
+    """
+    if args.skip_video:
+        # Black mp4 placeholder per beat (same approach as old _stage_video).
+        import subprocess
+        paths.clips_dir.mkdir(parents=True, exist_ok=True)
+        for i, beat in enumerate(script.beats):
+            p = paths.clips_dir / f"{i+1:02d}.mp4"
+            if p.exists():
+                continue
+            subprocess.run([
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i",
+                f"color=c=black:s=1080x1920:d={beat.clip_duration_s}",
+                "-f", "lavfi", "-i",
+                f"anullsrc=r=24000:cl=stereo:d={beat.clip_duration_s}",
+                "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k", "-shortest",
+                str(p),
+            ], check=True)
+        return
+
+    reroll = []
+    if args.reroll_clips:
+        reroll = [int(x) for x in args.reroll_clips.split(",")]
+    max_spend = args.max_spend if args.max_spend is not None else cfg.kie.max_spend_usd
+    client = _build_kie()
+    _pipeline_video.generate_clips_chained(
+        client=client,
+        script=script,
+        clips_dir=paths.clips_dir,
+        last_frames_dir=paths.last_frames_dir,
+        spend_log_path=paths.kie_spend_json,
+        character_sheet_path=paths.character_sheet_png,
+        model=cfg.kie.model,
         aspect_ratio=cfg.kie.aspect_ratio,
         cost_per_second_usd=cfg.kie.cost_per_second_usd,
         max_spend_usd=max_spend,
@@ -367,9 +447,13 @@ def main_with_args(argv: list[str]) -> int:
             with log.stage("script"):
                 script = _stage_shorts_script(gemini, seed, cfg, paths)
             with log.stage("voice"):
-                timings = _stage_shorts_voice(args, cfg, script, paths)
+                _stage_shorts_voice(args, cfg, script, paths)
+            with log.stage("align"):
+                timings = _stage_align(paths, script)
+            with log.stage("character_sheet"):
+                _stage_character_sheet(_build_kie(), cfg, paths, script)
             with log.stage("video"):
-                _stage_video(args, cfg, script, paths)
+                _stage_video_chained(args, cfg, script, paths)
             with log.stage("music"):
                 _stage_music(script, music_bundle, paths)
             with log.stage("captions"):

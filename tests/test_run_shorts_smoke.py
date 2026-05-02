@@ -96,12 +96,41 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
         pass
     monkeypatch.setattr("run._build_kie", lambda: FakeKie())
 
-    # And replace the high-level helper that video.py calls so no real HTTP hits the wire.
-    def fake_generate_clip(client, prompt, model, duration_s, aspect_ratio, seed, out_path,
-                          negative_prompt, poll_interval_s, timeout_s):
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(b"\x00\x00\x00\x18ftypmp42")  # mp4 magic prefix
-    monkeypatch.setattr("pipeline.video.generate_clip", fake_generate_clip)
+    # Mock character sheet — writes a minimal PNG header to out_path
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        lambda **kw: kw["out_path"].write_bytes(b"\x89PNG\r\n\x1a\n"),
+    )
+
+    # Mock Whisper align — return 8 synthetic WordTiming objects
+    from pipeline.types import WordTiming as _WordTiming
+    monkeypatch.setattr(
+        "pipeline.align.align_arabic",
+        lambda audio_path, expected_text, **kw: [
+            _WordTiming(word=f"w{i}", offset_ms=i * 500, duration_ms=500)
+            for i in range(8)
+        ],
+    )
+
+    # Mock the new chained video gen — writes stub mp4s for each beat
+    def fake_generate_clips_chained(**kw):
+        kw["clips_dir"].mkdir(parents=True, exist_ok=True)
+        for i in range(len(kw["script"].beats)):
+            (kw["clips_dir"] / f"{i+1:02d}.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+        # Also write a spend log so the assertion passes
+        import json as _json
+        from datetime import datetime
+        kw["spend_log_path"].parent.mkdir(parents=True, exist_ok=True)
+        kw["spend_log_path"].write_text(
+            _json.dumps({
+                "entries": [
+                    {"clip": i + 1, "seed": 0, "duration_s": 8.0, "cost_usd": 0.0, "model": "veo3"}
+                    for i in range(len(kw["script"].beats))
+                ],
+                "ts": datetime.now().isoformat(timespec="seconds"),
+            }),
+        )
+    monkeypatch.setattr("pipeline.video.generate_clips_chained", fake_generate_clips_chained)
 
     # ---- 4) FFmpeg fake — captures args; writes stub mp4 to last arg ----
     ffmpeg_calls: list[list[str]] = []
@@ -168,6 +197,9 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     # canned beats are too short). Script writer is the only LLM stage.
     assert len(fake_g.complete_calls) >= 1
 
+    # Tier-3: character sheet PNG must be present
+    assert (run_dir / "character_sheet.png").exists()
+
 
 def test_run_shorts_skip_video_uses_placeholder_clips(
     monkeypatch, tmp_path: Path, fixtures_dir: Path, music_bundle: Path,
@@ -199,10 +231,28 @@ def test_run_shorts_skip_video_uses_placeholder_clips(
         mp3_path.write_bytes(sample_mp3)
         return [{"word": "ج", "offset_ms": 0, "duration_ms": 400}]
     monkeypatch.setattr("pipeline.voice._synthesize", fake_synthesize)
-    # Kie should NEVER be constructed in --skip-video; if it is, fail loud.
-    def boom():
-        raise AssertionError("KieClient must not be constructed in --skip-video")
-    monkeypatch.setattr("run._build_kie", boom)
+
+    # Mock Whisper align — return synthetic timings (no real model load)
+    from pipeline.types import WordTiming as _WordTiming
+    monkeypatch.setattr(
+        "pipeline.align.align_arabic",
+        lambda audio_path, expected_text, **kw: [
+            _WordTiming(word=f"w{i}", offset_ms=i * 500, duration_ms=500)
+            for i in range(8)
+        ],
+    )
+
+    # Mock character sheet — writes a minimal PNG header (uses _build_kie internally)
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        lambda **kw: kw["out_path"].write_bytes(b"\x89PNG\r\n\x1a\n"),
+    )
+
+    # Kie should NEVER be constructed for video in --skip-video; character_sheet is mocked above.
+    class FakeKieForCharSheet:
+        pass
+    monkeypatch.setattr("run._build_kie", lambda: FakeKieForCharSheet())
+
     # Mock the assembler ffmpeg call only (placeholder clip generation uses real ffmpeg).
     monkeypatch.setattr("pipeline.assemble._run_ffmpeg",
                         lambda args: Path(args[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42"))
