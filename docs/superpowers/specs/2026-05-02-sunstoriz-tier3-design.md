@@ -8,7 +8,7 @@
 
 ## 1. Summary
 
-Upgrade the existing `--shorts` pipeline to produce 60–90 second vertical TikTok videos that match the visual + narrative quality of the reference channel **@sunstoriz**. Five concrete fixes target the user's five specific complaints from the last viewing:
+Upgrade the existing `--shorts` pipeline to produce **60–120 second** vertical TikTok videos — length determined by **story complexity**, not a fixed clip count — that match the visual + narrative quality of the reference channel **@sunstoriz**. Five concrete fixes target the user's five specific complaints from the last viewing:
 
 | Complaint | This spec's fix |
 |---|---|
@@ -25,9 +25,10 @@ Lip sync (mouth movements matching audio) is **explicitly out of scope** — the
 ### Goals
 
 - **Quality bar:** indistinguishable from @sunstoriz to a casual viewer.
-- **Cost target:** ≤ $30 per finished video.
-- **Wall time:** ≤ 30 min per video.
-- **Cohesion:** characters, setting, lighting consistent across all 8 clips of a video.
+- **Length:** 60–120 seconds, **chosen by the script writer per-story** (a simple twist may need 60s; a multi-stage tragedy may need 120s).
+- **Cost ceiling:** ≤ $50 per finished video (range ~$26 for 60s up to ~$48 for 120s).
+- **Wall time:** ≤ 35 min per video at the longest length.
+- **Cohesion:** characters, setting, lighting consistent across **all** clips in a video.
 - **Audio honesty:** narration audio actually corresponds to what's on screen at each moment.
 
 ### Non-goals (Tier 4 or later)
@@ -40,13 +41,14 @@ Lip sync (mouth movements matching audio) is **explicitly out of scope** — the
 
 ## 3. Success criteria
 
-The Tier-3 pipeline succeeds when, for ≥3 generated videos:
+The Tier-3 pipeline succeeds when, for ≥3 generated videos across different story lengths (one ~60s, one ~90s, one ~120s):
 
 1. The user watches and answers **yes** to: *"Could this go live on @sunstoriz right now without me feeling bad about quality?"*
-2. Cost per video ≤ $30 and wall time ≤ 30 min.
-3. Characters look like the **same** lemon mother / strawberry son etc. across all 8 clips.
-4. Subtitles change exactly when the narrator says the next word.
-5. Voice does not sound AI to a native Arabic listener.
+2. Cost per video ≤ $50 and wall time ≤ 35 min.
+3. Length actually fits the story — short twists are short, slow tragedies are longer; not artificially padded or truncated.
+4. Characters look like the **same** lemon mother / strawberry son etc. across all clips in a video.
+5. Subtitles change exactly when the narrator says the next word.
+6. Voice does not sound AI to a native Arabic listener.
 
 ## 4. Architecture changes
 
@@ -56,7 +58,9 @@ The Tier-3 pipeline succeeds when, for ≥3 generated videos:
 [1] Topic seeder
         ↓
 [2] Script writer (Groq Llama 3.3 70B)
-    → 8 beats × ~30 Arabic words each, narrator-POV tragic family melodrama
+    → variable beats: writer picks 8–15 beats AND target length (60–120s) based on
+      how much story the premise needs. ~30 Arabic words / beat (~7s narration each).
+      Returns target_duration_s in the JSON so downstream stages know.
         ↓
 [3] Voice generator (ElevenLabs Multilingual v2)         ← REPLACES Edge TTS
     → narration.mp3 (single continuous Arabic file)
@@ -76,12 +80,12 @@ The Tier-3 pipeline succeeds when, for ≥3 generated videos:
       using the character sheet as `imageUrls` reference.
         ↓
 [7] Video clips (Kie.ai Veo 3, FIRST_AND_LAST_FRAMES_2_VIDEO mode)  ← UPGRADED
-    For each beat i (1..8):
+    For each beat i (1..N) where N is whatever the script writer chose (8–15):
       - input first_frame   = (i==1 ? frame_01.png : last_frame_of_clip_(i-1))
       - input last_frame    = (optional) Flux-generated target frame for beat i
       - prompt              = beat i's english_motion + global style suffix
       - duration            = matches beat i's narration audio duration
-                              (not all 8 sec — variable per beat)
+                              (variable per beat — typically 6–9 sec)
       - returns clip_i.mp4 + extracts last frame for next clip
         ↓
 [8] Music selector (unchanged)
@@ -102,6 +106,8 @@ The Tier-3 pipeline succeeds when, for ≥3 generated videos:
 - **Veo 3 (full) vs Veo 3 Fast:** Veo 3 Fast prioritizes throughput; quality is noticeably below Veo 3. For this use case (~8 clips per video, 1 video at a time) the quality matters far more than the speed.
 
 - **Per-beat clip duration:** Currently all clips are forced to 8 seconds and the narration determines final length, so clip content doesn't sync to what's being said. By generating each clip with the duration of its specific beat's narration, the visual always matches the audio.
+
+- **Variable total length (60–120s):** Hard-coding 8 clips makes some stories feel rushed and others padded. The script writer is told the **target range** and picks the number of beats that fits the premise. A simple "neighbor reveals affair" twist might need 8 beats / 60s; a multi-stage "mother's life of sacrifice → son's downfall → death" tragedy needs 12–15 beats / 100–120s. The orchestrator reads the writer's chosen `num_beats` and budgets accordingly.
 
 ## 5. Component-level changes
 
@@ -156,15 +162,21 @@ voice:
   elevenlabs_model: eleven_multilingual_v2
   fallback_to_edge_tts: true
 
+script:
+  min_beats: 8                 # ≈ 60s
+  max_beats: 15                # ≈ 120s
+  words_per_beat: 30           # ~7s narration per beat
+
 kie:
   model: veo3                  # was veo3_fast
-  num_clips: 8
   cost_per_second_usd: 0.40    # was 0.10 (Veo 3 full pricing)
-  max_spend_usd: 30.00         # was 7.50 — buffer for ~$26 actual
+  max_spend_usd: 50.00         # buffer for 15-clip / ~$48 video
 
   flux_model: flux-pro         # for character sheet + first frame
   flux_cost_per_image_usd: 0.05
 ```
+
+`num_clips` is no longer a fixed config value — the script writer picks it per-story within `[min_beats, max_beats]` and the orchestrator reads `len(script.beats)` to drive the video stage.
 
 ### 5.8 `.env` additions
 
@@ -172,27 +184,28 @@ kie:
 export ELEVENLABS_API_KEY=<your key>
 ```
 
-## 6. Cost & time per video
+## 6. Cost & time per video (variable by length)
 
-| Stage | Cost | Wall time |
-|---|---|---|
-| Script (Groq) | $0 | 5 sec |
-| Voice (ElevenLabs, ~150 Arabic words) | ~$0.30 | 5 sec |
-| Whisper alignment (local) | $0 | 30 sec |
-| Character sheet (Kie.ai Flux) | $0.05 | 10 sec |
-| First keyframe (Kie.ai Flux) | $0.05 | 10 sec |
-| Video clips (Kie.ai Veo 3 full × 8 × 8 sec × $0.40/sec) | $25.60 | 16–24 min |
-| Music selector | $0 | instant |
-| Captions | $0 | 1 sec |
-| Assembly (FFmpeg) | $0 | 1 min |
-| **TOTAL** | **~$26** | **~25 min** |
+Costs scale with the script writer's chosen length. Three reference points:
 
-If you go to 10 clips for true 75-sec narration: ~$32, +5 min.
+| | **Short story (~60s, 8 beats)** | **Medium (~90s, 12 beats)** | **Long tragedy (~120s, 15 beats)** |
+|---|---:|---:|---:|
+| Script (Groq) | $0 | $0 | $0 |
+| Voice (ElevenLabs) | ~$0.30 | ~$0.45 | ~$0.60 |
+| Whisper align (local) | $0 | $0 | $0 |
+| Character sheet (Flux) | $0.05 | $0.05 | $0.05 |
+| First keyframe (Flux) | $0.05 | $0.05 | $0.05 |
+| Video clips (Veo 3 × $0.40/sec) | $25.60 | $38.40 | $48.00 |
+| Music + Captions + Assembly | $0 | $0 | $0 |
+| **TOTAL** | **~$26** | **~$39** | **~$49** |
+| **Wall time** | ~25 min | ~30 min | ~35 min |
+
+The hard cap (`max_spend_usd: 50`) refuses any run whose projected cost exceeds $50, so you never get a surprise bill.
 
 ## 7. User pre-requisites before we run
 
 1. **ElevenLabs account + API key** (free tier won't be enough — needs a paid plan, $5–22/month depending on character volume).
-2. **Kie.ai credits ≥ $30** for one video (currently ~$10 left from the $50; needs a top-up of at least $25).
+2. **Kie.ai credits ≥ $50** to safely run a single 120-sec video (currently ~$10 left from the original $50; needs a top-up of at least $50).
 3. Whisper-`small` Arabic model — auto-downloaded on first run (~480 MB).
 
 I'll guide you through ElevenLabs signup the same way we did Kie.ai when implementation starts.
@@ -224,6 +237,6 @@ I'll guide you through ElevenLabs signup the same way we did Kie.ai when impleme
 | Continuity strategy | **Image-to-video chain + character sheet ref** | Anchors fruit characters across clips. |
 | Subtitle alignment | **Whisper local** | Free, accurate, runs on M3. |
 | Lip sync | **NOT in this tier** | @sunstoriz doesn't have it; HeyGen is too expensive ($8–40 extra per video). |
-| Cost cap per video | **$30** | Tight buffer over $26 estimated. |
-| Length | **~64-sec output** (8 clips × 8 sec) | Bumps to 80-sec require 10 clips and $32. |
+| Cost cap per video | **$50** | Buffer over $48 max for the longest 120-sec stories. |
+| Length | **60–120 sec, story-driven** | Writer picks 8–15 beats based on premise complexity; orchestrator follows. |
 | Tests | **Mock all paid APIs** | Same pattern as Kie.ai tests today. |
