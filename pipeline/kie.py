@@ -61,20 +61,27 @@ class KieClient:
         prompt: str,
         model: str,
         aspect_ratio: str,
-        seed: int | None = None,           # ignored (Veo does not support seeds)
-        negative_prompt: str | None = None,  # ignored (Veo does not support neg prompts)
-        duration_s: int | None = None,       # ignored (Veo determines duration by model)
+        seed: int | None = None,           # ignored
+        negative_prompt: str | None = None,  # ignored
+        duration_s: int | None = None,       # ignored
         generation_type: str = "TEXT_2_VIDEO",
         resolution: str = "720p",
+        image_urls: list[str] | None = None,  # NEW
     ) -> str:
-        """Submit a Veo job; return the taskId."""
-        body = {
+        """Submit a Veo job; return the taskId.
+
+        For REFERENCE_2_VIDEO / FIRST_AND_LAST_FRAMES_2_VIDEO modes, pass
+        `image_urls` (a list of public-accessible image URLs).
+        """
+        body: dict = {
             "model": model,
             "prompt": prompt,
             "aspectRatio": aspect_ratio,
             "generationType": generation_type,
             "resolution": resolution,
         }
+        if image_urls:
+            body["imageUrls"] = image_urls
         resp = self._post_json(SUBMIT_PATH, body)
         # Veo wrapper: {code, msg, data: {taskId}}
         data = resp.get("data") or {}

@@ -164,3 +164,26 @@ def test_poll_flux_returns_image_url(monkeypatch):
     )
     monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
     assert _client().wait_for_video("flux_task_x") == "https://cdn/x.png"
+
+
+def test_submit_reference_video_job_sends_image_urls(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(
+        KieClient, "_post_json",
+        lambda self, p, b: captured.update(path=p, body=b) or
+        {"code": 200, "data": {"taskId": "ref_task_x"}},
+    )
+    c = _client()
+    task_id = c.submit_video_job(
+        prompt="lemon mother gives coins to strawberry son",
+        model="veo3", aspect_ratio="9:16", seed=0,
+        image_urls=["https://cdn/character_sheet.png",
+                    "https://cdn/last_frame_clip_2.png"],
+        generation_type="REFERENCE_2_VIDEO",
+    )
+    assert task_id == "ref_task_x"
+    assert captured["body"]["generationType"] == "REFERENCE_2_VIDEO"
+    assert captured["body"]["imageUrls"] == [
+        "https://cdn/character_sheet.png",
+        "https://cdn/last_frame_clip_2.png",
+    ]
