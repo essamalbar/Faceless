@@ -9,9 +9,14 @@ import yaml
 
 @dataclass(frozen=True)
 class VoiceConfig:
-    name: str
-    rate: str
-    pitch: str
+    provider: str = "edge_tts"          # "edge_tts" | "elevenlabs"
+    name: str = "ar-EG-SalmaNeural"     # Edge TTS voice name (legacy field)
+    rate: str = "+0%"
+    pitch: str = "+0Hz"
+    # ElevenLabs-specific
+    elevenlabs_voice_id: str = ""
+    elevenlabs_model: str = "eleven_multilingual_v2"
+    fallback_to_edge_tts: bool = True
 
 
 @dataclass(frozen=True)
@@ -20,6 +25,10 @@ class ScriptConfig:
     word_count_tolerance: int
     enable_critique_pass: bool
     repetition_threshold: float
+    # Tier-3 variable-length beats
+    min_beats: int = 8
+    max_beats: int = 15
+    words_per_beat: int = 30
 
 
 @dataclass(frozen=True)
@@ -51,14 +60,17 @@ class CaptionsConfig:
 @dataclass(frozen=True)
 class KieConfig:
     """Kie.ai video-generation config (used by --shorts mode)."""
-    model: str                  # e.g. "veo-3.1-fast"
-    num_clips: int              # how many clips per Shorts video (default 4)
-    clip_duration_s: int        # seconds per clip (default 7 → ~28s total)
+    model: str                  # e.g. "veo3"
+    num_clips: int              # legacy / fallback default; writer picks per-story
+    clip_duration_s: int        # seconds per clip
     aspect_ratio: str           # e.g. "9:16"
     cost_per_second_usd: float  # used for budget guard estimation
     max_spend_usd: float        # hard cap per video; orchestrator refuses runs exceeding
     poll_interval_s: int        # seconds between job-status polls
     poll_timeout_s: int         # give up on a single clip after this many seconds
+    # Tier-3 Flux character sheet
+    flux_model: str = "flux-1.1-pro"
+    flux_cost_per_image_usd: float = 0.05
 
 
 @dataclass(frozen=True)

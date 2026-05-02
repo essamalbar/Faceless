@@ -1,13 +1,20 @@
 voice:
-  name: ar-EG-SalmaNeural        # Egyptian female, dramatic — for @sunstoriz-style Shorts
-  rate: "+0%"                    # natural conversational pace; edge-tts requires explicit sign
+  provider: elevenlabs           # tier-3 default; falls back to edge_tts if no key
+  name: ar-EG-SalmaNeural
+  rate: "+0%"
   pitch: "+0Hz"
+  elevenlabs_voice_id: 21m00Tcm4TlvDq8ikWAM   # placeholder; user supplies from dashboard
+  elevenlabs_model: eleven_multilingual_v2
+  fallback_to_edge_tts: true
 
 script:
-  word_count_target: 320       # 2-min video target (was 2200 for 10-15 min)
+  word_count_target: 320
   word_count_tolerance: 60
   enable_critique_pass: true
   repetition_threshold: 0.85
+  min_beats: 8
+  max_beats: 15
+  words_per_beat: 30
 
 flux:
   steps: 4          # 4 for schnell (default model); bump to 25 if switching to dev
@@ -30,11 +37,13 @@ captions:
   font_size: 60
 
 kie:
-  model: veo3_fast               # Kie.ai model identifier — also: veo3, veo3_lite
-  num_clips: 8                   # 8 × 8s = 64s, matches @sunstoriz ~75s reference
-  clip_duration_s: 8             # Veo's actual default — assembler now probes real durations
-  aspect_ratio: "9:16"           # vertical for TikTok / Shorts / Reels
-  cost_per_second_usd: 0.10
-  max_spend_usd: 7.50            # 8 × 8 × $0.10 = $6.40; buffer
+  model: veo3                    # full quality, was veo3_fast
+  num_clips: 8                   # default; writer overrides per-story
+  clip_duration_s: 8
+  aspect_ratio: "9:16"
+  cost_per_second_usd: 0.40      # Veo 3 full pricing
+  max_spend_usd: 50.00           # buffer for 15-clip / 120s tragedy
   poll_interval_s: 5
   poll_timeout_s: 300
+  flux_model: flux-1.1-pro
+  flux_cost_per_image_usd: 0.05
