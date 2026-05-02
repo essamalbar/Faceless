@@ -37,12 +37,12 @@ captions:
   font_size: 60
 
 kie:
-  model: veo3                    # full quality, was veo3_fast
+  model: veo3_fast               # Fast: $0.10/sec; bump to veo3 ($0.40/sec) for cinematic quality
   num_clips: 8                   # default; writer overrides per-story
   clip_duration_s: 8
   aspect_ratio: "9:16"
-  cost_per_second_usd: 0.40      # Veo 3 full pricing
-  max_spend_usd: 50.00           # buffer for 15-clip / 120s tragedy
+  cost_per_second_usd: 0.10      # Veo 3 Fast pricing
+  max_spend_usd: 13.00           # 15 clips × 8s × $0.10 = $12 max; small buffer
   poll_interval_s: 5
   poll_timeout_s: 300
   flux_model: flux-1.1-pro
