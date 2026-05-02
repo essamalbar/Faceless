@@ -35,6 +35,7 @@ class Beat:
     """One narration beat ↔ one Veo clip in the Shorts pipeline."""
     arabic: str
     english_motion: str
+    clip_duration_s: float = 8.0  # how long the matching Veo clip should run
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -63,6 +64,7 @@ class Script:
     # Shorts-mode fields (optional in long-form mode)
     beats: tuple[Beat, ...] = ()
     story_combined: str = ""
+    target_duration_s: float = 0.0  # writer's chosen length (Tier-3 variable)
 
     def __post_init__(self):
         if self.music_mood not in VALID_MOODS:
@@ -71,9 +73,7 @@ class Script:
             raise ValueError(f"invalid theme: {self.theme}")
 
     def to_dict(self) -> dict:
-        d = asdict(self)
-        d["beats"] = [b for b in d["beats"]]  # asdict already turns Beats to dicts; tuple → list
-        return d
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Script":
@@ -132,6 +132,12 @@ class RunPaths:
     def images_dir(self) -> Path: return self.root / "images"
     @property
     def clips_dir(self) -> Path: return self.root / "clips"
+    @property
+    def character_sheet_png(self) -> Path: return self.root / "character_sheet.png"
+    @property
+    def first_keyframe_png(self) -> Path: return self.root / "first_keyframe.png"
+    @property
+    def last_frames_dir(self) -> Path: return self.root / "last_frames"
     @property
     def kie_spend_json(self) -> Path: return self.root / "kie_spend.json"
     @property

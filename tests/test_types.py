@@ -88,3 +88,21 @@ def test_script_long_form_mode_still_works():
     )
     assert s.beats == ()
     assert s.story == "long story"
+
+
+def test_beat_carries_clip_duration():
+    b = Beat(arabic="x", english_motion="m", clip_duration_s=7.5)
+    assert b.clip_duration_s == 7.5
+    assert Beat.from_dict(b.to_dict()) == b
+
+
+def test_script_has_target_duration():
+    s = Script(
+        title="t", theme="folkloric", global_setting="x",
+        music_mood="dread",
+        beats=(Beat(arabic="a", english_motion="m", clip_duration_s=8.0),),
+        story_combined="a",
+        target_duration_s=64.0,
+    )
+    assert s.target_duration_s == 64.0
+    assert Script.from_dict(s.to_dict()).target_duration_s == 64.0
