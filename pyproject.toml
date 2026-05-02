@@ -13,6 +13,7 @@ dependencies = [
     "pydub>=0.25",
     "click>=8.1",
     "curl-cffi>=0.15.0",
+    "openai-whisper>=20240930",
 ]
 
 [dependency-groups]
