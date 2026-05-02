@@ -108,6 +108,12 @@ def _synthesize_timings_from_duration(text: str, total_duration_ms: int) -> list
     return timings
 
 
+def _build_elevenlabs():
+    """Indirection so tests can monkeypatch."""
+    from pipeline.elevenlabs import ElevenLabsClient
+    return ElevenLabsClient()
+
+
 def generate_narration(
     text: str,
     voice: str,
@@ -115,17 +121,23 @@ def generate_narration(
     pitch: str,
     mp3_path: Path,
     timings_path: Path,
+    *,
+    provider: str = "edge_tts",
+    elevenlabs_voice_id: str = "",
+    elevenlabs_model: str = "eleven_multilingual_v2",
+    fallback_to_edge_tts: bool = True,
 ) -> None:
-    """Resumable: if both outputs already exist AND timings is non-empty, skip.
+    """Resumable: if both outputs present and timings non-empty, skip.
 
-    If TTS produced audio but no WordBoundary events (Arabic / some other voices),
-    synthesize word timings from total audio duration so downstream stages have
-    something to chunk on.
+    provider:
+      - "edge_tts"    — original Edge TTS path (free, lower quality)
+      - "elevenlabs"  — ElevenLabs Multilingual v2 (paid, natural voice)
 
-    On re-run, if the mp3 already exists but timings.json is empty/missing, we
-    skip the expensive TTS call and just re-derive timings from audio duration.
+    Whichever provider is used, we always write a synthesized timings file
+    (duration / word count). The Whisper align stage in run.py refines these
+    into accurate per-word timings before captions are rendered.
     """
-    # Skip entirely if both artifacts are present and non-empty.
+    # Resume guard
     if mp3_path.exists() and timings_path.exists():
         try:
             if json.loads(timings_path.read_text(encoding="utf-8")):
@@ -133,19 +145,30 @@ def generate_narration(
         except json.JSONDecodeError:
             pass
 
-    ssml_text = inject_ssml_pauses(text)
-
-    # Only call TTS if mp3 is missing. If mp3 exists, we just need timings.
+    # 1. Produce mp3
     if not mp3_path.exists():
-        timings = _synthesize(ssml_text, voice, rate, pitch, mp3_path)
-    else:
-        timings = []  # force fallback to duration-based synthesis
+        if provider == "elevenlabs":
+            try:
+                client = _build_elevenlabs()
+                client.synthesize(
+                    text=text, voice_id=elevenlabs_voice_id,
+                    model=elevenlabs_model, out_path=mp3_path,
+                )
+            except Exception as e:
+                if not fallback_to_edge_tts:
+                    raise
+                print(f"[voice] elevenlabs failed ({type(e).__name__}: {e}); "
+                      f"falling back to edge_tts")
+                ssml_text = inject_ssml_pauses(text)
+                _synthesize(ssml_text, voice, rate, pitch, mp3_path)
+        else:
+            ssml_text = inject_ssml_pauses(text)
+            _synthesize(ssml_text, voice, rate, pitch, mp3_path)
 
-    if not timings:
-        # Pass the ORIGINAL text (not ssml_text) so sentence-ending punctuation
-        # is preserved on words — the downstream shot chunker snaps to those.
-        duration_ms = _audio_duration_ms(mp3_path)
-        timings = _synthesize_timings_from_duration(text, duration_ms)
+    # 2. Write a placeholder timings file. The align stage will overwrite
+    #    this with Whisper-derived ms-precise timings before captions render.
+    duration_ms = _audio_duration_ms(mp3_path)
+    timings = _synthesize_timings_from_duration(text, duration_ms)
     timings_path.write_text(
         json.dumps(timings, ensure_ascii=False, indent=2),
         encoding="utf-8",

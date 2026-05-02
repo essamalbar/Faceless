@@ -112,3 +112,69 @@ def test_synthesize_raises_after_max_retries(monkeypatch, tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="edge-tts failed"):
         voice_mod._synthesize("hi", "v", "0%", "0%", tmp_path / "n.mp3")
+
+
+def test_generate_narration_dispatches_to_elevenlabs(monkeypatch, tmp_run_dir: Path,
+                                                       fixtures_dir: Path):
+    """provider='elevenlabs' must call ElevenLabsClient.synthesize, not edge-tts."""
+    sample = (fixtures_dir / "narration_sample.mp3").read_bytes()
+    captured: dict = {}
+
+    class FakeEL:
+        def synthesize(self, text, voice_id, model, out_path, **kw):
+            captured["text"] = text
+            captured["voice_id"] = voice_id
+            captured["out"] = out_path
+            out_path.write_bytes(sample)
+
+    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
+
+    out_mp3 = tmp_run_dir / "narration.mp3"
+    out_timings = tmp_run_dir / "word_timings.json"
+    from pipeline.voice import generate_narration
+    generate_narration(
+        text="مرحبا",
+        voice="ar-EG-SalmaNeural", rate="+0%", pitch="+0Hz",
+        mp3_path=out_mp3, timings_path=out_timings,
+        provider="elevenlabs",
+        elevenlabs_voice_id="vid-1",
+        elevenlabs_model="eleven_multilingual_v2",
+    )
+    assert out_mp3.exists()
+    assert captured["voice_id"] == "vid-1"
+    assert captured["text"] == "مرحبا"
+    # Synthetic timings still written (Whisper align stage refines them later)
+    import json
+    timings = json.loads(out_timings.read_text(encoding="utf-8"))
+    assert len(timings) >= 1
+
+
+def test_generate_narration_falls_back_to_edge_tts_when_no_eleven_key(
+    monkeypatch, tmp_run_dir: Path, fixtures_dir: Path,
+):
+    """provider='elevenlabs' but no key → fall back to edge_tts when fallback=True."""
+    sample = (fixtures_dir / "narration_sample.mp3").read_bytes()
+
+    def fake_build_el():
+        from pipeline.elevenlabs import ElevenLabsError
+        raise ElevenLabsError("ELEVENLABS_API_KEY not set")
+
+    def fake_edge(text, voice, rate, pitch, mp3_path):
+        mp3_path.write_bytes(sample)
+        return [{"word": "ك", "offset_ms": 0, "duration_ms": 100}]
+
+    monkeypatch.setattr("pipeline.voice._build_elevenlabs", fake_build_el)
+    monkeypatch.setattr("pipeline.voice._synthesize", fake_edge)
+
+    from pipeline.voice import generate_narration
+    generate_narration(
+        text="مرحبا",
+        voice="ar-EG-SalmaNeural", rate="+0%", pitch="+0Hz",
+        mp3_path=tmp_run_dir / "n.mp3",
+        timings_path=tmp_run_dir / "t.json",
+        provider="elevenlabs",
+        elevenlabs_voice_id="vid-1",
+        elevenlabs_model="eleven_multilingual_v2",
+        fallback_to_edge_tts=True,
+    )
+    assert (tmp_run_dir / "n.mp3").exists()
