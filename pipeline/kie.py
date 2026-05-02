@@ -29,6 +29,7 @@ import requests
 
 BASE_URL = os.environ.get("KIE_BASE_URL", "https://api.kie.ai")
 SUBMIT_PATH = os.environ.get("KIE_SUBMIT_PATH", "/api/v1/veo/generate")
+FLUX_SUBMIT_PATH = os.environ.get("KIE_FLUX_SUBMIT_PATH", "/api/v1/flux/generate")
 JOB_PATH_TPL = os.environ.get("KIE_JOB_PATH_TPL", "/api/v1/veo/record-info?taskId={job_id}")
 
 # successFlag values Kie.ai returns; override via env if upstream changes.
@@ -80,6 +81,32 @@ class KieClient:
         task_id = data.get("taskId") or resp.get("taskId") or data.get("task_id")
         if not task_id:
             raise KieError(f"submit response missing taskId: {resp}")
+        return str(task_id)
+
+    def submit_flux_image_job(
+        self,
+        prompt: str,
+        model: str = "flux-1.1-pro",
+        aspect_ratio: str = "9:16",
+        image_urls: list[str] | None = None,
+    ) -> str:
+        """Submit a Flux text-to-image (or image-to-image) job; return taskId.
+
+        Same poll endpoint and response shape as Veo (record-info), so callers
+        can use the existing wait_for_video to retrieve the image URL.
+        """
+        body: dict = {
+            "model": model,
+            "prompt": prompt,
+            "aspectRatio": aspect_ratio,
+        }
+        if image_urls:
+            body["imageUrls"] = image_urls
+        resp = self._post_json(FLUX_SUBMIT_PATH, body)
+        data = resp.get("data") or {}
+        task_id = data.get("taskId") or resp.get("taskId")
+        if not task_id:
+            raise KieError(f"flux submit response missing taskId: {resp}")
         return str(task_id)
 
     def poll_job(self, job_id: str) -> dict:

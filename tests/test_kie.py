@@ -131,3 +131,36 @@ def test_generate_clip_end_to_end(monkeypatch, tmp_path: Path):
     assert out.stat().st_size > 0
     assert download_calls[0][0] == "https://cdn/clip.mp4"
     assert download_calls[0][1] == out
+
+
+def test_submit_flux_image_job_sends_correct_body(monkeypatch):
+    captured: dict = {}
+
+    def fake_post(self, path, body):
+        captured["path"] = path
+        captured["body"] = body
+        return {"code": 200, "data": {"taskId": "flux_task_x"}}
+
+    monkeypatch.setattr(KieClient, "_post_json", fake_post)
+    c = _client()
+    task_id = c.submit_flux_image_job(
+        prompt="character sheet of fruit characters",
+        model="flux-1.1-pro",
+        aspect_ratio="9:16",
+    )
+    assert task_id == "flux_task_x"
+    assert captured["path"] == "/api/v1/flux/generate"
+    assert captured["body"]["model"] == "flux-1.1-pro"
+    assert captured["body"]["prompt"].startswith("character sheet")
+    assert captured["body"]["aspectRatio"] == "9:16"
+
+
+def test_poll_flux_returns_image_url(monkeypatch):
+    """When successFlag=1, fullResultUrls[0] is the PNG URL."""
+    monkeypatch.setattr(
+        KieClient, "poll_job",
+        lambda self, jid: {"data": {"successFlag": 1,
+                                     "response": {"fullResultUrls": ["https://cdn/x.png"]}}},
+    )
+    monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
+    assert _client().wait_for_video("flux_task_x") == "https://cdn/x.png"
