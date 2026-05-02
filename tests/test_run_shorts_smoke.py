@@ -42,15 +42,32 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
         "theme": "folkloric",
         "global_setting": "abandoned village, night, desert",
         "music_mood": "dread",
+        "target_duration_s": 80,
         "beats": [
             {"arabic": "كنتُ وحيداً عند البئر.",
-             "english_motion": "lone hooded figure beside ancient well, slow push-in, moonlight"},
+             "english_motion": "lone hooded figure beside ancient well, slow push-in, moonlight",
+             "clip_duration_s": 8.0},
             {"arabic": "سمعتُ بكاءً في الأعماق.",
-             "english_motion": "close-up of dark well shaft, mist rising, faint glow"},
+             "english_motion": "close-up of dark well shaft, mist rising, faint glow",
+             "clip_duration_s": 8.0},
             {"arabic": "ظهرتْ يدٌ عظمية.",
-             "english_motion": "skeletal hand emerging from well rim, low angle, candlelight"},
+             "english_motion": "skeletal hand emerging from well rim, low angle, candlelight",
+             "clip_duration_s": 8.0},
             {"arabic": "ثم اختفى كل شيء.",
-             "english_motion": "wide shot of empty village, fog rolling in, static camera"},
+             "english_motion": "wide shot of empty village, fog rolling in, static camera",
+             "clip_duration_s": 8.0},
+            {"arabic": "بكيتُ في الصمت.",
+             "english_motion": "close-up of tear rolling down cheek, soft moonlight",
+             "clip_duration_s": 8.0},
+            {"arabic": "لم يبقَ أحد.",
+             "english_motion": "empty village square at dawn, birds flying away",
+             "clip_duration_s": 8.0},
+            {"arabic": "كان هذا نهاية كل شيء.",
+             "english_motion": "wide shot of ruins, dust settling, golden hour",
+             "clip_duration_s": 8.0},
+            {"arabic": "لن أعود أبداً.",
+             "english_motion": "lone figure walking away into fog, back to camera",
+             "clip_duration_s": 8.0},
         ],
     }, ensure_ascii=False)
 
@@ -124,9 +141,9 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     assert (run_dir / "narration.mp3").exists()
     assert (run_dir / "word_timings.json").exists()
     assert (run_dir / "clips").is_dir()
-    # 4 clips → 4 mp4 files
+    # 8 clips → 8 mp4 files
     clip_files = sorted((run_dir / "clips").glob("*.mp4"))
-    assert len(clip_files) == 4
+    assert len(clip_files) == 8
     assert (run_dir / "kie_spend.json").exists()
     assert (run_dir / "music_track.mp3").exists()
     assert (run_dir / "captions.ar.srt").exists()
@@ -140,12 +157,12 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
 
     # Script has beats[] populated, story_combined non-empty
     script = json.loads((run_dir / "script.json").read_text(encoding="utf-8"))
-    assert len(script["beats"]) == 4
+    assert len(script["beats"]) == 8
     assert script["story_combined"]
 
-    # Spend log records 4 clips
+    # Spend log records 8 clips
     spend = json.loads((run_dir / "kie_spend.json").read_text(encoding="utf-8"))
-    assert len(spend["entries"]) == 4
+    assert len(spend["entries"]) == 8
 
     # 1+ Gemini calls (writer plus possibly expand-pass retries when the
     # canned beats are too short). Script writer is the only LLM stage.
@@ -163,9 +180,10 @@ def test_run_shorts_skip_video_uses_placeholder_clips(
         "theme": "folkloric",
         "global_setting": "abandoned village",
         "music_mood": "dread",
+        "target_duration_s": 72,
         "beats": [
-            {"arabic": "ج1", "english_motion": "m1"},
-            {"arabic": "ج2", "english_motion": "m2"},
+            {"arabic": f"ج{i}", "english_motion": f"m{i}", "clip_duration_s": 9.0}
+            for i in range(1, 9)
         ],
     }, ensure_ascii=False)
 
@@ -204,5 +222,5 @@ def test_run_shorts_skip_video_uses_placeholder_clips(
     runs = [p for p in out_root.iterdir() if p.is_dir()]
     run_dir = runs[0]
     assert (run_dir / "clips" / "01.mp4").exists()
-    assert (run_dir / "clips" / "02.mp4").exists()
+    assert (run_dir / "clips" / "08.mp4").exists()
     assert (run_dir / "final.mp4").exists()

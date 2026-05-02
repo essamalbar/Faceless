@@ -269,7 +269,8 @@ SHORTS_WRITER_SYSTEM = (
 )
 
 SHORTS_WRITER_PROMPT_TEMPLATE = """\
-اكتب قصة ميلودراما عائلية مأساوية لـ TikTok مدتها ~75 ثانية، مقسمة لـ {num_beats} مشاهد.
+اكتب قصة ميلودراما عائلية مأساوية لـ TikTok، طولها بين 60 و 120 ثانية حسب تعقيد القصة.
+أنت تختار عدد المشاهد ({min_beats} كحد أدنى، {max_beats} كحد أقصى) وزمن كل مشهد بناء على القصة.
 
 الفرضية: {premise}
 الفئة: {theme}
@@ -322,27 +323,28 @@ CRITICAL — ALL CHARACTERS ARE ANTHROPOMORPHIC FRUIT (Sunstoriz signature style
   "theme": "{theme}",
   "global_setting": "وصف بصري قصير بالإنجليزية: '3D Pixar animation, anthropomorphic fruit characters as humans, dramatic emotional lighting, vertical 9:16, cinematic quality'",
   "music_mood": "اختر كلمة واحدة فقط: drone أو dread أو cosmic أو discovery (بدون شرح أو رمز |)",
+  "target_duration_s": <integer 60..120, your chosen total length>,
   "beats": [
-    {{"arabic": "...", "english_motion": "..."}},
-    {{"arabic": "...", "english_motion": "..."}},
-    {{"arabic": "...", "english_motion": "..."}},
-    {{"arabic": "...", "english_motion": "..."}},
-    {{"arabic": "...", "english_motion": "..."}},
-    {{"arabic": "...", "english_motion": "..."}},
-    {{"arabic": "...", "english_motion": "..."}},
-    {{"arabic": "...", "english_motion": "..."}}
+    {{"arabic": "...", "english_motion": "...", "clip_duration_s": <float 6..10, this beat's duration>}},
+    ...repeat between {min_beats} and {max_beats} times...
   ]
 }}
+
+ملاحظة: عدد البيتات لازم بين {min_beats} و {max_beats}. مجموع clip_duration_s لازم ≈ target_duration_s.
 """
 
 
-def build_shorts_writer_prompt(seed: ThemeSeed, num_beats: int = 8, words_per_beat: int = 30) -> str:
+def build_shorts_writer_prompt(
+    seed: ThemeSeed, min_beats: int = 8, max_beats: int = 15,
+    words_per_beat: int = 30,
+) -> str:
     min_words_per_beat = max(int(words_per_beat * 0.7), 18)
-    min_total_words = num_beats * min_words_per_beat
+    min_total_words = min_beats * min_words_per_beat
     return SHORTS_WRITER_PROMPT_TEMPLATE.format(
         premise=seed.premise,
         theme=seed.theme,
-        num_beats=num_beats,
+        min_beats=min_beats,
+        max_beats=max_beats,
         words_per_beat=words_per_beat,
         min_words_per_beat=min_words_per_beat,
         min_total_words=min_total_words,
@@ -366,14 +368,21 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
     if not isinstance(beats_raw, list) or not beats_raw:
         raise ValueError("shorts script must contain a non-empty 'beats' list")
     beats: tuple[Beat, ...] = tuple(
-        Beat(arabic=str(b.get("arabic", "")).strip(),
-             english_motion=str(b.get("english_motion", "")).strip())
+        Beat(
+            arabic=str(b.get("arabic", "")).strip(),
+            english_motion=str(b.get("english_motion", "")).strip(),
+            clip_duration_s=float(b.get("clip_duration_s", 8.0)),
+        )
         for b in beats_raw
     )
     # Reject if any beat is missing both fields — clear LLM failure.
     for i, b in enumerate(beats):
         if not b.arabic or not b.english_motion:
             raise ValueError(f"beat {i+1} missing arabic or english_motion: {b}")
+
+    target_duration_s = float(data.get("target_duration_s", 0.0))
+    if target_duration_s <= 0:
+        target_duration_s = sum(b.clip_duration_s for b in beats)
 
     story_combined = " ".join(b.arabic for b in beats)
     try:
@@ -384,6 +393,7 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
             music_mood=data["music_mood"],
             beats=beats,
             story_combined=story_combined,
+            target_duration_s=target_duration_s,
             # Long-form fields stay default (empty)
         )
     except (TypeError, ValueError) as e:
@@ -419,16 +429,25 @@ def _expand_short_script(gemini, draft: Script, target_words_per_beat: int) -> S
 
 
 def generate_shorts_script(
-    gemini, seed: ThemeSeed, num_beats: int = 8, words_per_beat: int = 30,
-    *, min_total_words: int | None = None, max_expand_retries: int = 2,
+    gemini, seed: ThemeSeed,
+    *,
+    min_beats: int = 8, max_beats: int = 15, words_per_beat: int = 30,
+    min_total_words: int | None = None, max_expand_retries: int = 2,
 ) -> Script:
     """Single LLM call → Script with beats[]. If too short, ask to expand (no extra video cost)."""
     if min_total_words is None:
-        min_total_words = int(num_beats * words_per_beat * 0.7)
+        min_total_words = int(min_beats * words_per_beat * 0.7)
 
-    prompt = build_shorts_writer_prompt(seed, num_beats=num_beats, words_per_beat=words_per_beat)
+    prompt = build_shorts_writer_prompt(
+        seed, min_beats=min_beats, max_beats=max_beats, words_per_beat=words_per_beat,
+    )
     raw = gemini.complete(prompt, system=SHORTS_WRITER_SYSTEM)
     script = _parse_shorts_script_json(raw, seed)
+
+    if len(script.beats) < min_beats:
+        raise ValueError(
+            f"writer returned {len(script.beats)} beats, below min_beats={min_beats}"
+        )
 
     for attempt in range(max_expand_retries):
         total = sum(len(b.arabic.split()) for b in script.beats)

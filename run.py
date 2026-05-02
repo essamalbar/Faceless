@@ -214,7 +214,9 @@ def _stage_assemble(cfg: Config, shots: list[Shot], paths: RunPaths,
 def _stage_shorts_script(gemini, seed: ThemeSeed, cfg: Config, paths: RunPaths) -> Script:
     if paths.script_json.exists():
         return Script.from_dict(json.loads(paths.script_json.read_text(encoding="utf-8")))
-    script = generate_shorts_script(gemini, seed, num_beats=cfg.kie.num_clips)
+    script = generate_shorts_script(
+        gemini, seed, min_beats=cfg.kie.num_clips, max_beats=max(cfg.kie.num_clips, 15),
+    )
     paths.script_json.write_text(
         json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",

@@ -204,10 +204,11 @@ def test_run_full_regenerates_on_repetition(fake_gemini, tmp_path: Path):
 def test_shorts_prompt_includes_seed_and_beat_count():
     from pipeline.script import build_shorts_writer_prompt
     seed = ThemeSeed(theme="folkloric", premise="بئر قديم")
-    p = build_shorts_writer_prompt(seed, num_beats=4, words_per_beat=20)
+    p = build_shorts_writer_prompt(seed, min_beats=1, max_beats=20, words_per_beat=20)
     assert "بئر قديم" in p
     assert "folkloric" in p
-    assert "4 مشاهد" in p
+    assert "1" in p  # min_beats present
+    assert "20" in p  # max_beats present
     # Confirm @sunstoriz-style constraints are present
     assert "ميلودراما" in p or "مأساوية" in p  # tragic-family-drama theme
     assert "FRUIT" in p                          # anthropomorphic fruit characters
@@ -229,7 +230,7 @@ def test_shorts_parse_valid_response(fake_gemini):
             {"arabic": "ثم اختفى كل شيء.", "english_motion": "wide shot of empty village, fog rolling in, static camera"},
         ],
     }, ensure_ascii=False))
-    s = generate_shorts_script(fake_gemini, seed)
+    s = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
     assert s.title == "صدى البئر"
     assert len(s.beats) == 4
     assert s.beats[0].arabic == "كنتُ وحيداً عند البئر."
@@ -251,7 +252,7 @@ def test_shorts_overrides_theme_to_match_seed(fake_gemini):
         "global_setting": "x", "music_mood": "drone",
         "beats": [{"arabic": "ج1", "english_motion": "m1"}],
     }, ensure_ascii=False))
-    s = generate_shorts_script(fake_gemini, seed)
+    s = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
     assert s.theme == "folkloric"
 
 
@@ -263,7 +264,7 @@ def test_shorts_normalizes_sloppy_music_mood(fake_gemini):
         "music_mood": "drone | dread | cosmic | discovery",  # sloppy LLM output
         "beats": [{"arabic": "ج1", "english_motion": "m1"}],
     }, ensure_ascii=False))
-    s = generate_shorts_script(fake_gemini, seed)
+    s = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
     assert s.music_mood == "drone"  # normalizer extracts first valid mood
 
 
@@ -275,7 +276,7 @@ def test_shorts_rejects_empty_beats(fake_gemini):
         "music_mood": "dread", "beats": [],
     }, ensure_ascii=False))
     with pytest.raises(ValueError, match="non-empty 'beats'"):
-        generate_shorts_script(fake_gemini, seed)
+        generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
 
 
 def test_shorts_rejects_beat_missing_field(fake_gemini):
@@ -287,7 +288,7 @@ def test_shorts_rejects_beat_missing_field(fake_gemini):
         "beats": [{"arabic": "only arabic"}],  # missing english_motion
     }, ensure_ascii=False))
     with pytest.raises(ValueError, match="missing"):
-        generate_shorts_script(fake_gemini, seed)
+        generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
 
 
 def test_shorts_strips_code_fence(fake_gemini):
@@ -300,5 +301,43 @@ def test_shorts_strips_code_fence(fake_gemini):
         "beats": [{"arabic": "ج", "english_motion": "m"}],
     }, ensure_ascii=False)
     fake_gemini.when(lambda p: True, f"```json\n{payload}\n```")
-    s = generate_shorts_script(fake_gemini, seed)
+    s = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
     assert len(s.beats) == 1
+
+
+def test_shorts_writer_picks_num_beats_in_range(fake_gemini):
+    """Writer chooses 8-15 beats based on premise; orchestrator reads len(script.beats)."""
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "long tragedy",
+        "theme": "folkloric",
+        "global_setting": "x",
+        "music_mood": "dread",
+        "target_duration_s": 100,
+        "beats": [
+            {"arabic": "ج" + str(i), "english_motion": "m", "clip_duration_s": 8.5}
+            for i in range(12)
+        ],
+    }, ensure_ascii=False))
+    s = generate_shorts_script(fake_gemini, seed, min_beats=8, max_beats=15,
+                                words_per_beat=30)
+    assert len(s.beats) == 12
+    assert s.target_duration_s == 100
+    assert s.beats[0].clip_duration_s == 8.5
+
+
+def test_shorts_writer_clamps_to_min_beats_when_too_few(fake_gemini):
+    """If LLM returns < min_beats, raise — that's a serious failure not silent fallback."""
+    from pipeline.script import generate_shorts_script
+    import pytest
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "x", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "dread",
+        "beats": [
+            {"arabic": f"ج{i}", "english_motion": "m"} for i in range(5)
+        ],
+    }, ensure_ascii=False))
+    with pytest.raises(ValueError, match="below min_beats"):
+        generate_shorts_script(fake_gemini, seed, min_beats=8, max_beats=15)
