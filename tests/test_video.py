@@ -185,3 +185,104 @@ def test_raises_on_empty_beats(tmp_path: Path):
             cost_per_second_usd=0.10, max_spend_usd=5.0,
             poll_interval_s=1, poll_timeout_s=10,
         )
+
+
+def test_generate_clips_uses_reference_2_video_with_character_sheet(
+    monkeypatch, tmp_path: Path, fixtures_dir: Path,
+):
+    """Each clip must be submitted as REFERENCE_2_VIDEO with character_sheet in image_urls."""
+    submit_calls: list[dict] = []
+
+    def fake_submit(self, **kw):
+        submit_calls.append(kw)
+        return f"task_{len(submit_calls)}"
+
+    monkeypatch.setattr(KieClient, "submit_video_job", fake_submit)
+    monkeypatch.setattr(KieClient, "wait_for_video",
+                        lambda self, jid, **kw: f"https://cdn/{jid}.mp4")
+
+    def fake_dl(self, url, out_path):
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+
+    monkeypatch.setattr(KieClient, "_download", fake_dl)
+    monkeypatch.setattr("pipeline.video._extract_last_frame",
+                        lambda clip, out: out.write_bytes(b"\x89PNG\r\n\x1a\n"))
+    monkeypatch.setattr("pipeline.video._upload_image_get_url",
+                        lambda path: f"https://cdn/upl/{path.name}")
+
+    clips_dir = tmp_path / "clips"
+    last_frames_dir = tmp_path / "last_frames"
+    spend = tmp_path / "spend.json"
+    char_sheet = tmp_path / "character_sheet.png"
+    char_sheet.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    from pipeline.video import generate_clips_chained
+    generate_clips_chained(
+        client=KieClient(api_key="k"),
+        script=_script(3),
+        clips_dir=clips_dir, last_frames_dir=last_frames_dir,
+        spend_log_path=spend,
+        character_sheet_path=char_sheet,
+        model="veo3", aspect_ratio="9:16",
+        cost_per_second_usd=0.40, max_spend_usd=20.0,
+        poll_interval_s=1, poll_timeout_s=10,
+    )
+    # 3 clips submitted
+    assert len(submit_calls) == 3
+    # Every submit has REFERENCE_2_VIDEO
+    for call in submit_calls:
+        assert call["generation_type"] == "REFERENCE_2_VIDEO"
+        # Character sheet always in image_urls
+        assert any("character_sheet" in u or "/upl/" in u for u in call["image_urls"])
+    # Clips 2 and 3 also reference last frame of previous
+    assert len(submit_calls[1]["image_urls"]) >= 2
+    assert len(submit_calls[2]["image_urls"]) >= 2
+
+
+def test_generate_clips_chained_uses_per_beat_duration(monkeypatch, tmp_path: Path):
+    """duration_seconds passed to Veo must come from beat.clip_duration_s."""
+    durations: list = []
+
+    def fake_submit(self, **kw):
+        durations.append(kw.get("duration_s"))
+        return f"task_{len(durations)}"
+
+    monkeypatch.setattr(KieClient, "submit_video_job", fake_submit)
+    monkeypatch.setattr(KieClient, "wait_for_video",
+                        lambda self, jid, **kw: f"https://cdn/{jid}.mp4")
+    monkeypatch.setattr(KieClient, "_download",
+                        lambda self, url, out: out.parent.mkdir(parents=True, exist_ok=True) or
+                                                out.write_bytes(b"x"))
+    monkeypatch.setattr("pipeline.video._extract_last_frame",
+                        lambda clip, out: out.write_bytes(b"x"))
+    monkeypatch.setattr("pipeline.video._upload_image_get_url",
+                        lambda path: f"https://cdn/{path.name}")
+
+    # Build a script whose beats have varying durations
+    s = Script(
+        title="t", theme="folkloric", global_setting="x", music_mood="dread",
+        beats=(
+            Beat(arabic="a", english_motion="m", clip_duration_s=6.0),
+            Beat(arabic="b", english_motion="m", clip_duration_s=9.5),
+        ),
+        story_combined="a b",
+        target_duration_s=15.5,
+    )
+
+    char_sheet = tmp_path / "cs.png"
+    char_sheet.write_bytes(b"x")
+
+    from pipeline.video import generate_clips_chained
+    generate_clips_chained(
+        client=KieClient(api_key="k"),
+        script=s,
+        clips_dir=tmp_path / "clips",
+        last_frames_dir=tmp_path / "lf",
+        spend_log_path=tmp_path / "s.json",
+        character_sheet_path=char_sheet,
+        model="veo3", aspect_ratio="9:16",
+        cost_per_second_usd=0.40, max_spend_usd=20.0,
+        poll_interval_s=1, poll_timeout_s=10,
+    )
+    assert durations == [6.0, 9.5]
