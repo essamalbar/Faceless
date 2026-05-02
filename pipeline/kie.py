@@ -147,9 +147,15 @@ class KieClient:
                 flag_int = None
             if flag_int == SUCCESS_FLAG:
                 response = data.get("response") or {}
-                urls = response.get("fullResultUrls") or response.get("resultUrls") or []
+                # Flux Kontext returns a single resultImageUrl; older shapes used arrays.
+                single = response.get("resultImageUrl")
+                urls = (
+                    response.get("fullResultUrls")
+                    or response.get("resultUrls")
+                    or ([single] if single else [])
+                )
                 if not urls:
-                    raise KieError(f"flux task {job_id} succeeded but no fullResultUrls: {resp}")
+                    raise KieError(f"flux task {job_id} succeeded but no result URL: {resp}")
                 return str(urls[0])
             if flag_int in FAILED_FLAGS:
                 raise KieError(f"flux task {job_id} successFlag={flag_int}: {resp}")
