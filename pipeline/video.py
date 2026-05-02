@@ -157,25 +157,29 @@ def _extract_last_frame(clip_path: Path, out_path: Path) -> None:
 
 
 def _upload_image_get_url(local_path: Path) -> str:
-    """Upload a local image to 0x0.st (free, anonymous, no API key) and return
-    the public URL so Kie.ai can fetch it.
+    """Upload a local image to uguu.se (free, anonymous, 24h retention) and
+    return the public URL so Kie.ai's Veo can fetch it.
 
-    0x0.st is a public pastebin; files stay for ~7 days. We only need them for
-    a few minutes (the duration of one Veo job), so this fits.
+    Files stay for 24 hours; we only need them for a few minutes (one Veo
+    job), so this fits. 0x0.st was the previous choice but is currently
+    disabled ("AI botnet spam"); uguu.se is the de-facto replacement.
     Tests monkeypatch this function.
     """
     with local_path.open("rb") as f:
         resp = requests.post(
-            "https://0x0.st",
-            files={"file": (local_path.name, f, "image/png")},
-            headers={"User-Agent": "faceless-pipeline/1.0"},
+            "https://uguu.se/upload",
+            files={"files[]": (local_path.name, f, "image/png")},
+            headers={"User-Agent": "Mozilla/5.0 (faceless-pipeline)"},
             timeout=60,
         )
     if resp.status_code >= 400:
         raise RuntimeError(
-            f"upload to 0x0.st failed: {resp.status_code}: {resp.text[:200]}"
+            f"uguu.se upload failed: {resp.status_code}: {resp.text[:200]}"
         )
-    return resp.text.strip()
+    data = resp.json()
+    if not data.get("success") or not data.get("files"):
+        raise RuntimeError(f"uguu.se upload returned no url: {data}")
+    return str(data["files"][0]["url"])
 
 
 def generate_clips_chained(
