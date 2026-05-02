@@ -22,6 +22,30 @@ uv run python run.py --theme folkloric --seed "بئر قديم"   # run pipeline
 uv run python run.py --skip-images      # dry-run with placeholder PNGs (fast)
 ```
 
+## Tier-3 environment variables (Shorts mode)
+
+```bash
+# Required
+export KIE_API_KEY=<your kie.ai key>
+export GROQ_API_KEY=<your groq key>
+export ELEVENLABS_API_KEY=<your elevenlabs key>
+
+# Optional — only if your network blocks aiquickdraw.com (UAE etc.)
+export KIE_DOWNLOAD_PROXY=https://your-worker.workers.dev
+export KIE_DOWNLOAD_PROXY_SECRET=<shared secret>
+```
+
+Image uploads (for Veo image-to-video chaining) use 0x0.st by default — anonymous,
+no API key needed. Override `pipeline.video._upload_image_get_url` if you'd
+rather use Cloudflare R2 / imgbb / your own bucket.
+
+Run a tier-3 video:
+
+```bash
+source .env
+uv run python run.py --shorts --theme folkloric --seed "أم فقيرة..."
+```
+
 ## Common commands (Flutter app — unchanged from scaffold)
 
 ```bash
