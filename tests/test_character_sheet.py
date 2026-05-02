@@ -18,7 +18,7 @@ def test_generates_when_missing(monkeypatch, tmp_path: Path, fixtures_dir: Path)
     sample = (fixtures_dir / "pixel.png").read_bytes()
     monkeypatch.setattr(KieClient, "submit_flux_image_job",
                         lambda self, **kw: "flux_task_id")
-    monkeypatch.setattr(KieClient, "wait_for_video",
+    monkeypatch.setattr(KieClient, "wait_for_flux_image",
                         lambda self, jid, **kw: "https://cdn/cs.png")
 
     def fake_download(self, url, out):

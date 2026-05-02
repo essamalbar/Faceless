@@ -3,7 +3,8 @@ voice:
   name: ar-EG-SalmaNeural
   rate: "+0%"
   pitch: "+0Hz"
-  elevenlabs_voice_id: 21m00Tcm4TlvDq8ikWAM   # placeholder; user supplies from dashboard
+  elevenlabs_voice_id: jAAHNNqlbAX9iWjJPEtE   # female narrator (tragic family melodrama)
+  # alt male: 127eIvt3Nz57jlNc8P9x — swap above when story POV is male
   elevenlabs_model: eleven_multilingual_v2
   fallback_to_edge_tts: true
 
@@ -45,5 +46,5 @@ kie:
   max_spend_usd: 13.00           # 15 clips × 8s × $0.10 = $12 max; small buffer
   poll_interval_s: 5
   poll_timeout_s: 300
-  flux_model: flux-1.1-pro
+  flux_model: flux-kontext-pro   # Kie.ai model identifier — also: flux-kontext-max
   flux_cost_per_image_usd: 0.05

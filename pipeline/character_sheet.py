@@ -34,7 +34,7 @@ def generate_character_sheet(
     client: KieClient,
     out_path: Path,
     global_setting: str,
-    model: str = "flux-1.1-pro",
+    model: str = "flux-kontext-pro",
     poll_interval_s: int = 5,
     poll_timeout_s: int = 300,
 ) -> None:
@@ -46,7 +46,7 @@ def generate_character_sheet(
         model=model,
         aspect_ratio="1:1",
     )
-    url = client.wait_for_video(
+    url = client.wait_for_flux_image(
         job_id, poll_interval_s=poll_interval_s, timeout_s=poll_timeout_s,
     )
     client.download(url, out_path)

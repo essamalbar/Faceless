@@ -29,7 +29,11 @@ import requests
 
 BASE_URL = os.environ.get("KIE_BASE_URL", "https://api.kie.ai")
 SUBMIT_PATH = os.environ.get("KIE_SUBMIT_PATH", "/api/v1/veo/generate")
-FLUX_SUBMIT_PATH = os.environ.get("KIE_FLUX_SUBMIT_PATH", "/api/v1/flux/generate")
+FLUX_SUBMIT_PATH = os.environ.get("KIE_FLUX_SUBMIT_PATH", "/api/v1/flux/kontext/generate")
+# Flux job status uses a SEPARATE poll endpoint than Veo (different namespace).
+FLUX_JOB_PATH_TPL = os.environ.get(
+    "KIE_FLUX_JOB_PATH_TPL", "/api/v1/flux/kontext/record-info?taskId={job_id}"
+)
 JOB_PATH_TPL = os.environ.get("KIE_JOB_PATH_TPL", "/api/v1/veo/record-info?taskId={job_id}")
 
 # successFlag values Kie.ai returns; override via env if upstream changes.
@@ -93,28 +97,64 @@ class KieClient:
     def submit_flux_image_job(
         self,
         prompt: str,
-        model: str = "flux-1.1-pro",
+        model: str = "flux-kontext-pro",
         aspect_ratio: str = "9:16",
         image_urls: list[str] | None = None,
+        output_format: str = "png",
     ) -> str:
-        """Submit a Flux text-to-image (or image-to-image) job; return taskId.
+        """Submit a Flux Kontext text-to-image (or image-to-image) job; return taskId.
 
-        Same poll endpoint and response shape as Veo (record-info), so callers
-        can use the existing wait_for_video to retrieve the image URL.
+        Body fields documented at https://docs.kie.ai/flux-kontext-api .
+        Use wait_for_flux_image() to poll, NOT wait_for_video() — Flux Kontext has
+        its own record-info endpoint distinct from Veo's.
         """
         body: dict = {
             "model": model,
             "prompt": prompt,
             "aspectRatio": aspect_ratio,
+            "outputFormat": output_format,
+            "enableTranslation": True,
+            "promptUpsampling": False,
+            "safetyTolerance": 2,
         }
         if image_urls:
-            body["imageUrls"] = image_urls
+            body["inputImage"] = image_urls[0]  # Flux Kontext takes one input image
         resp = self._post_json(FLUX_SUBMIT_PATH, body)
         data = resp.get("data") or {}
         task_id = data.get("taskId") or resp.get("taskId")
         if not task_id:
             raise KieError(f"flux submit response missing taskId: {resp}")
         return str(task_id)
+
+    def wait_for_flux_image(
+        self, job_id: str, poll_interval_s: int = 5, timeout_s: int = 300,
+    ) -> str:
+        """Poll the Flux Kontext record-info endpoint until success; return image URL.
+
+        Same response shape as Veo (data.successFlag + data.response.fullResultUrls),
+        but the poll path differs.
+        """
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            resp = self._get_json(FLUX_JOB_PATH_TPL.format(job_id=job_id))
+            data = resp.get("data") or {}
+            flag = data.get("successFlag")
+            if flag is None:
+                flag = resp.get("successFlag")
+            try:
+                flag_int = int(flag) if flag is not None else None
+            except (TypeError, ValueError):
+                flag_int = None
+            if flag_int == SUCCESS_FLAG:
+                response = data.get("response") or {}
+                urls = response.get("fullResultUrls") or response.get("resultUrls") or []
+                if not urls:
+                    raise KieError(f"flux task {job_id} succeeded but no fullResultUrls: {resp}")
+                return str(urls[0])
+            if flag_int in FAILED_FLAGS:
+                raise KieError(f"flux task {job_id} successFlag={flag_int}: {resp}")
+            _SLEEP(poll_interval_s)
+        raise KieError(f"flux task {job_id} did not complete within {timeout_s}s")
 
     def poll_job(self, job_id: str) -> dict:
         """Single GET on the record-info endpoint. Returns parsed JSON."""

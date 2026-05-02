@@ -149,10 +149,11 @@ def test_submit_flux_image_job_sends_correct_body(monkeypatch):
         aspect_ratio="9:16",
     )
     assert task_id == "flux_task_x"
-    assert captured["path"] == "/api/v1/flux/generate"
+    assert captured["path"] == "/api/v1/flux/kontext/generate"
     assert captured["body"]["model"] == "flux-1.1-pro"
     assert captured["body"]["prompt"].startswith("character sheet")
     assert captured["body"]["aspectRatio"] == "9:16"
+    assert captured["body"]["outputFormat"] == "png"
 
 
 def test_poll_flux_returns_image_url(monkeypatch):
