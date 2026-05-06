@@ -148,6 +148,70 @@ def test_repetition_guard_appends_when_unique(fake_gemini, tmp_path: Path):
     assert "[1.0" in line
 
 
+def test_parser_accepts_narrator_speaker():
+    """Cinematic mode: voice-over / off-screen narration is allowed."""
+    from pipeline.script import _parse_shorts_script_json
+    from pipeline.types import ThemeSeed
+    raw = '''{
+      "title":"t","theme":"folkloric","global_setting":"g","music_mood":"dread",
+      "target_duration_s":16,
+      "beats":[
+        {"arabic":"كلام الراوي عن المدينة","english_motion":"wide aerial shot of the city at dusk","speaker":"narrator","clip_duration_s":8,"character_name":""},
+        {"arabic":"شو هاد","english_motion":"close-up on khaled","speaker":"son","clip_duration_s":8,"character_name":"خالد"}
+      ]
+    }'''
+    script = _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+    assert script.beats[0].speaker == "narrator"
+    assert script.beats[1].speaker == "son"
+
+
+def test_parser_accepts_silent_action_beat():
+    """Empty arabic is allowed for silent action / atmospheric beats. The
+    english_motion must still be present (the visual prompt drives Veo)."""
+    from pipeline.script import _parse_shorts_script_json
+    from pipeline.types import ThemeSeed
+    raw = '''{
+      "title":"t","theme":"folkloric","global_setting":"g","music_mood":"dread",
+      "target_duration_s":16,
+      "beats":[
+        {"arabic":"","english_motion":"slow push-in on an empty kitchen at dawn, dust in the light","speaker":"narrator","clip_duration_s":7,"character_name":""},
+        {"arabic":"خالد عم بفكر","english_motion":"medium close on khaled looking out the window","speaker":"son","clip_duration_s":8,"character_name":"خالد"}
+      ]
+    }'''
+    script = _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+    assert script.beats[0].arabic == ""
+    assert script.beats[0].english_motion.startswith("slow push-in")
+
+
+def test_parser_still_rejects_missing_english_motion():
+    """The english_motion (visual prompt for Veo) is still required — empty
+    arabic is fine but a beat with no visual direction is malformed."""
+    import pytest
+    from pipeline.script import _parse_shorts_script_json
+    from pipeline.types import ThemeSeed
+    raw = '''{
+      "title":"t","theme":"folkloric","global_setting":"g","music_mood":"dread",
+      "target_duration_s":8,
+      "beats":[{"arabic":"x","english_motion":"","speaker":"mother","clip_duration_s":8}]
+    }'''
+    with pytest.raises(ValueError):
+        _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+
+
+def test_parser_still_rejects_unknown_speaker():
+    """A speaker that's neither a named role nor 'narrator' is rejected."""
+    import pytest
+    from pipeline.script import _parse_shorts_script_json
+    from pipeline.types import ThemeSeed
+    raw = '''{
+      "title":"t","theme":"folkloric","global_setting":"g","music_mood":"dread",
+      "target_duration_s":8,
+      "beats":[{"arabic":"x","english_motion":"y","speaker":"alien","clip_duration_s":8}]
+    }'''
+    with pytest.raises(ValueError):
+        _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+
+
 def test_repetition_guard_rejects_when_too_similar(fake_gemini, tmp_path: Path):
     from pipeline.script import check_and_record_uniqueness
     history = tmp_path / "story_history.jsonl"
@@ -328,10 +392,8 @@ def test_shorts_writer_picks_num_beats_in_range(fake_gemini):
     assert s.beats[0].clip_duration_s == 8.5
 
 
-def test_shorts_rejects_narrator_speaker(fake_gemini):
-    """Every beat must be a CHARACTER speaking, not a third-person narrator.
-    The user explicitly said the script must be the people inside the video
-    talking — not an external voiceover."""
+def test_shorts_accepts_narrator_speaker(fake_gemini):
+    """Narrator is now a valid speaker for voice-over / cinematic beats."""
     from pipeline.script import generate_shorts_script
     seed = ThemeSeed(theme="folkloric", premise="x")
     fake_gemini.when(lambda p: True, json.dumps({
@@ -339,11 +401,11 @@ def test_shorts_rejects_narrator_speaker(fake_gemini):
         "music_mood": "dread",
         "beats": [
             {"arabic": "ج1", "english_motion": "m1", "speaker": "mother"},
-            {"arabic": "ج2", "english_motion": "m2", "speaker": "narrator"},  # NOT ALLOWED
+            {"arabic": "ج2", "english_motion": "m2", "speaker": "narrator"},
         ],
     }, ensure_ascii=False))
-    with pytest.raises(ValueError, match="invalid speaker"):
-        generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
+    script = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
+    assert script.beats[1].speaker == "narrator"
 
 
 def test_shorts_rejects_missing_speaker(fake_gemini):

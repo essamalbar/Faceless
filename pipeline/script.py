@@ -419,6 +419,7 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
     valid_speakers = {
         "mother", "son", "father", "doctor", "neighbor",
         "grandmother", "wife", "daughter", "friend", "enemy", "shadow",
+        "narrator",
     }
     beats: tuple[Beat, ...] = tuple(
         Beat(
@@ -430,20 +431,22 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
         )
         for b in beats_raw
     )
-    # Enforce: every beat must be a character speaking, not a narrator.
-    # The writer prompt makes this explicit; this is the safety net.
+    # Enforce: every beat must use a known speaker role.
     for i, b in enumerate(beats):
         if b.speaker not in valid_speakers:
             raise ValueError(
                 f"beat {i+1} has invalid speaker={b.speaker!r}; "
-                f"must be one of {sorted(valid_speakers)}. "
-                f"narrator/third-person is forbidden — every beat must be "
-                f"first-person speech from a named character."
+                f"must be one of {sorted(valid_speakers)}."
             )
-    # Reject if any beat is missing both fields — clear LLM failure.
+    # Reject if the visual prompt is missing — Veo needs it for every beat.
+    # Empty arabic is allowed (silent action / atmospheric beats).
     for i, b in enumerate(beats):
-        if not b.arabic or not b.english_motion:
-            raise ValueError(f"beat {i+1} missing arabic or english_motion: {b}")
+        if not b.english_motion:
+            raise ValueError(
+                f"beat {i+1} missing english_motion (the visual prompt is "
+                f"required for every beat — silent beats still need a "
+                f"shot description for Veo): {b}"
+            )
 
     target_duration_s = float(data.get("target_duration_s", 0.0))
     if target_duration_s <= 0:
