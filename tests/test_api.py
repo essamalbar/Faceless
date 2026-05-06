@@ -217,7 +217,7 @@ def test_parse_script_llm_fallback(client, auth, monkeypatch):
 
     resp = client.post(
         "/runs/parse-script",
-        json={"raw_text": raw, "target_beats": 3},
+        json={"raw_text": raw, "target_beats": 4},
         headers=auth,
     )
     assert resp.status_code == 200

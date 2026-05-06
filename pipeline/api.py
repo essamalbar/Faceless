@@ -627,7 +627,7 @@ class CreateFromScriptRequest(BaseModel):
 
 class ParseScriptRequest(BaseModel):
     raw_text: str = Field(..., min_length=4)
-    target_beats: int = Field(default=8, ge=2, le=15,
+    target_beats: int = Field(default=8, ge=4, le=15,
                               description="Target beats for the LLM splitter "
                                           "(ignored on the regex path)")
 
@@ -641,7 +641,6 @@ class ParseScriptResponse(BaseModel):
 def _get_splitter_llm():
     """Lazy-import + return the configured LLM client. Indirection point so
     tests can monkeypatch this without touching the actual router."""
-    import os
     if os.environ.get("ANTHROPIC_API_KEY"):
         from pipeline.llm_anthropic import AnthropicClient
         return AnthropicClient()
