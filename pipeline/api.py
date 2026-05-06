@@ -1320,6 +1320,30 @@ def get_clip_thumbnail(run_id: str, clip_index: int):
 
 
 @app.get(
+    "/runs/{run_id}/clips/{clip_index}/video",
+    dependencies=[Depends(require_token_header_or_query)],
+)
+def get_clip_video(run_id: str, clip_index: int):
+    """Stream a single Veo clip's mp4. Mirrors /clips/{i}/thumbnail but for
+    full-motion playback. Used by the run-detail screen's tap-to-play UX.
+
+    Auth via header OR query-string token because the Flutter video_player
+    plugin on web silently drops httpHeaders — same workaround as the
+    /runs/{id}/video endpoint."""
+    if clip_index < 1 or clip_index > 99:
+        raise HTTPException(400, "clip_index out of range")
+    run_dir = _run_dir(run_id)
+    clip_path = run_dir / "clips" / f"{clip_index:02d}.mp4"
+    if not clip_path.exists():
+        raise HTTPException(404, "clip not generated yet")
+    return FileResponse(
+        path=str(clip_path),
+        media_type="video/mp4",
+        filename=f"{run_id}-clip-{clip_index:02d}.mp4",
+    )
+
+
+@app.get(
     "/runs/{run_id}/log",
     dependencies=[Depends(require_token)],
 )

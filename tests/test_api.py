@@ -815,6 +815,42 @@ def test_clip_thumbnail_404_when_clip_missing(client, auth, tmp_path: Path):
     assert r.status_code == 404
 
 
+def test_get_clip_video_serves_mp4(client, auth, tmp_path: Path):
+    """Streams clips/NN.mp4 with content-type video/mp4."""
+    rd = _make_run_dir(tmp_path)
+    clips = rd / "clips"
+    clips.mkdir()
+    (clips / "03.mp4").write_bytes(b"fake-mp4-bytes")
+
+    resp = client.get(
+        f"/runs/{rd.name}/clips/3/video",
+        headers=auth,
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "video/mp4"
+    assert resp.content == b"fake-mp4-bytes"
+
+
+def test_get_clip_video_404_when_missing(client, auth, tmp_path: Path):
+    """If clips/NN.mp4 doesn't exist, returns 404."""
+    rd = _make_run_dir(tmp_path)
+    resp = client.get(
+        f"/runs/{rd.name}/clips/2/video",
+        headers=auth,
+    )
+    assert resp.status_code == 404
+
+
+def test_get_clip_video_query_token_works(client, api_token, tmp_path: Path):
+    """The query-string token path used by Flutter web — same auth works."""
+    rd = _make_run_dir(tmp_path)
+    clips = rd / "clips"
+    clips.mkdir()
+    (clips / "01.mp4").write_bytes(b"x")
+    resp = client.get(f"/runs/{rd.name}/clips/1/video?token={api_token}")
+    assert resp.status_code == 200
+
+
 def test_clip_thumbnail_accepts_query_token(client, api_token, tmp_path: Path, monkeypatch):
     """Image elements in browsers can't always pass auth headers — the
     endpoint must also accept ?token=… like /video and /thumbnail."""
