@@ -1574,3 +1574,56 @@ def test_from_script_accepts_character_name(tmp_path, client):
                        headers={"Authorization": f"Bearer {TOKEN}"})
     assert resp2.status_code == 200
     assert resp2.json()["beats"][0]["character_name"] == "أم يوسف"
+
+
+# ---------------------------------------------------------------------------
+# CIN-C: narration_style field on POST /runs/freeform
+# ---------------------------------------------------------------------------
+
+def test_freeform_endpoint_accepts_narration_style(tmp_path, client, monkeypatch):
+    """POST /runs/freeform accepts narration_style and threads it to the subprocess."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    from pipeline.api import set_spawn_fn
+    captured: list[list[str]] = []
+    def stub_spawn(args, run_dir):
+        captured.append(args); return 4242
+    set_spawn_fn(stub_spawn)
+    resp = client.post(
+        "/runs/freeform",
+        json={
+            "theme": "urban", "premise": "A photographer who loses memory.",
+            "dialect": "msa", "art_style": "cinematic_photo_real",
+            "character_template": "human", "ending_type": "twist",
+            "num_beats": 8, "per_beat_seconds": 8,
+            "narration_style": "cinematic",
+        },
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 201
+    args = captured[0]
+    assert "--ff-narration-style" in args
+    assert "cinematic" in args
+
+
+def test_freeform_endpoint_default_narration_style_cinematic(tmp_path, client, monkeypatch):
+    """If narration_style is omitted, the request defaults to 'cinematic'."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    from pipeline.api import set_spawn_fn
+    captured: list[list[str]] = []
+    def stub_spawn(args, run_dir):
+        captured.append(args); return 4242
+    set_spawn_fn(stub_spawn)
+    resp = client.post(
+        "/runs/freeform",
+        json={
+            "theme": "urban", "premise": "x" * 4,
+            "dialect": "msa", "art_style": "cinematic_photo_real",
+            "character_template": "human", "ending_type": "twist",
+            "num_beats": 8, "per_beat_seconds": 8,
+        },  # narration_style omitted
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 201
+    args = captured[0]
+    idx = args.index("--ff-narration-style")
+    assert args[idx + 1] == "cinematic"

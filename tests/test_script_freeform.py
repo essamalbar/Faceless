@@ -73,3 +73,75 @@ def test_freeform_prompt_mentions_character_name():
         FreeformControls(dialect="egyptian"),
     )
     assert "character_name" in p
+
+
+def test_freeform_default_narration_style_is_cinematic():
+    """Default narration_style is 'cinematic' — the old first-person mandate is gone."""
+    from pipeline.script_freeform import FreeformControls
+    c = FreeformControls()
+    assert c.narration_style == "cinematic"
+
+
+def test_cinematic_prompt_drops_first_person_mandate():
+    """In cinematic mode, the prompt MUST NOT enforce first-person speech."""
+    from pipeline.script_freeform import (
+        build_freeform_prompt, FreeformControls, _SYSTEM,
+    )
+    from pipeline.types import ThemeSeed
+    p = build_freeform_prompt(
+        ThemeSeed(theme="urban", premise="x"),
+        FreeformControls(narration_style="cinematic"),
+    )
+    full = (_SYSTEM + "\n" + p).lower()
+    # Old mandate is gone
+    assert "each beat speaks in first person" not in full
+    assert "no narrator" not in full
+
+
+def test_cinematic_prompt_offers_camera_direction_vocabulary():
+    """Cinematic mode prompts for shot direction (wide, push-in, OTS, etc.)."""
+    from pipeline.script_freeform import (
+        build_freeform_prompt, FreeformControls, _SYSTEM,
+    )
+    from pipeline.types import ThemeSeed
+    p = build_freeform_prompt(
+        ThemeSeed(theme="urban", premise="x"),
+        FreeformControls(narration_style="cinematic"),
+    )
+    full = (_SYSTEM + "\n" + p).lower()
+    # Cinematic shot vocabulary should be referenced
+    cues = ["wide", "push-in", "over-the-shoulder", "establishing",
+            "close-up", "atmosphere", "voice-over", "narrator", "reaction"]
+    found = sum(1 for c in cues if c in full)
+    assert found >= 2, f"cinematic prompt should reference shot vocabulary; matched={found}"
+
+
+def test_first_person_monologue_style_keeps_old_behavior():
+    """When narration_style='first_person_monologue', the prompt explicitly
+    requires first-person speech (preserves the old TV-interview style as opt-in)."""
+    from pipeline.script_freeform import (
+        build_freeform_prompt, FreeformControls,
+    )
+    from pipeline.types import ThemeSeed
+    p = build_freeform_prompt(
+        ThemeSeed(theme="urban", premise="x"),
+        FreeformControls(narration_style="first_person_monologue"),
+    )
+    lower = p.lower()
+    assert "first person" in lower or "first-person" in lower or "ضمير المتكلم" in p
+
+
+def test_ai_choose_narration_lets_writer_decide():
+    """When narration_style='ai_choose', the prompt does NOT mandate either style."""
+    from pipeline.script_freeform import (
+        build_freeform_prompt, FreeformControls,
+    )
+    from pipeline.types import ThemeSeed
+    p = build_freeform_prompt(
+        ThemeSeed(theme="urban", premise="x"),
+        FreeformControls(narration_style="ai_choose"),
+    )
+    lower = p.lower()
+    # No hard mandate either way; the prompt should mention both options exist
+    # and the writer chooses based on the premise.
+    assert "your choice" in lower or "ai_choose" in lower or "writer chooses" in lower or "based on the premise" in lower

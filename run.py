@@ -604,6 +604,8 @@ def main_with_args(argv: list[str]) -> int:
                              "twist", "ai_choose"])
     p.add_argument("--ff-num-beats", type=int, default=8)
     p.add_argument("--ff-per-beat-seconds", type=int, default=8)
+    p.add_argument("--ff-narration-style", default="cinematic",
+                   choices=["cinematic", "first_person_monologue", "ai_choose"])
     args = p.parse_args(argv)
 
     cfg = load_config(Path(args.config))
@@ -644,6 +646,7 @@ def main_with_args(argv: list[str]) -> int:
                         ending_type=args.ff_ending_type,
                         num_beats=args.ff_num_beats,
                         per_beat_seconds=args.ff_per_beat_seconds,
+                        narration_style=args.ff_narration_style,
                     )
                     script = generate_freeform_script(gemini, seed, controls)
                     paths.script_json.write_text(

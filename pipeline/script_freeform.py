@@ -25,6 +25,7 @@ CharacterTemplate = Literal[
 EndingType = Literal[
     "open", "closed_tragic", "closed_happy", "twist", "ai_choose",
 ]
+NarrationStyle = Literal["cinematic", "first_person_monologue", "ai_choose"]
 
 
 _DIALECT_TO_HUMAN = {
@@ -61,6 +62,30 @@ _ENDING_TO_HUMAN = {
     "ai_choose": "whichever ending type best serves the premise",
 }
 
+_NARRATION_STYLE_TO_HUMAN = {
+    "cinematic": (
+        "Cinematic film style. Mix dialogue between characters, silent action "
+        "beats (atmospheric / reaction shots), and occasional narrator "
+        "voice-over. Use varied shot scales (wide establishing, "
+        "over-the-shoulder, push-in, hand-held tracking, reaction close-up). "
+        "Characters interact naturally with each other and with their "
+        "environment — they do NOT address the camera in monologue."
+    ),
+    "first_person_monologue": (
+        "First-person monologue style (TikTok @sunstoriz tradition). Every "
+        "beat is a named character speaking direct-to-camera in first person "
+        "(\"I…\"). english_motion frames each beat as a frontal medium "
+        "close-up, mouth open mid-speech."
+    ),
+    "ai_choose": (
+        "Narration style is your choice — pick whichever fits the premise "
+        "based on the premise. "
+        "If the premise calls for an intimate confessional tone, use "
+        "first-person monologue. If the premise calls for environmental "
+        "drama with multiple characters, use cinematic mixed-mode."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class FreeformControls:
@@ -70,12 +95,15 @@ class FreeformControls:
     ending_type: EndingType = "ai_choose"
     num_beats: int = 8
     per_beat_seconds: int = 8
+    narration_style: NarrationStyle = "cinematic"
 
 
 _SYSTEM = (
-    "You are an Arabic-language short-form video script writer. You adapt "
-    "your style — dialect, character cast, ending type, art direction — to "
-    "the user's premise and controls. You do not impose any fixed template."
+    "You are an Arabic-language short-form video screenwriter. You can write in "
+    "two modes: cinematic film style (mixed dialogue / silent / voice-over) or "
+    "first-person monologue (every beat is a character speaking direct to camera). "
+    "You adapt dialect, character cast, ending type, art direction, and narration "
+    "style to the user's controls."
 )
 
 
@@ -93,18 +121,37 @@ Controls:
 - Number of beats: exactly {num_beats}
 - Target duration per beat: ~{per_beat_seconds}s (each clip_duration_s between {min_s} and {max_s})
 
+Narration style: {narration_style}
+
+Beat types you may use:
+- **Dialogue beat**: a named character speaks (arabic = the line). Speaker enum picks the role.
+  In cinematic mode, dialogue is natural and reactive — characters answering each other,
+  not delivering monologues.
+- **Silent action beat**: arabic = "", speaker = "narrator". english_motion describes the
+  visual / atmospheric / reaction shot. Use these for establishing, environmental detail,
+  emotional reactions, scene transitions. (Available in cinematic / ai_choose modes.)
+- **Voice-over beat**: speaker = "narrator", arabic carries short narration text. Use for
+  poetic openings, time jumps, or final tag. (Available in cinematic / ai_choose modes.)
+
+In first_person_monologue mode, EVERY beat is a Dialogue beat — silent and voice-over
+beats are NOT used; every character speaks direct to camera in first person.
+
 Requirements:
 - All Arabic dialogue MUST be in {dialect}. No mixing with other dialects.
-- Each beat speaks in first person — a named character talks, not a narrator.
-- Speaker values must be one of: mother, son, father, doctor, neighbor,
-  grandmother, wife, daughter, friend, enemy, shadow.
-- Each beat must include a `character_name` field — a SHORT Arabic name for
-  the speaking character (e.g. "خالد", "فاطمة", "أم يوسف", "د. سامي").
-  Pick names that fit the chosen dialect/cast and the story's setting.
-  Use the SAME character_name for the same character across beats — names
-  must NOT change mid-story. Empty strings are not acceptable.
-- english_motion describes the visual action for that beat (~25 words),
-  reinforcing visual continuity from the previous beat.
+- Speaker values must be one of: mother, son, father, doctor, neighbor, grandmother,
+  wife, daughter, friend, enemy, shadow, narrator. Use "narrator" for silent and
+  voice-over beats.
+- Each beat must include a `character_name` field — a SHORT Arabic name for the
+  speaking character (e.g. "خالد", "فاطمة", "أم يوسف"). Use the SAME character_name
+  for the same character across beats. For silent or voice-over beats with
+  speaker="narrator", character_name may be empty "".
+- english_motion describes the SHOT (English, ~30 words). In cinematic mode, this is
+  cinematic shot direction: wide establishing, slow push-in, over-the-shoulder,
+  hand-held tracking, reaction close-up, locked-off — NOT "facing camera, mouth open
+  mid-speech, frontal medium close-up" as a fixed template. Vary the shot per beat.
+  Reference visual continuity with neighboring beats: "continuing from prior frame",
+  "same kitchen, now cut to medium close on the son", etc.
+  In first_person_monologue mode, english_motion may use the frontal MCU framing.
 - The final beat must match the ending type above.
 - music_mood: pick one of drone, dread, cosmic, discovery.
 
@@ -117,7 +164,7 @@ Return JSON only, no markdown:
   "music_mood": "drone|dread|cosmic|discovery",
   "target_duration_s": <int>,
   "beats": [
-    {{"arabic":"...","english_motion":"...","clip_duration_s":<float>,"speaker":"...","character_name":"اسم عربي قصير"}},
+    {{"arabic":"...","english_motion":"...","clip_duration_s":<float>,"speaker":"...","character_name":"اسم عربي قصير أو فارغ للراوي"}},
     ...exactly {num_beats} beats...
   ]
 }}
@@ -134,6 +181,7 @@ def build_freeform_prompt(seed: ThemeSeed, controls: FreeformControls) -> str:
         art_style=_ART_STYLE_TO_HUMAN[controls.art_style],
         character_template=_CHAR_TEMPLATE_TO_HUMAN[controls.character_template],
         ending_type=_ENDING_TO_HUMAN[controls.ending_type],
+        narration_style=_NARRATION_STYLE_TO_HUMAN[controls.narration_style],
         num_beats=controls.num_beats,
         per_beat_seconds=controls.per_beat_seconds,
         min_s=min_s, max_s=max_s,

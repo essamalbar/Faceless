@@ -829,6 +829,8 @@ class CreateFreeformRunRequest(BaseModel):
                          "twist", "ai_choose"] = "ai_choose"
     num_beats: int = Field(default=8, ge=4, le=15)
     per_beat_seconds: int = Field(default=8, ge=4, le=10)
+    narration_style: Literal["cinematic", "first_person_monologue",
+                             "ai_choose"] = "cinematic"
 
 
 @app.post(
@@ -860,6 +862,7 @@ def create_freeform_run(req: CreateFreeformRunRequest):
         "--ff-ending-type", req.ending_type,
         "--ff-num-beats", str(req.num_beats),
         "--ff-per-beat-seconds", str(req.per_beat_seconds),
+        "--ff-narration-style", req.narration_style,
     ]
     pid = _SPAWN_FN(args, run_dir)
     _write_state(
