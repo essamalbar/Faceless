@@ -15,6 +15,22 @@ from pathlib import Path
 
 import pytest
 
+from pipeline.types import Beat, Script
+
+REPO_ROOT = Path(__file__).parent.parent
+
+_MINIMAL_SCRIPT = Script(
+    title="t",
+    theme="folkloric",
+    global_setting="abandoned village, night",
+    music_mood="dread",
+    beats=(
+        Beat(arabic="a", english_motion="x", clip_duration_s=8.0, speaker="mother"),
+    ),
+    story_combined="a",
+    target_duration_s=8.0,
+)
+
 
 @pytest.fixture
 def music_bundle(tmp_path: Path) -> Path:
@@ -515,3 +531,50 @@ def test_pause_after_character_sheet_ignored_with_skip_video(
     run_log = (run_dir / "run.log").read_text(encoding="utf-8")
     assert "PAUSED" not in run_log or "--pause-after-character-sheet ignored" in run_log
     assert (run_dir / "final.mp4").exists()
+
+
+def test_freeform_flag_routes_to_freeform_writer(tmp_path, monkeypatch, music_bundle):
+    """When --freeform is passed, the shorts-script stage calls
+    generate_freeform_script, NOT generate_shorts_script."""
+    called = {"freeform": False, "shorts": False}
+
+    def fake_freeform(llm, seed, controls):
+        called["freeform"] = True
+        return _MINIMAL_SCRIPT
+
+    def fake_shorts(*a, **kw):
+        called["shorts"] = True
+        return _MINIMAL_SCRIPT
+
+    monkeypatch.setattr(
+        "pipeline.script_freeform.generate_freeform_script", fake_freeform,
+    )
+    monkeypatch.setattr(
+        "pipeline.script.generate_shorts_script", fake_shorts,
+    )
+
+    monkeypatch.setattr("run._build_gemini", lambda: object())
+    monkeypatch.setattr("run._build_kie", lambda: object())
+    monkeypatch.setattr("run._stage_character_sheet", lambda *a, **kw: None)
+    monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
+    monkeypatch.setattr("run._stage_shorts_captions", lambda *a, **kw: False)
+    monkeypatch.setattr("run._stage_assemble", lambda *a, **kw: None)
+
+    config_path = REPO_ROOT / "config.yaml"
+    import run
+    rc = run.main_with_args([
+        "--shorts", "--freeform",
+        "--theme", "urban", "--seed", "test premise",
+        "--out-root", str(tmp_path),
+        "--pause-after-script",
+        "--ff-dialect", "egyptian",
+        "--ff-art-style", "anime_2d",
+        "--ff-character-template", "human",
+        "--ff-ending-type", "twist",
+        "--ff-num-beats", "6",
+        "--config", str(config_path),
+        "--music-bundle", str(music_bundle),
+    ])
+    assert rc == 0
+    assert called["freeform"] is True
+    assert called["shorts"] is False

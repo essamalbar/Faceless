@@ -554,6 +554,24 @@ def main_with_args(argv: list[str]) -> int:
                         "human approval. Resume with --resume <dir>.")
     p.add_argument("--no-burn-captions", action="store_true",
                    help="Skip burned-in Arabic captions (Shorts default = burn-in)")
+    # Freeform script writer (premise-driven, no fixed template) ---------------
+    p.add_argument("--freeform", action="store_true",
+                   help="Use the freeform script writer (premise-driven, "
+                        "no fixed character/dialect/ending). Requires --shorts.")
+    p.add_argument("--ff-dialect", default="msa",
+                   choices=["msa", "syrian", "egyptian", "khaliji",
+                             "maghrebi", "iraqi"])
+    p.add_argument("--ff-art-style", default="cinematic_photo_real",
+                   choices=["pixar_3d", "anime_2d", "cinematic_photo_real",
+                             "claymation", "hand_drawn", "ghibli"])
+    p.add_argument("--ff-character-template", default="ai_choose",
+                   choices=["human", "fruit_sunstoriz", "animal",
+                             "surreal", "ai_choose"])
+    p.add_argument("--ff-ending-type", default="ai_choose",
+                   choices=["open", "closed_tragic", "closed_happy",
+                             "twist", "ai_choose"])
+    p.add_argument("--ff-num-beats", type=int, default=8)
+    p.add_argument("--ff-per-beat-seconds", type=int, default=8)
     args = p.parse_args(argv)
 
     cfg = load_config(Path(args.config))
@@ -583,8 +601,26 @@ def main_with_args(argv: list[str]) -> int:
             with log.stage("seed"):
                 seed = _stage_seed(args, gemini, log, paths, project_theme_log)
             with log.stage("script"):
-                script = _stage_shorts_script(gemini, seed, cfg, paths,
-                                               max_beats_override=args.max_beats)
+                if args.freeform:
+                    from pipeline.script_freeform import (
+                        FreeformControls, generate_freeform_script,
+                    )
+                    controls = FreeformControls(
+                        dialect=args.ff_dialect,
+                        art_style=args.ff_art_style,
+                        character_template=args.ff_character_template,
+                        ending_type=args.ff_ending_type,
+                        num_beats=args.ff_num_beats,
+                        per_beat_seconds=args.ff_per_beat_seconds,
+                    )
+                    script = generate_freeform_script(gemini, seed, controls)
+                    paths.script_json.write_text(
+                        json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                else:
+                    script = _stage_shorts_script(gemini, seed, cfg, paths,
+                                                   max_beats_override=args.max_beats)
             if args.pause_after_script:
                 # Approval gate for the mobile-app workflow. Script is on disk;
                 # bail out before any paid stage so a human reviewer can decide.
