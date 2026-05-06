@@ -1402,3 +1402,58 @@ def test_character_sheet_reroll_rejected_from_wrong_status(tmp_path, client, aut
         headers=auth,
     )
     assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Task 12: POST /runs/freeform
+# ---------------------------------------------------------------------------
+
+def test_freeform_endpoint_spawns_subprocess_with_flags(tmp_path, client, auth, monkeypatch):
+    """POST /runs/freeform spawns run.py with the freeform flags."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    from pipeline.api import set_spawn_fn
+    captured: list[list[str]] = []
+
+    def stub_spawn(args, run_dir):
+        captured.append(args)
+        return 4242
+
+    set_spawn_fn(stub_spawn)
+    payload = {
+        "theme": "urban",
+        "premise": "A photographer who loses memory in Cairo.",
+        "dialect": "egyptian",
+        "art_style": "anime_2d",
+        "character_template": "human",
+        "ending_type": "twist",
+        "num_beats": 8,
+        "per_beat_seconds": 8,
+    }
+    resp = client.post(
+        "/runs/freeform", json=payload,
+        headers=auth,
+    )
+    assert resp.status_code == 201
+    args = captured[0]
+    assert "--freeform" in args
+    assert "--shorts" in args
+    assert "--pause-after-script" in args
+    assert "--ff-dialect" in args
+    assert "egyptian" in args
+    assert "--ff-art-style" in args
+    assert "anime_2d" in args
+
+
+def test_freeform_endpoint_validates_dialect(client, tmp_path, auth, monkeypatch):
+    """Unknown dialect → 422 (Pydantic) or 400."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    payload = {
+        "theme": "urban", "premise": "x" * 10, "dialect": "klingon",
+        "art_style": "anime_2d", "character_template": "human",
+        "ending_type": "twist", "num_beats": 8, "per_beat_seconds": 8,
+    }
+    resp = client.post(
+        "/runs/freeform", json=payload,
+        headers=auth,
+    )
+    assert resp.status_code in (400, 422)

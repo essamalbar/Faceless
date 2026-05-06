@@ -811,6 +811,62 @@ def create_run(req: CreateRunRequest):
     return _summarize(run_dir)
 
 
+class CreateFreeformRunRequest(BaseModel):
+    theme: str
+    premise: str = Field(..., min_length=4)
+    dialect: Literal["msa", "syrian", "egyptian", "khaliji",
+                     "maghrebi", "iraqi"] = "msa"
+    art_style: Literal["pixar_3d", "anime_2d", "cinematic_photo_real",
+                       "claymation", "hand_drawn", "ghibli"] = "cinematic_photo_real"
+    character_template: Literal["human", "fruit_sunstoriz", "animal",
+                                "surreal", "ai_choose"] = "ai_choose"
+    ending_type: Literal["open", "closed_tragic", "closed_happy",
+                         "twist", "ai_choose"] = "ai_choose"
+    num_beats: int = Field(default=8, ge=4, le=15)
+    per_beat_seconds: int = Field(default=8, ge=4, le=10)
+
+
+@app.post(
+    "/runs/freeform",
+    response_model=RunSummary,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_token)],
+)
+def create_freeform_run(req: CreateFreeformRunRequest):
+    """Spawn a new run using the freeform script writer (no Sunstoriz lock).
+    Mirrors POST /runs but adds --freeform and --ff-* flags so the writer
+    follows the user's controls (dialect, art style, character cast, ending
+    type) rather than the locked Sunstoriz template."""
+    if req.theme not in VALID_THEMES:
+        raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
+
+    run_id = _make_run_id()
+    run_dir = _out_root() / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    args = [
+        "--shorts", "--freeform", "--pause-after-script",
+        "--theme", req.theme,
+        "--seed", req.premise,
+        "--run-dir", str(run_dir),
+        "--ff-dialect", req.dialect,
+        "--ff-art-style", req.art_style,
+        "--ff-character-template", req.character_template,
+        "--ff-ending-type", req.ending_type,
+        "--ff-num-beats", str(req.num_beats),
+        "--ff-per-beat-seconds", str(req.per_beat_seconds),
+    ]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(
+        run_dir,
+        pid=pid,
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        last_error=None,
+        last_action="create_freeform_run",
+    )
+    return _summarize(run_dir)
+
+
 @app.get(
     "/runs/{run_id}",
     response_model=RunSummary,
