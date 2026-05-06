@@ -1185,3 +1185,64 @@ def test_approve_passes_pause_after_character_sheet(client, auth, tmp_path: Path
     assert any(a == "--pause-after-character-sheet" for a in captured[0]), (
         f"--pause-after-character-sheet missing from spawn args: {captured[0]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Task 4: POST /runs/{id}/approve-veo — second approval gate
+# ---------------------------------------------------------------------------
+
+def _create_run_in_awaiting_veo_approval(tmp_path: Path, run_id: str = "2026-05-06-veo") -> str:
+    """Create a run dir in awaiting_veo_approval state:
+    - script.json present
+    - character_sheet.png present (Flux done)
+    - api_state.json with pid=null (no live process)
+    - no clips/, no final.mp4
+    Returns the run_id string."""
+    rd = tmp_path / "out" / run_id
+    rd.mkdir(parents=True, exist_ok=True)
+    (rd / "script.json").write_text(json.dumps({
+        "title": "x", "theme": "folkloric", "global_setting": "g",
+        "music_mood": "dread",
+        "beats": [
+            {"arabic": "ج1", "english_motion": "m1",
+             "clip_duration_s": 8.0, "speaker": "mother"},
+        ],
+    }, ensure_ascii=False), encoding="utf-8")
+    (rd / "character_sheet.png").write_bytes(b"fake-png")
+    (rd / "api_state.json").write_text('{"pid": null}', encoding="utf-8")
+    return run_id
+
+
+def test_approve_veo_happy_path(tmp_path, monkeypatch, client, auth):
+    """From awaiting_veo_approval, /approve-veo spawns run.py --resume with NO
+    pause flags so Veo runs to completion."""
+    from pipeline import api as api_mod
+
+    captured: list[list[str]] = []
+
+    def stub_spawn(args, run_dir):
+        captured.append(args)
+        return 9999
+
+    api_mod.set_spawn_fn(stub_spawn)
+    run_id = _create_run_in_awaiting_veo_approval(tmp_path)
+    resp = client.post(
+        f"/runs/{run_id}/approve-veo",
+        headers=auth,
+    )
+    assert resp.status_code == 200
+    assert "--pause-after-character-sheet" not in captured[0]
+    assert "--pause-after-script" not in captured[0]
+    assert "--resume" in captured[0]
+
+
+def test_approve_veo_rejected_from_wrong_status(tmp_path, monkeypatch, client, auth):
+    """From awaiting_approval (no character_sheet.png yet), /approve-veo
+    returns 409."""
+    rd = _make_run_dir(tmp_path)
+    _seed_awaiting_approval(rd)  # awaiting_approval state (no character_sheet)
+    resp = client.post(
+        f"/runs/{rd.name}/approve-veo",
+        headers=auth,
+    )
+    assert resp.status_code == 409

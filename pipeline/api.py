@@ -835,6 +835,35 @@ def approve_run(run_id: str):
 
 
 @app.post(
+    "/runs/{run_id}/approve-veo",
+    response_model=ApprovalAck,
+    dependencies=[Depends(require_token)],
+)
+def approve_veo_run(run_id: str):
+    """Second approval gate. The user has reviewed the Flux character sheet
+    and wants Veo to start spending. Only valid from awaiting_veo_approval.
+    Spawns run.py --resume with NO pause flags so the pipeline runs Veo +
+    captions + assemble end-to-end."""
+    run_dir = _run_dir(run_id)
+    s = derive_status(run_dir)
+    if s != "awaiting_veo_approval":
+        raise HTTPException(
+            409,
+            f"cannot approve-veo from status={s} "
+            f"(expected awaiting_veo_approval)",
+        )
+    args = ["--shorts", "--resume", str(run_dir)]
+    max_spend = _compute_max_spend_for_run(run_dir)
+    if max_spend is not None:
+        args += ["--max-spend", f"{max_spend:.2f}"]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid, last_error=None,
+                 last_action="approve_veo")
+    return ApprovalAck(run_id=run_id, status=derive_status(run_dir),
+                      started_paid_stages=True)
+
+
+@app.post(
     "/runs/{run_id}/resume",
     response_model=ApprovalAck,
     dependencies=[Depends(require_token)],
