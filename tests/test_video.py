@@ -82,6 +82,41 @@ def test_build_veo_prompt_combines_setting_and_motion():
     assert "anthropomorphic fruit characters" in p
 
 
+def test_build_veo_prompt_silent_default_omits_dialogue():
+    """Default (with_dialogue=False) — Arabic line is NOT in the prompt;
+    Veo will produce silent video and an external TTS supplies the voice."""
+    b = Beat(arabic="أنا قلبي مكسور", english_motion="m", speaker="mother")
+    p = build_veo_prompt(b, global_setting="g")
+    assert "أنا قلبي مكسور" not in p
+    assert "speaks emotionally" not in p
+
+
+def test_build_veo_prompt_with_dialogue_quotes_arabic_and_names_speaker():
+    """Tier-4 native-audio path: dialogue line appears inside double-quotes
+    with a speaker description, so Veo 3 generates lip-synced speech."""
+    b = Beat(arabic="أنا قلبي مكسور", english_motion="m", speaker="mother")
+    p = build_veo_prompt(b, global_setting="g", with_dialogue=True)
+    assert '"أنا قلبي مكسور"' in p           # exact quoting matters for Veo
+    assert "LEMON MOTHER" in p                # speaker description applied
+    assert "synchronized lip movement" in p
+    assert "Syrian" in p
+    # Audio-language lock — the prompt explicitly forbids English plus the
+    # other Arabic dialects so Veo's TTS doesn't default to English.
+    assert "ENGLISH" in p                       # explicit "NOT in ENGLISH"
+    assert "ممنوع النطق بالإنجليزية" in p       # Arabic-side directive
+    assert "Modern Standard Arabic" in p
+    assert "Egyptian" in p and "Gulf" in p
+
+
+def test_build_veo_prompt_with_dialogue_unknown_speaker_falls_back():
+    """Unknown speaker labels still produce a usable prompt — Veo gets
+    a generic 'speaking character' instead of failing."""
+    b = Beat(arabic="ج", english_motion="m", speaker="auntie")  # not in map
+    p = build_veo_prompt(b, global_setting="g", with_dialogue=True)
+    assert "the speaking character" in p
+    assert '"ج"' in p
+
+
 def test_generate_all_clips(monkeypatch, tmp_path: Path, fixtures_dir: Path):
     calls = _patch_generate_clip(monkeypatch, fixtures_dir)
     clips_dir = tmp_path / "clips"
@@ -238,6 +273,41 @@ def test_generate_clips_uses_reference_2_video_with_character_sheet(
     # Clips 2 and 3 also reference last frame of previous
     assert len(submit_calls[1]["image_urls"]) >= 2
     assert len(submit_calls[2]["image_urls"]) >= 2
+
+
+def test_build_veo_prompt_no_cast_negation_unchanged():
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(arabic="x", english_motion="wide shot", clip_duration_s=8.0,
+             speaker="mother")
+    p = build_veo_prompt(b, "global setting")
+    assert p.startswith("global setting,")
+
+
+def test_build_veo_prompt_with_animal_cast_negation():
+    from pipeline.video import build_veo_prompt
+    from pipeline.cast_guidance import veo_clip_negation
+    from pipeline.types import Beat
+    b = Beat(arabic="x", english_motion="wide shot of fox in snow",
+             clip_duration_s=8.0, speaker="mother")
+    p = build_veo_prompt(
+        b, "anthropomorphic animals in folkloric setting",
+        cast_negation=veo_clip_negation("animal"),
+    )
+    p_lower = p.lower()
+    assert p.startswith("Cast: anthropomorphic animal")
+    assert "blueberries" in p_lower
+    assert "wide shot of fox in snow" in p
+
+
+def test_build_veo_prompt_fruit_sunstoriz_no_negation():
+    from pipeline.video import build_veo_prompt
+    from pipeline.cast_guidance import veo_clip_negation
+    from pipeline.types import Beat
+    b = Beat(arabic="x", english_motion="wide", clip_duration_s=8.0,
+             speaker="mother")
+    p = build_veo_prompt(b, "g", cast_negation=veo_clip_negation("fruit_sunstoriz"))
+    assert p.startswith("g,")
 
 
 def test_generate_clips_chained_uses_per_beat_duration(monkeypatch, tmp_path: Path):

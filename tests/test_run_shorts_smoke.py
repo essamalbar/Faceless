@@ -750,7 +750,8 @@ def test_freeform_human_cast_negates_fruit_and_animals(tmp_path, monkeypatch):
     p = captured["lineup_prompt"]
     p_lower = p.lower()
     assert "human" in p_lower
-    assert ("not fruit" in p_lower or "no fruit" in p_lower)
+    assert ("not fruit" in p_lower or "no fruit" in p_lower
+            or "not anthropomorphic fruit" in p_lower or "no lemons" in p_lower)
     assert ("not animal" in p_lower or "no anthropomorphic" in p_lower or
             "no animals" in p_lower or "real human" in p_lower)
 
@@ -943,4 +944,5 @@ def test_explicit_freeform_flag_still_works_without_file(tmp_path, monkeypatch, 
     assert captured["lineup_prompt"] is not None
     p_lower = captured["lineup_prompt"].lower()
     # Human cast negation
-    assert "not fruit" in p_lower or "no fruit" in p_lower
+    assert ("not fruit" in p_lower or "no fruit" in p_lower
+            or "not anthropomorphic fruit" in p_lower or "no lemons" in p_lower)

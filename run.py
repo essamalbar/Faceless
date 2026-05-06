@@ -224,31 +224,7 @@ def _stage_assemble(cfg: Config, shots: list[Shot], paths: RunPaths,
 # Shorts mode stages — operate on script.beats, produce vertical 9:16 mp4.
 # ============================================================================
 
-# Per-character-template Flux negations + concrete cast vocabulary.
-# These are the prompts that actually push Flux out of its Sunstoriz fruit
-# default — the negations are aggressive on purpose.
-_CAST_FLUX_GUIDANCE: dict[str, str] = {
-    "human": (
-        "Realistic human characters with diverse Arabic features (skin tones, "
-        "hair, eyes), wearing clothing appropriate to the story's setting. "
-        "STRICTLY NO fruit characters, NOT fruit. NO lemons, NO strawberries, NO "
-        "apples, NO mangoes. NOT animal characters either — real human beings."
-    ),
-    "animal": (
-        "Anthropomorphic animal characters — concrete species like fox, "
-        "rabbit, deer, bear, wolf, owl, cat, panda — each character a "
-        "distinct species, wearing clothing appropriate to the story's "
-        "setting. STRICTLY NOT fruit characters. NO lemons, NO strawberries, "
-        "NO apples, NO mangoes. NOT humans either — anthropomorphic animals."
-    ),
-    "surreal": (
-        "Surreal abstract creatures with non-natural body shapes — geometric, "
-        "ethereal, dreamlike. STRICTLY NOT realistic humans, NOT real "
-        "animals, and NOT fruit characters. NO lemons, NO strawberries, NO "
-        "apples, NO mangoes."
-    ),
-    # fruit_sunstoriz and ai_choose: no override — use the writer's global_setting as-is.
-}
+from pipeline.cast_guidance import flux_lineup_override
 
 def _stage_shorts_script(gemini, seed: ThemeSeed, cfg: Config, paths: RunPaths,
                          max_beats_override: int | None = None) -> Script:
@@ -376,7 +352,7 @@ def _stage_character_sheet(
             if names else ""
         )
         # Override clause kicks in only for explicit non-fruit casts.
-        cast_override = _CAST_FLUX_GUIDANCE.get(character_template or "", "")
+        cast_override = flux_lineup_override(character_template)
         cast_clause = f" {cast_override}" if cast_override else ""
         lineup_prompt = (
             "Character lineup sheet for an animated short. "
@@ -482,7 +458,10 @@ def _stage_native_audio_timings(paths: RunPaths, script: Script) -> list[WordTim
     return [WordTiming.from_dict(t) for t in timings]
 
 
-def _stage_video_chained(args, cfg: Config, script: Script, paths: RunPaths) -> None:
+def _stage_video_chained(
+    args, cfg: Config, script: Script, paths: RunPaths,
+    *, character_template: str | None = None,
+) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
     Replaces _stage_video for the --shorts path. --skip-video uses the same
@@ -528,6 +507,7 @@ def _stage_video_chained(args, cfg: Config, script: Script, paths: RunPaths) -> 
         poll_timeout_s=cfg.kie.poll_timeout_s,
         reroll_indices=reroll,
         with_dialogue=cfg.kie.native_audio,
+        character_template=character_template,
     )
 
 
@@ -757,7 +737,10 @@ def main_with_args(argv: list[str]) -> int:
                              f"Resume with: uv run python run.py --shorts --resume {run_dir}")
                     return 0
             with log.stage("video"):
-                _stage_video_chained(args, cfg, script, paths)
+                _stage_video_chained(
+                    args, cfg, script, paths,
+                    character_template=args.ff_character_template if args.freeform else None,
+                )
             if use_native_audio:
                 with log.stage("native_audio_timings"):
                     timings = _stage_native_audio_timings(paths, script)

@@ -133,7 +133,13 @@ def clip_seed(title: str, index: int) -> int:
     return int(h[:8], 16)
 
 
-def build_veo_prompt(beat: Beat, global_setting: str, *, with_dialogue: bool = False) -> str:
+def build_veo_prompt(
+    beat: Beat,
+    global_setting: str,
+    *,
+    with_dialogue: bool = False,
+    cast_negation: str = "",
+) -> str:
     """Compose the final Veo prompt for one beat.
 
     `with_dialogue=True` enables Veo 3's native lip-synced dialogue: the
@@ -142,8 +148,14 @@ def build_veo_prompt(beat: Beat, global_setting: str, *, with_dialogue: bool = F
     No separate TTS stage runs. Voice characteristics are set by Veo, not
     by an external voice ID — so stability across clips is approximate,
     not pinned to ElevenLabs.
+
+    `cast_negation` (from pipeline.cast_guidance.veo_clip_negation) is
+    prepended to the prompt when non-empty so Veo sees it at the earliest
+    token positions — where it has the most weight. Empty string leaves the
+    prompt unchanged (Sunstoriz / ai_choose paths).
     """
-    base = f"{global_setting}, {beat.english_motion}"
+    head = f"{cast_negation} " if cast_negation else ""
+    base = f"{head}{global_setting}, {beat.english_motion}"
     if with_dialogue and beat.arabic:
         speaker_desc = SPEAKER_DESCRIPTIONS.get(beat.speaker, "the speaking character")
         # Stronger language lock — empirically Veo's TTS sometimes ignores
@@ -207,6 +219,7 @@ def generate_clips(
     poll_interval_s: int,
     poll_timeout_s: int,
     reroll_indices: list[int] | None = None,
+    character_template: str | None = None,
 ) -> None:
     """Render each beat to clips_dir/NN.mp4. Resumable + reroll-aware.
 
@@ -237,6 +250,9 @@ def generate_clips(
             f"Override with --max-spend or change config.kie.max_spend_usd."
         )
 
+    from pipeline.cast_guidance import veo_clip_negation
+    cast_negation = veo_clip_negation(character_template)
+
     spend_entries: list[dict] = []
     for i, beat in enumerate(script.beats):
         idx = i + 1
@@ -248,7 +264,7 @@ def generate_clips(
         if idx in reroll_set:
             seed += REROLL_SEED_BUMP
 
-        prompt = build_veo_prompt(beat, script.global_setting)
+        prompt = build_veo_prompt(beat, script.global_setting, cast_negation=cast_negation)
         generate_clip(
             client=client,
             prompt=prompt,
@@ -346,6 +362,7 @@ def generate_clips_chained(
     poll_timeout_s: int,
     reroll_indices: list[int] | None = None,
     with_dialogue: bool = False,
+    character_template: str | None = None,
 ) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
@@ -376,6 +393,9 @@ def generate_clips_chained(
             f"Override with --max-spend or change config.kie.max_spend_usd."
         )
 
+    from pipeline.cast_guidance import veo_clip_negation
+    cast_negation = veo_clip_negation(character_template)
+
     sheet_url = _upload_image_get_url(character_sheet_path)
     spend_entries: list[dict] = []
     prev_last_frame_url: str | None = None
@@ -391,7 +411,11 @@ def generate_clips_chained(
             prev_last_frame_url = _upload_image_get_url(last_frame_path)
             continue
 
-        prompt = build_veo_prompt(beat, script.global_setting, with_dialogue=with_dialogue)
+        prompt = build_veo_prompt(
+            beat, script.global_setting,
+            with_dialogue=with_dialogue,
+            cast_negation=cast_negation,
+        )
         image_urls = [sheet_url]
         if prev_last_frame_url:
             image_urls.append(prev_last_frame_url)
