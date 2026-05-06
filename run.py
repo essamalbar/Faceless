@@ -335,12 +335,25 @@ def _stage_character_sheet(
     hardcoded fruit-cast prompt."""
     lineup_prompt = None
     if freeform_mode and script.global_setting and script.global_setting.strip():
+        # Collect unique character names from beats, preserving first-seen order.
+        seen: set[str] = set()
+        names: list[str] = []
+        for beat in script.beats:
+            n = (beat.character_name or "").strip()
+            if n and n not in seen:
+                seen.add(n)
+                names.append(n)
+        names_clause = (
+            f" Named characters in the story: {', '.join(names)}."
+            if names else ""
+        )
         lineup_prompt = (
             "Character lineup sheet for an animated short. "
             "Several named characters from the story standing side by side, "
             "full body, facing camera, neutral expressions, plain warm-grey "
             "background, consistent rendering style and color palette across "
-            "all characters. "
+            "all characters."
+            f"{names_clause} "
             f"Style, cast and visual treatment: {script.global_setting.strip()}. "
             "Design-sheet aesthetic, high detail. NO text, NO watermark, NO logo."
         )

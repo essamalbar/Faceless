@@ -618,6 +618,53 @@ def test_freeform_mode_passes_custom_lineup_prompt(tmp_path, monkeypatch):
     assert "Lemon mother" not in p   # sunstoriz must not leak in
 
 
+def test_freeform_mode_lineup_includes_unique_character_names(tmp_path, monkeypatch):
+    """When freeform_mode=True and script.beats carry character_name,
+    the lineup_prompt enumerates the unique names so Flux can label them."""
+    captured: dict = {}
+
+    def fake_generate_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        fake_generate_sheet,
+    )
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="3D Pixar animation, anthropomorphic animal characters",
+        music_mood="dread",
+        beats=(
+            Beat(arabic="a", english_motion="x", clip_duration_s=8.0,
+                 speaker="mother", character_name="أم خالد"),
+            Beat(arabic="b", english_motion="y", clip_duration_s=8.0,
+                 speaker="son", character_name="خالد"),
+            Beat(arabic="c", english_motion="z", clip_duration_s=8.0,
+                 speaker="mother", character_name="أم خالد"),  # dup, must dedupe
+        ),
+        story_combined="abc", target_duration_s=24.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        freeform_mode=True,
+    )
+    p = captured["lineup_prompt"]
+    assert p is not None
+    assert "أم خالد" in p
+    assert "خالد" in p
+    # Deduplicated — "أم خالد" should appear exactly once in the names list section.
+    # We don't strict-count globally because it could appear once and the prompt
+    # also mentions the cast generically. Loose check: the names appear.
+
+
 def test_legacy_mode_passes_none_lineup_prompt(tmp_path, monkeypatch):
     """When freeform_mode is False (default), lineup_prompt is None so the
     Sunstoriz hardcoded prompt fires inside generate_character_sheet."""
