@@ -254,6 +254,57 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     }
   }
 
+  Future<void> _rerollSingleClip(int clipIndex) async {
+    if (_busy) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+            'Reroll clip ${clipIndex.toString().padLeft(2, "0")}?'),
+        content: const Text('This regenerates one clip on Veo. ~\$0.85.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reroll (\$0.85)')),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+          'Rerolling clip ${clipIndex.toString().padLeft(2, "0")} — ~\$0.85'),
+      duration: const Duration(seconds: 3),
+    ));
+    try {
+      await widget.client.rerollClips(widget.runId, [clipIndex]);
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Reroll failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _openClipPlayer(int clipIndex, String? speakerHint) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VideoPlayerScreen(
+          client: widget.client,
+          runId: widget.runId,
+          clipIndex: clipIndex,
+          title: speakerHint,
+        ),
+      ),
+    );
+  }
+
   void _openLog() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -437,6 +488,8 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
               runId: run.id,
               clipsDoneCount: run.progress?.clipsDone ??
                   (run.isComplete ? _script!.beats.length : 0),
+              onPlayClip: (i) => _openClipPlayer(i, _script!.beats[i - 1].speaker),
+              onRerollClip: _busy ? null : _rerollSingleClip,
             ),
           ],
           if (run.isAwaitingVeoApproval) ...[
@@ -535,11 +588,15 @@ class _ScriptPanel extends StatelessWidget {
   final bool showCost;
   final String runId;
   final int clipsDoneCount;
+  final ValueChanged<int>? onPlayClip;
+  final ValueChanged<int>? onRerollClip;
   const _ScriptPanel({
     required this.script,
     required this.showCost,
     required this.runId,
     required this.clipsDoneCount,
+    required this.onPlayClip,
+    required this.onRerollClip,
   });
 
   @override
@@ -566,6 +623,8 @@ class _ScriptPanel extends StatelessWidget {
               beat: e.value,
               runId: runId,
               hasClip: e.key < clipsDoneCount,
+              onPlay: onPlayClip,
+              onReroll: onRerollClip,
             )),
       ],
     );
@@ -577,11 +636,15 @@ class _BeatTile extends StatelessWidget {
   final ScriptBeat beat;
   final String runId;
   final bool hasClip;       // does clips/NN.mp4 exist on disk?
+  final ValueChanged<int>? onPlay;
+  final ValueChanged<int>? onReroll;
   const _BeatTile({
     required this.index,
     required this.beat,
     required this.runId,
     required this.hasClip,
+    required this.onPlay,
+    required this.onReroll,
   });
 
   @override
@@ -594,7 +657,11 @@ class _BeatTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 9:16 thumbnail of this clip if it's been generated
-            _ClipThumbBox(runId: runId, clipIndex: index, hasClip: hasClip),
+            InkWell(
+              onTap: hasClip && onPlay != null ? () => onPlay!(index) : null,
+              borderRadius: BorderRadius.circular(8),
+              child: _ClipThumbBox(runId: runId, clipIndex: index, hasClip: hasClip),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -620,6 +687,17 @@ class _BeatTile extends StatelessWidget {
                       const Spacer(),
                       Text('${beat.clipDurationS.toStringAsFixed(0)}s',
                           style: Theme.of(context).textTheme.bodySmall),
+                      if (hasClip && onReroll != null) ...[
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 18),
+                          tooltip: 'Reroll this clip (~\$0.85)',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                          onPressed: () => onReroll!(index),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 8),
