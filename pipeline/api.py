@@ -823,7 +823,8 @@ def approve_run(run_id: str):
             409,
             f"cannot approve from status={s} (expected awaiting_approval)",
         )
-    args = ["--shorts", "--resume", str(run_dir)]
+    args = ["--shorts", "--resume", str(run_dir),
+            "--pause-after-character-sheet"]
     max_spend = _compute_max_spend_for_run(run_dir)
     if max_spend is not None:
         args += ["--max-spend", f"{max_spend:.2f}"]

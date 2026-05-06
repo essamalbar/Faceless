@@ -1156,3 +1156,32 @@ def test_derive_status_failed_when_post_flux_log_has_error(tmp_path, monkeypatch
         encoding="utf-8",
     )
     assert derive_status(run_dir) == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Task 3: /approve must include --pause-after-character-sheet
+# ---------------------------------------------------------------------------
+
+def test_approve_passes_pause_after_character_sheet(client, auth, tmp_path: Path):
+    """After /approve, the spawned subprocess MUST include
+    --pause-after-character-sheet so Veo doesn't auto-start."""
+    from pipeline import api as api_mod
+
+    captured: list[list[str]] = []
+
+    def stub_spawn(args, run_dir):
+        captured.append(args)
+        return 9999
+
+    api_mod.set_spawn_fn(stub_spawn)
+
+    # Set up a run in awaiting_approval state (script.json present, no character_sheet)
+    rd = _make_run_dir(tmp_path)
+    _seed_awaiting_approval(rd)
+
+    resp = client.post(f"/runs/{rd.name}/approve", headers=auth)
+    assert resp.status_code == 200
+    assert len(captured) == 1, "expected exactly one subprocess spawn"
+    assert any(a == "--pause-after-character-sheet" for a in captured[0]), (
+        f"--pause-after-character-sheet missing from spawn args: {captured[0]}"
+    )
