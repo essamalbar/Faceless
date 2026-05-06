@@ -275,7 +275,7 @@ def test_shorts_prompt_includes_seed_and_beat_count():
     assert "20" in p  # max_beats present
     # Confirm @sunstoriz-style constraints are present
     assert "ميلودراما" in p or "مأساوية" in p  # tragic-family-drama theme
-    assert "FRUIT" in p                          # anthropomorphic fruit characters
+    assert "FRUIT" in p or "fruit" in p          # anthropomorphic fruit characters
     assert "english_motion" in p
 
 
@@ -479,3 +479,58 @@ def test_writer_prompt_mentions_character_name():
     p = build_shorts_writer_prompt(ThemeSeed(theme="folkloric", premise="x"))
     # The prompt must reference the new field by its JSON key
     assert "character_name" in p
+
+
+def test_writer_prompt_drops_first_person_mandate():
+    """The new Sunstoriz writer prompt MUST NOT enforce first-person speech."""
+    from pipeline.script import (
+        SHORTS_WRITER_SYSTEM, build_shorts_writer_prompt,
+    )
+    from pipeline.types import ThemeSeed
+    p = build_shorts_writer_prompt(ThemeSeed(theme="folkloric", premise="x"))
+    full = SHORTS_WRITER_SYSTEM + "\n" + p
+    # The hard "first person — mandatory" mandate is gone
+    assert "ضمير المتكلم (أنا) — إجباري" not in full
+    # The "narrator forbidden" rule is gone
+    assert "narrator/third-person is forbidden" not in full.lower()
+    assert "ممنوع راوي" not in full and "ممنوع تماماً قيمة" not in full
+
+
+def test_writer_prompt_invites_cinematic_direction():
+    """The new prompt should mention cinematic cues — camera, atmosphere,
+    establishing/reaction shots, narrator voice-over allowance."""
+    from pipeline.script import (
+        SHORTS_WRITER_SYSTEM, build_shorts_writer_prompt,
+    )
+    from pipeline.types import ThemeSeed
+    p = build_shorts_writer_prompt(ThemeSeed(theme="folkloric", premise="x"))
+    full = (SHORTS_WRITER_SYSTEM + "\n" + p).lower()
+    # At least 2 of these cinematic cues must appear
+    cues = ["camera", "wide", "close-up", "push-in", "establishing",
+            "atmosphere", "voice-over", "narrator", "reaction", "over-the-shoulder"]
+    found = sum(1 for c in cues if c in full)
+    assert found >= 2, f"new prompt should reference cinematic cues; matched={found}"
+
+
+def test_writer_prompt_allows_narrator_and_silent_beats():
+    """The schema example should let beats be narrator voice-over OR silent
+    action — i.e. the speaker enum in the example must include narrator,
+    and the docs should say arabic can be empty."""
+    from pipeline.script import build_shorts_writer_prompt
+    from pipeline.types import ThemeSeed
+    p = build_shorts_writer_prompt(ThemeSeed(theme="folkloric", premise="x"))
+    assert "narrator" in p.lower()
+    # Arabic-language note that empty arabic is OK for silent action — exact
+    # wording is up to the implementer; check loose markers.
+    lower = p.lower()
+    assert ("silent" in lower or "صامت" in p or "بدون حوار" in p
+            or "empty" in lower or "فارغ" in p), (
+        "the prompt should explain that arabic may be empty for silent action beats"
+    )
+
+
+def test_critique_prompt_does_not_enforce_first_person():
+    """The critique pass must not re-enforce the rule we just removed from the writer."""
+    from pipeline.script import SHORTS_CRITIQUE_PROMPT_TEMPLATE
+    assert "ضمير المتكلم (أنا) — إجباري" not in SHORTS_CRITIQUE_PROMPT_TEMPLATE
+    assert "narrator forbidden" not in SHORTS_CRITIQUE_PROMPT_TEMPLATE.lower()
