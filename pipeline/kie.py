@@ -83,6 +83,10 @@ class KieClient:
             "aspectRatio": aspect_ratio,
             "generationType": generation_type,
             "resolution": resolution,
+            # Defensive: keep Arabic dialogue inside the prompt verbatim.
+            # If translation were on, Kie.ai might rewrite the quoted line
+            # to English and Veo would speak English instead of Arabic.
+            "enableTranslation": False,
         }
         if image_urls:
             body["imageUrls"] = image_urls
@@ -299,3 +303,7 @@ def generate_clip(
     )
     url = client.wait_for_video(job_id, poll_interval_s=poll_interval_s, timeout_s=timeout_s)
     client.download(url, out_path)
+    # Move moov atom to the front so HTML5 players can stream progressively
+    # instead of waiting for the full file. Silent no-op on failure.
+    from pipeline.mp4_faststart import rewrite_with_faststart
+    rewrite_with_faststart(out_path)

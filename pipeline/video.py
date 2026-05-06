@@ -37,6 +37,95 @@ VIDEO_STYLE_SUFFIX = (
 VIDEO_NEGATIVE_PROMPT = ""  # unused (Veo ignores it); kept for API stability
 REROLL_SEED_BUMP = 100_000
 
+# Per-speaker character lock — the SAME description is injected into every
+# beat's Veo prompt for that speaker, so visual identity stays consistent
+# across clips. Each entry pins outfit, age, eye type, and signature
+# accessory. We deliberately commit to ONE age band per character (no
+# "child vs adult" variants) because Veo cannot age-shift a character
+# mid-video without visible identity drift — the user noticed son being
+# small in one clip and an adult in another.
+SPEAKER_DESCRIPTIONS: dict[str, str] = {
+    "mother": (
+        "the LEMON MOTHER character — middle-aged anthropomorphic lemon-headed "
+        "woman (mid-50s), bright yellow lemon-shaped head with smooth skin, "
+        "large tired sad brown eyes, gentle wrinkles around eyes, "
+        "wearing a plain BLACK hijab covering hair and a long dark grey dress "
+        "with simple embroidery, weary maternal expression, thin frame"
+    ),
+    "son": (
+        "the STRAWBERRY SON character — young adult anthropomorphic strawberry-headed "
+        "man (early 20s), red strawberry-shaped head with small green leaves on top "
+        "as hair, dark expressive eyes, light beard stubble, "
+        "wearing a casual grey t-shirt and dark trousers, "
+        "regretful tired expression, lean build "
+        "(NEVER a child or boy — always an adult young man across all clips)"
+    ),
+    "father": (
+        "the OLDER LEMON FATHER character — elderly anthropomorphic lemon-headed "
+        "man (mid-60s), pale yellow lemon-shaped head with deep wrinkles, "
+        "white beard and white moustache, hollow tired eyes, "
+        "wearing a traditional white thobe with brown vest, "
+        "weak weary expression, slightly stooped posture"
+    ),
+    "doctor": (
+        "the APPLE DOCTOR character — middle-aged anthropomorphic red-apple-headed "
+        "man (mid-40s), shiny red apple-shaped head with a small green leaf, "
+        "round glasses, serious composed eyes, clean-shaven, "
+        "wearing a crisp white doctor's coat over a blue shirt, "
+        "stethoscope around neck, professional grim expression"
+    ),
+    "neighbor": (
+        "the MANGO NEIGHBOR character — middle-aged anthropomorphic mango-headed "
+        "man (early 50s), orange-yellow mango-shaped head, "
+        "smug confident eyes, well-groomed, "
+        "wearing a beige traditional dishdasha and gold watch, "
+        "indifferent dismissive expression"
+    ),
+    "grandmother": (
+        "the LEMON GRANDMOTHER character — elderly anthropomorphic lemon-headed "
+        "woman (mid-70s), pale yellow wrinkled lemon-shaped head, "
+        "kind sad eyes, white hair under a black headscarf, "
+        "wearing a long dark dress with prayer beads in hand, "
+        "gentle frail expression"
+    ),
+    "wife": (
+        "the PEACH WIFE character — young adult anthropomorphic peach-headed "
+        "woman (mid-20s), soft pink-orange peach-shaped head, "
+        "anxious worried brown eyes, "
+        "wearing a beige hijab and pale rose-colored dress, "
+        "concerned tired expression"
+    ),
+    "daughter": (
+        "the CHERRY DAUGHTER character — small child anthropomorphic cherry-headed "
+        "girl (around 6 years old), red round cherry-shaped head with green stem hair, "
+        "big innocent dark eyes, "
+        "wearing a simple white dress with red details, "
+        "frightened or confused expression"
+    ),
+    "friend": (
+        "the BLUEBERRY FRIEND character — young adult anthropomorphic blueberry-headed "
+        "man (early 20s, same age as the strawberry son), deep blue blueberry-shaped "
+        "head with a small green leaf, kind dark eyes, "
+        "wearing a navy blue tunic with leather straps, "
+        "loyal warm expression "
+        "(NEVER the same fruit as the son — always blueberry, distinct from him)"
+    ),
+    "enemy": (
+        "the DARK GRAPE ENEMY soldier — anthropomorphic dark-purple grape-headed warrior, "
+        "menacing glowing red eyes, sharp jagged scar across the face, "
+        "wearing black scaled armor with spiked shoulders, "
+        "cruel smirking expression, deeper raspy voice"
+    ),
+    "shadow": (
+        "the SHADOW STRAWBERRY character — same young adult anthropomorphic "
+        "strawberry-headed man (early 20s) as the regular son but corrupted "
+        "by darkness: deep blood-red strawberry head with darker tones, "
+        "glowing dark crimson eyes, swirling dark smoke around him, "
+        "wearing tattered black robes, cold cruel smirk, deeper colder voice — "
+        "this is the son's alter ego / inner darkness given form, NOT a different person"
+    ),
+}
+
 
 def clip_seed(title: str, index: int) -> int:
     """Deterministic seed per (title, clip_index). Stable across runs."""
@@ -44,9 +133,43 @@ def clip_seed(title: str, index: int) -> int:
     return int(h[:8], 16)
 
 
-def build_veo_prompt(beat: Beat, global_setting: str) -> str:
-    """Compose the final Veo prompt for one beat."""
-    return f"{global_setting}, {beat.english_motion}, {VIDEO_STYLE_SUFFIX}"
+def build_veo_prompt(beat: Beat, global_setting: str, *, with_dialogue: bool = False) -> str:
+    """Compose the final Veo prompt for one beat.
+
+    `with_dialogue=True` enables Veo 3's native lip-synced dialogue: the
+    Arabic line is quoted in the prompt with a speaking instruction, and
+    Veo generates the speech audio + matching mouth movement in one pass.
+    No separate TTS stage runs. Voice characteristics are set by Veo, not
+    by an external voice ID — so stability across clips is approximate,
+    not pinned to ElevenLabs.
+    """
+    base = f"{global_setting}, {beat.english_motion}"
+    if with_dialogue and beat.arabic:
+        speaker_desc = SPEAKER_DESCRIPTIONS.get(beat.speaker, "the speaking character")
+        # Stronger language lock — empirically Veo's TTS sometimes ignores
+        # "speaks Syrian Arabic" and renders the line in English. The prompt
+        # is mostly English (visuals, character desc), so the model can
+        # default to English audio. We now (a) explicitly forbid English,
+        # (b) re-state the language in Arabic itself (يجب أن يكون النطق
+        # بالعربية), and (c) put the Arabic line in quotes adjacent to a
+        # final reminder.
+        base += (
+            f". {speaker_desc} faces the camera at medium close-up, "
+            f"mouth open mid-speech with realistic synchronized lip movement. "
+            f"⚠️ AUDIO LANGUAGE LOCK: the spoken voice MUST be in ARABIC, "
+            f"specifically Syrian / Levantine dialect (شامي / سوري, as "
+            f"spoken in Damascus and Aleppo). "
+            f"يجب أن يكون النطق باللغة العربية فقط، باللهجة الشامية، "
+            f"وممنوع النطق بالإنجليزية أو أي لغة أخرى. "
+            f"Use natural Syrian markers: عم / شو / كتير / بدي / ليش / "
+            f"هلق / متل / ولا / منيح / تا / لإلي / يلي. "
+            f"Voice MUST NOT be in: ENGLISH, Modern Standard Arabic / فصحى, "
+            f"Egyptian / مصري, Gulf / خليجي, Iraqi / عراقي, Maghrebi / مغربي, "
+            f"or any non-Arabic language. "
+            f"The exact spoken line (in Arabic) is: \"{beat.arabic}\". "
+            f"Repeat: spoken in Arabic, Syrian dialect, never English."
+        )
+    return f"{base}, {VIDEO_STYLE_SUFFIX}"
 
 
 class BudgetExceededError(RuntimeError):
@@ -156,6 +279,11 @@ def _extract_last_frame(clip_path: Path, out_path: Path) -> None:
     extract_last_frame(clip_path, out_path)
 
 
+_UPLOAD_TIMEOUT_S = 180  # uguu.se can be slow for ~1MB images
+_UPLOAD_MAX_RETRIES = 4
+_UPLOAD_BACKOFFS_S = (3, 10, 30, 60)
+
+
 def _upload_image_get_url(local_path: Path) -> str:
     """Upload a local image to uguu.se (free, anonymous, 24h retention) and
     return the public URL so Kie.ai's Veo can fetch it.
@@ -163,23 +291,43 @@ def _upload_image_get_url(local_path: Path) -> str:
     Files stay for 24 hours; we only need them for a few minutes (one Veo
     job), so this fits. 0x0.st was the previous choice but is currently
     disabled ("AI botnet spam"); uguu.se is the de-facto replacement.
-    Tests monkeypatch this function.
+
+    Retries on read-timeout and connection errors — uguu.se has been
+    intermittently slow during this project, and a single 60s timeout
+    aborts a run that's already several dollars deep into Veo. Tests
+    monkeypatch this function.
     """
-    with local_path.open("rb") as f:
-        resp = requests.post(
-            "https://uguu.se/upload",
-            files={"files[]": (local_path.name, f, "image/png")},
-            headers={"User-Agent": "Mozilla/5.0 (faceless-pipeline)"},
-            timeout=60,
-        )
-    if resp.status_code >= 400:
-        raise RuntimeError(
-            f"uguu.se upload failed: {resp.status_code}: {resp.text[:200]}"
-        )
-    data = resp.json()
-    if not data.get("success") or not data.get("files"):
-        raise RuntimeError(f"uguu.se upload returned no url: {data}")
-    return str(data["files"][0]["url"])
+    last_exc: Exception | None = None
+    for attempt in range(_UPLOAD_MAX_RETRIES):
+        try:
+            with local_path.open("rb") as f:
+                resp = requests.post(
+                    "https://uguu.se/upload",
+                    files={"files[]": (local_path.name, f, "image/png")},
+                    headers={"User-Agent": "Mozilla/5.0 (faceless-pipeline)"},
+                    timeout=_UPLOAD_TIMEOUT_S,
+                )
+            if resp.status_code >= 400:
+                raise RuntimeError(
+                    f"uguu.se upload failed: {resp.status_code}: {resp.text[:200]}"
+                )
+            data = resp.json()
+            if not data.get("success") or not data.get("files"):
+                raise RuntimeError(f"uguu.se upload returned no url: {data}")
+            return str(data["files"][0]["url"])
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                RuntimeError) as e:
+            last_exc = e
+            if attempt < _UPLOAD_MAX_RETRIES - 1:
+                wait = _UPLOAD_BACKOFFS_S[attempt]
+                print(f"[upload] uguu.se retry {attempt+1}/{_UPLOAD_MAX_RETRIES} "
+                      f"after {wait}s ({type(e).__name__}: {e})")
+                import time
+                time.sleep(wait)
+    raise RuntimeError(
+        f"uguu.se upload failed after {_UPLOAD_MAX_RETRIES} attempts: {last_exc}"
+    )
 
 
 def generate_clips_chained(
@@ -197,6 +345,7 @@ def generate_clips_chained(
     poll_interval_s: int,
     poll_timeout_s: int,
     reroll_indices: list[int] | None = None,
+    with_dialogue: bool = False,
 ) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
@@ -242,7 +391,7 @@ def generate_clips_chained(
             prev_last_frame_url = _upload_image_get_url(last_frame_path)
             continue
 
-        prompt = build_veo_prompt(beat, script.global_setting)
+        prompt = build_veo_prompt(beat, script.global_setting, with_dialogue=with_dialogue)
         image_urls = [sheet_url]
         if prev_last_frame_url:
             image_urls.append(prev_last_frame_url)
@@ -259,6 +408,10 @@ def generate_clips_chained(
             job_id, poll_interval_s=poll_interval_s, timeout_s=poll_timeout_s,
         )
         client.download(url, out_path)
+        # Move moov atom to the front so HTML5 players can stream progressively
+        # instead of waiting for the full file. Silent no-op on failure.
+        from pipeline.mp4_faststart import rewrite_with_faststart
+        rewrite_with_faststart(out_path)
         _extract_last_frame(out_path, last_frame_path)
         prev_last_frame_url = _upload_image_get_url(last_frame_path)
 
