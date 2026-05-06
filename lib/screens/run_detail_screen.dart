@@ -39,6 +39,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
       if (_run == null ||
           _run!.isRunning ||
           _run!.isAwaitingApproval ||
+          _run!.isAwaitingVeoApproval ||
           _run!.isFailed) {
         _refresh(silent: true);
       }
@@ -93,6 +94,63 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     // a status refresh confirms we've moved past awaiting_approval. The
     // 5-sec poll will release it.
     if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _approveVeo() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Approved — starting Veo generation…'),
+      duration: Duration(seconds: 4),
+    ));
+    try {
+      await widget.client.approveVeoRun(widget.runId);
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Approve failed: $e')));
+        setState(() => _busy = false);
+      }
+      return;
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _rerollCharacterSheet() async {
+    if (_busy) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reroll character sheet?'),
+        content: const Text(
+          'This deletes the current character sheet and regenerates it on Flux. '
+          'Costs another \$0.05.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reroll (\$0.05)')),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await widget.client.rerollCharacterSheet(widget.runId);
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Reroll failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _resume() async {
@@ -381,12 +439,24 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                   (run.isComplete ? _script!.beats.length : 0),
             ),
           ],
-          if (run.isAwaitingApproval) ...[
+          if (run.isAwaitingVeoApproval) ...[
+            const SizedBox(height: 16),
+            _CharacterSheetPanel(
+              runId: run.id,
+              client: widget.client,
+              onReroll: _busy ? null : _rerollCharacterSheet,
+            ),
+          ],
+          if (run.isAwaitingApproval || run.isAwaitingVeoApproval) ...[
             const SizedBox(height: 16),
             _ApprovalBar(
               busy: _busy,
-              cost: _script?.estimatedCostUsd ?? 0,
-              onApprove: _approve,
+              // For the Veo gate, show only the Veo cost (Flux $0.05 already spent).
+              cost: run.isAwaitingVeoApproval
+                  ? ((_script?.estimatedCostUsd ?? 0) - 0.05).clamp(0.0, double.infinity)
+                  : (_script?.estimatedCostUsd ?? 0),
+              isVeoGate: run.isAwaitingVeoApproval,
+              onApprove: run.isAwaitingVeoApproval ? _approveVeo : _approve,
               onEdit: _editScript,
               onCancel: _cancelAndDelete,
             ),
@@ -580,12 +650,14 @@ class _BeatTile extends StatelessWidget {
 class _ApprovalBar extends StatelessWidget {
   final bool busy;
   final double cost;
+  final bool isVeoGate;     // NEW
   final VoidCallback onApprove;
   final VoidCallback onEdit;
   final VoidCallback onCancel;
   const _ApprovalBar({
     required this.busy,
     required this.cost,
+    this.isVeoGate = false,   // NEW with default
     required this.onApprove,
     required this.onEdit,
     required this.onCancel,
@@ -610,10 +682,12 @@ class _ApprovalBar extends StatelessWidget {
                         AlwaysStoppedAnimation(FacelessTheme.accent)),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Starting Veo generation… (Flux character sheet first, ~30s)',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  isVeoGate
+                      ? 'Starting Veo generation… (clips will appear shortly)'
+                      : 'Approving — generating character sheet on Flux (~30s)…',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -633,7 +707,9 @@ class _ApprovalBar extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Approve to start Veo generation (~\$${cost.toStringAsFixed(2)})',
+                    isVeoGate
+                        ? 'Approve to start Veo generation (~\$${cost.toStringAsFixed(2)})'
+                        : 'Approve to render character sheet on Flux (~\$0.05); Veo cost (~\$${cost.toStringAsFixed(2)}) confirmed at the next step',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -853,6 +929,82 @@ class _ClipThumbBoxState extends State<_ClipThumbBox> {
   }
 }
 
+
+class _CharacterSheetPanel extends StatefulWidget {
+  final String runId;
+  final FacelessApiClient client;
+  final VoidCallback? onReroll;
+  const _CharacterSheetPanel({
+    required this.runId,
+    required this.client,
+    required this.onReroll,
+  });
+  @override
+  State<_CharacterSheetPanel> createState() => _CharacterSheetPanelState();
+}
+
+class _CharacterSheetPanelState extends State<_CharacterSheetPanel> {
+  String? _url;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final uri = await widget.client.thumbnailUrl(widget.runId);
+    if (mounted) setState(() => _url = uri.toString());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: FacelessTheme.surface2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('CHARACTER SHEET (FLUX)',
+                style: TextStyle(
+                    color: FacelessTheme.textSecondary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                    letterSpacing: 1.2)),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _url == null
+                  ? const SizedBox(
+                      height: 200,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: _url!,
+                      fit: BoxFit.contain,
+                      errorWidget: (_, _, _) => const SizedBox(
+                        height: 200,
+                        child: Center(child: Icon(Icons.broken_image)),
+                      ),
+                      placeholder: (_, _) => const SizedBox(
+                        height: 200,
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: widget.onReroll,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reroll character sheet (\$0.05)'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Multi-select dialog: which clips to regenerate. Each Veo Fast clip is
 /// ~$0.85, so the dialog shows live cost as the user toggles indices.
