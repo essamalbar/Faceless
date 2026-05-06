@@ -32,17 +32,28 @@ class ThemeSeed:
 
 @dataclass(frozen=True)
 class Beat:
-    """One narration beat ↔ one Veo clip in the Shorts pipeline."""
+    """One narration beat ↔ one Veo clip in the Shorts pipeline.
+
+    `speaker` selects which voice reads this beat (role tag — mother/son/...).
+    `character_name` is a free-form Arabic name like "خالد" / "فاطمة" — the
+    writer picks per-story names so the Flux lineup and UI labels are not
+    locked to the same handful of role words.
+    """
     arabic: str
     english_motion: str
     clip_duration_s: float = 8.0  # how long the matching Veo clip should run
+    speaker: str = "narrator"
+    character_name: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Beat":
-        return cls(**d)
+        # Tolerate older schema: drop unknown keys, supply default for missing speaker/character_name.
+        allowed = {"arabic", "english_motion", "clip_duration_s", "speaker", "character_name"}
+        clean = {k: v for k, v in d.items() if k in allowed}
+        return cls(**clean)
 
 
 @dataclass(frozen=True)

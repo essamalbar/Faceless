@@ -389,6 +389,7 @@ class ScriptBeat(BaseModel):
     english_motion: str
     speaker: str
     clip_duration_s: float
+    character_name: str = ""           # NEW — free-form Arabic name, empty on legacy scripts
 
 
 class ScriptResponse(BaseModel):
@@ -614,6 +615,7 @@ class PasteScriptBeat(BaseModel):
     english_motion: str
     speaker: str
     clip_duration_s: float = 8.0
+    character_name: str = ""           # NEW — free-form Arabic name, empty on legacy scripts
 
 
 class CreateFromScriptRequest(BaseModel):
@@ -759,6 +761,7 @@ def create_run_from_script(req: CreateFromScriptRequest):
                 "english_motion": b.english_motion,
                 "speaker": b.speaker.strip().lower(),
                 "clip_duration_s": float(b.clip_duration_s),
+                "character_name": b.character_name,
             }
             for b in req.beats
         ],
@@ -896,6 +899,7 @@ def get_script(run_id: str):
                 english_motion=str(b.get("english_motion", "")),
                 speaker=str(b.get("speaker", "narrator")),
                 clip_duration_s=float(b.get("clip_duration_s", 8.0)),
+                character_name=str(b.get("character_name", "")),
             )
             for b in beats
         ],
@@ -1032,6 +1036,7 @@ class EditScriptBeat(BaseModel):
     english_motion: str
     speaker: str
     clip_duration_s: float
+    character_name: str = ""           # NEW — free-form Arabic name, empty on legacy scripts
 
 
 class EditScriptRequest(BaseModel):
@@ -1093,6 +1098,7 @@ def edit_script(run_id: str, req: EditScriptRequest):
             "english_motion": b.english_motion,
             "speaker": b.speaker.strip().lower(),
             "clip_duration_s": float(b.clip_duration_s),
+            "character_name": b.character_name,
         }
         for b in req.beats
     ]

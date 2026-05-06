@@ -1457,3 +1457,95 @@ def test_freeform_endpoint_validates_dialect(client, tmp_path, auth, monkeypatch
         headers=auth,
     )
     assert resp.status_code in (400, 422)
+
+
+# ---------------------------------------------------------------------------
+# CN-A: character_name field on Beat + API schemas
+# ---------------------------------------------------------------------------
+
+TOKEN = "test-token-abc"
+
+
+def _create_run_with_script_json(tmp_path: Path) -> str:
+    """Write a minimal run dir with a script.json (no character_name) and
+    return the run_id. Uses the same out-root the `client` fixture points at."""
+    run_id = "2026-05-06-cn-a"
+    rd = tmp_path / "out" / run_id
+    rd.mkdir(parents=True, exist_ok=True)
+    (rd / "script.json").write_text(json.dumps({
+        "title": "t", "theme": "folkloric",
+        "global_setting": "x", "music_mood": "dread",
+        "target_duration_s": 8.0,
+        "story_combined": "م",
+        "beats": [{
+            "arabic": "م", "english_motion": "x",
+            "clip_duration_s": 8.0, "speaker": "mother",
+        }],
+    }, ensure_ascii=False), encoding="utf-8")
+    return run_id
+
+
+def test_get_script_returns_character_name(tmp_path, client):
+    """When script.json carries character_name on each beat, the API serves it."""
+    run_id = _create_run_with_script_json(tmp_path)
+    # Overwrite the helper-written script with one that has character_name
+    sp = tmp_path / "out" / run_id / "script.json"
+    sp.write_text(json.dumps({
+        "title": "t", "theme": "folkloric",
+        "global_setting": "x", "music_mood": "dread",
+        "target_duration_s": 8.0,
+        "story_combined": "م",
+        "beats": [{
+            "arabic": "م", "english_motion": "x",
+            "clip_duration_s": 8.0, "speaker": "mother",
+            "character_name": "أم خالد",
+        }],
+    }, ensure_ascii=False), encoding="utf-8")
+    resp = client.get(
+        f"/runs/{run_id}/script",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["beats"][0]["character_name"] == "أم خالد"
+
+
+def test_edit_script_roundtrips_character_name(tmp_path, client):
+    """PUT /runs/{id}/script accepts character_name and writes it back."""
+    run_id = _create_run_with_script_json(tmp_path)
+    payload = {
+        "title": "edited",
+        "beats": [{
+            "arabic": "ح", "english_motion": "x", "speaker": "son",
+            "clip_duration_s": 8.0, "character_name": "خالد",
+        }],
+    }
+    resp = client.put(
+        f"/runs/{run_id}/script",
+        json=payload,
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["beats"][0]["character_name"] == "خالد"
+
+
+def test_from_script_accepts_character_name(tmp_path, client):
+    """POST /runs/from-script accepts character_name on each beat."""
+    payload = {
+        "title": "Hand", "theme": "folkloric",
+        "beats": [{
+            "arabic": "م", "english_motion": "x", "speaker": "mother",
+            "clip_duration_s": 8.0, "character_name": "أم يوسف",
+        }],
+    }
+    resp = client.post(
+        "/runs/from-script", json=payload,
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    run_id = body["id"]
+    resp2 = client.get(f"/runs/{run_id}/script",
+                       headers={"Authorization": f"Bearer {TOKEN}"})
+    assert resp2.status_code == 200
+    assert resp2.json()["beats"][0]["character_name"] == "أم يوسف"

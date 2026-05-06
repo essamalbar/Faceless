@@ -106,3 +106,33 @@ def test_script_has_target_duration():
     )
     assert s.target_duration_s == 64.0
     assert Script.from_dict(s.to_dict()).target_duration_s == 64.0
+
+
+def test_beat_carries_character_name():
+    b = Beat(
+        arabic="مرحبا",
+        english_motion="x",
+        clip_duration_s=8.0,
+        speaker="mother",
+        character_name="فاطمة",
+    )
+    assert b.character_name == "فاطمة"
+    d = b.to_dict()
+    assert d["character_name"] == "فاطمة"
+    b2 = Beat.from_dict(d)
+    assert b2 == b
+
+
+def test_beat_character_name_defaults_empty():
+    b = Beat(arabic="x", english_motion="y")
+    assert b.character_name == ""
+
+
+def test_beat_from_dict_accepts_legacy_no_character_name():
+    """Existing script.json files on disk lack character_name. Loading must work."""
+    legacy = {
+        "arabic": "x", "english_motion": "y",
+        "clip_duration_s": 8.0, "speaker": "mother",
+    }
+    b = Beat.from_dict(legacy)
+    assert b.character_name == ""
