@@ -260,9 +260,13 @@ def generate_script_with_uniqueness(
 SHORTS_WRITER_SYSTEM = (
     "أنت كاتب قصص ميلودراما عائلية للـTikTok بأسلوب قنوات Sunstoriz — "
     "قصص مأساوية واقعية: فقر، تضحية، مرض، خيانة، إدمان، حسرة الأمومة. "
-    "اكتب باللهجة المصرية أو الخليجية البسيطة. ضمير الراوي / المشاهد. "
-    "البطلة عادةً أم فقيرة. الابن غدّار أو ضعيف. "
-    "الإيقاع متوازن، الجمل قصيرة، التفاصيل ملموسة (نقود، مستشفى، بيت قديم، شارع، قمامة). "
+    "اكتب باللهجة السورية / الشامية البسيطة (مش فصحى، مش مصري، مش خليجي). "
+    "كلمات شامية: 'شو'، 'كتير'، 'هلق'، 'ليش'، 'ما عم'، 'بدي'، 'يلي'، 'منيح'، 'بكير'. "
+    "**كل مشهد لازم يكون كلام مباشر من شخصية بضمير المتكلم (أنا) — مش راوي.** "
+    "كل بيت = شخصية بتتكلم/تفكر/تصرخ بصوتها هي. ممنوع وصف خارجي 'الأم تبكي' — "
+    "بدلها اكتب الكلام اللي بتقوله الأم نفسها: 'أنا قلبي مكسور…'. "
+    "البطلة عادةً أم فقيرة. الابن غدّار أو ضعيف. الأب مات أو مريض. الدكتور بيبلغ الخبر. "
+    "الإيقاع متوازن، الجمل قصيرة، عاطفية مباشرة، تفاصيل ملموسة. "
     "النهاية لازم تكون مأساوية حاسمة (موت، انكسار، فقدان أبدي) — مش مفتوحة. "
     "ممنوع: 'فجأة سمعت صوتاً'، 'كان حلماً'، الجن، الخوارق، شرح زائد. "
     "ممنوع نهاية مفتوحة — لازم تخلص القصة بحدث نهائي ملموس."
@@ -277,45 +281,76 @@ SHORTS_WRITER_PROMPT_TEMPLATE = """\
 
 أسلوب القصة (المهم):
 - ميلودراما عائلية واقعية: فقر، تضحية الأم، مرض، إدمان، خيانة الابن، حسرة.
-- لهجة مصرية أو خليجية بسيطة، جمل قصيرة عاطفية.
-- ضمير الراوي (يحكي عن شخصيات، مش بضمير المتكلم).
+- **اللهجة السورية / الشامية فقط** (مش فصحى ولا مصرية ولا خليجية)، جمل قصيرة عاطفية.
+- استخدم كلمات شامية: شو/كتير/هلق/ليش/ما عم/بدي/يلي/منيح/بكير/ولاد/البي/إيمتى/ع/تاع/متل/هيك/خلص.
+- صوت سرد متحول: كل مشهد شخصية مختلفة بتتكلم — الأم بتشتكي، الابن بيصرخ، الدكتور بيبلغ الخبر.
 - البطلة أم فقيرة تضحي. ابنها يكبر ويتنكر لها أو يدمن أو يضيع المال.
 - الأب مات أو مريض. الجار غني ومتجاهل.
-- النهاية مأساوية حاسمة (الأم بتموت، الابن بيندم متأخر، تدمير العائلة).
+- النهاية مأساوية حاسمة وملموسة (موت، انكسار نهائي، فقدان أبدي) — لازم تكون مغلقة، مش مفتوحة.
 
-CRITICAL WORD COUNT ENFORCEMENT — لا تتجاهل هذه القاعدة:
-- كل مشهد لازم يكون **{words_per_beat} كلمة على الأقل** ({min_words_per_beat} كحد أدنى مطلق).
-- المشاهد القصيرة (أقل من {min_words_per_beat} كلمة) سترفض ولن تستخدم.
-- مجموع كل المشاهد لازم ≥ {min_total_words} كلمة بالعربي.
-- اكتب جمل كاملة مفصلة. أضف تفاصيل بصرية، مشاعر، مكان، زمان.
-- مثال على مشهد بالعدد الصحيح للكلمات (~30 كلمة):
-  "الأم الفقيرة كانت قاعدة في المطبخ بتبكي في صمت، تبص للولد الصغير وهو بياكل آخر لقمة عيش في البيت، قلبها مكسور بس مخبية حزنها عشان ما يحسش بضعفها."
-  (this is 28 Arabic words — that's the target length per beat)
+CRITICAL WORD COUNT — كل مشهد كلامه لازم يتسع في {clip_seconds} ثانية صوت فقط:
+- كل مشهد ≈ **{words_per_beat} كلمة** كحد أقصى ({min_words_per_beat} كحد أدنى).
+- المشاهد الأقل من {min_words_per_beat} كلمة سترفض. المشاهد الأكثر من {max_words_per_beat} كلمة سترفض كذلك (الصوت يطول على الكليب).
+- مجموع كل المشاهد لازم ≥ {min_total_words} كلمة و ≤ {max_total_words} كلمة.
+- اكتب جمل قصيرة مكثفة (مش طويلة) — ركز على لقطة واحدة عاطفية في كل مشهد.
+- مثال على مشهد بالعدد الصحيح للكلمات (~22 كلمة، لهجة شامية):
+  "أنا قاعدة بالمطبخ عم بكي بصمت، عم بتطلع ع ابني عم ياكل آخر لقمة عنا، قلبي مكسور بس عم خبي حزني."
+  (~22 Arabic words in Syrian dialect — that's the target length)
+
+CRITICAL — كل مشهد لازم تتكلم فيه شخصية بضمير المتكلم (أنا). ممنوع راوي خارجي:
+- كل مشهد عنده حقل `speaker` يحدد مين بيتكلم. القيم المسموحة فقط:
+  * "mother"      — الأم (صوت أنثوي حزين)
+  * "son"         — الابن (صوت ذكوري)
+  * "father"      — الأب (صوت ذكوري)
+  * "doctor"      — الدكتور (صوت ذكوري)
+  * "neighbor"    — الجار/صاحب المحل (صوت ذكوري)
+  * "grandmother" — الجدة (صوت أنثوي)
+  * "wife"        — الزوجة (صوت أنثوي)
+  * "daughter"    — البنت (صوت أنثوي)
+- لازم البيت يكون كلام مباشر من تلك الشخصية بضمير المتكلم (مثلاً الأم تقول: "أنا قاعدة في المطبخ، قلبي مكسور…").
+- ممنوع تماماً قيمة "narrator" — كل مشهد لشخصية معينة.
+- البطلة الأم لها على الأقل 4 مشاهد. الابن له على الأقل 2 مشهد.
+- التنويع مطلوب: غير الشخصية المتكلمة بين المشاهد (مش كلهم mother).
+
+CRITICAL — كل شخصية لها اسم عربي ثابت (character_name):
+- لكل بيت أعطِ `character_name` (اسم عربي قصير، مثلاً "أم خالد"، "خالد"، "د. سامي").
+- نفس الشخصية = نفس الاسم في كل البيتات. الأم اسمها واحد عبر القصة كلها.
+- اختر أسماء عربية مألوفة. ممنوع أسماء أجنبية.
+- إذا الشخصية بدون اسم محدد (مثل بائع الخضرة)، استعمل لقبًا قصيرًا (مثل "البقال").
 
 CRITICAL — ALL CHARACTERS ARE ANTHROPOMORPHIC FRUIT (Sunstoriz signature style):
-- الأم = LEMON character (yellow lemon-head body, sad eyes, wears black hijab/dress)
-- الابن (طفل) = small STRAWBERRY character (red strawberry head with green leaves, child clothes)
-- الابن (كبير) = adult STRAWBERRY character (with beard, traditional thobe or casual clothes)
-- الأب = older LEMON character (with beard) أو APPLE
-- الدكتور = APPLE character (red apple head, white coat, stethoscope)
-- الجار / صاحب المحل = MANGO أو POMEGRANATE
-- الزوجة = PEACH أو ORANGE
-- استخدم نفس الشخصية (نفس الفاكهة) عبر كل المشاهد للحفاظ على التطابق
+- الأم = LEMON character (yellow lemon-head, sad eyes, wears black hijab and grey dress, mid-50s)
+- **الابن = adult STRAWBERRY character (early 20s young man, red strawberry head with green-leaf hair, light beard, grey t-shirt). NEVER a child or boy. The son is a grown young adult in EVERY beat.**
+- الأب = older LEMON character (mid-60s, white beard, white thobe, weak)
+- الدكتور = APPLE character (red apple head, round glasses, white coat, stethoscope)
+- الجار = MANGO character (orange-yellow mango head, beige dishdasha, smug)
+- الزوجة = PEACH character (mid-20s, beige hijab, anxious)
+- البنت = CHERRY character (~6 years old, red cherry head, white dress)
 
-البنية الدرامية:
-- مشهد 1 (الفقر/البداية): الأم وابنها الصغير في بيت متواضع، تعطيه آخر فلوس
-- مشاهد 2-4 (التصاعد): الابن يكبر، يبدأ في التغيير — يدمن، يقامر، يهجر الأم
-- مشاهد 5-6 (الأزمة): الأم تكتشف، تنكسر، تواجه مأساة (مرض الأب، الفقر المدقع)
-- المشهد الأخير (النهاية الحاسمة المأساوية): موت أو فقدان نهائي. **لازم نهاية حاسمة وملموسة — موت، خراب، فقدان أبدي. مش مفتوحة.**
+**CHARACTER AGE LOCK — لا يتغير عمر الشخصية وسط الفيديو:**
+- الابن دائماً شاب بالغ (20-25 سنة) في كل البيتات. ممنوع طفل ثم شاب — الفيديو لا يصور التقدم في العمر.
+- استخدم نفس وصف الشخصية (نفس الفاكهة، نفس العمر، نفس الملابس) عبر كل المشاهد.
+- إذا القصة تتطلب طفولة وبلوغ، اختر واحد فقط للفيديو كله.
+
+البنية الدرامية (كل بيت = شخصية بتتكلم بصوتها):
+- مشهد 1 (افتتاحية): الأم تتكلم عن فقرها وابنها الصغير ("أنا قاعدة في المطبخ، ما عندي غير لقمة لابني…")
+- مشاهد 2-4 (التصاعد): تنويع المتكلمين — الابن يقول كلامه، الأم ترد، الأب أو الدكتور يدخل
+- مشاهد 5-7 (الأزمة): الابن يتنكر/يصرخ، الأم تتوسل، الدكتور يبلغ خبر سيء
+- المشهد قبل الأخير: الأم لحظة الانكسار النهائي
+- المشهد الأخير (النهاية): الأم أو الابن يقول الكلمة الأخيرة قبل الموت/الفقدان. **لازم نهاية مغلقة حاسمة ملموسة.**
 
 كل مشهد:
-- نص عربي ~{words_per_beat} كلمة (جملة أو جملتين، عاطفية، تفاصيل ملموسة).
-- وصف بصري بالإنجليزية ~30 كلمة:
-  - **CRITICAL: 3D Pixar-style animation, photorealistic textures, anthropomorphic fruit characters with human clothing**
-  - شخصية معينة من الفاكهة (lemon mother in black hijab, strawberry son, apple doctor, etc.)
-  - تعبير وجهي عاطفي قوي (sad eyes, crying, angry, shocked, smug)
-  - بيئة محددة (poor humble home, hospital corridor, gambling den with hookah, junkyard at sunset, dump trucks)
-  - إضاءة درامية (dim warm lamp, fluorescent hospital, golden sunset, dark shadows)
+- نص عربي ~{words_per_beat} كلمة من كلام الشخصية نفسها بضمير المتكلم (أنا) باللهجة الشامية، جملة أو جملتين.
+  مثال صح: "أنا قلبي عم يحترق، ابني نسي شو عملت لأجلو، ضحيت بكل عمري وبالآخر تنكر لي."
+  مثال غلط (راوي): "الأم تبكي على ابنها." — هذا ممنوع.
+- وصف بصري بالإنجليزية ~30 كلمة، **يصف استمراراً مباشراً من المشهد السابق**:
+  - **CONTINUITY-CRITICAL**: each beat's visual MUST start exactly where the previous beat's visual ended. If beat N ended with "mother holding bread, looking down", beat N+1 must start with "mother still holding bread, raising her eyes" — same character, same outfit, same camera framing as the previous frame, then the new motion begins.
+  - **CRITICAL: 3D Pixar-style animation, the speaking character centered, FACING CAMERA, mouth open mid-speech, frontal medium close-up**
+  - شخصية معينة من الفاكهة بتتكلم (lemon mother speaking, strawberry son shouting, apple doctor delivering news)
+  - تعبير وجهي عاطفي قوي يطابق الكلام (crying eyes, angry shout, broken whisper)
+  - بيئة محددة وراء الشخصية (poor humble home, hospital corridor, junkyard at sunset)
+  - إضاءة درامية (dim warm lamp on face, fluorescent hospital, golden sunset)
+  - Use phrases like: "continuing from prior frame", "still in the same kitchen", "same lemon mother now turns to look at..."
 
 أرجع JSON صالح فقط (بدون markdown أو ``` أو شرح) بهذه الحقول بالضبط:
 {{
@@ -325,21 +360,32 @@ CRITICAL — ALL CHARACTERS ARE ANTHROPOMORPHIC FRUIT (Sunstoriz signature style
   "music_mood": "اختر كلمة واحدة فقط: drone أو dread أو cosmic أو discovery (بدون شرح أو رمز |)",
   "target_duration_s": <integer 60..120, your chosen total length>,
   "beats": [
-    {{"arabic": "...", "english_motion": "...", "clip_duration_s": <float 6..10, this beat's duration>}},
+    {{"arabic": "...", "english_motion": "...", "clip_duration_s": <float 6..10>, "speaker": "mother|son|father|doctor|neighbor|narrator", "character_name": "اسم عربي محدد للشخصية"}},
     ...repeat between {min_beats} and {max_beats} times...
   ]
 }}
 
-ملاحظة: عدد البيتات لازم بين {min_beats} و {max_beats}. مجموع clip_duration_s لازم ≈ target_duration_s.
+ملاحظات إجبارية:
+- عدد البيتات لازم بين {min_beats} و {max_beats}.
+- مجموع clip_duration_s لازم ≈ target_duration_s.
+- المشهد الأخير لازم يكون نهاية مغلقة حاسمة (موت، فقدان نهائي، انكسار). ممنوع نهاية مفتوحة أو سؤال.
 """
 
 
 def build_shorts_writer_prompt(
     seed: ThemeSeed, min_beats: int = 8, max_beats: int = 15,
-    words_per_beat: int = 30,
+    words_per_beat: int = 22, clip_seconds: int = 8,
 ) -> str:
-    min_words_per_beat = max(int(words_per_beat * 0.7), 18)
+    """Build the per-beat writer prompt.
+
+    Default words_per_beat dropped from 30 → 22 because per-beat audio at
+    natural Arabic pace is ~3 words/second, so >24 words won't fit in an
+    8-second clip and would either truncate the audio or stretch the video.
+    """
+    min_words_per_beat = max(int(words_per_beat * 0.6), 12)
+    max_words_per_beat = int(words_per_beat * 1.2)
     min_total_words = min_beats * min_words_per_beat
+    max_total_words = max_beats * max_words_per_beat
     return SHORTS_WRITER_PROMPT_TEMPLATE.format(
         premise=seed.premise,
         theme=seed.theme,
@@ -347,7 +393,10 @@ def build_shorts_writer_prompt(
         max_beats=max_beats,
         words_per_beat=words_per_beat,
         min_words_per_beat=min_words_per_beat,
+        max_words_per_beat=max_words_per_beat,
         min_total_words=min_total_words,
+        max_total_words=max_total_words,
+        clip_seconds=clip_seconds,
         global_setting_hint="نفس الإعداد عبر المشاهد",
     )
 
@@ -367,14 +416,30 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
     beats_raw = data.get("beats") or []
     if not isinstance(beats_raw, list) or not beats_raw:
         raise ValueError("shorts script must contain a non-empty 'beats' list")
+    valid_speakers = {
+        "mother", "son", "father", "doctor", "neighbor",
+        "grandmother", "wife", "daughter", "friend", "enemy", "shadow",
+    }
     beats: tuple[Beat, ...] = tuple(
         Beat(
             arabic=str(b.get("arabic", "")).strip(),
             english_motion=str(b.get("english_motion", "")).strip(),
             clip_duration_s=float(b.get("clip_duration_s", 8.0)),
+            speaker=str(b.get("speaker", "")).strip().lower(),
+            character_name=str(b.get("character_name", "")).strip(),
         )
         for b in beats_raw
     )
+    # Enforce: every beat must be a character speaking, not a narrator.
+    # The writer prompt makes this explicit; this is the safety net.
+    for i, b in enumerate(beats):
+        if b.speaker not in valid_speakers:
+            raise ValueError(
+                f"beat {i+1} has invalid speaker={b.speaker!r}; "
+                f"must be one of {sorted(valid_speakers)}. "
+                f"narrator/third-person is forbidden — every beat must be "
+                f"first-person speech from a named character."
+            )
     # Reject if any beat is missing both fields — clear LLM failure.
     for i, b in enumerate(beats):
         if not b.arabic or not b.english_motion:
@@ -410,6 +475,7 @@ EXPAND_PROMPT_TEMPLATE = """\
 {draft_json}
 
 أرجع JSON صالح فقط بنفس الحقول السابقة، لكن مع مشاهد مفصلة (~{target} كلمة لكل مشهد).
+حافظ على حقل character_name كما هو لكل بيت — لا تغير أسماء الشخصيات.
 """
 
 
@@ -428,13 +494,76 @@ def _expand_short_script(gemini, draft: Script, target_words_per_beat: int) -> S
     return _parse_shorts_script_json(raw, seed_proxy)
 
 
+SHORTS_CRITIQUE_PROMPT_TEMPLATE = """\
+أنت محرر صارم لقصص ميلودراما عائلية للـTikTok بأسلوب @sunstoriz.
+المسودة التالية لازم تتحسن قبل ما تتحول لفيديو.
+
+المسودة:
+{draft_json}
+
+افحص هذه النقاط واحدة واحدة وصلح كل واحدة:
+
+1) **اللهجة الشامية / السورية فقط** عبر كل المشاهد.
+   - ممنوع كلمات فصحى (بكاء، يبكي، يصرخ) → بدلها بشامية (عم يبكي، عم يصرخ).
+   - ممنوع كلمات مصرية (بصرخ، بياكل، عشان) → بدلها (عم صرخ، عم ياكل، تا).
+   - ممنوع كلمات خليجية (شلون، وايد، لي) → بدلها (شو، كتير، لإلي).
+   - استخدم: عم / شو / كتير / بدي / ليش / هلق / متل / ولا / منيح / تا / لإلي / يلي.
+
+2) **عمر الابن ثابت عبر كل المشاهد.** اختر إما طفل صغير لكل القصة، أو شاب بالغ لكل القصة.
+   ممنوع طفل في مشهد ثم شاب بالغ في مشهد آخر — العمر لا يتغير وسط الفيديو.
+   إذا ما كان واضح، اختر "شاب بالغ في عشرينياته" ووحّد كل البيتات.
+
+3) **القصة فيها بداية + تصاعد + ذروة + نهاية حاسمة.**
+   - البيت الأول: لقطة افتتاحية قوية تشد المشاهد فوراً.
+   - البيتات الوسط: تصاعد عاطفي حقيقي، مش تكرار نفس الإحساس.
+   - البيت الأخير: نهاية مغلقة ملموسة (موت، فقدان نهائي، انكسار) — ممنوع نهاية مفتوحة.
+
+4) **الحوار طبيعي ومش مكرر.** لو شخصية تتكلم في عدة بيتات، كل بيت لازم يقول شيء جديد.
+   ممنوع تكرار نفس الجملة بصيغ مختلفة.
+
+5) **الـenglish_motion يلتزم بالاستمرارية البصرية بين البيتات.**
+   كل بيت لازم يبدأ من حيث انتهى البيت السابق (نفس المكان، نفس الإضاءة، نفس الشخصية تستمر بحركتها).
+   اكتب "continuing from prior frame" أو "same X still..." في كل البيتات بعد الأول.
+
+6) **الكلمات العربية كلها واضحة ومكتوبة صح.**
+   ممنوع أحرف غير عربية (كورية، يابانية، صينية، إلخ).
+   ممنوع كلمات مكتوبة غلط أو مخلوطة.
+
+7) **character_name ثابت لكل شخصية** عبر كل البيتات.
+   - لو الأم في بعض البيتات اسمها "أم خالد" وفي بيت آخر "أم محمد" — صلّحها لتكون موحدة.
+   - كل بيت لازم يحتوي حقل `character_name` بقيمة عربية قصيرة. لا تترك فارغًا.
+
+أرجع JSON صالح فقط (بدون markdown أو ``` أو شرح) بنفس الحقول السابقة (title, theme, global_setting, music_mood, target_duration_s, beats[]) لكن مع كل التحسينات.
+كل بيت لازم يحتوي: arabic, english_motion, clip_duration_s, speaker, character_name.
+"""
+
+
+def _critique_shorts_script(gemini, draft: Script, seed: ThemeSeed) -> Script:
+    """Second-pass editor that fixes dialect drift, character age, story arc, continuity."""
+    prompt = SHORTS_CRITIQUE_PROMPT_TEMPLATE.format(
+        draft_json=json.dumps(draft.to_dict(), ensure_ascii=False, indent=2),
+    )
+    raw = gemini.complete(prompt, system=SHORTS_WRITER_SYSTEM)
+    return _parse_shorts_script_json(raw, seed)
+
+
 def generate_shorts_script(
     gemini, seed: ThemeSeed,
     *,
-    min_beats: int = 8, max_beats: int = 15, words_per_beat: int = 30,
+    min_beats: int = 8, max_beats: int = 15, words_per_beat: int = 22,
     min_total_words: int | None = None, max_expand_retries: int = 2,
+    enable_critique: bool = True,
 ) -> Script:
-    """Single LLM call → Script with beats[]. If too short, ask to expand (no extra video cost)."""
+    """Generate a Shorts script: writer pass → critique pass → optional expand pass.
+
+    `words_per_beat` defaults to 22 to keep each beat's narration ≤ 8s
+    (Veo's per-clip limit) so audio and clip durations stay aligned.
+
+    `enable_critique=True` runs a second LLM call that explicitly checks
+    dialect consistency (Syrian only), character age stability, story-arc
+    quality, dialogue freshness, visual continuity, and Arabic correctness.
+    Adds one extra LLM call (free on Groq); meaningfully improves output.
+    """
     if min_total_words is None:
         min_total_words = int(min_beats * words_per_beat * 0.7)
 
@@ -448,6 +577,17 @@ def generate_shorts_script(
         raise ValueError(
             f"writer returned {len(script.beats)} beats, below min_beats={min_beats}"
         )
+
+    if enable_critique:
+        try:
+            critiqued = _critique_shorts_script(gemini, script, seed)
+            if len(critiqued.beats) >= min_beats:
+                script = critiqued
+            else:
+                print(f"[script] critique returned only {len(critiqued.beats)} beats; "
+                      f"keeping draft")
+        except Exception as e:
+            print(f"[script] critique failed ({type(e).__name__}: {e}); using draft")
 
     for attempt in range(max_expand_retries):
         total = sum(len(b.arabic.split()) for b in script.beats)

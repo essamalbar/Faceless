@@ -224,10 +224,10 @@ def test_shorts_parse_valid_response(fake_gemini):
         "global_setting": "abandoned village, night, desert",
         "music_mood": "dread",
         "beats": [
-            {"arabic": "كنتُ وحيداً عند البئر.", "english_motion": "lone hooded figure beside ancient well, slow push-in, moonlight"},
-            {"arabic": "سمعتُ بكاءً في الأعماق.", "english_motion": "close-up of dark well shaft, mist, faint glow rising"},
-            {"arabic": "ظهرتْ يدٌ عظمية.", "english_motion": "skeletal hand emerging from well rim, low angle, candlelight flicker"},
-            {"arabic": "ثم اختفى كل شيء.", "english_motion": "wide shot of empty village, fog rolling in, static camera"},
+            {"arabic": "كنتُ وحيداً عند البئر.", "english_motion": "lone hooded figure beside ancient well, slow push-in, moonlight", "speaker": "mother"},
+            {"arabic": "سمعتُ بكاءً في الأعماق.", "english_motion": "close-up of dark well shaft, mist, faint glow rising", "speaker": "mother"},
+            {"arabic": "ظهرتْ يدٌ عظمية.", "english_motion": "skeletal hand emerging from well rim, low angle, candlelight flicker", "speaker": "son"},
+            {"arabic": "ثم اختفى كل شيء.", "english_motion": "wide shot of empty village, fog rolling in, static camera", "speaker": "mother"},
         ],
     }, ensure_ascii=False))
     s = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
@@ -250,7 +250,7 @@ def test_shorts_overrides_theme_to_match_seed(fake_gemini):
     fake_gemini.when(lambda p: True, json.dumps({
         "title": "x", "theme": "domestic",  # WRONG
         "global_setting": "x", "music_mood": "drone",
-        "beats": [{"arabic": "ج1", "english_motion": "m1"}],
+        "beats": [{"arabic": "ج1", "english_motion": "m1", "speaker": "mother"}],
     }, ensure_ascii=False))
     s = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
     assert s.theme == "folkloric"
@@ -262,7 +262,7 @@ def test_shorts_normalizes_sloppy_music_mood(fake_gemini):
     fake_gemini.when(lambda p: True, json.dumps({
         "title": "x", "theme": "folkloric", "global_setting": "x",
         "music_mood": "drone | dread | cosmic | discovery",  # sloppy LLM output
-        "beats": [{"arabic": "ج1", "english_motion": "m1"}],
+        "beats": [{"arabic": "ج1", "english_motion": "m1", "speaker": "mother"}],
     }, ensure_ascii=False))
     s = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
     assert s.music_mood == "drone"  # normalizer extracts first valid mood
@@ -285,7 +285,7 @@ def test_shorts_rejects_beat_missing_field(fake_gemini):
     fake_gemini.when(lambda p: True, json.dumps({
         "title": "x", "theme": "folkloric", "global_setting": "x",
         "music_mood": "dread",
-        "beats": [{"arabic": "only arabic"}],  # missing english_motion
+        "beats": [{"arabic": "only arabic", "speaker": "mother"}],  # missing english_motion
     }, ensure_ascii=False))
     with pytest.raises(ValueError, match="missing"):
         generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
@@ -298,7 +298,7 @@ def test_shorts_strips_code_fence(fake_gemini):
     payload = json.dumps({
         "title": "x", "theme": "folkloric", "global_setting": "x",
         "music_mood": "dread",
-        "beats": [{"arabic": "ج", "english_motion": "m"}],
+        "beats": [{"arabic": "ج", "english_motion": "m", "speaker": "mother"}],
     }, ensure_ascii=False)
     fake_gemini.when(lambda p: True, f"```json\n{payload}\n```")
     s = generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
@@ -316,7 +316,8 @@ def test_shorts_writer_picks_num_beats_in_range(fake_gemini):
         "music_mood": "dread",
         "target_duration_s": 100,
         "beats": [
-            {"arabic": "ج" + str(i), "english_motion": "m", "clip_duration_s": 8.5}
+            {"arabic": "ج" + str(i), "english_motion": "m",
+             "clip_duration_s": 8.5, "speaker": "mother"}
             for i in range(12)
         ],
     }, ensure_ascii=False))
@@ -325,6 +326,37 @@ def test_shorts_writer_picks_num_beats_in_range(fake_gemini):
     assert len(s.beats) == 12
     assert s.target_duration_s == 100
     assert s.beats[0].clip_duration_s == 8.5
+
+
+def test_shorts_rejects_narrator_speaker(fake_gemini):
+    """Every beat must be a CHARACTER speaking, not a third-person narrator.
+    The user explicitly said the script must be the people inside the video
+    talking — not an external voiceover."""
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "x", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "dread",
+        "beats": [
+            {"arabic": "ج1", "english_motion": "m1", "speaker": "mother"},
+            {"arabic": "ج2", "english_motion": "m2", "speaker": "narrator"},  # NOT ALLOWED
+        ],
+    }, ensure_ascii=False))
+    with pytest.raises(ValueError, match="invalid speaker"):
+        generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
+
+
+def test_shorts_rejects_missing_speaker(fake_gemini):
+    """Beats without a `speaker` field are rejected — the writer must label every line."""
+    from pipeline.script import generate_shorts_script
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    fake_gemini.when(lambda p: True, json.dumps({
+        "title": "x", "theme": "folkloric", "global_setting": "x",
+        "music_mood": "dread",
+        "beats": [{"arabic": "ج1", "english_motion": "m1"}],  # no speaker
+    }, ensure_ascii=False))
+    with pytest.raises(ValueError, match="invalid speaker"):
+        generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
 
 
 def test_shorts_writer_clamps_to_min_beats_when_too_few(fake_gemini):
@@ -336,8 +368,52 @@ def test_shorts_writer_clamps_to_min_beats_when_too_few(fake_gemini):
         "title": "x", "theme": "folkloric", "global_setting": "x",
         "music_mood": "dread",
         "beats": [
-            {"arabic": f"ج{i}", "english_motion": "m"} for i in range(5)
+            {"arabic": f"ج{i}", "english_motion": "m", "speaker": "mother"}
+            for i in range(5)
         ],
     }, ensure_ascii=False))
     with pytest.raises(ValueError, match="below min_beats"):
         generate_shorts_script(fake_gemini, seed, min_beats=8, max_beats=15)
+
+
+def test_shorts_parser_reads_character_name():
+    """When the writer returns character_name on each beat, it appears on Beat."""
+    from pipeline.script import _parse_shorts_script_json
+    from pipeline.types import ThemeSeed
+    raw = '''{
+      "title": "t", "theme": "folkloric",
+      "global_setting": "g", "music_mood": "dread",
+      "target_duration_s": 16,
+      "beats": [
+        {"arabic":"x","english_motion":"y","clip_duration_s":8,"speaker":"mother","character_name":"أم خالد"},
+        {"arabic":"x","english_motion":"y","clip_duration_s":8,"speaker":"son","character_name":"خالد"}
+      ]
+    }'''
+    seed = ThemeSeed(theme="folkloric", premise="x")
+    script = _parse_shorts_script_json(raw, seed)
+    assert script.beats[0].character_name == "أم خالد"
+    assert script.beats[1].character_name == "خالد"
+
+
+def test_shorts_parser_legacy_omits_character_name():
+    """Legacy LLM responses without character_name still parse — default ''."""
+    from pipeline.script import _parse_shorts_script_json
+    from pipeline.types import ThemeSeed
+    raw = '''{
+      "title": "t", "theme": "folkloric",
+      "global_setting": "g", "music_mood": "dread",
+      "target_duration_s": 8,
+      "beats": [{"arabic":"x","english_motion":"y","clip_duration_s":8,"speaker":"mother"}]
+    }'''
+    script = _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+    assert script.beats[0].character_name == ""
+
+
+def test_writer_prompt_mentions_character_name():
+    """The Sunstoriz writer prompt instructs the LLM to pick consistent
+    Arabic character names per speaker."""
+    from pipeline.script import build_shorts_writer_prompt
+    from pipeline.types import ThemeSeed
+    p = build_shorts_writer_prompt(ThemeSeed(theme="folkloric", premise="x"))
+    # The prompt must reference the new field by its JSON key
+    assert "character_name" in p
