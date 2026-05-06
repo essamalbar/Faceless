@@ -424,7 +424,7 @@ def test_pause_after_character_sheet_exits_after_flux(
         pass
     monkeypatch.setattr("run._build_kie", lambda: FakeKie())
 
-    def fake_sheet(client, cfg, paths, script):
+    def fake_sheet(client, cfg, paths, script, **kw):
         sheet_calls.append(paths.character_sheet_png)
         paths.character_sheet_png.write_bytes(b"fake-png")
 
@@ -474,7 +474,7 @@ def test_pause_after_character_sheet_ignored_with_skip_video(
         pass
     monkeypatch.setattr("run._build_kie", lambda: FakeKie())
 
-    def fake_sheet(client, cfg, paths, script):
+    def fake_sheet(client, cfg, paths, script, **kw):
         sheet_calls.append(paths.character_sheet_png)
         paths.character_sheet_png.write_bytes(b"fake-png")
 
@@ -578,3 +578,76 @@ def test_freeform_flag_routes_to_freeform_writer(tmp_path, monkeypatch, music_bu
     assert rc == 0
     assert called["freeform"] is True
     assert called["shorts"] is False
+
+
+def test_freeform_mode_passes_custom_lineup_prompt(tmp_path, monkeypatch):
+    """When --freeform is set, _stage_character_sheet builds a lineup_prompt
+    from script.global_setting that does NOT contain the Sunstoriz cast."""
+    captured: dict = {}
+
+    def fake_generate_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        fake_generate_sheet,
+    )
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="3D Pixar animation, anthropomorphic animal characters",
+        music_mood="dread",
+        beats=(Beat(arabic="a", english_motion="x", clip_duration_s=8.0,
+                    speaker="mother"),),
+        story_combined="a", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        freeform_mode=True,
+    )
+    p = captured["lineup_prompt"]
+    assert p is not None
+    assert "anthropomorphic animal characters" in p
+    assert "Lemon mother" not in p   # sunstoriz must not leak in
+
+
+def test_legacy_mode_passes_none_lineup_prompt(tmp_path, monkeypatch):
+    """When freeform_mode is False (default), lineup_prompt is None so the
+    Sunstoriz hardcoded prompt fires inside generate_character_sheet."""
+    captured: dict = {}
+
+    def fake_generate_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        fake_generate_sheet,
+    )
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run2")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="anything",
+        music_mood="dread",
+        beats=(Beat(arabic="a", english_motion="x", clip_duration_s=8.0,
+                    speaker="mother"),),
+        story_combined="a", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        # freeform_mode defaults to False
+    )
+    assert captured["lineup_prompt"] is None

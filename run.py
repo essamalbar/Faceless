@@ -323,12 +323,31 @@ def _stage_video(args, cfg: Config, script: Script, paths: RunPaths) -> None:
     )
 
 
-def _stage_character_sheet(client, cfg: Config, paths: RunPaths, script: Script) -> None:
-    """Generate a Flux character sheet for visual consistency across Veo clips."""
+def _stage_character_sheet(
+    client, cfg: Config, paths: RunPaths, script: Script,
+    *, freeform_mode: bool = False,
+) -> None:
+    """Generate a Flux character sheet for visual consistency across Veo clips.
+
+    In freeform mode the lineup prompt is composed from script.global_setting
+    so the Flux render matches the user's chosen cast (animal / human /
+    surreal / etc.). In legacy Sunstoriz mode the function uses its
+    hardcoded fruit-cast prompt."""
+    lineup_prompt = None
+    if freeform_mode and script.global_setting and script.global_setting.strip():
+        lineup_prompt = (
+            "Character lineup sheet for an animated short. "
+            "Several named characters from the story standing side by side, "
+            "full body, facing camera, neutral expressions, plain warm-grey "
+            "background, consistent rendering style and color palette across "
+            "all characters. "
+            f"Style, cast and visual treatment: {script.global_setting.strip()}. "
+            "Design-sheet aesthetic, high detail. NO text, NO watermark, NO logo."
+        )
     pipeline.character_sheet.generate_character_sheet(
         client=client,
         out_path=paths.character_sheet_png,
-        global_setting=script.global_setting,
+        lineup_prompt=lineup_prompt,
         model=cfg.kie.flux_model,
         poll_interval_s=cfg.kie.poll_interval_s,
         poll_timeout_s=cfg.kie.poll_timeout_s,
@@ -641,7 +660,8 @@ def main_with_args(argv: list[str]) -> int:
                     log.info("character_sheet: skipped (--skip-video; sheet is only "
                              "used as a Veo reference)")
                 else:
-                    _stage_character_sheet(_build_kie(), cfg, paths, script)
+                    _stage_character_sheet(_build_kie(), cfg, paths, script,
+                                          freeform_mode=args.freeform)
             if args.pause_after_character_sheet:
                 if args.skip_video:
                     log.info("--pause-after-character-sheet ignored under --skip-video "

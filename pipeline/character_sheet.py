@@ -33,16 +33,24 @@ CHARACTER_SHEET_PROMPT = (
 def generate_character_sheet(
     client: KieClient,
     out_path: Path,
-    global_setting: str,
+    global_setting: str = "",                     # kept for back-compat; ignored
+    *,
+    lineup_prompt: str | None = None,             # NEW
     model: str = "flux-kontext-pro",
     poll_interval_s: int = 5,
     poll_timeout_s: int = 300,
 ) -> None:
-    """Submit a Flux job for the character sheet, poll, download to out_path. Idempotent."""
+    """Submit a Flux job for the character sheet, poll, download. Idempotent.
+
+    `lineup_prompt`: when provided, used verbatim as the Flux prompt. When
+    None, falls back to CHARACTER_SHEET_PROMPT (the Sunstoriz fruit cast).
+    The legacy `global_setting` argument is kept for source-level
+    backwards-compat but is no longer used."""
     if out_path.exists():
         return
+    prompt = lineup_prompt if (lineup_prompt and lineup_prompt.strip()) else CHARACTER_SHEET_PROMPT
     job_id = client.submit_flux_image_job(
-        prompt=CHARACTER_SHEET_PROMPT,
+        prompt=prompt,
         model=model,
         aspect_ratio="1:1",
     )

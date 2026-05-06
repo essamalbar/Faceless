@@ -53,3 +53,56 @@ def test_skips_when_already_present(monkeypatch, tmp_path: Path):
         poll_interval_s=1, poll_timeout_s=10,
     )
     assert called["n"] == 0
+
+
+def test_legacy_path_uses_hardcoded_sunstoriz_prompt(tmp_path):
+    """When no lineup_prompt is passed, fall back to the legacy Sunstoriz cast."""
+    from pipeline.character_sheet import (
+        generate_character_sheet as gen_sheet,
+        CHARACTER_SHEET_PROMPT,
+    )
+    captured: list[str] = []
+
+    class _StubClient:
+        def submit_flux_image_job(self, *, prompt, model, aspect_ratio):
+            captured.append(prompt)
+            return "job-1"
+
+        def wait_for_flux_image(self, *_, **__):
+            return "http://fake/url"
+
+        def download(self, _url, path):
+            path.write_bytes(b"png")
+
+    out = tmp_path / "sheet.png"
+    gen_sheet(_StubClient(), out_path=out, global_setting="ignored")
+    assert captured[0] == CHARACTER_SHEET_PROMPT
+
+
+def test_lineup_prompt_overrides_default(tmp_path):
+    """When lineup_prompt is passed, it is used verbatim — the legacy Sunstoriz
+    cast must NOT leak into the prompt."""
+    from pipeline.character_sheet import generate_character_sheet as gen_sheet
+    captured: list[str] = []
+
+    class _StubClient:
+        def submit_flux_image_job(self, *, prompt, model, aspect_ratio):
+            captured.append(prompt)
+            return "job-2"
+
+        def wait_for_flux_image(self, *_, **__):
+            return "http://fake/url"
+
+        def download(self, _url, path):
+            path.write_bytes(b"png")
+
+    custom = "Character lineup: bears, rabbits, foxes, design-sheet aesthetic."
+    out = tmp_path / "sheet.png"
+    gen_sheet(
+        _StubClient(), out_path=out, global_setting="x",
+        lineup_prompt=custom,
+    )
+    assert captured[0] == custom
+    # Sunstoriz cast must not be in the freeform prompt
+    assert "Lemon mother" not in captured[0]
+    assert "Strawberry" not in captured[0]
