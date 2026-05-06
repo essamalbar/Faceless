@@ -41,6 +41,8 @@ Input prose:
 {raw}
 """
 
+NAIVE_FALLBACK_SENTINEL = "(auto-generated visual — please review)"
+
 _VALID_SPEAKERS = {
     "mother", "son", "father", "doctor", "neighbor",
     "grandmother", "wife", "daughter", "friend", "enemy", "shadow",
@@ -107,7 +109,7 @@ def _naive_split(raw: str, target_beats: int, per_beat_seconds: int) -> list[Par
     return [
         ParsedBeat(
             arabic=" ".join(g),
-            english_motion="(auto-generated visual — please review)",
+            english_motion=NAIVE_FALLBACK_SENTINEL,
             speaker="mother",
             clip_duration_s=float(per_beat_seconds),
         )

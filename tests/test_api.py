@@ -178,6 +178,54 @@ def test_parse_script_endpoint_rejects_too_short_text(client, auth):
     assert r.status_code == 422
 
 
+def test_parse_script_regex_path(client, auth):
+    """Structured markdown still uses regex (parse_method=regex)."""
+    raw = (
+        "**العنوان: Episode 1**\n\n"
+        "**المشهد 1 – Opening**\n\n"
+        '**الأم:**\n"كلام الأم"\n\n'
+        '**الابن:**\n"كلام الابن"\n'
+    )
+    resp = client.post(
+        "/runs/parse-script",
+        json={"raw_text": raw},
+        headers=auth,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["parse_method"] == "regex"
+    assert len(body["beats"]) >= 2
+
+
+def test_parse_script_llm_fallback(client, auth, monkeypatch):
+    """Freeform prose with no dialogue markers → llm_split."""
+    from pipeline import api as api_mod
+    raw = "أنا قاعدة بالمطبخ. ابني نسي. قلبي مكسور."
+    fake_response = (
+        '{"beats":['
+        '{"arabic":"أنا قاعدة بالمطبخ.","english_motion":"x","speaker":"mother","clip_duration_s":7},'
+        '{"arabic":"ابني نسي.","english_motion":"y","speaker":"son","clip_duration_s":7},'
+        '{"arabic":"قلبي مكسور.","english_motion":"z","speaker":"mother","clip_duration_s":7}'
+        ']}'
+    )
+
+    class _Stub:
+        def complete(self, prompt, system=""):
+            return fake_response
+
+    monkeypatch.setattr(api_mod, "_get_splitter_llm", lambda: _Stub())
+
+    resp = client.post(
+        "/runs/parse-script",
+        json={"raw_text": raw, "target_beats": 3},
+        headers=auth,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["parse_method"] == "llm_split"
+    assert len(body["beats"]) == 3
+
+
 def test_run_id_path_traversal_blocked(client, auth, tmp_path: Path):
     """Strict allowlist: only [A-Za-z0-9_-]+ accepted. ../ and absolute paths
     must 400, not let the request reach the filesystem."""

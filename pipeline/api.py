@@ -627,11 +627,29 @@ class CreateFromScriptRequest(BaseModel):
 
 class ParseScriptRequest(BaseModel):
     raw_text: str = Field(..., min_length=4)
+    target_beats: int = Field(default=8, ge=2, le=15,
+                              description="Target beats for the LLM splitter "
+                                          "(ignored on the regex path)")
 
 
 class ParseScriptResponse(BaseModel):
     title: str
     beats: list[PasteScriptBeat]
+    parse_method: Literal["regex", "llm_split", "naive_fallback"]
+
+
+def _get_splitter_llm():
+    """Lazy-import + return the configured LLM client. Indirection point so
+    tests can monkeypatch this without touching the actual router."""
+    import os
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        from pipeline.llm_anthropic import AnthropicClient
+        return AnthropicClient()
+    if os.environ.get("GROQ_API_KEY"):
+        from pipeline.llm_groq import GroqClient
+        return GroqClient()
+    from pipeline.llm import GeminiClient
+    return GeminiClient()
 
 
 @app.post(
@@ -640,23 +658,50 @@ class ParseScriptResponse(BaseModel):
     dependencies=[Depends(require_token)],
 )
 def parse_script(req: ParseScriptRequest):
-    """Regex-only markdown→beats parser. Does NOT touch the user's Arabic
-    dialogue — it just finds `**SPEAKER:**` "dialogue"` blocks and groups
-    them into beats. Scenes with no dialogue become silent beats. The user
-    can review and tweak before submitting via /runs/from-script."""
+    """Hybrid parser. Step 1: try the regex parser (fast, free, exact for
+    structured markdown). If it found ≥2 dialogue beats, return that result.
+    Otherwise step 2: send the prose to the LLM splitter with a verbatim
+    guard. If even that fails, the splitter falls back to a naive sentence
+    split — the user always gets >1 beat."""
     from pipeline.script_parser import parse_episode_markdown
+    from pipeline.script_splitter import (
+        NAIVE_FALLBACK_SENTINEL,
+        split_prose_into_beats,
+    )
     parsed = parse_episode_markdown(req.raw_text)
+    dialogue_beats = [b for b in parsed.beats if b.arabic.strip()]
+    if len(dialogue_beats) >= 2:
+        return ParseScriptResponse(
+            title=parsed.title,
+            beats=[
+                PasteScriptBeat(
+                    arabic=b.arabic, english_motion=b.english_motion,
+                    speaker=b.speaker, clip_duration_s=b.clip_duration_s,
+                )
+                for b in parsed.beats
+            ],
+            parse_method="regex",
+        )
+    # Regex miss — fall through to LLM splitter
+    llm = _get_splitter_llm()
+    split_beats = split_prose_into_beats(
+        llm, req.raw_text,
+        target_beats=req.target_beats, per_beat_seconds=8,
+    )
+    is_naive = any(
+        b.english_motion == NAIVE_FALLBACK_SENTINEL
+        for b in split_beats
+    )
     return ParseScriptResponse(
-        title=parsed.title,
+        title=parsed.title or "Untitled",
         beats=[
             PasteScriptBeat(
-                arabic=b.arabic,
-                english_motion=b.english_motion,
-                speaker=b.speaker,
-                clip_duration_s=b.clip_duration_s,
+                arabic=b.arabic, english_motion=b.english_motion,
+                speaker=b.speaker, clip_duration_s=b.clip_duration_s,
             )
-            for b in parsed.beats
+            for b in split_beats
         ],
+        parse_method="naive_fallback" if is_naive else "llm_split",
     )
 
 
