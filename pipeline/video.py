@@ -157,7 +157,29 @@ def build_veo_prompt(
     head = f"{cast_negation} " if cast_negation else ""
     base = f"{head}{global_setting}, {beat.english_motion}"
     if with_dialogue and beat.arabic:
-        speaker_desc = SPEAKER_DESCRIPTIONS.get(beat.speaker, "the speaking character")
+        if cast_negation:
+            # Freeform non-fruit cast: do NOT inject the hardcoded fruit-character
+            # SPEAKER_DESCRIPTIONS entries (those overpower the cast_negation and
+            # cause Veo to render the legacy fruit anyway). Use the character's
+            # Arabic name from the script + the speaker enum as a generic label,
+            # and tell Veo to match the lineup sheet for visual identity.
+            name = (beat.character_name or "").strip()
+            if name:
+                speaker_desc = (
+                    f"the character named {name} (the {beat.speaker} role) — "
+                    f"appearance MUST match this character as drawn in the supplied "
+                    f"character lineup reference image"
+                )
+            else:
+                speaker_desc = (
+                    f"the {beat.speaker} character — appearance MUST match this "
+                    f"character as drawn in the supplied character lineup reference image"
+                )
+        else:
+            # Sunstoriz / AI Write mode: keep the existing rich fruit-character map.
+            speaker_desc = SPEAKER_DESCRIPTIONS.get(
+                beat.speaker, "the speaking character"
+            )
         # Stronger language lock — empirically Veo's TTS sometimes ignores
         # "speaks Syrian Arabic" and renders the line in English. The prompt
         # is mostly English (visuals, character desc), so the model can

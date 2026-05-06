@@ -356,3 +356,102 @@ def test_generate_clips_chained_uses_per_beat_duration(monkeypatch, tmp_path: Pa
         poll_interval_s=1, poll_timeout_s=10,
     )
     assert durations == [6.0, 9.5]
+
+
+def test_with_dialogue_freeform_animal_cast_strips_fruit_speaker_desc():
+    """When cast_negation is non-empty (freeform animal/human/surreal),
+    the per-beat Veo prompt MUST NOT include the hardcoded fruit
+    SPEAKER_DESCRIPTIONS entry — that text overpowers the negation
+    and Veo ends up rendering the fruit anyway."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.cast_guidance import veo_clip_negation
+    from pipeline.types import Beat
+
+    b = Beat(
+        arabic="يا إلهي! وين طلعتِ من؟",
+        english_motion="over-the-shoulder shot, snow rabbit speaks",
+        clip_duration_s=8.0,
+        speaker="friend",            # SPEAKER_DESCRIPTIONS["friend"] = blueberry text
+        character_name="سالم",
+    )
+    p = build_veo_prompt(
+        b, "anthropomorphic animals in folkloric setting",
+        with_dialogue=True,
+        cast_negation=veo_clip_negation("animal"),
+    )
+    p_lower = p.lower()
+    # Smoking-gun phrases — must be absent
+    assert "blueberry" not in p_lower
+    assert "blueberry-shaped head" not in p_lower
+    # Sanity — negation IS still in the prompt
+    assert "strictly not anthropomorphic fruit" in p_lower
+    # Per-beat character_name should appear (so Veo identifies the
+    # speaker as a specific character from the lineup)
+    assert "سالم" in p
+
+
+def test_with_dialogue_freeform_human_cast_strips_fruit_speaker_desc():
+    from pipeline.video import build_veo_prompt
+    from pipeline.cast_guidance import veo_clip_negation
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="ابني!",
+        english_motion="medium close-up, mother speaks",
+        clip_duration_s=8.0,
+        speaker="mother",            # SPEAKER_DESCRIPTIONS["mother"] = lemon text
+        character_name="أم خالد",
+    )
+    p = build_veo_prompt(
+        b, "real human cast in urban setting",
+        with_dialogue=True,
+        cast_negation=veo_clip_negation("human"),
+    )
+    p_lower = p.lower()
+    # "lemon" alone appears legitimately in the cast_negation ("no lemons") — the
+    # smoking-gun fruit-character descriptions are the more specific phrases below.
+    assert "lemon-shaped head" not in p_lower
+    assert "yellow lemon" not in p_lower
+    assert "lemon mother" not in p_lower   # SPEAKER_DESCRIPTIONS capitalized key phrase
+    assert "أم خالد" in p
+
+
+def test_with_dialogue_sunstoriz_keeps_fruit_speaker_desc():
+    """Without cast_negation (Sunstoriz / AI Write mode), the existing
+    fruit-character SPEAKER_DESCRIPTIONS path is preserved so the legacy
+    style still works."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="ابني...",
+        english_motion="medium close-up, mother speaks",
+        clip_duration_s=8.0,
+        speaker="mother",
+        character_name="أم خالد",
+    )
+    p = build_veo_prompt(b, "global setting", with_dialogue=True)
+    # Cast_negation empty → Sunstoriz path: lemon description is included
+    assert "LEMON MOTHER" in p
+
+
+def test_with_dialogue_freeform_no_character_name_uses_speaker_label():
+    """If the writer didn't fill character_name, fall back to the speaker
+    enum label (no fruit mentions)."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.cast_guidance import veo_clip_negation
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x",
+        english_motion="y",
+        clip_duration_s=8.0,
+        speaker="friend",
+        character_name="",
+    )
+    p = build_veo_prompt(
+        b, "g",
+        with_dialogue=True,
+        cast_negation=veo_clip_negation("animal"),
+    )
+    p_lower = p.lower()
+    assert "blueberry" not in p_lower
+    # The speaker enum label appears in some form
+    assert "friend" in p_lower
