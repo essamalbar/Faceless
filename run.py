@@ -461,6 +461,7 @@ def _stage_native_audio_timings(paths: RunPaths, script: Script) -> list[WordTim
 def _stage_video_chained(
     args, cfg: Config, script: Script, paths: RunPaths,
     *, character_template: str | None = None,
+    dialect: str | None = None,
 ) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
@@ -508,6 +509,7 @@ def _stage_video_chained(
         reroll_indices=reroll,
         with_dialogue=cfg.kie.native_audio,
         character_template=character_template,
+        dialect=dialect,
     )
 
 
@@ -740,6 +742,7 @@ def main_with_args(argv: list[str]) -> int:
                 _stage_video_chained(
                     args, cfg, script, paths,
                     character_template=args.ff_character_template if args.freeform else None,
+                    dialect=args.ff_dialect if args.freeform else None,
                 )
             if use_native_audio:
                 with log.stage("native_audio_timings"):

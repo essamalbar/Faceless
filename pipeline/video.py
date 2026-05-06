@@ -133,12 +133,58 @@ def clip_seed(title: str, index: int) -> int:
     return int(h[:8], 16)
 
 
+# Default audio-lock per dialect — keep Syrian as the back-compat default.
+_DIALECT_AUDIO_LOCK: dict[str, str] = {
+    "syrian": (
+        "Syrian / Levantine dialect (شامي / سوري, as spoken in Damascus and "
+        "Aleppo). Use natural Syrian markers: عم / شو / كتير / بدي / ليش / "
+        "هلق / متل / ولا / منيح / تا / لإلي / يلي. "
+        "Voice MUST NOT be in: ENGLISH, Modern Standard Arabic / فصحى, "
+        "Egyptian / مصري, Gulf / خليجي, Iraqi / عراقي, Maghrebi / مغربي, or "
+        "any non-Arabic language."
+    ),
+    "egyptian": (
+        "Egyptian dialect (مصري, as spoken in Cairo). Use natural Egyptian "
+        "markers: ازاي / دلوقتي / مفيش / عايز / كده / يعني / فين / امبارح / بس / "
+        "خالص / اوي. Voice MUST NOT be in: ENGLISH, Modern Standard Arabic / "
+        "فصحى, Syrian / شامي, Gulf / خليجي, Iraqi / عراقي, Maghrebi / مغربي, "
+        "or any non-Arabic language."
+    ),
+    "khaliji": (
+        "Khaliji / Gulf dialect (خليجي, as spoken in Saudi Arabia / UAE). "
+        "Use natural Khaliji markers: شلون / وايد / لي / تره / ابي / يبي / "
+        "ها / مرة / حلو / يبه. Voice MUST NOT be in: ENGLISH, Modern "
+        "Standard Arabic / فصحى, Syrian / شامي, Egyptian / مصري, Iraqi / "
+        "عراقي, Maghrebi / مغربي, or any non-Arabic language."
+    ),
+    "maghrebi": (
+        "Maghrebi / North-African dialect (مغربي, as spoken in Morocco / "
+        "Algeria / Tunisia). Voice MUST NOT be in: ENGLISH, Modern Standard "
+        "Arabic / فصحى, Syrian / شامي, Egyptian / مصري, Khaliji / خليجي, "
+        "Iraqi / عراقي, or any non-Arabic language."
+    ),
+    "iraqi": (
+        "Iraqi dialect (عراقي, as spoken in Baghdad). Use natural Iraqi "
+        "markers: شلون / هسه / اكو / ماكو / ليش / شنو / هواية / كلش. Voice "
+        "MUST NOT be in: ENGLISH, Modern Standard Arabic / فصحى, Syrian / "
+        "شامي, Egyptian / مصري, Khaliji / خليجي, Maghrebi / مغربي, or any "
+        "non-Arabic language."
+    ),
+    "msa": (
+        "Modern Standard Arabic (الفصحى, MSA). Voice MUST NOT be in: ENGLISH, "
+        "Syrian / شامي, Egyptian / مصري, Khaliji / خليجي, Iraqi / عراقي, "
+        "Maghrebi / مغربي, or any non-Arabic language."
+    ),
+}
+
+
 def build_veo_prompt(
     beat: Beat,
     global_setting: str,
     *,
     with_dialogue: bool = False,
     cast_negation: str = "",
+    dialect: str | None = None,
 ) -> str:
     """Compose the final Veo prompt for one beat.
 
@@ -153,56 +199,64 @@ def build_veo_prompt(
     prepended to the prompt when non-empty so Veo sees it at the earliest
     token positions — where it has the most weight. Empty string leaves the
     prompt unchanged (Sunstoriz / ai_choose paths).
+
+    `dialect` selects which entry from `_DIALECT_AUDIO_LOCK` is injected
+    into the audio-lock clause. Defaults to "syrian" for back-compat.
     """
     head = f"{cast_negation} " if cast_negation else ""
     base = f"{head}{global_setting}, {beat.english_motion}"
-    if with_dialogue and beat.arabic:
-        if cast_negation:
-            # Freeform non-fruit cast: do NOT inject the hardcoded fruit-character
-            # SPEAKER_DESCRIPTIONS entries (those overpower the cast_negation and
-            # cause Veo to render the legacy fruit anyway). Use the character's
-            # Arabic name from the script + the speaker enum as a generic label,
-            # and tell Veo to match the lineup sheet for visual identity.
+
+    if with_dialogue:
+        if beat.arabic:
+            # Dialogue beat — speaker description + audio lock.
             name = (beat.character_name or "").strip()
             if name:
+                # Always prefer the script's per-beat character_name over the
+                # legacy fruit-cast SPEAKER_DESCRIPTIONS — applies to BOTH
+                # Sunstoriz (cast_negation='') and freeform (cast_negation!='')
+                # paths, so a Sunstoriz story whose script picks "فراولة" /
+                # "موزة" / "عنب" doesn't get overridden into "BLUEBERRY FRIEND".
                 speaker_desc = (
                     f"the character named {name} (the {beat.speaker} role) — "
-                    f"appearance MUST match this character as drawn in the supplied "
-                    f"character lineup reference image"
+                    f"appearance MUST match this character as drawn in the "
+                    f"supplied character lineup reference image"
+                )
+            elif cast_negation:
+                # Freeform with no character_name → generic non-fruit fallback.
+                speaker_desc = (
+                    f"the {beat.speaker} character — appearance MUST match "
+                    f"this character as drawn in the supplied character "
+                    f"lineup reference image"
                 )
             else:
-                speaker_desc = (
-                    f"the {beat.speaker} character — appearance MUST match this "
-                    f"character as drawn in the supplied character lineup reference image"
+                # Legacy Sunstoriz fallback (no character_name, no cast_negation).
+                speaker_desc = SPEAKER_DESCRIPTIONS.get(
+                    beat.speaker, "the speaking character"
                 )
-        else:
-            # Sunstoriz / AI Write mode: keep the existing rich fruit-character map.
-            speaker_desc = SPEAKER_DESCRIPTIONS.get(
-                beat.speaker, "the speaking character"
+
+            dialect_key = (dialect or "syrian").lower()
+            lock = _DIALECT_AUDIO_LOCK.get(dialect_key, _DIALECT_AUDIO_LOCK["syrian"])
+            base += (
+                f". {speaker_desc} faces the camera at medium close-up, "
+                f"mouth open mid-speech with realistic synchronized lip movement. "
+                f"⚠️ AUDIO LANGUAGE LOCK: the spoken voice MUST be in ARABIC. "
+                f"{lock} "
+                f"يجب أن يكون النطق باللغة العربية فقط، وممنوع النطق "
+                f"بالإنجليزية أو أي لغة أخرى. "
+                f"The exact spoken line (in Arabic) is: \"{beat.arabic}\". "
+                f"Final reminder: dialogue audio MUST be in Arabic, never "
+                f"English or any other language."
             )
-        # Stronger language lock — empirically Veo's TTS sometimes ignores
-        # "speaks Syrian Arabic" and renders the line in English. The prompt
-        # is mostly English (visuals, character desc), so the model can
-        # default to English audio. We now (a) explicitly forbid English,
-        # (b) re-state the language in Arabic itself (يجب أن يكون النطق
-        # بالعربية), and (c) put the Arabic line in quotes adjacent to a
-        # final reminder.
-        base += (
-            f". {speaker_desc} faces the camera at medium close-up, "
-            f"mouth open mid-speech with realistic synchronized lip movement. "
-            f"⚠️ AUDIO LANGUAGE LOCK: the spoken voice MUST be in ARABIC, "
-            f"specifically Syrian / Levantine dialect (شامي / سوري, as "
-            f"spoken in Damascus and Aleppo). "
-            f"يجب أن يكون النطق باللغة العربية فقط، باللهجة الشامية، "
-            f"وممنوع النطق بالإنجليزية أو أي لغة أخرى. "
-            f"Use natural Syrian markers: عم / شو / كتير / بدي / ليش / "
-            f"هلق / متل / ولا / منيح / تا / لإلي / يلي. "
-            f"Voice MUST NOT be in: ENGLISH, Modern Standard Arabic / فصحى, "
-            f"Egyptian / مصري, Gulf / خليجي, Iraqi / عراقي, Maghrebi / مغربي, "
-            f"or any non-Arabic language. "
-            f"The exact spoken line (in Arabic) is: \"{beat.arabic}\". "
-            f"Repeat: spoken in Arabic, Syrian dialect, never English."
-        )
+        else:
+            # Silent / atmospheric beat — explicitly block Veo from inventing
+            # English narration / voice-over.
+            base += (
+                ". This is a SILENT atmospheric beat: NO spoken dialogue, "
+                "NO voice-over, NO narration in any language. Only ambient "
+                "environmental sound and music. The characters MUST NOT "
+                "speak. No mouth movement implying speech. No English "
+                "narration."
+            )
     return f"{base}, {VIDEO_STYLE_SUFFIX}"
 
 
@@ -242,6 +296,7 @@ def generate_clips(
     poll_timeout_s: int,
     reroll_indices: list[int] | None = None,
     character_template: str | None = None,
+    dialect: str | None = None,
 ) -> None:
     """Render each beat to clips_dir/NN.mp4. Resumable + reroll-aware.
 
@@ -286,7 +341,7 @@ def generate_clips(
         if idx in reroll_set:
             seed += REROLL_SEED_BUMP
 
-        prompt = build_veo_prompt(beat, script.global_setting, cast_negation=cast_negation)
+        prompt = build_veo_prompt(beat, script.global_setting, cast_negation=cast_negation, dialect=dialect)
         generate_clip(
             client=client,
             prompt=prompt,
@@ -385,6 +440,7 @@ def generate_clips_chained(
     reroll_indices: list[int] | None = None,
     with_dialogue: bool = False,
     character_template: str | None = None,
+    dialect: str | None = None,
 ) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
@@ -437,6 +493,7 @@ def generate_clips_chained(
             beat, script.global_setting,
             with_dialogue=with_dialogue,
             cast_negation=cast_negation,
+            dialect=dialect,
         )
         image_urls = [sheet_url]
         if prev_last_frame_url:

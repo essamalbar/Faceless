@@ -416,9 +416,9 @@ def test_with_dialogue_freeform_human_cast_strips_fruit_speaker_desc():
 
 
 def test_with_dialogue_sunstoriz_keeps_fruit_speaker_desc():
-    """Without cast_negation (Sunstoriz / AI Write mode), the existing
-    fruit-character SPEAKER_DESCRIPTIONS path is preserved so the legacy
-    style still works."""
+    """Without cast_negation (Sunstoriz / AI Write mode) AND without a
+    character_name, the existing fruit-character SPEAKER_DESCRIPTIONS path
+    is preserved so the legacy style still works."""
     from pipeline.video import build_veo_prompt
     from pipeline.types import Beat
     b = Beat(
@@ -426,10 +426,10 @@ def test_with_dialogue_sunstoriz_keeps_fruit_speaker_desc():
         english_motion="medium close-up, mother speaks",
         clip_duration_s=8.0,
         speaker="mother",
-        character_name="أم خالد",
+        character_name="",   # empty → legacy fruit fallback applies
     )
     p = build_veo_prompt(b, "global setting", with_dialogue=True)
-    # Cast_negation empty → Sunstoriz path: lemon description is included
+    # Cast_negation empty AND character_name empty → SPEAKER_DESCRIPTIONS["mother"]
     assert "LEMON MOTHER" in p
 
 
@@ -455,3 +455,111 @@ def test_with_dialogue_freeform_no_character_name_uses_speaker_label():
     assert "blueberry" not in p_lower
     # The speaker enum label appears in some form
     assert "friend" in p_lower
+
+
+def test_speaker_uses_character_name_in_sunstoriz_when_present():
+    """Bug A: When character_name is set, it overrides SPEAKER_DESCRIPTIONS
+    even in Sunstoriz mode (cast_negation='')."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="أنا فراولة وأنا غلطت",
+        english_motion="OTS, strawberry speaks",
+        clip_duration_s=8.0,
+        speaker="friend",
+        character_name="فراولة",
+    )
+    p = build_veo_prompt(b, "fruit village", with_dialogue=True)  # Sunstoriz path
+    p_lower = p.lower()
+    assert "blueberry" not in p_lower
+    assert "blueberry-shaped head" not in p_lower
+    assert "فراولة" in p
+
+
+def test_legacy_sunstoriz_falls_back_when_character_name_empty():
+    """When cast_negation='' AND character_name='', the legacy fruit
+    SPEAKER_DESCRIPTIONS still fires (preserves any old script that
+    predates the character_name field)."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x",
+        english_motion="y",
+        clip_duration_s=8.0,
+        speaker="mother",
+        character_name="",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "LEMON MOTHER" in p   # legacy fallback still works
+
+
+def test_dialect_param_threads_to_audio_lock():
+    """Bug B: build_veo_prompt accepts dialect param and the audio-lock
+    text reflects it. Defaults to Syrian for back-compat."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x", english_motion="y", clip_duration_s=8.0,
+        speaker="mother", character_name="أم خالد",
+    )
+    # Egyptian
+    p_eg = build_veo_prompt(b, "g", with_dialogue=True, dialect="egyptian")
+    assert "egyptian" in p_eg.lower() or "مصري" in p_eg
+    # Egyptian must NOT also force Syrian
+    assert "specifically syrian" not in p_eg.lower()
+
+    # Default (None) maps to Syrian for back-compat
+    p_default = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "syrian" in p_default.lower() or "شامي" in p_default
+
+
+def test_silent_beat_blocks_english_narration():
+    """Bug C: when arabic='' the prompt instructs Veo NOT to render any
+    speech / voice-over / narration."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="",
+        english_motion="wide establishing shot, lanterns sway",
+        clip_duration_s=8.0,
+        speaker="narrator",
+        character_name="",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    p_lower = p.lower()
+    # No language-lock audio block on silent beats — there's no line to lock
+    assert "the exact spoken line" not in p_lower
+    # And we explicitly forbid Veo from inventing speech
+    assert "no spoken" in p_lower or "no voice-over" in p_lower or "no dialogue" in p_lower
+    assert "ambient" in p_lower or "no speech" in p_lower
+
+
+def test_no_repeat_literal_in_audio_lock():
+    """Bug D: the audio-lock no longer ends with the literal 'Repeat:' which
+    may have caused Veo to double-speak the line."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="مرحبا", english_motion="x", clip_duration_s=8.0,
+        speaker="mother", character_name="أم خالد",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "Repeat: spoken in Arabic" not in p
+    assert "Repeat:" not in p   # nothing literal "Repeat:"
+
+
+def test_with_dialogue_freeform_animal_cast_strips_fruit_speaker_desc_still_works():
+    """Regression: the previous fix (cast_negation strips fruit map) still works."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.cast_guidance import veo_clip_negation
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="مرحبا", english_motion="OTS, fox speaks",
+        clip_duration_s=8.0, speaker="friend", character_name="سالم",
+    )
+    p = build_veo_prompt(
+        b, "anthropomorphic animals",
+        with_dialogue=True,
+        cast_negation=veo_clip_negation("animal"),
+    )
+    assert "blueberry" not in p.lower()
