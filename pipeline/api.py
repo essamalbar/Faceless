@@ -339,6 +339,9 @@ def derive_status(run_dir: Path) -> RunStatus:
             return "failed"
         # Genuinely paused for human approval
         return "awaiting_approval"
+    # Catch-all: also covers (sheet exists + process still alive + no clips yet),
+    # i.e. the brief window between Flux finishing and Veo starting in the same
+    # subprocess. The catch-all returns "running_paid" via process_running below.
     return "running_paid" if process_running else (
         "complete" if (run_dir / "final.mp4").exists() else "failed"
     )

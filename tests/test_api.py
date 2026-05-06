@@ -1138,3 +1138,21 @@ def test_derive_status_awaiting_approval_unchanged(tmp_path, monkeypatch):
     (run_dir / "script.json").write_text('{"beats":[]}', encoding="utf-8")
     (run_dir / "api_state.json").write_text('{"pid": null}', encoding="utf-8")
     assert derive_status(run_dir) == "awaiting_approval"
+
+
+def test_derive_status_failed_when_post_flux_log_has_error(tmp_path, monkeypatch):
+    """sheet_exists + no clips + dead process + ERROR line in run.log
+    → 'failed', not 'awaiting_veo_approval'. Exercises the inner _last_error_from_log
+    guard inside the new branch."""
+    from pipeline.api import derive_status
+    run_dir = tmp_path / "test-run-3"
+    run_dir.mkdir()
+    (run_dir / "script.json").write_text('{"beats":[]}', encoding="utf-8")
+    (run_dir / "character_sheet.png").write_bytes(b"fake-png")
+    (run_dir / "api_state.json").write_text('{"pid": null}', encoding="utf-8")
+    # _last_error_from_log scans for an ERROR line in run.log or api_subprocess.log
+    (run_dir / "api_subprocess.log").write_text(
+        "2026-05-06 ERROR Flux call failed: 502 Bad Gateway\n",
+        encoding="utf-8",
+    )
+    assert derive_status(run_dir) == "failed"
