@@ -682,8 +682,19 @@ class _BeatTile extends StatelessWidget {
                                 fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(width: 8),
-                      Text(beat.speaker,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      if (beat.characterName.trim().isNotEmpty) ...[
+                        Text(beat.characterName,
+                            textDirection: TextDirection.rtl,
+                            style: const TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(width: 6),
+                        Text('· ${beat.speaker}',
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: FacelessTheme.textSecondary,
+                                fontWeight: FontWeight.w500)),
+                      ] else
+                        Text(beat.speaker,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
                       const Spacer(),
                       Text('${beat.clipDurationS.toStringAsFixed(0)}s',
                           style: Theme.of(context).textTheme.bodySmall),

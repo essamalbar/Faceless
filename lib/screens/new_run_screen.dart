@@ -418,11 +418,14 @@ class _AiFreeformTabState extends State<_AiFreeformTab> {
 class _PasteBeat {
   final TextEditingController arabicCtrl;
   final TextEditingController englishCtrl;
+  final TextEditingController characterNameCtrl;
   String speaker;
   double clipDuration;
-  _PasteBeat({String speaker = 'mother', double clip = 8.0})
+  _PasteBeat({String speaker = 'mother', double clip = 8.0,
+              String characterName = ''})
       : arabicCtrl = TextEditingController(),
         englishCtrl = TextEditingController(),
+        characterNameCtrl = TextEditingController(text: characterName),
         speaker = speaker,
         clipDuration = clip;
   Map<String, dynamic> toJson() => {
@@ -430,10 +433,12 @@ class _PasteBeat {
         'english_motion': englishCtrl.text,
         'speaker': speaker,
         'clip_duration_s': clipDuration,
+        'character_name': characterNameCtrl.text,
       };
   void dispose() {
     arabicCtrl.dispose();
     englishCtrl.dispose();
+    characterNameCtrl.dispose();
   }
 }
 
@@ -485,6 +490,7 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
         final b = _PasteBeat(
           speaker: raw.speaker,
           clip: raw.clipDurationS,
+          characterName: raw.characterName,
         );
         b.arabicCtrl.text = raw.arabic;
         b.englishCtrl.text = raw.englishMotion;
@@ -947,6 +953,17 @@ class _PasteBeatEditor extends StatelessWidget {
                     onPressed: onRemove,
                   ),
               ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: beat.characterNameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Character name (Arabic, optional)',
+                hintText: 'e.g. خالد، فاطمة، أم يوسف',
+                border: OutlineInputBorder(),
+              ),
+              textDirection: TextDirection.rtl,
+              style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 12),
             TextField(
