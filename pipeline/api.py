@@ -1,0 +1,1270 @@
+"""HTTP API for the faceless pipeline.
+
+Wraps `run.py` so a mobile app can:
+  1. Trigger a new run (writer pass only — pauses for human approval)
+  2. Read the generated Arabic script
+  3. Approve and start the paid stages (character_sheet + Veo + assembly)
+  4. Resume after a transient failure
+  5. List past runs and stream their final mp4
+
+Pipeline runs as a subprocess of the API; we never call the orchestrator
+in-process because each run takes 10–15 minutes and would block the event
+loop. State is derived from filesystem contents (script.json exists, clips
+exist, final.mp4 exists, plus a small state.json per run dir for
+in-progress info like PID and last error).
+
+Auth: a single bearer token from `FACELESS_API_TOKEN` env var. This is
+solo-user software running on the user's Mac — no need for accounts.
+
+Run with:  uv run uvicorn pipeline.api:app --host 0.0.0.0 --port 8000
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Annotated, Literal
+
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Header,
+    status,
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, Field
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_OUT_ROOT = REPO_ROOT / "out"
+RUNPY = REPO_ROOT / "run.py"
+
+# Veo Fast pricing — single source of truth for cost calculations across
+# the API. Hoisted from inline magic numbers per code-review feedback.
+COST_PER_SECOND_USD = 0.10        # Kie.ai's published Veo 3 Fast rate
+FLUX_COST_PER_RUN_USD = 0.05      # Single Flux character sheet per run
+BUDGET_BUFFER_RATIO = 1.30        # ~30 % cushion for retries / Kie billing 9.5s when we asked for 9
+BUDGET_BUFFER_FLAT_USD = 0.50     # Plus a small flat cushion for the Flux sheet
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+def _expected_token() -> str:
+    tok = os.environ.get("FACELESS_API_TOKEN", "").strip()
+    if not tok:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="FACELESS_API_TOKEN not configured on the server",
+        )
+    return tok
+
+
+def require_token(authorization: Annotated[str | None, Header()] = None) -> None:
+    """Bearer-token check. Mobile app sends `Authorization: Bearer <token>`."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing or malformed Authorization header",
+        )
+    presented = authorization.removeprefix("Bearer ").strip()
+    if presented != _expected_token():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="invalid token",
+        )
+
+
+def require_token_header_or_query(
+    authorization: Annotated[str | None, Header()] = None,
+    token: str | None = None,
+) -> None:
+    """Bearer auth that ALSO accepts `?token=...` in the query string.
+
+    Used by /video and /thumbnail endpoints. The Flutter `video_player`
+    plugin on Chrome web silently drops `httpHeaders` (only iOS/Android
+    honor them), so we have no way to attach an Authorization header to
+    the `<video>` element's request. A query-string token is the standard
+    workaround for browser-driven media streaming."""
+    expected = _expected_token()
+    presented: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        presented = authorization.removeprefix("Bearer ").strip()
+    elif token:
+        presented = token.strip()
+    if not presented:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="provide either Authorization: Bearer header or ?token=… query",
+        )
+    if presented != expected:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="invalid token",
+        )
+
+
+# ---------------------------------------------------------------------------
+# State derivation
+# ---------------------------------------------------------------------------
+
+RunStatus = Literal[
+    "creating",              # process starting, no script yet
+    "awaiting_approval",     # script.json present, no character_sheet → user must approve
+    "awaiting_veo_approval", # Flux done, character_sheet present, waiting for second approval
+    "running_paid",          # character_sheet or clips appearing, paid stages in flight
+    "complete",              # final.mp4 present
+    "failed",                # state.json says last_error and process is dead
+]
+
+
+def _state_path(run_dir: Path) -> Path:
+    return run_dir / "api_state.json"
+
+
+def _read_state(run_dir: Path) -> dict:
+    p = _state_path(run_dir)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _write_state(run_dir: Path, **kwargs) -> None:
+    state = _read_state(run_dir)
+    state.update(kwargs)
+    state["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    _state_path(run_dir).write_text(
+        json.dumps(state, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _process_alive(pid: int | None) -> bool:
+    """Return True only if the PID is a *running* (non-zombie) process.
+
+    `os.kill(pid, 0)` returns success for ZOMBIE processes too — defunct
+    subprocesses that have exited but haven't been reaped by their parent
+    via wait()/waitpid(). The pipeline subprocess is our child, so on Unix
+    we can opportunistically reap any zombie child non-blockingly first
+    (WNOHANG never blocks; if there's no zombie, it returns immediately
+    with `(0, 0)`). After that, `os.kill(pid, 0)` correctly fails for the
+    just-reaped PID, and we stop falsely reporting it as alive.
+
+    Without this, the API would think a long-since-exited script-pause
+    subprocess was still running, which:
+      - Made cancel/discard report "process still running" forever
+      - Made `derive_status` return `running_paid` instead of
+        `awaiting_approval`, hiding the approval bar in the UI."""
+    if not pid:
+        return False
+    try:
+        # WNOHANG = don't block. Reaps any single zombie child we own.
+        # ECHILD = no child by that pid (already reaped or not ours) — fine.
+        os.waitpid(pid, os.WNOHANG)
+    except (ChildProcessError, OSError):
+        pass
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _compute_max_spend_for_run(run_dir: Path) -> float | None:
+    """Sum the script's projected Veo cost so we can pass --max-spend to the
+    subprocess. The user already saw the estimate in the UI and approved —
+    we shouldn't then trip the in-config cap and silently refuse.
+
+    Adds a buffer (`BUDGET_BUFFER_RATIO` × `BUDGET_BUFFER_FLAT_USD`) so
+    retries and Kie's tendency to bill 9.5 s when we requested 9 s don't
+    push us over."""
+    script_path = run_dir / "script.json"
+    if not script_path.exists():
+        return None
+    try:
+        doc = json.loads(script_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    total_seconds = sum(
+        float(b.get("clip_duration_s", 8.0))
+        for b in (doc.get("beats") or [])
+    )
+    if total_seconds <= 0:
+        return None
+    return round(
+        total_seconds * COST_PER_SECOND_USD * BUDGET_BUFFER_RATIO
+        + BUDGET_BUFFER_FLAT_USD,
+        2,
+    )
+
+
+_ERROR_LINE_RE = re.compile(r"\bERROR\b", re.IGNORECASE)
+
+
+# Map well-known raw error patterns → "what the user should do" copy.
+# Keep the raw error in `last_error` for transparency; present this hint
+# alongside it. Order matters — first match wins.
+_ERROR_HINTS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"BudgetExceededError|exceeds cap", re.IGNORECASE),
+     "Veo cost exceeded the safety cap. The cap auto-bumps based on the "
+     "script's size when you Approve via the app — tap Resume and it should "
+     "go through. If it persists, your script may have unusually long beats."),
+
+    (re.compile(r"safety filters|content was flagged", re.IGNORECASE),
+     "Veo's safety filter rejected this beat. Edit the script to soften the "
+     "wording — avoid explicit references to death (\"يموت\", \"يقتل\"), wounds "
+     "(\"جرح\"), or violence. Use indirect phrasing (\"راح\", \"خلصت أيامه\")."),
+
+    (re.compile(r"unable to generate audio", re.IGNORECASE),
+     "Veo's TTS couldn't speak this line. Usually means the dialogue is too "
+     "short or whisper-direction was too strong. Make the line at least 6 "
+     "words and remove \"بهمس\"/\"weak\"/\"barely\" type stage notes."),
+
+    (re.compile(r"Connection reset|connection refused|TLS|tempfile\.aiquickdraw", re.IGNORECASE),
+     "Your network blocked the Kie.ai CDN. Either turn on your VPN, or "
+     "deploy the Cloudflare Worker proxy in cloudflare-worker/ and set "
+     "KIE_DOWNLOAD_PROXY in .env (one-time, no more VPN needed)."),
+
+    (re.compile(r"download failed after \d+ attempts", re.IGNORECASE),
+     "Couldn't download a generated clip after retries. Network blip or Kie "
+     "CDN hiccup. Tap Resume — completed clips are kept, only the missing "
+     "ones re-render."),
+
+    (re.compile(r"KIE_API_KEY not set|ANTHROPIC_API_KEY not set|GROQ_API_KEY not set",
+                re.IGNORECASE),
+     "An API key is missing from .env. Restart the launcher (./scripts/run-app.sh) "
+     "after adding it — the API server caches env vars at startup."),
+
+    (re.compile(r"writer returned \d+ beats, below min_beats", re.IGNORECASE),
+     "The script writer returned fewer beats than required. Try a more "
+     "detailed premise or switch to Paste Script and write the beats yourself."),
+
+    (re.compile(r"timed out|timeout", re.IGNORECASE),
+     "A pipeline stage timed out. Tap Resume — completed work is kept."),
+
+    (re.compile(r"successFlag=2", re.IGNORECASE),
+     "Veo job was rejected by Kie.ai (often a moderation or auth issue). "
+     "Check the log for details, then Resume to retry."),
+
+    (re.compile(r"successFlag=3", re.IGNORECASE),
+     "Veo's generation failed (transient or content-flag). Tap Resume — if "
+     "it keeps failing on the same clip, edit that beat's wording."),
+
+    (re.compile(r"cancelled by user", re.IGNORECASE),
+     "You discarded this run. Use the Discard button on the run-detail "
+     "screen to remove it from the gallery, or Resume to continue."),
+]
+
+
+def _hint_for_error(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    for pattern, hint in _ERROR_HINTS:
+        if pattern.search(raw):
+            return hint
+    return None
+
+
+def _last_error_from_log(run_dir: Path, max_chars: int = 400) -> str | None:
+    """Find the most recent ERROR line in either log file the subprocess
+    might have written so the UI can surface why a run failed.
+
+    Both files are checked: `run.log` (the orchestrator's own runlog) and
+    `api_subprocess.log` (uvicorn-side capture of stdout/stderr — Python
+    logging defaults like `ERROR:pipeline:…` and uvicorn's `ERROR:` prefix
+    don't have a leading space so we can't filter on `" ERROR "`)."""
+    candidates: list[str] = []
+    for fname in ("run.log", "api_subprocess.log"):
+        path = run_dir / fname
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        for ln in text.splitlines():
+            if _ERROR_LINE_RE.search(ln):
+                candidates.append(ln.strip())
+    if not candidates:
+        return None
+    msg = candidates[-1]
+    # Strip a leading "<timestamp> ERROR " or "ERROR:" prefix for readability
+    msg = re.sub(r"^\S+\s+ERROR\s*", "", msg)
+    msg = re.sub(r"^ERROR:\s*", "", msg)
+    return msg[:max_chars]
+
+
+def derive_status(run_dir: Path) -> RunStatus:
+    """Filesystem-driven status — no in-memory state. Order matters."""
+    if (run_dir / "final.mp4").exists():
+        return "complete"
+    state = _read_state(run_dir)
+    pid = state.get("pid")
+    last_error = state.get("last_error")
+    process_running = _process_alive(pid)
+    script_exists = (run_dir / "script.json").exists()
+    sheet_exists = (run_dir / "character_sheet.png").exists()
+    clips_dir = run_dir / "clips"
+    has_clips = clips_dir.exists() and any(clips_dir.glob("*.mp4"))
+
+    if last_error and not process_running:
+        return "failed"
+    if not script_exists:
+        return "creating" if process_running else "failed"
+    # Script is on disk.
+    # NEW: Flux finished, no clips yet, subprocess exited → second approval gate.
+    if sheet_exists and not has_clips and not process_running:
+        if _last_error_from_log(run_dir):
+            return "failed"
+        return "awaiting_veo_approval"
+    if not sheet_exists and not has_clips:
+        if process_running:
+            # Subprocess still alive past the script stage but no character
+            # sheet yet — Flux is generating. Show this as paid-stage progress.
+            return "running_paid"
+        # Subprocess died before producing a character sheet. If the log
+        # has an ERROR (budget cap, safety filter, etc.) treat as failed
+        # rather than stuck on awaiting_approval forever.
+        if _last_error_from_log(run_dir):
+            return "failed"
+        # Genuinely paused for human approval
+        return "awaiting_approval"
+    return "running_paid" if process_running else (
+        "complete" if (run_dir / "final.mp4").exists() else "failed"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Request / response shapes
+# ---------------------------------------------------------------------------
+
+VALID_THEMES = {
+    "domestic", "wilderness", "urban", "workplace",
+    "travel", "folkloric", "tech", "memory",
+}
+
+
+class CreateRunRequest(BaseModel):
+    theme: str = Field(..., description="Theme tag, e.g. 'folkloric'")
+    premise: str = Field(..., min_length=4, description="Arabic premise / seed")
+    max_beats: int | None = Field(None, ge=1, le=20,
+                                  description="Cap script to ≤ N beats (test runs)")
+
+
+class RunProgress(BaseModel):
+    """Live progress info for the UI's progress bar."""
+    stage: str  # "script", "character_sheet", "video", "captions", "assemble"
+    clips_done: int  # 0..N — how many beats have a clip on disk
+    clips_total: int  # 0..N — script.beats length once known
+
+
+class RunSummary(BaseModel):
+    id: str
+    status: RunStatus
+    title: str | None = None
+    theme: str | None = None
+    premise: str | None = None
+    created_at: str | None = None
+    has_video: bool = False
+    last_error: str | None = None
+    error_hint: str | None = None  # human-readable "what to do" for known failures
+    progress: RunProgress | None = None
+
+
+class ScriptBeat(BaseModel):
+    arabic: str
+    english_motion: str
+    speaker: str
+    clip_duration_s: float
+
+
+class ScriptResponse(BaseModel):
+    title: str
+    beats: list[ScriptBeat]
+    target_duration_s: float
+    estimated_cost_usd: float
+
+
+# ---------------------------------------------------------------------------
+# Subprocess spawning — overridable in tests
+# ---------------------------------------------------------------------------
+
+def _spawn(args: list[str], run_dir: Path) -> int:
+    """Start `run.py` in the background. Returns PID. Stdout/stderr → state.log
+    in the run dir so the caller can pull error context for the UI.
+
+    The log file handle is closed in the parent immediately after Popen
+    forks — Popen dups it into the child, so the child keeps writing while
+    the parent doesn't leak a file descriptor per spawn (which would leak
+    one FD on every create/approve/resume/reroll over the API's lifetime)."""
+    log_path = run_dir / "api_subprocess.log"
+    log_fh = open(log_path, "ab")
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(RUNPY), *args],
+            cwd=str(REPO_ROOT),
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            env=os.environ.copy(),
+            start_new_session=True,
+        )
+    finally:
+        log_fh.close()
+    return proc.pid
+
+
+# Indirection so tests can replace with a no-op
+_SPAWN_FN = _spawn
+
+
+def set_spawn_fn(fn) -> None:
+    """Tests use this to replace _spawn with a stub that doesn't actually
+    fork run.py. The stub is responsible for whatever fake artifacts the
+    test scenario expects (e.g. writing script.json directly)."""
+    global _SPAWN_FN
+    _SPAWN_FN = fn
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+app = FastAPI(
+    title="Faceless Pipeline API",
+    description="Mobile-app backend for the faceless TikTok generator.",
+    version="0.1.0",
+)
+
+# CORS — the Flutter web app loads from localhost:5xxxx (or a Cloudflare
+# Tunnel URL) and calls this API on a different origin. Browsers block
+# cross-origin requests unless the server explicitly opts in. The bearer
+# token is what actually gates access; the CORS allowlist is permissive
+# because this is solo-user software running on the operator's Mac.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,  # we don't use cookies — token is in Authorization header
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+
+def _out_root() -> Path:
+    return Path(os.environ.get("FACELESS_OUT_ROOT", DEFAULT_OUT_ROOT))
+
+
+def _make_run_id() -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+    base = _out_root() / ts
+    suffix = 0
+    while base.exists():
+        suffix += 1
+        base = _out_root() / f"{ts}-{suffix}"
+    return base.name
+
+
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+
+
+def _run_dir(run_id: str) -> Path:
+    """Resolve a run id to its on-disk directory under FACELESS_OUT_ROOT.
+
+    Strict allowlist — only the chars our generator emits (digits, letters,
+    `-`, `_`). This blocks `..`, `/`, NUL, backslash, control chars, and
+    anything else that could escape the out-root."""
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise HTTPException(400, "invalid run_id")
+    p = _out_root() / run_id
+    if not p.exists():
+        raise HTTPException(404, f"run {run_id} not found")
+    return p
+
+
+def _cost_estimate_usd(beats: list[dict]) -> float:
+    """Per-beat × seconds × Veo rate + one Flux character sheet."""
+    veo_seconds = sum(float(b.get("clip_duration_s", 8.0)) for b in beats)
+    return round(
+        veo_seconds * COST_PER_SECOND_USD + FLUX_COST_PER_RUN_USD, 2,
+    )
+
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+
+@app.get(
+    "/runs",
+    response_model=list[RunSummary],
+    dependencies=[Depends(require_token)],
+)
+def list_runs():
+    out = _out_root()
+    if not out.exists():
+        return []
+    runs: list[RunSummary] = []
+    for p in sorted(out.iterdir()):
+        if not p.is_dir():
+            continue
+        runs.append(_summarize(p))
+    return runs
+
+
+def _derive_progress(run_dir: Path, status: str) -> RunProgress | None:
+    """Compute live progress from filesystem artifacts.
+
+    Stage detection:
+      - no script.json    → "script"
+      - no character_sheet → "character_sheet"
+      - clips < total     → "video" (with clips_done/total)
+      - no final.mp4      → "captions" or "assemble"
+      - final.mp4 exists  → done (returns None)
+    """
+    if status == "complete":
+        return None
+    script_path = run_dir / "script.json"
+    if not script_path.exists():
+        return RunProgress(stage="script", clips_done=0, clips_total=0)
+    try:
+        doc = json.loads(script_path.read_text(encoding="utf-8"))
+        clips_total = len(doc.get("beats") or [])
+    except Exception:
+        clips_total = 0
+    if not (run_dir / "character_sheet.png").exists():
+        return RunProgress(
+            stage="character_sheet", clips_done=0, clips_total=clips_total,
+        )
+    clips_dir = run_dir / "clips"
+    clips_done = (
+        len(list(clips_dir.glob("*.mp4"))) if clips_dir.exists() else 0
+    )
+    if clips_done < clips_total:
+        return RunProgress(
+            stage="video", clips_done=clips_done, clips_total=clips_total,
+        )
+    if not (run_dir / "captions.ar.ass").exists():
+        return RunProgress(
+            stage="captions", clips_done=clips_done, clips_total=clips_total,
+        )
+    return RunProgress(
+        stage="assemble", clips_done=clips_done, clips_total=clips_total,
+    )
+
+
+def _summarize(run_dir: Path) -> RunSummary:
+    state = _read_state(run_dir)
+    script_path = run_dir / "script.json"
+    title = None
+    theme = None
+    if script_path.exists():
+        try:
+            doc = json.loads(script_path.read_text(encoding="utf-8"))
+            title = doc.get("title")
+            theme = doc.get("theme")
+        except Exception:
+            pass
+    seed_path = run_dir / "seed.json"
+    premise = None
+    if seed_path.exists():
+        try:
+            premise = json.loads(seed_path.read_text(encoding="utf-8")).get("premise")
+        except Exception:
+            pass
+    status = derive_status(run_dir)
+    last_error = state.get("last_error")
+    if not last_error and status == "failed":
+        last_error = _last_error_from_log(run_dir)
+    return RunSummary(
+        id=run_dir.name,
+        status=status,
+        title=title,
+        theme=theme,
+        premise=premise,
+        created_at=state.get("created_at"),
+        has_video=(run_dir / "final.mp4").exists(),
+        last_error=last_error,
+        error_hint=_hint_for_error(last_error) if status == "failed" else None,
+        progress=_derive_progress(run_dir, status),
+    )
+
+
+_DEFAULT_GLOBAL_SETTING = (
+    "3D Pixar animation, anthropomorphic fruit characters as humans, "
+    "cinematic dramatic fantasy episode, dramatic emotional lighting, "
+    "vertical 9:16, high detail"
+)
+
+
+class PasteScriptBeat(BaseModel):
+    arabic: str
+    english_motion: str
+    speaker: str
+    clip_duration_s: float = 8.0
+
+
+class CreateFromScriptRequest(BaseModel):
+    title: str = Field(..., min_length=1)
+    theme: str
+    premise: str = Field(default="", description="optional context — saved to seed.json")
+    music_mood: str = Field(default="dread")
+    global_setting: str | None = None
+    beats: list[PasteScriptBeat] = Field(..., min_length=1)
+
+
+class ParseScriptRequest(BaseModel):
+    raw_text: str = Field(..., min_length=4)
+
+
+class ParseScriptResponse(BaseModel):
+    title: str
+    beats: list[PasteScriptBeat]
+
+
+@app.post(
+    "/runs/parse-script",
+    response_model=ParseScriptResponse,
+    dependencies=[Depends(require_token)],
+)
+def parse_script(req: ParseScriptRequest):
+    """Regex-only markdown→beats parser. Does NOT touch the user's Arabic
+    dialogue — it just finds `**SPEAKER:**` "dialogue"` blocks and groups
+    them into beats. Scenes with no dialogue become silent beats. The user
+    can review and tweak before submitting via /runs/from-script."""
+    from pipeline.script_parser import parse_episode_markdown
+    parsed = parse_episode_markdown(req.raw_text)
+    return ParseScriptResponse(
+        title=parsed.title,
+        beats=[
+            PasteScriptBeat(
+                arabic=b.arabic,
+                english_motion=b.english_motion,
+                speaker=b.speaker,
+                clip_duration_s=b.clip_duration_s,
+            )
+            for b in parsed.beats
+        ],
+    )
+
+
+@app.post(
+    "/runs/from-script",
+    response_model=RunSummary,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_token)],
+)
+def create_run_from_script(req: CreateFromScriptRequest):
+    """Create a run with a HAND-WRITTEN script (no LLM call). Use this when
+    you already have the exact Arabic dialogue + scene descriptions and want
+    Veo to render them verbatim — the writer/critique pass cannot rewrite
+    your text, and you skip ~$0.05 of LLM cost.
+
+    The run lands in `awaiting_approval` immediately; the same Edit / Approve
+    flow applies, so you can still tweak before paying for Veo."""
+    if req.theme not in VALID_THEMES:
+        raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
+    valid_speakers = _VALID_SPEAKERS
+    for i, b in enumerate(req.beats, start=1):
+        sp = (b.speaker or "").strip().lower()
+        if sp not in valid_speakers:
+            raise HTTPException(
+                400,
+                f"beat {i}: speaker={sp!r} not in {sorted(valid_speakers)}",
+            )
+        if not b.english_motion.strip():
+            raise HTTPException(400, f"beat {i}: english_motion is required")
+
+    run_id = _make_run_id()
+    run_dir = _out_root() / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    seed = {"theme": req.theme, "premise": req.premise or req.title}
+    (run_dir / "seed.json").write_text(
+        json.dumps(seed, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    script = {
+        "title": req.title,
+        "theme": req.theme,
+        "global_setting": req.global_setting or _DEFAULT_GLOBAL_SETTING,
+        "music_mood": req.music_mood or "dread",
+        "hook": req.title,
+        "story": "",
+        "word_count": 0,
+        "target_duration_s": round(
+            sum(b.clip_duration_s for b in req.beats), 2,
+        ),
+        "story_combined": " ".join(b.arabic for b in req.beats if b.arabic),
+        "beats": [
+            {
+                "arabic": b.arabic,
+                "english_motion": b.english_motion,
+                "speaker": b.speaker.strip().lower(),
+                "clip_duration_s": float(b.clip_duration_s),
+            }
+            for b in req.beats
+        ],
+    }
+    (run_dir / "script.json").write_text(
+        json.dumps(script, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _write_state(
+        run_dir,
+        pid=None,
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        last_error=None,
+        last_action="create_run_from_script",
+    )
+    return _summarize(run_dir)
+
+
+@app.post(
+    "/runs",
+    response_model=RunSummary,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_token)],
+)
+def create_run(req: CreateRunRequest):
+    if req.theme not in VALID_THEMES:
+        raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
+
+    run_id = _make_run_id()
+    run_dir = _out_root() / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    args = [
+        "--shorts", "--pause-after-script",
+        "--theme", req.theme,
+        "--seed", req.premise,
+        "--run-dir", str(run_dir),
+    ]
+    if req.max_beats is not None:
+        args += ["--max-beats", str(req.max_beats)]
+
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(
+        run_dir,
+        pid=pid,
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        last_error=None,
+        last_action="create_run",
+    )
+    return _summarize(run_dir)
+
+
+@app.get(
+    "/runs/{run_id}",
+    response_model=RunSummary,
+    dependencies=[Depends(require_token)],
+)
+def get_run(run_id: str):
+    return _summarize(_run_dir(run_id))
+
+
+@app.get(
+    "/runs/{run_id}/script",
+    response_model=ScriptResponse,
+    dependencies=[Depends(require_token)],
+)
+def get_script(run_id: str):
+    run_dir = _run_dir(run_id)
+    script_path = run_dir / "script.json"
+    if not script_path.exists():
+        raise HTTPException(409, "script not generated yet")
+    doc = json.loads(script_path.read_text(encoding="utf-8"))
+    beats = doc.get("beats") or []
+    return ScriptResponse(
+        title=str(doc.get("title", "")),
+        beats=[
+            ScriptBeat(
+                arabic=str(b.get("arabic", "")),
+                english_motion=str(b.get("english_motion", "")),
+                speaker=str(b.get("speaker", "narrator")),
+                clip_duration_s=float(b.get("clip_duration_s", 8.0)),
+            )
+            for b in beats
+        ],
+        target_duration_s=float(doc.get("target_duration_s", 0.0)),
+        estimated_cost_usd=_cost_estimate_usd(beats),
+    )
+
+
+class ApprovalAck(BaseModel):
+    run_id: str
+    status: RunStatus
+    started_paid_stages: bool
+
+
+@app.post(
+    "/runs/{run_id}/approve",
+    response_model=ApprovalAck,
+    dependencies=[Depends(require_token)],
+)
+def approve_run(run_id: str):
+    run_dir = _run_dir(run_id)
+    s = derive_status(run_dir)
+    if s != "awaiting_approval":
+        raise HTTPException(
+            409,
+            f"cannot approve from status={s} (expected awaiting_approval)",
+        )
+    args = ["--shorts", "--resume", str(run_dir)]
+    max_spend = _compute_max_spend_for_run(run_dir)
+    if max_spend is not None:
+        args += ["--max-spend", f"{max_spend:.2f}"]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid, last_error=None, last_action="approve")
+    return ApprovalAck(run_id=run_id, status=derive_status(run_dir),
+                      started_paid_stages=True)
+
+
+@app.post(
+    "/runs/{run_id}/resume",
+    response_model=ApprovalAck,
+    dependencies=[Depends(require_token)],
+)
+def resume_run(run_id: str):
+    """Force a resume regardless of current status — used after a transient
+    failure (TLS reset, Kie 500, etc.). Idempotent: spawning while already
+    running just produces a duplicate process which will see all artifacts
+    on disk and exit quickly. We try to avoid that by checking PID first."""
+    run_dir = _run_dir(run_id)
+    state = _read_state(run_dir)
+    if _process_alive(state.get("pid")):
+        raise HTTPException(409, "a pipeline process is already running for this run")
+    args = ["--shorts", "--resume", str(run_dir)]
+    max_spend = _compute_max_spend_for_run(run_dir)
+    if max_spend is not None:
+        args += ["--max-spend", f"{max_spend:.2f}"]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid, last_error=None, last_action="resume")
+    return ApprovalAck(run_id=run_id, status=derive_status(run_dir),
+                      started_paid_stages=True)
+
+
+class CancelAck(BaseModel):
+    run_id: str
+    killed_pid: int | None
+
+
+# ---------------------------------------------------------------------------
+# Edit script before approval — replace dialogue / fix LLM slips without
+# regenerating from scratch
+# ---------------------------------------------------------------------------
+
+class EditScriptBeat(BaseModel):
+    arabic: str
+    english_motion: str
+    speaker: str
+    clip_duration_s: float
+
+
+class EditScriptRequest(BaseModel):
+    title: str | None = None
+    beats: list[EditScriptBeat]
+
+
+_VALID_SPEAKERS = {
+    "mother", "son", "father", "doctor", "neighbor",
+    "grandmother", "wife", "daughter", "friend", "enemy", "shadow",
+}
+
+
+@app.put(
+    "/runs/{run_id}/script",
+    response_model=ScriptResponse,
+    dependencies=[Depends(require_token)],
+)
+def edit_script(run_id: str, req: EditScriptRequest):
+    """Replace beats in script.json. Only allowed when the run is paused
+    awaiting human approval — once paid stages start the dialogue is locked
+    into the (already-generated) Veo clips and editing it does nothing."""
+    run_dir = _run_dir(run_id)
+    s = derive_status(run_dir)
+    if s != "awaiting_approval":
+        raise HTTPException(
+            409,
+            f"cannot edit script from status={s} (only awaiting_approval is editable)",
+        )
+    if not req.beats:
+        raise HTTPException(400, "at least one beat required")
+    for i, b in enumerate(req.beats, start=1):
+        sp = (b.speaker or "").strip().lower()
+        if sp not in _VALID_SPEAKERS:
+            raise HTTPException(
+                400,
+                f"beat {i}: speaker={sp!r} not in {sorted(_VALID_SPEAKERS)}",
+            )
+        if not b.english_motion.strip():
+            raise HTTPException(400, f"beat {i}: english_motion is required")
+
+    # Load existing script for fields we don't replace. The status check
+    # above already implies awaiting_approval (which requires script.json),
+    # but guard explicitly for the race where the file was deleted between
+    # the check and the read.
+    script_path = run_dir / "script.json"
+    if not script_path.exists():
+        raise HTTPException(409, "script.json missing — cannot edit")
+    try:
+        doc = json.loads(script_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        raise HTTPException(500, f"could not read script.json: {e}") from e
+    if req.title is not None and req.title.strip():
+        doc["title"] = req.title.strip()
+    doc["beats"] = [
+        {
+            "arabic": b.arabic,
+            "english_motion": b.english_motion,
+            "speaker": b.speaker.strip().lower(),
+            "clip_duration_s": float(b.clip_duration_s),
+        }
+        for b in req.beats
+    ]
+    # Round to 2 decimals — without this, float sum gives 16.000000000000002 etc.
+    doc["target_duration_s"] = round(
+        sum(b.clip_duration_s for b in req.beats), 2,
+    )
+    doc["story_combined"] = " ".join(b.arabic for b in req.beats if b.arabic)
+    script_path.write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return get_script(run_id)
+
+
+# ---------------------------------------------------------------------------
+# Delete a run — solo-user cleanup of failed / abandoned runs
+# ---------------------------------------------------------------------------
+
+class DeleteAck(BaseModel):
+    run_id: str
+    deleted: bool
+
+
+def _stop_process_and_wait(pid: int | None, *, soft_timeout_s: float = 5.0) -> bool:
+    """Best-effort: SIGTERM, wait up to `soft_timeout_s` for the process to
+    actually exit, then SIGKILL if it's still running. Returns True if the
+    process is dead by the time we return."""
+    if not _process_alive(pid):
+        return True
+    import time
+    try:
+        os.kill(pid, signal.SIGTERM)  # type: ignore[arg-type]
+    except OSError:
+        return not _process_alive(pid)
+    deadline = time.monotonic() + soft_timeout_s
+    while time.monotonic() < deadline:
+        time.sleep(0.05)
+        if not _process_alive(pid):
+            return True
+    # Still alive — escalate to SIGKILL
+    try:
+        os.kill(pid, signal.SIGKILL)  # type: ignore[arg-type]
+    except OSError:
+        pass
+    # Give the kernel a moment to reap
+    time.sleep(0.3)
+    return not _process_alive(pid)
+
+
+class CleanupAck(BaseModel):
+    deleted_run_ids: list[str]
+
+
+@app.post(
+    "/runs/cleanup-failed",
+    response_model=CleanupAck,
+    dependencies=[Depends(require_token)],
+)
+def cleanup_failed_runs():
+    """Bulk-discard every run currently in `failed` status. Saves the user
+    from having to long-press each broken run individually.
+
+    Skips any run with a live (non-zombie) subprocess — those need an
+    explicit cancel first. Won't touch complete or in-progress runs."""
+    out = _out_root()
+    if not out.exists():
+        return CleanupAck(deleted_run_ids=[])
+    deleted: list[str] = []
+    import shutil
+    for p in sorted(out.iterdir()):
+        if not p.is_dir():
+            continue
+        if derive_status(p) != "failed":
+            continue
+        state = _read_state(p)
+        # Defensive: never bulk-delete a run with a live subprocess
+        if _process_alive(state.get("pid")):
+            continue
+        try:
+            shutil.rmtree(p)
+            deleted.append(p.name)
+        except OSError:
+            continue
+    return CleanupAck(deleted_run_ids=deleted)
+
+
+class SpendSummary(BaseModel):
+    total_usd: float
+    by_run: list[dict]  # [{"run_id": "...", "title": "...", "usd": 8.05}, ...]
+    run_count: int
+
+
+@app.get(
+    "/spend",
+    response_model=SpendSummary,
+    dependencies=[Depends(require_token)],
+)
+def get_spend_summary():
+    """Total Kie.ai (Veo + Flux) spend across all runs, plus per-run breakdown.
+
+    Reads kie_spend.json artifacts written by the pipeline. Doesn't include
+    ElevenLabs / LLM costs (those don't write spend logs). Useful for
+    answering 'how much have I spent this month'."""
+    out = _out_root()
+    if not out.exists():
+        return SpendSummary(total_usd=0.0, by_run=[], run_count=0)
+    rows: list[dict] = []
+    total = 0.0
+    for p in sorted(out.iterdir(), reverse=True):
+        if not p.is_dir():
+            continue
+        spend_file = p / "kie_spend.json"
+        if not spend_file.exists():
+            continue
+        try:
+            doc = json.loads(spend_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        run_total = sum(
+            float(e.get("cost_usd", 0))
+            for e in (doc.get("entries") or [])
+        )
+        if run_total <= 0:
+            continue
+        # Prefer the script's title for readability
+        title = None
+        sp = p / "script.json"
+        if sp.exists():
+            try:
+                title = json.loads(sp.read_text(encoding="utf-8")).get("title")
+            except (OSError, json.JSONDecodeError):
+                pass
+        rows.append({
+            "run_id": p.name,
+            "title": title,
+            "usd": round(run_total, 2),
+        })
+        total += run_total
+    return SpendSummary(
+        total_usd=round(total, 2),
+        by_run=rows,
+        run_count=len(rows),
+    )
+
+
+@app.delete(
+    "/runs/{run_id}",
+    response_model=DeleteAck,
+    dependencies=[Depends(require_token)],
+)
+def delete_run(run_id: str):
+    """Discard a run entirely.
+
+    If a pipeline subprocess is still running, this stops it (SIGTERM,
+    wait up to 5s, SIGKILL fallback) BEFORE removing the directory — the
+    user just wants the run gone, they shouldn't have to call /cancel
+    first and then race the OS to clean it up."""
+    run_dir = _run_dir(run_id)
+    state = _read_state(run_dir)
+    pid = state.get("pid")
+    if _process_alive(pid):
+        if not _stop_process_and_wait(pid):
+            raise HTTPException(
+                500,
+                f"could not stop pipeline subprocess (pid={pid}) — "
+                f"please retry or kill it manually",
+            )
+    import shutil
+    shutil.rmtree(run_dir)
+    return DeleteAck(run_id=run_id, deleted=True)
+
+
+class RerollRequest(BaseModel):
+    clips: list[int] = Field(..., min_length=1,
+                             description="1-based clip indices to regenerate")
+
+
+@app.post(
+    "/runs/{run_id}/reroll",
+    response_model=ApprovalAck,
+    dependencies=[Depends(require_token)],
+)
+def reroll_clips(run_id: str, req: RerollRequest):
+    """Regenerate specific clips without losing the others.
+
+    Use cases:
+      - Veo's TTS rendered clip 6 in English by mistake → reroll just 6
+      - A clip's visual is off → reroll without re-paying for the rest
+      - The script.json hasn't changed; the assembler will re-run too
+
+    Pre-removes the targeted .mp4 files so the pipeline's resume logic sees
+    them as "missing" and regenerates only those. Then spawns `run.py
+    --resume --reroll-clips N,M,...` to do the work.
+    """
+    run_dir = _run_dir(run_id)
+    state = _read_state(run_dir)
+    if _process_alive(state.get("pid")):
+        raise HTTPException(409, "a pipeline process is already running for this run")
+    if not (run_dir / "script.json").exists():
+        raise HTTPException(409, "script.json missing — nothing to reroll against")
+
+    # Validate clip indices are within range
+    script_doc = json.loads((run_dir / "script.json").read_text(encoding="utf-8"))
+    n_beats = len(script_doc.get("beats") or [])
+    for idx in req.clips:
+        if idx < 1 or idx > n_beats:
+            raise HTTPException(
+                400,
+                f"clip {idx} out of range (script has {n_beats} beats)",
+            )
+
+    # Remove the existing clips so resume regenerates them. The pipeline
+    # itself also handles `--reroll-clips` by bumping seeds, but we delete
+    # here so a half-corrupt mp4 (e.g. partial download) doesn't trick the
+    # `out_path.exists()` skip-logic into reusing it.
+    clips_dir = run_dir / "clips"
+    last_frames_dir = run_dir / "last_frames"
+    if clips_dir.exists():
+        for idx in req.clips:
+            (clips_dir / f"{idx:02d}.mp4").unlink(missing_ok=True)
+    if last_frames_dir.exists():
+        for idx in req.clips:
+            (last_frames_dir / f"{idx:02d}.png").unlink(missing_ok=True)
+    # Also remove final.mp4 — the assembler must re-stitch with the new clips
+    (run_dir / "final.mp4").unlink(missing_ok=True)
+
+    args = [
+        "--shorts", "--resume", str(run_dir),
+        "--reroll-clips", ",".join(str(i) for i in req.clips),
+    ]
+    max_spend = _compute_max_spend_for_run(run_dir)
+    if max_spend is not None:
+        args += ["--max-spend", f"{max_spend:.2f}"]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid, last_error=None,
+                 last_action=f"reroll {req.clips}")
+    return ApprovalAck(run_id=run_id, status=derive_status(run_dir),
+                      started_paid_stages=True)
+
+
+@app.post(
+    "/runs/{run_id}/cancel",
+    response_model=CancelAck,
+    dependencies=[Depends(require_token)],
+)
+def cancel_run(run_id: str):
+    """Stop a running pipeline subprocess. Waits for the process to actually
+    exit (SIGTERM → wait → SIGKILL fallback) before returning, so a
+    follow-up resume/reroll never races with a half-dead process."""
+    run_dir = _run_dir(run_id)
+    state = _read_state(run_dir)
+    pid = state.get("pid")
+    if not _process_alive(pid):
+        return CancelAck(run_id=run_id, killed_pid=None)
+    _stop_process_and_wait(pid)
+    _write_state(run_dir, last_error="cancelled by user", last_action="cancel")
+    return CancelAck(run_id=run_id, killed_pid=pid)
+
+
+@app.get("/runs/{run_id}/video",
+         dependencies=[Depends(require_token_header_or_query)])
+def get_video(run_id: str):
+    run_dir = _run_dir(run_id)
+    p = run_dir / "final.mp4"
+    if not p.exists():
+        raise HTTPException(404, "final.mp4 not produced yet")
+    return FileResponse(
+        path=str(p),
+        media_type="video/mp4",
+        filename=f"{run_id}.mp4",
+    )
+
+
+@app.get("/runs/{run_id}/thumbnail",
+         dependencies=[Depends(require_token_header_or_query)])
+def get_thumbnail(run_id: str):
+    """First frame as a JPG, extracted on demand (cached on disk)."""
+    run_dir = _run_dir(run_id)
+    cache = run_dir / "thumbnail.jpg"
+    if cache.exists():
+        return FileResponse(str(cache), media_type="image/jpeg")
+    # Prefer character_sheet (already a still) over re-extracting from mp4
+    sheet = run_dir / "character_sheet.png"
+    if sheet.exists():
+        return FileResponse(str(sheet), media_type="image/png")
+    final = run_dir / "final.mp4"
+    if not final.exists():
+        raise HTTPException(404, "no thumbnail source yet")
+    _extract_thumbnail(final, cache)
+    return FileResponse(str(cache), media_type="image/jpeg")
+
+
+def _extract_thumbnail(video_path: Path, out_path: Path) -> None:
+    """ffmpeg → first frame jpg. Replaceable in tests."""
+    subprocess.run([
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-i", str(video_path),
+        "-vframes", "1", "-q:v", "2",
+        str(out_path),
+    ], check=True)
+
+
+@app.get(
+    "/runs/{run_id}/clips/{clip_index}/thumbnail",
+    dependencies=[Depends(require_token_header_or_query)],
+)
+def get_clip_thumbnail(run_id: str, clip_index: int):
+    """First-frame JPG of a specific clip. Lets the run-detail screen
+    show a small thumbnail next to each beat so the user can spot which
+    clip rendered wrong without playing the full mp4. Cached on disk."""
+    if clip_index < 1 or clip_index > 99:
+        raise HTTPException(400, "clip_index out of range")
+    run_dir = _run_dir(run_id)
+    clip_path = run_dir / "clips" / f"{clip_index:02d}.mp4"
+    if not clip_path.exists():
+        raise HTTPException(404, "clip not generated yet")
+    cache = run_dir / "clips" / f"{clip_index:02d}.jpg"
+    if not cache.exists():
+        try:
+            _extract_thumbnail(clip_path, cache)
+        except subprocess.CalledProcessError as e:
+            raise HTTPException(500, f"ffmpeg thumbnail failed: {e}") from e
+    return FileResponse(str(cache), media_type="image/jpeg")
+
+
+@app.get(
+    "/runs/{run_id}/log",
+    dependencies=[Depends(require_token)],
+)
+def get_log(run_id: str, lines: int = 200):
+    """Tail of the subprocess log — useful for showing the user what failed."""
+    run_dir = _run_dir(run_id)
+    log_path = run_dir / "api_subprocess.log"
+    if not log_path.exists():
+        return Response(content="", media_type="text/plain")
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    tail = "\n".join(text.splitlines()[-max(1, lines):])
+    return Response(content=tail, media_type="text/plain")
