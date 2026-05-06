@@ -201,6 +201,7 @@ class _AiFreeformTabState extends State<_AiFreeformTab> {
   String _artStyle = 'cinematic_photo_real';
   String _characterTemplate = 'ai_choose';
   String _endingType = 'ai_choose';
+  String _narrationStyle = 'cinematic';
   int _numBeats = 8;
   int _perBeatSeconds = 8;
   final _premiseCtrl = TextEditingController();
@@ -238,6 +239,11 @@ class _AiFreeformTabState extends State<_AiFreeformTab> {
     ('closed_happy', 'Closed happy'),
     ('twist', 'Twist'),
   ];
+  static const _narrationStyles = [
+    ('cinematic', 'Cinematic (recommended)'),
+    ('first_person_monologue', 'First-person monologue (TikTok)'),
+    ('ai_choose', 'Let the AI choose'),
+  ];
 
   Future<void> _submit() async {
     final premise = _premiseCtrl.text.trim();
@@ -259,6 +265,7 @@ class _AiFreeformTabState extends State<_AiFreeformTab> {
         endingType: _endingType,
         numBeats: _numBeats,
         perBeatSeconds: _perBeatSeconds,
+        narrationStyle: _narrationStyle,
       );
       if (!mounted) return;
       Navigator.of(context).pop<RunSummary?>(run);
@@ -351,6 +358,14 @@ class _AiFreeformTabState extends State<_AiFreeformTab> {
             items: _endingTypes,
             onChanged: (v) =>
                 setState(() => _endingType = v ?? 'ai_choose'),
+          ),
+          const SizedBox(height: 12),
+          _kvDropdown<String>(
+            label: 'Narration style',
+            value: _narrationStyle,
+            items: _narrationStyles,
+            onChanged: (v) =>
+                setState(() => _narrationStyle = v ?? 'cinematic'),
           ),
           const SizedBox(height: 12),
           Row(

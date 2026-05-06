@@ -185,6 +185,7 @@ class FacelessApiClient {
     required String endingType,
     required int numBeats,
     required int perBeatSeconds,
+    String narrationStyle = 'cinematic',
   }) async {
     final body = <String, dynamic>{
       'theme': theme,
@@ -195,6 +196,7 @@ class FacelessApiClient {
       'ending_type': endingType,
       'num_beats': numBeats,
       'per_beat_seconds': perBeatSeconds,
+      'narration_style': narrationStyle,
     };
     final r = await _http.post(
       await _uri('/runs/freeform'),
