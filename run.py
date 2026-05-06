@@ -545,9 +545,9 @@ def main_with_args(argv: list[str]) -> int:
                         "Forces min_beats=min(2,N) and max_beats=N so a $2 test "
                         "is achievable without editing config.yaml.")
     p.add_argument("--pause-after-script", action="store_true",
-                   help="Stop after the script stage so a UI / human can review "
-                        "the Arabic dialogue before any Veo spend. Resume the run "
-                        "with --resume to continue past character_sheet+video.")
+                   help="Exit cleanly after the script stage. Used by the API server "
+                        "to gate paid stages on human approval. Resume with --resume "
+                        "<dir> (use --pause-after-character-sheet to also gate after Flux).")
     p.add_argument("--pause-after-character-sheet", action="store_true",
                    help="Exit cleanly after Flux character_sheet.png is written. "
                         "Used by the API server to gate Veo spend on a second "
@@ -607,9 +607,13 @@ def main_with_args(argv: list[str]) -> int:
                 else:
                     _stage_character_sheet(_build_kie(), cfg, paths, script)
             if args.pause_after_character_sheet:
-                log.info("PAUSED: character_sheet generated, awaiting Veo approval. "
-                         f"Resume with: uv run python run.py --shorts --resume {run_dir}")
-                return 0
+                if args.skip_video:
+                    log.info("--pause-after-character-sheet ignored under --skip-video "
+                             "(no character sheet was generated). Continuing.")
+                else:
+                    log.info("PAUSED: character_sheet generated, awaiting Veo approval. "
+                             f"Resume with: uv run python run.py --shorts --resume {run_dir}")
+                    return 0
             with log.stage("video"):
                 _stage_video_chained(args, cfg, script, paths)
             if use_native_audio:

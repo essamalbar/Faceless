@@ -381,7 +381,9 @@ _MINIMAL_SCRIPT_JSON = json.dumps({
 }, ensure_ascii=False)
 
 
-def test_pause_after_character_sheet_exits_after_flux(tmp_path, monkeypatch):
+def test_pause_after_character_sheet_exits_after_flux(
+    tmp_path, monkeypatch, music_bundle: Path,
+):
     """When --pause-after-character-sheet is passed AND --resume points at a run
     with script.json already present, run.py runs the Flux stage exactly once
     and then exits 0 without entering the video stage."""
@@ -417,10 +419,99 @@ def test_pause_after_character_sheet_exits_after_flux(tmp_path, monkeypatch):
     monkeypatch.setattr("run._stage_video_chained", fake_video)
 
     import run
+    config_path = Path(__file__).parent.parent / "config.yaml"
     rc = run.main_with_args([
         "--shorts", "--resume", str(run_dir),
         "--pause-after-character-sheet",
+        "--config", str(config_path),
+        "--music-bundle", str(music_bundle),
     ])
     assert rc == 0
     assert len(sheet_calls) == 1
     assert video_calls == []
+
+
+def test_pause_after_character_sheet_ignored_with_skip_video(
+    tmp_path, monkeypatch, music_bundle: Path,
+):
+    """When --skip-video is set, the pause must NOT fire — there's no real
+    character_sheet.png to gate on, and the API state machine relies on that
+    artifact existing."""
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "script.json").write_text(_MINIMAL_SCRIPT_JSON, encoding="utf-8")
+    (run_dir / "seed.json").write_text(
+        '{"theme":"folkloric","premise":"x"}', encoding="utf-8")
+
+    sheet_calls: list = []
+    video_calls: list = []
+
+    class FakeGemini:
+        def complete(self, prompt, system=None):
+            return _MINIMAL_SCRIPT_JSON
+        def embed(self, text):
+            return [0.0, 1.0]
+
+    monkeypatch.setattr("run._build_gemini", lambda: FakeGemini())
+
+    class FakeKie:
+        pass
+    monkeypatch.setattr("run._build_kie", lambda: FakeKie())
+
+    def fake_sheet(client, cfg, paths, script):
+        sheet_calls.append(paths.character_sheet_png)
+        paths.character_sheet_png.write_bytes(b"fake-png")
+
+    def fake_video(*a, **kw):
+        video_calls.append(a)
+
+    monkeypatch.setattr("run._stage_character_sheet", fake_sheet)
+    monkeypatch.setattr("run._stage_video_chained", fake_video)
+
+    # Under --skip-video, after the character_sheet stage is skipped,
+    # we still need voice/align/music/captions/assemble to complete.
+    # Stub the minimum set needed so the run finishes cleanly.
+    sample_mp3 = (Path(__file__).parent / "fixtures" / "narration_sample.mp3").read_bytes()
+
+    def fake_synthesize(text, voice, rate, pitch, mp3_path):
+        mp3_path.write_bytes(sample_mp3)
+        return [{"word": "ج", "offset_ms": 0, "duration_ms": 400}]
+    monkeypatch.setattr("pipeline.voice._synthesize", fake_synthesize)
+
+    class FakeEL:
+        def synthesize(self, text, voice_id, model, out_path, **kw):
+            out_path.write_bytes(sample_mp3)
+    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
+    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s",
+                        lambda parts, out: out.write_bytes(sample_mp3))
+    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 1000)
+
+    from pipeline.types import WordTiming as _WordTiming
+    monkeypatch.setattr(
+        "pipeline.align.align_arabic",
+        lambda audio_path, expected_text, **kw: [
+            _WordTiming(word=f"w{i}", offset_ms=i * 500, duration_ms=500)
+            for i in range(4)
+        ],
+    )
+
+    monkeypatch.setattr("pipeline.assemble._run_ffmpeg",
+                        lambda args: Path(args[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42"))
+    monkeypatch.setattr("run._probe_duration_s", lambda p: 8.0)
+
+    import run
+    config_path = Path(__file__).parent.parent / "config.yaml"
+    rc = run.main_with_args([
+        "--shorts", "--resume", str(run_dir),
+        "--pause-after-character-sheet", "--skip-video",
+        "--config", str(config_path),
+        "--music-bundle", str(music_bundle),
+    ])
+    assert rc == 0
+    assert sheet_calls == []  # sheet stage skipped under --skip-video
+    # The pause must NOT have fired — execution continued past character_sheet.
+    # If the pause incorrectly fired, final.mp4 would not exist.
+    runs = list((tmp_path / "run").parent.glob("run"))
+    run_log = (run_dir / "run.log").read_text(encoding="utf-8")
+    assert "PAUSED" not in run_log or "--pause-after-character-sheet ignored" in run_log
+    assert (run_dir / "final.mp4").exists()
