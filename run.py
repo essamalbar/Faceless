@@ -224,6 +224,32 @@ def _stage_assemble(cfg: Config, shots: list[Shot], paths: RunPaths,
 # Shorts mode stages — operate on script.beats, produce vertical 9:16 mp4.
 # ============================================================================
 
+# Per-character-template Flux negations + concrete cast vocabulary.
+# These are the prompts that actually push Flux out of its Sunstoriz fruit
+# default — the negations are aggressive on purpose.
+_CAST_FLUX_GUIDANCE: dict[str, str] = {
+    "human": (
+        "Realistic human characters with diverse Arabic features (skin tones, "
+        "hair, eyes), wearing clothing appropriate to the story's setting. "
+        "STRICTLY NO fruit characters, NOT fruit. NO lemons, NO strawberries, NO "
+        "apples, NO mangoes. NOT animal characters either — real human beings."
+    ),
+    "animal": (
+        "Anthropomorphic animal characters — concrete species like fox, "
+        "rabbit, deer, bear, wolf, owl, cat, panda — each character a "
+        "distinct species, wearing clothing appropriate to the story's "
+        "setting. STRICTLY NOT fruit characters. NO lemons, NO strawberries, "
+        "NO apples, NO mangoes. NOT humans either — anthropomorphic animals."
+    ),
+    "surreal": (
+        "Surreal abstract creatures with non-natural body shapes — geometric, "
+        "ethereal, dreamlike. STRICTLY NOT realistic humans, NOT real "
+        "animals, and NOT fruit characters. NO lemons, NO strawberries, NO "
+        "apples, NO mangoes."
+    ),
+    # fruit_sunstoriz and ai_choose: no override — use the writer's global_setting as-is.
+}
+
 def _stage_shorts_script(gemini, seed: ThemeSeed, cfg: Config, paths: RunPaths,
                          max_beats_override: int | None = None) -> Script:
     if paths.script_json.exists():
@@ -326,12 +352,14 @@ def _stage_video(args, cfg: Config, script: Script, paths: RunPaths) -> None:
 def _stage_character_sheet(
     client, cfg: Config, paths: RunPaths, script: Script,
     *, freeform_mode: bool = False,
+    character_template: str | None = None,
 ) -> None:
     """Generate a Flux character sheet for visual consistency across Veo clips.
 
     In freeform mode the lineup prompt is composed from script.global_setting
-    so the Flux render matches the user's chosen cast (animal / human /
-    surreal / etc.). In legacy Sunstoriz mode the function uses its
+    plus an explicit cast-type override (when character_template is animal /
+    human / surreal) that aggressively negates the Sunstoriz fruit default.
+    In legacy Sunstoriz mode (freeform_mode=False) the function uses its
     hardcoded fruit-cast prompt."""
     lineup_prompt = None
     if freeform_mode and script.global_setting and script.global_setting.strip():
@@ -347,14 +375,18 @@ def _stage_character_sheet(
             f" Named characters in the story: {', '.join(names)}."
             if names else ""
         )
+        # Override clause kicks in only for explicit non-fruit casts.
+        cast_override = _CAST_FLUX_GUIDANCE.get(character_template or "", "")
+        cast_clause = f" {cast_override}" if cast_override else ""
         lineup_prompt = (
             "Character lineup sheet for an animated short. "
             "Several named characters from the story standing side by side, "
             "full body, facing camera, neutral expressions, plain warm-grey "
             "background, consistent rendering style and color palette across "
             "all characters."
+            f"{cast_clause}"
             f"{names_clause} "
-            f"Style, cast and visual treatment: {script.global_setting.strip()}. "
+            f"Style and visual treatment: {script.global_setting.strip()}. "
             "Design-sheet aesthetic, high detail. NO text, NO watermark, NO logo."
         )
     pipeline.character_sheet.generate_character_sheet(
@@ -676,8 +708,11 @@ def main_with_args(argv: list[str]) -> int:
                     log.info("character_sheet: skipped (--skip-video; sheet is only "
                              "used as a Veo reference)")
                 else:
-                    _stage_character_sheet(_build_kie(), cfg, paths, script,
-                                          freeform_mode=args.freeform)
+                    _stage_character_sheet(
+                        _build_kie(), cfg, paths, script,
+                        freeform_mode=args.freeform,
+                        character_template=args.ff_character_template if args.freeform else None,
+                    )
             if args.pause_after_character_sheet:
                 if args.skip_video:
                     log.info("--pause-after-character-sheet ignored under --skip-video "

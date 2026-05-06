@@ -665,6 +665,170 @@ def test_freeform_mode_lineup_includes_unique_character_names(tmp_path, monkeypa
     # also mentions the cast generically. Loose check: the names appear.
 
 
+def test_freeform_animal_cast_negates_fruit_in_lineup_prompt(tmp_path, monkeypatch):
+    """When character_template='animal', the lineup_prompt must EXPLICITLY
+    negate fruit characters AND use concrete animal vocabulary so Flux
+    can't default to its Sunstoriz bias."""
+    captured: dict = {}
+    def fake_generate_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        fake_generate_sheet,
+    )
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="3D Pixar animation, anthropomorphic animal characters in folkloric setting",
+        music_mood="dread",
+        beats=(
+            Beat(arabic="a", english_motion="x", clip_duration_s=8.0,
+                 speaker="mother", character_name="أم خالد"),
+        ),
+        story_combined="a", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        freeform_mode=True,
+        character_template="animal",
+    )
+    p = captured["lineup_prompt"]
+    assert p is not None
+    p_lower = p.lower()
+    # Must explicitly forbid fruit
+    assert ("not fruit" in p_lower or "no fruit" in p_lower
+            or "no lemon" in p_lower or "no strawber" in p_lower), (
+        f"lineup_prompt for animal cast must NEGATE fruit: {p}"
+    )
+    # Must mention concrete animal types so Flux has a target
+    animal_words = ["fox", "rabbit", "deer", "bear", "wolf", "owl", "cat", "dog",
+                    "lion", "tiger", "horse", "mouse", "panda"]
+    found = sum(1 for w in animal_words if w in p_lower)
+    assert found >= 2, (
+        f"animal lineup_prompt must list concrete animal species (≥2); got {found}: {p}"
+    )
+
+
+def test_freeform_human_cast_negates_fruit_and_animals(tmp_path, monkeypatch):
+    """character_template='human' → prompt forbids fruits/animals and uses
+    human descriptors."""
+    captured: dict = {}
+    def fake_generate_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        fake_generate_sheet,
+    )
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run-h")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="urban",
+        global_setting="cinematic photo-real, human cast",
+        music_mood="dread",
+        beats=(Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                    speaker="mother", character_name="فاطمة"),),
+        story_combined="x", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        freeform_mode=True,
+        character_template="human",
+    )
+    p = captured["lineup_prompt"]
+    p_lower = p.lower()
+    assert "human" in p_lower
+    assert ("not fruit" in p_lower or "no fruit" in p_lower)
+    assert ("not animal" in p_lower or "no anthropomorphic" in p_lower or
+            "no animals" in p_lower or "real human" in p_lower)
+
+
+def test_freeform_fruit_cast_keeps_sunstoriz_default(tmp_path, monkeypatch):
+    """character_template='fruit_sunstoriz' should NOT add the negation —
+    fruits are the desired output."""
+    captured: dict = {}
+    def fake_generate_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        fake_generate_sheet,
+    )
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run-f")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="3D Pixar, anthropomorphic fruit characters",
+        music_mood="dread",
+        beats=(Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                    speaker="mother", character_name="أم خالد"),),
+        story_combined="x", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        freeform_mode=True,
+        character_template="fruit_sunstoriz",
+    )
+    p = captured["lineup_prompt"]
+    p_lower = p.lower()
+    # No negation when fruit is the chosen cast
+    assert "not fruit" not in p_lower
+    assert "no fruit" not in p_lower
+
+
+def test_freeform_ai_choose_falls_through_to_setting_only(tmp_path, monkeypatch):
+    """character_template='ai_choose' → no aggressive negation; the writer's
+    global_setting is the source of truth (existing behavior preserved)."""
+    captured: dict = {}
+    def fake_generate_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet",
+        fake_generate_sheet,
+    )
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run-c")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="cinematic dramatic lighting, vertical 9:16",
+        music_mood="dread",
+        beats=(Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                    speaker="mother", character_name="أم خالد"),),
+        story_combined="x", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        freeform_mode=True,
+        character_template="ai_choose",
+    )
+    p = captured["lineup_prompt"]
+    p_lower = p.lower()
+    # ai_choose mode is permissive — just uses global_setting.
+    assert "not fruit" not in p_lower
+
+
 def test_legacy_mode_passes_none_lineup_prompt(tmp_path, monkeypatch):
     """When freeform_mode is False (default), lineup_prompt is None so the
     Sunstoriz hardcoded prompt fires inside generate_character_sheet."""
