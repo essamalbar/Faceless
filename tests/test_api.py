@@ -1275,3 +1275,46 @@ def test_approve_veo_rejected_from_wrong_status(tmp_path, monkeypatch, client, a
         headers=auth,
     )
     assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Task 6: POST /runs/{id}/character-sheet/reroll
+# ---------------------------------------------------------------------------
+
+def test_character_sheet_reroll_deletes_and_respawns(tmp_path, client, auth):
+    """Happy path: from awaiting_veo_approval, the endpoint deletes
+    character_sheet.png and spawns run.py --shorts --resume --pause-after-character-sheet."""
+    from pipeline import api as api_mod
+
+    captured: list[list[str]] = []
+
+    def stub_spawn(args, run_dir):
+        captured.append(args)
+        return 5555
+
+    api_mod.set_spawn_fn(stub_spawn)
+
+    run_id = _create_run_in_awaiting_veo_approval(tmp_path)
+    sheet = tmp_path / "out" / run_id / "character_sheet.png"
+    assert sheet.exists(), "test setup: helper must put a sheet on disk"
+
+    resp = client.post(
+        f"/runs/{run_id}/character-sheet/reroll",
+        headers=auth,
+    )
+    assert resp.status_code == 200
+    assert not sheet.exists(), "reroll must delete existing sheet"
+    assert "--pause-after-character-sheet" in captured[0]
+    assert "--resume" in captured[0]
+    assert "--shorts" in captured[0]
+
+
+def test_character_sheet_reroll_rejected_from_wrong_status(tmp_path, client, auth):
+    """Returns 409 from awaiting_approval (no character_sheet yet)."""
+    rd = _make_run_dir(tmp_path)
+    _seed_awaiting_approval(rd)  # awaiting_approval state (no character_sheet)
+    resp = client.post(
+        f"/runs/{rd.name}/character-sheet/reroll",
+        headers=auth,
+    )
+    assert resp.status_code == 409

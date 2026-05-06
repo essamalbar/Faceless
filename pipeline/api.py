@@ -864,6 +864,36 @@ def approve_veo_run(run_id: str):
 
 
 @app.post(
+    "/runs/{run_id}/character-sheet/reroll",
+    response_model=ApprovalAck,
+    dependencies=[Depends(require_token)],
+)
+def reroll_character_sheet(run_id: str):
+    """Throw away the current Flux character sheet and regenerate it. Costs
+    another $0.05 of Flux. Only valid from awaiting_veo_approval — by
+    construction, you only reroll when you can SEE the sheet is wrong."""
+    run_dir = _run_dir(run_id)
+    s = derive_status(run_dir)
+    if s != "awaiting_veo_approval":
+        raise HTTPException(
+            409,
+            f"cannot reroll character sheet from status={s} "
+            f"(expected awaiting_veo_approval)",
+        )
+    state = _read_state(run_dir)
+    if _process_alive(state.get("pid")):
+        raise HTTPException(409, "a pipeline process is already running")
+    (run_dir / "character_sheet.png").unlink(missing_ok=True)
+    args = ["--shorts", "--resume", str(run_dir),
+            "--pause-after-character-sheet"]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid, last_error=None,
+                 last_action="reroll_character_sheet")
+    return ApprovalAck(run_id=run_id, status=derive_status(run_dir),
+                      started_paid_stages=True)
+
+
+@app.post(
     "/runs/{run_id}/resume",
     response_model=ApprovalAck,
     dependencies=[Depends(require_token)],
