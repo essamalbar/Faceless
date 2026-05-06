@@ -63,3 +63,13 @@ def test_generate_freeform_script_happy_path():
     assert script.title == "Lost"
     assert len(script.beats) == 3
     assert script.beats[1].speaker == "son"
+
+
+def test_freeform_prompt_mentions_character_name():
+    """The freeform prompt instructs the LLM to pick consistent Arabic
+    character names per character (matching the chosen dialect)."""
+    p = build_freeform_prompt(
+        ThemeSeed(theme="urban", premise="x"),
+        FreeformControls(dialect="egyptian"),
+    )
+    assert "character_name" in p

@@ -98,6 +98,11 @@ Requirements:
 - Each beat speaks in first person — a named character talks, not a narrator.
 - Speaker values must be one of: mother, son, father, doctor, neighbor,
   grandmother, wife, daughter, friend, enemy, shadow.
+- Each beat must include a `character_name` field — a SHORT Arabic name for
+  the speaking character (e.g. "خالد", "فاطمة", "أم يوسف", "د. سامي").
+  Pick names that fit the chosen dialect/cast and the story's setting.
+  Use the SAME character_name for the same character across beats — names
+  must NOT change mid-story. Empty strings are not acceptable.
 - english_motion describes the visual action for that beat (~25 words),
   reinforcing visual continuity from the previous beat.
 - The final beat must match the ending type above.
@@ -112,7 +117,7 @@ Return JSON only, no markdown:
   "music_mood": "drone|dread|cosmic|discovery",
   "target_duration_s": <int>,
   "beats": [
-    {{"arabic":"...","english_motion":"...","clip_duration_s":<float>,"speaker":"..."}},
+    {{"arabic":"...","english_motion":"...","clip_duration_s":<float>,"speaker":"...","character_name":"اسم عربي قصير"}},
     ...exactly {num_beats} beats...
   ]
 }}
