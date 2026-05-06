@@ -1018,12 +1018,10 @@ def test_edit_script_replaces_beats(client, auth, tmp_path: Path):
 
 
 def test_edit_script_rejected_after_approval(client, auth, tmp_path: Path):
-    """Once the user has approved + paid stages started, dialogue is baked
+    """Once the user has approved + Veo started (clips exist), dialogue is baked
     into Veo clips and editing the file does nothing — refuse to mislead."""
     rd = _make_run_dir(tmp_path)
-    _seed_awaiting_approval(rd)
-    # Simulate paid stage having begun
-    (rd / "character_sheet.png").write_bytes(b"png")
+    _seed_with_clips(rd, n=1)  # At least one clip means Veo started
     body = {
         "title": "x",
         "beats": [{"arabic": "ج", "english_motion": "m",
@@ -1044,6 +1042,37 @@ def test_edit_script_rejects_invalid_speaker(client, auth, tmp_path: Path):
     r = client.put(f"/runs/{rd.name}/script", json=body, headers=auth)
     assert r.status_code == 400
     assert "speaker" in r.json()["detail"]
+
+
+def test_edit_script_allowed_in_awaiting_veo_approval(tmp_path, client, auth):
+    """The PUT /runs/{id}/script endpoint must accept edits when the run
+    is paused at awaiting_veo_approval, not just awaiting_approval."""
+    run_id = _create_run_in_awaiting_veo_approval(tmp_path)
+    # Seed a script.json that has at least one beat (the helper from Task 4
+    # may write a minimal one — we ensure it has real beats).
+    script_path = (tmp_path / "out" / run_id / "script.json")
+    script_path.write_text(
+        '{"title":"original","beats":[{"arabic":"old","english_motion":"x",'
+        '"speaker":"mother","clip_duration_s":8.0}],"target_duration_s":8.0,'
+        '"theme":"folkloric","global_setting":"x","music_mood":"dread"}',
+        encoding="utf-8",
+    )
+    payload = {
+        "title": "edited",
+        "beats": [{
+            "arabic": "نص جديد",
+            "english_motion": "new visual",
+            "speaker": "mother",
+            "clip_duration_s": 8.0,
+        }],
+    }
+    resp = client.put(
+        f"/runs/{run_id}/script",
+        json=payload,
+        headers=auth,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "edited"
 
 
 # ---------------------------------------------------------------------------

@@ -926,10 +926,11 @@ def edit_script(run_id: str, req: EditScriptRequest):
     into the (already-generated) Veo clips and editing it does nothing."""
     run_dir = _run_dir(run_id)
     s = derive_status(run_dir)
-    if s != "awaiting_approval":
+    if s not in ("awaiting_approval", "awaiting_veo_approval"):
         raise HTTPException(
             409,
-            f"cannot edit script from status={s} (only awaiting_approval is editable)",
+            f"cannot edit script from status={s} "
+            f"(only awaiting_approval / awaiting_veo_approval are editable)",
         )
     if not req.beats:
         raise HTTPException(400, "at least one beat required")
