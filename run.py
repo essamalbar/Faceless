@@ -42,7 +42,7 @@ from pipeline.seed import auto_seed, manual_seed, record_theme_use
 from pipeline.shots import generate_shots
 from pipeline.types import RunPaths, Script, Shot, ThemeSeed, WordTiming
 from pipeline.video import generate_clips
-from pipeline.voice import generate_narration
+from pipeline.voice import generate_narration, generate_narration_per_beat
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -57,12 +57,22 @@ PROJECT_STORY_HISTORY = DEFAULT_OUT_ROOT / "story_history.jsonl"
 def _build_gemini():
     """Build the LLM client used by stages.
 
-    Prefer Groq if GROQ_API_KEY is set (Groq's free tier has way more headroom
-    than Gemini's free tier — Llama 3.3 70B handles Arabic well). Otherwise
-    fall back to Gemini. Both expose the same .complete()/.embed() interface,
-    though Groq's .embed() raises NotImplementedError (only the long-form
-    repetition guard uses embeddings; Shorts path never calls it).
+    Priority (most-to-least preferred for the Shorts writer):
+      1. Anthropic Claude — strongest Arabic narrative quality, no Latin /
+         CJK character contamination, reliable first-person perspective.
+         Costs ~$0.02 per shorts script via Sonnet 4.6.
+      2. Groq Llama 3.3 — free tier with high RPM. Acceptable for cheap
+         iteration but slips foreign characters and confuses speakers.
+      3. Gemini — free fallback when neither key is present. Long-form path
+         uses .embed() which only Gemini implements.
+
+    All clients expose the same .complete()/.embed() interface, though
+    Anthropic and Groq raise NotImplementedError on .embed() (only the
+    long-form repetition guard calls it; Shorts never does).
     """
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        from pipeline.llm_anthropic import AnthropicClient
+        return AnthropicClient()
     if os.environ.get("GROQ_API_KEY"):
         return GroqClient()
     return GeminiClient()
@@ -214,11 +224,18 @@ def _stage_assemble(cfg: Config, shots: list[Shot], paths: RunPaths,
 # Shorts mode stages — operate on script.beats, produce vertical 9:16 mp4.
 # ============================================================================
 
-def _stage_shorts_script(gemini, seed: ThemeSeed, cfg: Config, paths: RunPaths) -> Script:
+def _stage_shorts_script(gemini, seed: ThemeSeed, cfg: Config, paths: RunPaths,
+                         max_beats_override: int | None = None) -> Script:
     if paths.script_json.exists():
         return Script.from_dict(json.loads(paths.script_json.read_text(encoding="utf-8")))
+    if max_beats_override is not None:
+        min_beats = min(2, max_beats_override)
+        max_beats = max_beats_override
+    else:
+        min_beats = cfg.kie.num_clips
+        max_beats = max(cfg.kie.num_clips, 15)
     script = generate_shorts_script(
-        gemini, seed, min_beats=cfg.kie.num_clips, max_beats=max(cfg.kie.num_clips, 15),
+        gemini, seed, min_beats=min_beats, max_beats=max_beats,
     )
     paths.script_json.write_text(
         json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
@@ -228,16 +245,39 @@ def _stage_shorts_script(gemini, seed: ThemeSeed, cfg: Config, paths: RunPaths) 
 
 
 def _stage_shorts_voice(args, cfg: Config, script: Script, paths: RunPaths) -> list[WordTiming]:
-    voice = args.voice or cfg.voice.name
-    generate_narration(
-        text=script.story_combined,
-        voice=voice, rate=cfg.voice.rate, pitch=cfg.voice.pitch,
-        mp3_path=paths.narration_mp3, timings_path=paths.word_timings_json,
-        provider=cfg.voice.provider,
-        elevenlabs_voice_id=cfg.voice.elevenlabs_voice_id,
-        elevenlabs_model=cfg.voice.elevenlabs_model,
-        fallback_to_edge_tts=cfg.voice.fallback_to_edge_tts,
+    """Voice stage for Shorts mode.
+
+    Uses per-beat synthesis when speakers are tagged AND character voices
+    are configured (the @sunstoriz path: mother voice + son voice routed by
+    each beat's `speaker` field). Falls back to single-voice narration of
+    the concatenated story_combined for older scripts without speaker tags.
+    """
+    use_per_beat = (
+        cfg.voice.provider == "elevenlabs"
+        and bool(cfg.voice.character_voices)
+        and any(b.speaker != "narrator" for b in script.beats)
     )
+    if use_per_beat:
+        generate_narration_per_beat(
+            beats=list(script.beats),
+            character_voices=dict(cfg.voice.character_voices),
+            parts_dir=paths.root / "narration_beats",
+            combined_mp3_path=paths.narration_mp3,
+            timings_path=paths.word_timings_json,
+            elevenlabs_model=cfg.voice.elevenlabs_model,
+            fallback_voice_id=cfg.voice.elevenlabs_voice_id,
+        )
+    else:
+        voice = args.voice or cfg.voice.name
+        generate_narration(
+            text=script.story_combined,
+            voice=voice, rate=cfg.voice.rate, pitch=cfg.voice.pitch,
+            mp3_path=paths.narration_mp3, timings_path=paths.word_timings_json,
+            provider=cfg.voice.provider,
+            elevenlabs_voice_id=cfg.voice.elevenlabs_voice_id,
+            elevenlabs_model=cfg.voice.elevenlabs_model,
+            fallback_to_edge_tts=cfg.voice.fallback_to_edge_tts,
+        )
     return [WordTiming.from_dict(d)
             for d in json.loads(paths.word_timings_json.read_text(encoding="utf-8"))]
 
@@ -296,7 +336,15 @@ def _stage_character_sheet(client, cfg: Config, paths: RunPaths, script: Script)
 
 
 def _stage_align(paths: RunPaths, script: Script) -> list[WordTiming]:
-    """Refine word_timings.json with Whisper force-alignment."""
+    """Refine word_timings.json with Whisper force-alignment.
+
+    Skipped when the per-beat narration path already produced deterministic
+    timings (parts_dir is present): per-beat boundaries are exact, so
+    Whisper would only add transcription error.
+    """
+    if (paths.root / "narration_beats").exists():
+        return [WordTiming.from_dict(d)
+                for d in json.loads(paths.word_timings_json.read_text(encoding="utf-8"))]
     real_timings = pipeline.align.align_arabic(
         audio_path=paths.narration_mp3,
         expected_text=script.story_combined,
@@ -306,6 +354,68 @@ def _stage_align(paths: RunPaths, script: Script) -> list[WordTiming]:
         encoding="utf-8",
     )
     return real_timings
+
+
+def _stage_native_audio_timings(paths: RunPaths, script: Script) -> list[WordTiming]:
+    """Build word_timings.json by Whisper-aligning each Veo clip's audio.
+
+    Veo generates dialogue audio inside each clip; the audio's actual start /
+    end / pacing is unpredictable. Whisper runs as a stopwatch on each clip
+    (its Arabic transcription is discarded — it's wrong anyway), then we
+    render the ORIGINAL script text at the timings Whisper produced. Result:
+    captions stay in lockstep with whatever Veo actually said, even when
+    dialogue starts late or ends early in a clip.
+
+    Falls back to a uniform-distribution-across-clip estimate per beat only
+    if Whisper returns no spans for that clip (very short / silent audio).
+    """
+    if not script.beats:
+        return []
+    timings: list[dict] = []
+    cursor_ms = 0
+    for i, beat in enumerate(script.beats, start=1):
+        clip_path = paths.clips_dir / f"{i:02d}.mp4"
+        clip_ms = int(_probe_duration_s(clip_path) * 1000) if clip_path.exists() else 0
+        words = [w for w in beat.arabic.split() if w.strip()]
+        if not words or clip_ms <= 0:
+            cursor_ms += clip_ms
+            continue
+
+        try:
+            beat_timings = pipeline.align.align_arabic(
+                audio_path=clip_path,
+                expected_text=beat.arabic,
+            )
+        except Exception as e:
+            # Whisper failure on one clip shouldn't blow up the whole run.
+            # Fall back to uniform distribution for this beat only.
+            print(f"[align] clip {i:02d}: whisper failed ({type(e).__name__}: {e}); "
+                  f"using uniform distribution")
+            beat_timings = []
+
+        if beat_timings:
+            for t in beat_timings:
+                timings.append({
+                    "word": t.word,
+                    "offset_ms": cursor_ms + t.offset_ms,
+                    "duration_ms": t.duration_ms,
+                })
+        else:
+            # Last-resort fallback per-beat
+            per_word = max(int(clip_ms * 0.85) // len(words), 1)
+            for j, w in enumerate(words):
+                timings.append({
+                    "word": w,
+                    "offset_ms": cursor_ms + j * per_word,
+                    "duration_ms": per_word,
+                })
+        cursor_ms += clip_ms
+
+    paths.word_timings_json.write_text(
+        json.dumps(timings, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return [WordTiming.from_dict(t) for t in timings]
 
 
 def _stage_video_chained(args, cfg: Config, script: Script, paths: RunPaths) -> None:
@@ -353,6 +463,7 @@ def _stage_video_chained(args, cfg: Config, script: Script, paths: RunPaths) -> 
         poll_interval_s=cfg.kie.poll_interval_s,
         poll_timeout_s=cfg.kie.poll_timeout_s,
         reroll_indices=reroll,
+        with_dialogue=cfg.kie.native_audio,
     )
 
 
@@ -384,20 +495,26 @@ def _probe_duration_s(path: Path) -> float:
 
 
 def _stage_shorts_assemble(cfg: Config, script: Script, paths: RunPaths,
-                            burn_caption_ass: Path | None) -> None:
+                            burn_caption_ass: Path | None,
+                            *, native_audio: bool = False) -> None:
     clip_paths = [paths.clips_dir / f"{i+1:02d}.mp4" for i in range(len(script.beats))]
     # Probe ACTUAL clip durations — Veo often returns 8s even when we ask for 10s,
     # and using config's expected duration breaks xfade offsets.
     clip_durations = [_probe_duration_s(p) for p in clip_paths]
+    narration_path = None if native_audio else paths.narration_mp3
+    narration_duration = (
+        None if native_audio else _probe_duration_s(paths.narration_mp3)
+    )
     assemble_shorts_video(
         clip_paths=clip_paths,
         clip_durations_s=clip_durations,
-        narration_path=paths.narration_mp3,
+        narration_path=narration_path,
         music_path=paths.music_track_mp3,
         out_path=paths.final_mp4,
         burn_caption_ass=burn_caption_ass,
         output_width=1080, output_height=1920,
         crossfade_ms=cfg.assemble.shot_crossfade_ms,
+        narration_duration_s=narration_duration,
     )
 
 
@@ -423,6 +540,18 @@ def main_with_args(argv: list[str]) -> int:
                    help="Use placeholder black mp4 clips (Shorts dev only)")
     p.add_argument("--max-spend", type=float, default=None,
                    help="Override config.kie.max_spend_usd for this run")
+    p.add_argument("--max-beats", type=int, default=None,
+                   help="Cap the writer to ≤ N beats (Shorts validation runs). "
+                        "Forces min_beats=min(2,N) and max_beats=N so a $2 test "
+                        "is achievable without editing config.yaml.")
+    p.add_argument("--pause-after-script", action="store_true",
+                   help="Stop after the script stage so a UI / human can review "
+                        "the Arabic dialogue before any Veo spend. Resume the run "
+                        "with --resume to continue past character_sheet+video.")
+    p.add_argument("--pause-after-character-sheet", action="store_true",
+                   help="Exit cleanly after Flux character_sheet.png is written. "
+                        "Used by the API server to gate Veo spend on a second "
+                        "human approval. Resume with --resume <dir>.")
     p.add_argument("--no-burn-captions", action="store_true",
                    help="Skip burned-in Arabic captions (Shorts default = burn-in)")
     args = p.parse_args(argv)
@@ -442,18 +571,50 @@ def main_with_args(argv: list[str]) -> int:
         log.info(f"run dir: {run_dir}  mode={'shorts' if args.shorts else 'long-form'}")
 
         if args.shorts:
+            # Native-audio mode: Veo generates voice + lip sync per clip from
+            # the dialogue baked into the prompt. We skip ElevenLabs and the
+            # Whisper align stage; word timings are derived from clip lengths
+            # after the video stage runs.
+            #
+            # `--skip-video` keeps using the ElevenLabs path so the placeholder
+            # run still has audio to verify captions/duration logic against.
+            use_native_audio = cfg.kie.native_audio and not args.skip_video
+
             with log.stage("seed"):
                 seed = _stage_seed(args, gemini, log, paths, project_theme_log)
             with log.stage("script"):
-                script = _stage_shorts_script(gemini, seed, cfg, paths)
-            with log.stage("voice"):
-                _stage_shorts_voice(args, cfg, script, paths)
-            with log.stage("align"):
-                timings = _stage_align(paths, script)
+                script = _stage_shorts_script(gemini, seed, cfg, paths,
+                                               max_beats_override=args.max_beats)
+            if args.pause_after_script:
+                # Approval gate for the mobile-app workflow. Script is on disk;
+                # bail out before any paid stage so a human reviewer can decide.
+                # Resume with --resume <dir> to continue past character_sheet.
+                log.info("PAUSED: script generated, awaiting approval. "
+                         f"Resume with: uv run python run.py --shorts --resume {run_dir}")
+                return 0
+            if not use_native_audio:
+                with log.stage("voice"):
+                    _stage_shorts_voice(args, cfg, script, paths)
+                with log.stage("align"):
+                    timings = _stage_align(paths, script)
+            else:
+                log.info("voice/align: skipped (kie.native_audio=true — Veo will "
+                         "generate dialogue audio with lip sync per clip)")
             with log.stage("character_sheet"):
-                _stage_character_sheet(_build_kie(), cfg, paths, script)
+                if args.skip_video:
+                    log.info("character_sheet: skipped (--skip-video; sheet is only "
+                             "used as a Veo reference)")
+                else:
+                    _stage_character_sheet(_build_kie(), cfg, paths, script)
+            if args.pause_after_character_sheet:
+                log.info("PAUSED: character_sheet generated, awaiting Veo approval. "
+                         f"Resume with: uv run python run.py --shorts --resume {run_dir}")
+                return 0
             with log.stage("video"):
                 _stage_video_chained(args, cfg, script, paths)
+            if use_native_audio:
+                with log.stage("native_audio_timings"):
+                    timings = _stage_native_audio_timings(paths, script)
             with log.stage("music"):
                 _stage_music(script, music_bundle, paths)
             with log.stage("captions"):
@@ -462,7 +623,8 @@ def main_with_args(argv: list[str]) -> int:
                 if args.no_burn_captions:
                     burn_ass = None
             with log.stage("assemble"):
-                _stage_shorts_assemble(cfg, script, paths, burn_ass)
+                _stage_shorts_assemble(cfg, script, paths, burn_ass,
+                                        native_audio=use_native_audio)
         else:
             with log.stage("seed"):
                 seed = _stage_seed(args, gemini, log, paths, project_theme_log)

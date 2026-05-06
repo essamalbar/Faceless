@@ -46,28 +46,28 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
         "beats": [
             {"arabic": "كنتُ وحيداً عند البئر.",
              "english_motion": "lone hooded figure beside ancient well, slow push-in, moonlight",
-             "clip_duration_s": 8.0},
+             "clip_duration_s": 8.0, "speaker": "mother"},
             {"arabic": "سمعتُ بكاءً في الأعماق.",
              "english_motion": "close-up of dark well shaft, mist rising, faint glow",
-             "clip_duration_s": 8.0},
+             "clip_duration_s": 8.0, "speaker": "mother"},
             {"arabic": "ظهرتْ يدٌ عظمية.",
              "english_motion": "skeletal hand emerging from well rim, low angle, candlelight",
-             "clip_duration_s": 8.0},
+             "clip_duration_s": 8.0, "speaker": "son"},
             {"arabic": "ثم اختفى كل شيء.",
              "english_motion": "wide shot of empty village, fog rolling in, static camera",
-             "clip_duration_s": 8.0},
+             "clip_duration_s": 8.0, "speaker": "mother"},
             {"arabic": "بكيتُ في الصمت.",
              "english_motion": "close-up of tear rolling down cheek, soft moonlight",
-             "clip_duration_s": 8.0},
+             "clip_duration_s": 8.0, "speaker": "mother"},
             {"arabic": "لم يبقَ أحد.",
              "english_motion": "empty village square at dawn, birds flying away",
-             "clip_duration_s": 8.0},
+             "clip_duration_s": 8.0, "speaker": "father"},
             {"arabic": "كان هذا نهاية كل شيء.",
              "english_motion": "wide shot of ruins, dust settling, golden hour",
-             "clip_duration_s": 8.0},
+             "clip_duration_s": 8.0, "speaker": "mother"},
             {"arabic": "لن أعود أبداً.",
              "english_motion": "lone figure walking away into fog, back to camera",
-             "clip_duration_s": 8.0},
+             "clip_duration_s": 8.0, "speaker": "son"},
         ],
     }, ensure_ascii=False)
 
@@ -82,7 +82,7 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     fake_g = FakeGemini()
     monkeypatch.setattr("run._build_gemini", lambda: fake_g)
 
-    # ---- 2) Edge TTS fake ----
+    # ---- 2) Edge TTS fake (long-form path / fallback) ----
     def fake_synthesize(text, voice, rate, pitch, mp3_path):
         mp3_path.write_bytes(sample_mp3)
         return [
@@ -90,6 +90,15 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
             {"word": "وحيداً.", "offset_ms": 400, "duration_ms": 400},
         ]
     monkeypatch.setattr("pipeline.voice._synthesize", fake_synthesize)
+
+    # ---- 2b) ElevenLabs fake (Shorts per-character path) ----
+    class FakeEL:
+        def synthesize(self, text, voice_id, model, out_path, **kw):
+            out_path.write_bytes(sample_mp3)
+    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
+    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s",
+                        lambda parts, out: out.write_bytes(sample_mp3))
+    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 1000)
 
     # ---- 3) Kie.ai fake — Kie client never actually constructed; we mock _build_kie ----
     class FakeKie:
@@ -164,10 +173,11 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     assert len(runs) == 1
     run_dir = runs[0]
 
-    # All 7 Shorts artifacts present
+    # All Shorts artifacts present. With kie.native_audio=true (the post-Tier-4
+    # default), Veo generates the dialogue audio per clip and the orchestrator
+    # skips ElevenLabs entirely — narration.mp3 is not produced.
     assert (run_dir / "seed.json").exists()
     assert (run_dir / "script.json").exists()
-    assert (run_dir / "narration.mp3").exists()
     assert (run_dir / "word_timings.json").exists()
     assert (run_dir / "clips").is_dir()
     # 8 clips → 8 mp4 files
@@ -179,10 +189,12 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     assert (run_dir / "captions.ar.ass").exists()
     assert (run_dir / "final.mp4").exists()
 
-    # Spec gate: TikTok captions are karaoke-style (\k tags) AND vertical (PlayResX 1080)
+    # Spec gate: vertical TikTok captions, NO karaoke `{\k}` tags (those broke
+    # Arabic right-to-left rendering — bidi reordered each tagged run as if
+    # left-to-right and visually reversed Arabic word order).
     ass = (run_dir / "captions.ar.ass").read_text(encoding="utf-8")
     assert "PlayResX: 1080" in ass
-    assert "\\k" in ass
+    assert "\\k" not in ass
 
     # Script has beats[] populated, story_combined non-empty
     script = json.loads((run_dir / "script.json").read_text(encoding="utf-8"))
@@ -201,6 +213,70 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     assert (run_dir / "character_sheet.png").exists()
 
 
+def test_run_shorts_pause_after_script_stops_before_paid_stages(
+    monkeypatch, tmp_path: Path, fixtures_dir: Path, music_bundle: Path,
+):
+    """`--pause-after-script` writes script.json, then exits cleanly so a UI
+    can show the dialogue for human approval BEFORE any Veo / Flux spend.
+    No character_sheet, no clips, no final.mp4 should be produced."""
+    beats_payload = json.dumps({
+        "title": "review me",
+        "theme": "folkloric",
+        "global_setting": "test setting",
+        "music_mood": "dread",
+        "target_duration_s": 40,
+        "beats": [
+            {"arabic": f"ج{i}", "english_motion": f"m{i}",
+             "clip_duration_s": 8.0, "speaker": "mother"}
+            for i in range(1, 6)
+        ],
+    }, ensure_ascii=False)
+
+    class FakeGemini:
+        def complete(self, prompt, system=None):
+            return beats_payload
+        def embed(self, text):
+            return [0.0, 1.0]
+
+    monkeypatch.setattr("run._build_gemini", lambda: FakeGemini())
+
+    # Hard fail any paid stage to prove the pause gate works.
+    def explode(*a, **kw):
+        raise AssertionError("paid stage ran despite --pause-after-script")
+    monkeypatch.setattr("pipeline.character_sheet.generate_character_sheet", explode)
+    monkeypatch.setattr("pipeline.video.generate_clips_chained", explode)
+    monkeypatch.setattr("pipeline.assemble._run_ffmpeg", explode)
+
+    from run import main_with_args
+    out_root = tmp_path / "out"
+    config_path = Path(__file__).parent.parent / "config.yaml"
+
+    code = main_with_args([
+        "--shorts",
+        "--pause-after-script",
+        "--theme", "folkloric",
+        "--seed", "x",
+        "--out-root", str(out_root),
+        "--music-bundle", str(music_bundle),
+        "--config", str(config_path),
+    ])
+    assert code == 0
+    runs = [p for p in out_root.iterdir() if p.is_dir()]
+    assert len(runs) == 1
+    run_dir = runs[0]
+
+    # Script written for review
+    assert (run_dir / "script.json").exists()
+    assert (run_dir / "seed.json").exists()
+    # Paid artifacts MUST NOT exist
+    assert not (run_dir / "character_sheet.png").exists()
+    assert not (run_dir / "clips").exists()
+    assert not (run_dir / "final.mp4").exists()
+    # Run log records the pause reason
+    log = (run_dir / "run.log").read_text(encoding="utf-8")
+    assert "PAUSED" in log
+
+
 def test_run_shorts_skip_video_uses_placeholder_clips(
     monkeypatch, tmp_path: Path, fixtures_dir: Path, music_bundle: Path,
 ):
@@ -214,7 +290,8 @@ def test_run_shorts_skip_video_uses_placeholder_clips(
         "music_mood": "dread",
         "target_duration_s": 72,
         "beats": [
-            {"arabic": f"ج{i}", "english_motion": f"m{i}", "clip_duration_s": 9.0}
+            {"arabic": f"ج{i}", "english_motion": f"m{i}",
+             "clip_duration_s": 9.0, "speaker": "mother"}
             for i in range(1, 9)
         ],
     }, ensure_ascii=False)
@@ -231,6 +308,15 @@ def test_run_shorts_skip_video_uses_placeholder_clips(
         mp3_path.write_bytes(sample_mp3)
         return [{"word": "ج", "offset_ms": 0, "duration_ms": 400}]
     monkeypatch.setattr("pipeline.voice._synthesize", fake_synthesize)
+
+    # ElevenLabs per-beat fake (config defaults to elevenlabs provider)
+    class FakeEL:
+        def synthesize(self, text, voice_id, model, out_path, **kw):
+            out_path.write_bytes(sample_mp3)
+    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
+    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s",
+                        lambda parts, out: out.write_bytes(sample_mp3))
+    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 1000)
 
     # Mock Whisper align — return synthetic timings (no real model load)
     from pipeline.types import WordTiming as _WordTiming
@@ -274,3 +360,67 @@ def test_run_shorts_skip_video_uses_placeholder_clips(
     assert (run_dir / "clips" / "01.mp4").exists()
     assert (run_dir / "clips" / "08.mp4").exists()
     assert (run_dir / "final.mp4").exists()
+
+
+# ---------------------------------------------------------------------------
+# Minimal valid script JSON for resume-path tests
+# ---------------------------------------------------------------------------
+
+_MINIMAL_SCRIPT_JSON = json.dumps({
+    "title": "اختبار",
+    "theme": "folkloric",
+    "global_setting": "abandoned village, night",
+    "music_mood": "dread",
+    "target_duration_s": 16,
+    "beats": [
+        {"arabic": "كنتُ وحيداً.", "english_motion": "lone figure, slow push-in",
+         "clip_duration_s": 8.0, "speaker": "mother"},
+        {"arabic": "ثم اختفى كل شيء.", "english_motion": "empty village, fog",
+         "clip_duration_s": 8.0, "speaker": "mother"},
+    ],
+}, ensure_ascii=False)
+
+
+def test_pause_after_character_sheet_exits_after_flux(tmp_path, monkeypatch):
+    """When --pause-after-character-sheet is passed AND --resume points at a run
+    with script.json already present, run.py runs the Flux stage exactly once
+    and then exits 0 without entering the video stage."""
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "script.json").write_text(_MINIMAL_SCRIPT_JSON, encoding="utf-8")
+    (run_dir / "seed.json").write_text(
+        '{"theme":"folkloric","premise":"x"}', encoding="utf-8")
+
+    video_calls: list = []
+    sheet_calls: list = []
+
+    class FakeGemini:
+        def complete(self, prompt, system=None):
+            return _MINIMAL_SCRIPT_JSON
+        def embed(self, text):
+            return [0.0, 1.0]
+
+    monkeypatch.setattr("run._build_gemini", lambda: FakeGemini())
+
+    class FakeKie:
+        pass
+    monkeypatch.setattr("run._build_kie", lambda: FakeKie())
+
+    def fake_sheet(client, cfg, paths, script):
+        sheet_calls.append(paths.character_sheet_png)
+        paths.character_sheet_png.write_bytes(b"fake-png")
+
+    def fake_video(*a, **kw):
+        video_calls.append(a)
+
+    monkeypatch.setattr("run._stage_character_sheet", fake_sheet)
+    monkeypatch.setattr("run._stage_video_chained", fake_video)
+
+    import run
+    rc = run.main_with_args([
+        "--shorts", "--resume", str(run_dir),
+        "--pause-after-character-sheet",
+    ])
+    assert rc == 0
+    assert len(sheet_calls) == 1
+    assert video_calls == []
