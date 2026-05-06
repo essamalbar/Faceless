@@ -32,10 +32,12 @@ Split the following Arabic prose into approximately {target_beats} beats
 - speaker: one of mother, son, father, doctor, neighbor, grandmother, wife,
   daughter, friend, enemy, shadow. Pick the most likely speaker for that beat.
 - clip_duration_s: a number between {min_s} and {max_s} based on beat length.
+- character_name: a short Arabic name for the speaking character (e.g. "خالد",
+  "فاطمة", "أم يوسف"). Use the SAME name for the same character across beats.
 
 Return JSON only, no markdown:
 
-{{"beats": [{{"arabic":"…","english_motion":"…","speaker":"…","clip_duration_s":N}}, ...]}}
+{{"beats": [{{"arabic":"…","english_motion":"…","speaker":"…","clip_duration_s":N,"character_name":"اسم عربي قصير"}}, ...]}}
 
 Input prose:
 {raw}
@@ -82,6 +84,7 @@ def _parse_response(raw_response: str) -> list[ParsedBeat]:
             english_motion=str(b.get("english_motion", "")).strip(),
             speaker=speaker,
             clip_duration_s=float(b.get("clip_duration_s", 8.0)),
+            character_name=str(b.get("character_name", "")).strip(),
         ))
     return beats
 

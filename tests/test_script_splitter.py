@@ -59,3 +59,34 @@ def test_verbatim_match_helper_tolerates_whitespace():
     assert _verbatim_match("أ ب ج", "أب ج") is True
     assert _verbatim_match("أ ب ج", "أ ب  ج\n") is True
     assert _verbatim_match("أ ب ج", "أ ب د") is False
+
+
+def test_splitter_reads_character_name_from_llm():
+    """When the LLM returns character_name, the splitter populates it on ParsedBeat."""
+    raw = "أنا قاعدة بالمطبخ. ابني نسي."
+    response = '''{"beats":[
+        {"arabic":"أنا قاعدة بالمطبخ.","english_motion":"x","speaker":"mother","clip_duration_s":7,"character_name":"أم خالد"},
+        {"arabic":"ابني نسي.","english_motion":"y","speaker":"son","clip_duration_s":7,"character_name":"خالد"}
+    ]}'''
+    llm = _StubLLM(response)
+    beats = split_prose_into_beats(llm, raw, target_beats=2, per_beat_seconds=7)
+    assert beats[0].character_name == "أم خالد"
+    assert beats[1].character_name == "خالد"
+
+
+def test_splitter_legacy_omits_character_name():
+    """Legacy LLM responses without character_name still parse with default ''."""
+    raw = "أنا قاعدة بالمطبخ. ابني نسي."
+    response = '''{"beats":[
+        {"arabic":"أنا قاعدة بالمطبخ.","english_motion":"x","speaker":"mother","clip_duration_s":7},
+        {"arabic":"ابني نسي.","english_motion":"y","speaker":"son","clip_duration_s":7}
+    ]}'''
+    llm = _StubLLM(response)
+    beats = split_prose_into_beats(llm, raw, target_beats=2, per_beat_seconds=7)
+    assert beats[0].character_name == ""
+
+
+def test_splitter_prompt_mentions_character_name():
+    """The splitter LLM prompt instructs it to pick Arabic character names."""
+    from pipeline.script_splitter import _PROMPT_TEMPLATE
+    assert "character_name" in _PROMPT_TEMPLATE

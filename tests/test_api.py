@@ -226,6 +226,31 @@ def test_parse_script_llm_fallback(client, auth, monkeypatch):
     assert len(body["beats"]) == 3
 
 
+def test_parse_script_llm_populates_character_name(client, auth, monkeypatch):
+    """When the LLM splitter returns character_name, /parse-script propagates it."""
+    from pipeline import api as api_mod
+    raw = "أنا قاعدة بالمطبخ. ابني نسي. قلبي مكسور. هذا الفقد لا يطاق."
+    fake_response = (
+        '{"beats":['
+        '{"arabic":"أنا قاعدة بالمطبخ.","english_motion":"x","speaker":"mother","clip_duration_s":7,"character_name":"أم خالد"},'
+        '{"arabic":"ابني نسي.","english_motion":"y","speaker":"son","clip_duration_s":7,"character_name":"خالد"},'
+        '{"arabic":"قلبي مكسور.","english_motion":"z","speaker":"mother","clip_duration_s":7,"character_name":"أم خالد"},'
+        '{"arabic":"هذا الفقد لا يطاق.","english_motion":"w","speaker":"mother","clip_duration_s":7,"character_name":"أم خالد"}'
+        ']}'
+    )
+    class _Stub:
+        def complete(self, prompt, system=""): return fake_response
+    monkeypatch.setattr(api_mod, "_get_splitter_llm", lambda: _Stub())
+    resp = client.post("/runs/parse-script",
+                       json={"raw_text": raw, "target_beats": 4},
+                       headers=auth)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["parse_method"] == "llm_split"
+    assert body["beats"][0]["character_name"] == "أم خالد"
+    assert body["beats"][1]["character_name"] == "خالد"
+
+
 def test_run_id_path_traversal_blocked(client, auth, tmp_path: Path):
     """Strict allowlist: only [A-Za-z0-9_-]+ accepted. ../ and absolute paths
     must 400, not let the request reach the filesystem."""

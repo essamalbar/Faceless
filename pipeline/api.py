@@ -678,6 +678,7 @@ def parse_script(req: ParseScriptRequest):
                 PasteScriptBeat(
                     arabic=b.arabic, english_motion=b.english_motion,
                     speaker=b.speaker, clip_duration_s=b.clip_duration_s,
+                    character_name=b.character_name,
                 )
                 for b in parsed.beats
             ],
@@ -699,6 +700,7 @@ def parse_script(req: ParseScriptRequest):
             PasteScriptBeat(
                 arabic=b.arabic, english_motion=b.english_motion,
                 speaker=b.speaker, clip_duration_s=b.clip_duration_s,
+                character_name=b.character_name,
             )
             for b in split_beats
         ],
