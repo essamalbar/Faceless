@@ -1627,3 +1627,33 @@ def test_freeform_endpoint_default_narration_style_cinematic(tmp_path, client, m
     args = captured[0]
     idx = args.index("--ff-narration-style")
     assert args[idx + 1] == "cinematic"
+
+
+def test_create_freeform_run_writes_controls_file(tmp_path, client, monkeypatch):
+    """POST /runs/freeform persists the chosen controls to freeform_controls.json
+    so subsequent /approve and /reroll spawns can reload them."""
+    import json as _json
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    from pipeline.api import set_spawn_fn
+    captured = []
+    def stub_spawn(args, run_dir):
+        captured.append(args); return 1234
+    set_spawn_fn(stub_spawn)
+    payload = {
+        "theme": "folkloric", "premise": "قصة حب في الثلج",
+        "dialect": "syrian", "art_style": "pixar_3d",
+        "character_template": "animal", "ending_type": "closed_tragic",
+        "num_beats": 8, "per_beat_seconds": 8,
+        "narration_style": "cinematic",
+    }
+    resp = client.post("/runs/freeform", json=payload,
+                       headers={"Authorization": f"Bearer {TOKEN}"})
+    assert resp.status_code == 201
+    run_id = resp.json()["id"]
+    controls_path = tmp_path / run_id / "freeform_controls.json"
+    assert controls_path.exists(), "freeform_controls.json must be persisted on creation"
+    persisted = _json.loads(controls_path.read_text(encoding="utf-8"))
+    assert persisted["dialect"] == "syrian"
+    assert persisted["character_template"] == "animal"
+    assert persisted["narration_style"] == "cinematic"
+    assert persisted["num_beats"] == 8

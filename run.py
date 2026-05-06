@@ -640,6 +640,38 @@ def main_with_args(argv: list[str]) -> int:
                    choices=["cinematic", "first_person_monologue", "ai_choose"])
     args = p.parse_args(argv)
 
+    # When resuming a run, look for freeform_controls.json next to script.json
+    # and replay the chosen controls. This makes freeform mode survive
+    # /approve, /reroll, /character-sheet-reroll spawns from the API server,
+    # which today only pass --shorts --resume <dir> with no --freeform flag.
+    def _maybe_load_freeform_controls_from_disk(args):
+        if not args.resume:
+            return
+        if args.freeform:
+            return  # explicit CLI flag wins
+        controls_path = Path(args.resume) / "freeform_controls.json"
+        if not controls_path.exists():
+            return
+        try:
+            d = json.loads(controls_path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        args.freeform = True
+        # Only override defaults the file actually carries — be defensive.
+        for k, attr in [
+            ("dialect", "ff_dialect"),
+            ("art_style", "ff_art_style"),
+            ("character_template", "ff_character_template"),
+            ("ending_type", "ff_ending_type"),
+            ("num_beats", "ff_num_beats"),
+            ("per_beat_seconds", "ff_per_beat_seconds"),
+            ("narration_style", "ff_narration_style"),
+        ]:
+            if k in d:
+                setattr(args, attr, d[k])
+
+    _maybe_load_freeform_controls_from_disk(args)
+
     cfg = load_config(Path(args.config))
     out_root = Path(args.out_root)
     music_bundle = Path(args.music_bundle)
@@ -668,23 +700,26 @@ def main_with_args(argv: list[str]) -> int:
                 seed = _stage_seed(args, gemini, log, paths, project_theme_log)
             with log.stage("script"):
                 if args.freeform:
-                    from pipeline.script_freeform import (
-                        FreeformControls, generate_freeform_script,
-                    )
-                    controls = FreeformControls(
-                        dialect=args.ff_dialect,
-                        art_style=args.ff_art_style,
-                        character_template=args.ff_character_template,
-                        ending_type=args.ff_ending_type,
-                        num_beats=args.ff_num_beats,
-                        per_beat_seconds=args.ff_per_beat_seconds,
-                        narration_style=args.ff_narration_style,
-                    )
-                    script = generate_freeform_script(gemini, seed, controls)
-                    paths.script_json.write_text(
-                        json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
-                        encoding="utf-8",
-                    )
+                    if paths.script_json.exists():
+                        script = Script.from_dict(json.loads(paths.script_json.read_text(encoding="utf-8")))
+                    else:
+                        from pipeline.script_freeform import (
+                            FreeformControls, generate_freeform_script,
+                        )
+                        controls = FreeformControls(
+                            dialect=args.ff_dialect,
+                            art_style=args.ff_art_style,
+                            character_template=args.ff_character_template,
+                            ending_type=args.ff_ending_type,
+                            num_beats=args.ff_num_beats,
+                            per_beat_seconds=args.ff_per_beat_seconds,
+                            narration_style=args.ff_narration_style,
+                        )
+                        script = generate_freeform_script(gemini, seed, controls)
+                        paths.script_json.write_text(
+                            json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
+                            encoding="utf-8",
+                        )
                 else:
                     script = _stage_shorts_script(gemini, seed, cfg, paths,
                                                    max_beats_override=args.max_beats)

@@ -862,3 +862,85 @@ def test_legacy_mode_passes_none_lineup_prompt(tmp_path, monkeypatch):
         # freeform_mode defaults to False
     )
     assert captured["lineup_prompt"] is None
+
+
+def test_resume_auto_loads_freeform_controls(tmp_path, monkeypatch, music_bundle):
+    """When resuming a run dir that contains freeform_controls.json, run.py
+    must populate args.freeform + args.ff_* as if those flags were on the CLI.
+    Verified by checking _stage_character_sheet receives character_template."""
+    import json as _json
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "script.json").write_text(_MINIMAL_SCRIPT_JSON, encoding="utf-8")
+    (run_dir / "seed.json").write_text(
+        '{"theme":"folkloric","premise":"x"}', encoding="utf-8")
+    (run_dir / "freeform_controls.json").write_text(_json.dumps({
+        "dialect": "syrian",
+        "art_style": "pixar_3d",
+        "character_template": "animal",
+        "ending_type": "closed_tragic",
+        "num_beats": 8,
+        "per_beat_seconds": 8,
+        "narration_style": "cinematic",
+    }), encoding="utf-8")
+
+    captured: dict = {}
+    def fake_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr("run._build_gemini", lambda: object())
+    monkeypatch.setattr("run._build_kie", lambda: object())
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet", fake_sheet)
+    monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
+
+    config_path = REPO_ROOT / "config.yaml"
+    import run
+    rc = run.main_with_args([
+        "--shorts", "--resume", str(run_dir),
+        "--pause-after-character-sheet",
+        "--config", str(config_path),
+        "--music-bundle", str(music_bundle),
+    ])
+    assert rc == 0
+    p = captured["lineup_prompt"]
+    assert p is not None, "freeform mode should have produced a custom lineup_prompt"
+    p_lower = p.lower()
+    # Animal cast → negation must be present
+    assert "not fruit" in p_lower or "no fruit" in p_lower or "no lemon" in p_lower
+    assert "fox" in p_lower or "rabbit" in p_lower or "deer" in p_lower
+
+
+def test_explicit_freeform_flag_still_works_without_file(tmp_path, monkeypatch, music_bundle):
+    """If --freeform is on the CLI but no freeform_controls.json exists, the
+    CLI flags drive (current behavior preserved)."""
+    run_dir = tmp_path / "run2"
+    run_dir.mkdir()
+    (run_dir / "script.json").write_text(_MINIMAL_SCRIPT_JSON, encoding="utf-8")
+    (run_dir / "seed.json").write_text(
+        '{"theme":"folkloric","premise":"x"}', encoding="utf-8")
+
+    captured: dict = {}
+    def fake_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr("run._build_gemini", lambda: object())
+    monkeypatch.setattr("run._build_kie", lambda: object())
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet", fake_sheet)
+    monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
+
+    config_path = REPO_ROOT / "config.yaml"
+    import run
+    rc = run.main_with_args([
+        "--shorts", "--freeform", "--resume", str(run_dir),
+        "--pause-after-character-sheet",
+        "--ff-character-template", "human",
+        "--config", str(config_path),
+        "--music-bundle", str(music_bundle),
+    ])
+    assert rc == 0
+    assert captured["lineup_prompt"] is not None
+    p_lower = captured["lineup_prompt"].lower()
+    # Human cast negation
+    assert "not fruit" in p_lower or "no fruit" in p_lower

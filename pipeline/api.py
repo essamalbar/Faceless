@@ -851,6 +851,20 @@ def create_freeform_run(req: CreateFreeformRunRequest):
     run_dir = _out_root() / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    controls_doc = {
+        "dialect": req.dialect,
+        "art_style": req.art_style,
+        "character_template": req.character_template,
+        "ending_type": req.ending_type,
+        "num_beats": req.num_beats,
+        "per_beat_seconds": req.per_beat_seconds,
+        "narration_style": req.narration_style,
+    }
+    (run_dir / "freeform_controls.json").write_text(
+        json.dumps(controls_doc, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     args = [
         "--shorts", "--freeform", "--pause-after-script",
         "--theme", req.theme,
