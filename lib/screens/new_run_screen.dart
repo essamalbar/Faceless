@@ -16,7 +16,7 @@ class NewRunScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('New Episode'),
@@ -26,6 +26,7 @@ class NewRunScreen extends StatelessWidget {
             unselectedLabelColor: FacelessTheme.textSecondary,
             tabs: [
               Tab(icon: Icon(Icons.auto_awesome), text: 'AI Write'),
+              Tab(icon: Icon(Icons.tune), text: 'AI Freeform'),
               Tab(icon: Icon(Icons.edit_note), text: 'Paste Script'),
             ],
           ),
@@ -33,6 +34,7 @@ class NewRunScreen extends StatelessWidget {
         body: TabBarView(
           children: [
             _AiWriteTab(client: client),
+            _AiFreeformTab(client: client),
             _PasteScriptTab(client: client),
           ],
         ),
@@ -178,6 +180,233 @@ class _AiWriteTabState extends State<_AiWriteTab> {
   void dispose() {
     _premiseCtrl.dispose();
     _maxBeatsCtrl.dispose();
+    super.dispose();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI Freeform — structured controls, still AI-written
+// ---------------------------------------------------------------------------
+
+class _AiFreeformTab extends StatefulWidget {
+  final FacelessApiClient client;
+  const _AiFreeformTab({required this.client});
+  @override
+  State<_AiFreeformTab> createState() => _AiFreeformTabState();
+}
+
+class _AiFreeformTabState extends State<_AiFreeformTab> {
+  String _theme = 'folkloric';
+  String _dialect = 'msa';
+  String _artStyle = 'cinematic_photo_real';
+  String _characterTemplate = 'ai_choose';
+  String _endingType = 'ai_choose';
+  int _numBeats = 8;
+  int _perBeatSeconds = 8;
+  final _premiseCtrl = TextEditingController();
+  bool _submitting = false;
+  String? _error;
+
+  // (label, displayName) pairs for each dropdown's items
+  static const _dialects = [
+    ('msa', 'MSA (الفصحى)'),
+    ('syrian', 'Syrian / Levantine'),
+    ('egyptian', 'Egyptian'),
+    ('khaliji', 'Khaliji / Gulf'),
+    ('maghrebi', 'Maghrebi'),
+    ('iraqi', 'Iraqi'),
+  ];
+  static const _artStyles = [
+    ('pixar_3d', '3D Pixar'),
+    ('anime_2d', '2D Anime'),
+    ('cinematic_photo_real', 'Cinematic photo-real'),
+    ('claymation', 'Claymation'),
+    ('hand_drawn', 'Hand-drawn'),
+    ('ghibli', 'Studio Ghibli'),
+  ];
+  static const _characterTemplates = [
+    ('ai_choose', 'Let the AI choose'),
+    ('human', 'Human cast'),
+    ('fruit_sunstoriz', 'Fruit cast (Sunstoriz)'),
+    ('animal', 'Animal cast'),
+    ('surreal', 'Surreal creatures'),
+  ];
+  static const _endingTypes = [
+    ('ai_choose', 'Let the AI choose'),
+    ('open', 'Open-ended'),
+    ('closed_tragic', 'Closed tragic'),
+    ('closed_happy', 'Closed happy'),
+    ('twist', 'Twist'),
+  ];
+
+  Future<void> _submit() async {
+    final premise = _premiseCtrl.text.trim();
+    if (premise.length < 4) {
+      setState(() => _error = 'Premise too short');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final run = await widget.client.createFreeformRun(
+        theme: _theme,
+        premise: premise,
+        dialect: _dialect,
+        artStyle: _artStyle,
+        characterTemplate: _characterTemplate,
+        endingType: _endingType,
+        numBeats: _numBeats,
+        perBeatSeconds: _perBeatSeconds,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop<RunSummary?>(run);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _submitting = false;
+      });
+    }
+  }
+
+  Widget _kvDropdown<T>({
+    required String label,
+    required T value,
+    required List<(T, String)> items,
+    required ValueChanged<T?> onChanged,
+  }) =>
+      DropdownButtonFormField<T>(
+        initialValue: value,
+        decoration: InputDecoration(
+            labelText: label, border: const OutlineInputBorder()),
+        items: items
+            .map((p) => DropdownMenuItem<T>(value: p.$1, child: Text(p.$2)))
+            .toList(),
+        onChanged: onChanged,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            color: FacelessTheme.surface2,
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Freeform AI: the script writer follows YOUR premise '
+                'instead of any fixed character/dialect template.',
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _premiseCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Premise (Arabic)',
+              border: OutlineInputBorder(),
+              alignLabelWithHint: true,
+            ),
+            textDirection: TextDirection.rtl,
+            maxLines: 4,
+          ),
+          const SizedBox(height: 12),
+          _kvDropdown<String>(
+            label: 'Theme',
+            value: _theme,
+            items: _themes.map((t) => (t, t)).toList(),
+            onChanged: (v) => setState(() => _theme = v ?? 'folkloric'),
+          ),
+          const SizedBox(height: 12),
+          _kvDropdown<String>(
+            label: 'Dialect',
+            value: _dialect,
+            items: _dialects,
+            onChanged: (v) => setState(() => _dialect = v ?? 'msa'),
+          ),
+          const SizedBox(height: 12),
+          _kvDropdown<String>(
+            label: 'Art style',
+            value: _artStyle,
+            items: _artStyles,
+            onChanged: (v) =>
+                setState(() => _artStyle = v ?? 'cinematic_photo_real'),
+          ),
+          const SizedBox(height: 12),
+          _kvDropdown<String>(
+            label: 'Character template',
+            value: _characterTemplate,
+            items: _characterTemplates,
+            onChanged: (v) =>
+                setState(() => _characterTemplate = v ?? 'ai_choose'),
+          ),
+          const SizedBox(height: 12),
+          _kvDropdown<String>(
+            label: 'Ending type',
+            value: _endingType,
+            items: _endingTypes,
+            onChanged: (v) =>
+                setState(() => _endingType = v ?? 'ai_choose'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text('Beats:'),
+              Expanded(
+                child: Slider(
+                  min: 4, max: 15, divisions: 11,
+                  value: _numBeats.toDouble(),
+                  label: '$_numBeats',
+                  onChanged: (v) => setState(() => _numBeats = v.round()),
+                ),
+              ),
+              Text('$_numBeats'),
+            ],
+          ),
+          Row(
+            children: [
+              const Text('Sec / beat:'),
+              Expanded(
+                child: Slider(
+                  min: 4, max: 10, divisions: 6,
+                  value: _perBeatSeconds.toDouble(),
+                  label: '${_perBeatSeconds}s',
+                  onChanged: (v) =>
+                      setState(() => _perBeatSeconds = v.round()),
+                ),
+              ),
+              Text('${_perBeatSeconds}s'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(_error!,
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.error)),
+            ),
+          FilledButton.icon(
+            onPressed: _submitting ? null : _submit,
+            icon: _submitting
+                ? const SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.tune),
+            label: Text(_submitting ? 'Writing…' : 'Generate Script'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _premiseCtrl.dispose();
     super.dispose();
   }
 }
