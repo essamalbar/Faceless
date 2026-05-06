@@ -88,12 +88,14 @@ class ScriptBeat {
   final String englishMotion;
   final String speaker;
   final double clipDurationS;
+  final String characterName;
 
   ScriptBeat({
     required this.arabic,
     required this.englishMotion,
     required this.speaker,
     required this.clipDurationS,
+    this.characterName = '',
   });
 
   factory ScriptBeat.fromJson(Map<String, dynamic> j) => ScriptBeat(
@@ -101,6 +103,7 @@ class ScriptBeat {
         englishMotion: j['english_motion'] as String? ?? '',
         speaker: j['speaker'] as String? ?? 'narrator',
         clipDurationS: (j['clip_duration_s'] as num?)?.toDouble() ?? 8.0,
+        characterName: j['character_name'] as String? ?? '',
       );
 
   bool get isSilent => arabic.trim().isEmpty;
@@ -113,12 +116,14 @@ class PasteScriptBeat {
   final String englishMotion;
   final String speaker;
   final double clipDurationS;
+  final String characterName;
 
   PasteScriptBeat({
     required this.arabic,
     required this.englishMotion,
     required this.speaker,
     required this.clipDurationS,
+    this.characterName = '',
   });
 
   factory PasteScriptBeat.fromJson(Map<String, dynamic> j) => PasteScriptBeat(
@@ -126,6 +131,7 @@ class PasteScriptBeat {
         englishMotion: j['english_motion'] as String? ?? '',
         speaker: j['speaker'] as String? ?? 'mother',
         clipDurationS: (j['clip_duration_s'] as num?)?.toDouble() ?? 8.0,
+        characterName: j['character_name'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -133,6 +139,7 @@ class PasteScriptBeat {
         'english_motion': englishMotion,
         'speaker': speaker,
         'clip_duration_s': clipDurationS,
+        'character_name': characterName,
       };
 }
 
