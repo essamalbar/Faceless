@@ -452,6 +452,7 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
   final List<_PasteBeat> _beats = [_PasteBeat()];
   bool _submitting = false;
   String? _error;
+  ParseMethod? _lastParseMethod;
 
   void _addBeat() {
     setState(() => _beats.add(_PasteBeat()));
@@ -491,9 +492,17 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
       }
       if (_beats.isEmpty) _beats.add(_PasteBeat());
       _error = null;
+      _lastParseMethod = parsed.parseMethod;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Parsed ${beatsRaw.length} beats')),
+      SnackBar(content: Text(
+        'Parsed ${beatsRaw.length} beats '
+        '(${switch (parsed.parseMethod) {
+          ParseMethod.regex => "regex",
+          ParseMethod.llmSplit => "AI split",
+          ParseMethod.naiveFallback => "auto-segmented",
+        }})',
+      )),
     );
   }
 
@@ -596,6 +605,53 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
                 maxLines: 2,
               ),
               const SizedBox(height: 24),
+              if (_lastParseMethod != null) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 12, left: 4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: switch (_lastParseMethod!) {
+                        ParseMethod.regex =>
+                            Colors.green.withValues(alpha: 0.15),
+                        ParseMethod.llmSplit =>
+                            Colors.orange.withValues(alpha: 0.18),
+                        ParseMethod.naiveFallback =>
+                            Colors.amber.withValues(alpha: 0.22),
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          switch (_lastParseMethod!) {
+                            ParseMethod.regex => Icons.check_circle,
+                            ParseMethod.llmSplit => Icons.smart_toy_outlined,
+                            ParseMethod.naiveFallback => Icons.warning_amber,
+                          },
+                          size: 16,
+                          color: switch (_lastParseMethod!) {
+                            ParseMethod.regex => Colors.green,
+                            ParseMethod.llmSplit => Colors.orange,
+                            ParseMethod.naiveFallback => Colors.amber.shade700,
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          switch (_lastParseMethod!) {
+                            ParseMethod.regex => 'Parsed from your markdown',
+                            ParseMethod.llmSplit => 'Split by AI — review before saving',
+                            ParseMethod.naiveFallback => 'Auto-segmented — review carefully',
+                          },
+                          style: const TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4),
                 child: Text('Beats',
@@ -687,6 +743,7 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
   final _ctrl = TextEditingController();
   bool _parsing = false;
   String? _error;
+  int _targetBeats = 8;
 
   Future<void> _parse() async {
     final raw = _ctrl.text.trim();
@@ -699,7 +756,7 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
       _error = null;
     });
     try {
-      final ParseScriptResponse result = await widget.client.parseScript(raw);
+      final ParseScriptResponse result = await widget.client.parseScript(raw, targetBeats: _targetBeats);
       if (!mounted) return;
       Navigator.of(context).pop<ParseScriptResponse>(result);
     } catch (e) {
@@ -766,7 +823,22 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
                     style: TextStyle(
                         color: Theme.of(context).colorScheme.error)),
               ],
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Text('Target beats:'),
+                  Expanded(
+                    child: Slider(
+                      min: 4, max: 15, divisions: 11,
+                      value: _targetBeats.toDouble(),
+                      label: '$_targetBeats',
+                      onChanged: (v) => setState(() => _targetBeats = v.round()),
+                    ),
+                  ),
+                  Text('$_targetBeats'),
+                ],
+              ),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
