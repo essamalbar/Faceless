@@ -534,3 +534,22 @@ def test_critique_prompt_does_not_enforce_first_person():
     from pipeline.script import SHORTS_CRITIQUE_PROMPT_TEMPLATE
     assert "ضمير المتكلم (أنا) — إجباري" not in SHORTS_CRITIQUE_PROMPT_TEMPLATE
     assert "narrator forbidden" not in SHORTS_CRITIQUE_PROMPT_TEMPLATE.lower()
+
+
+def test_sunstoriz_writer_prefers_premise_characters():
+    """Bug 1: the Sunstoriz writer should soft-prefer the premise's named
+    characters; the existing fixed cast (mother / son / etc.) is allowed
+    as fallback for melodrama."""
+    from pipeline.script import build_shorts_writer_prompt
+    from pipeline.types import ThemeSeed
+    p = build_shorts_writer_prompt(
+        ThemeSeed(theme="folkloric", premise="قصة خيانة فراولة للموزة"),
+    )
+    p_lower = p.lower()
+    assert (
+        "prefer" in p_lower
+        or "premise" in p_lower
+        or "ممنوع" in p
+        or "التزم" in p
+        or "اختار" in p
+    ), "Sunstoriz writer should reference the premise as a cast guide"

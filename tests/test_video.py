@@ -563,3 +563,40 @@ def test_with_dialogue_freeform_animal_cast_strips_fruit_speaker_desc_still_work
         cast_negation=veo_clip_negation("animal"),
     )
     assert "blueberry" not in p.lower()
+
+
+def test_speaker_desc_does_not_leak_role_word_when_character_name_set():
+    """Bug 2: when character_name is set, the prompt MUST NOT contain
+    '(the friend role)' or '(the mother role)' etc. — the speaker enum
+    should not leak into the rendered prompt."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="أنا فراولة",
+        english_motion="OTS, strawberry speaks",
+        clip_duration_s=8.0,
+        speaker="friend",                        # the leak source
+        character_name="فراولة",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "(the friend role)" not in p
+    assert "the friend role" not in p.lower()
+    # Sanity: character_name still in prompt
+    assert "فراولة" in p
+
+
+def test_speaker_desc_no_role_leak_for_freeform_animal():
+    """Same with cast_negation set (animal mode)."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.cast_guidance import veo_clip_negation
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="مرحبا", english_motion="x", clip_duration_s=8.0,
+        speaker="friend", character_name="سالم",
+    )
+    p = build_veo_prompt(
+        b, "g", with_dialogue=True,
+        cast_negation=veo_clip_negation("animal"),
+    )
+    assert "the friend role" not in p.lower()
+    assert "سالم" in p

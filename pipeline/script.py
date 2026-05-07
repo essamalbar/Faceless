@@ -348,6 +348,9 @@ CHARACTER AGE LOCK: عمر كل شخصية ثابت عبر كل البيتات. 
 - مجموع clip_duration_s لازم ≈ target_duration_s.
 - المشهد الأخير لازم يكون نهاية مغلقة حاسمة (موت، فقدان نهائي، انكسار). ممنوع نهاية مفتوحة أو سؤال.
 - نوع البيتات: امزج بين dialogue / silent / voice-over. ممنوع كل البيتات تكون نفس النوع.
+- Prefer the characters explicitly named in the premise. Add a supporting
+  cast member (doctor, neighbor, etc.) ONLY when the premise's drama calls
+  for it; never invent unrelated side characters.
 """
 
 

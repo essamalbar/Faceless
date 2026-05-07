@@ -217,9 +217,9 @@ def build_veo_prompt(
                 # paths, so a Sunstoriz story whose script picks "فراولة" /
                 # "موزة" / "عنب" doesn't get overridden into "BLUEBERRY FRIEND".
                 speaker_desc = (
-                    f"the character named {name} (the {beat.speaker} role) — "
-                    f"appearance MUST match this character as drawn in the "
-                    f"supplied character lineup reference image"
+                    f"the character named {name} — appearance MUST match this "
+                    f"character as drawn in the supplied character lineup "
+                    f"reference image"
                 )
             elif cast_negation:
                 # Freeform with no character_name → generic non-fruit fallback.

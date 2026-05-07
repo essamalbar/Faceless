@@ -137,6 +137,11 @@ In first_person_monologue mode, EVERY beat is a Dialogue beat — silent and voi
 beats are NOT used; every character speaks direct to camera in first person.
 
 Requirements:
+- Stick to the characters explicitly named or implied in the premise. Do NOT
+  invent additional supporting characters (friends, neighbors, doctors,
+  cousins, etc.) that the premise does not call for. If the premise mentions
+  only two characters, use those two characters; the narrator may appear for
+  silent / atmospheric / voice-over beats.
 - All Arabic dialogue MUST be in {dialect}. No mixing with other dialects.
 - Speaker values must be one of: mother, son, father, doctor, neighbor, grandmother,
   wife, daughter, friend, enemy, shadow, narrator. Use "narrator" for silent and

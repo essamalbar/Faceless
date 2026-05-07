@@ -145,3 +145,24 @@ def test_ai_choose_narration_lets_writer_decide():
     # No hard mandate either way; the prompt should mention both options exist
     # and the writer chooses based on the premise.
     assert "your choice" in lower or "ai_choose" in lower or "writer chooses" in lower or "based on the premise" in lower
+
+
+def test_freeform_prompt_instructs_writer_to_stick_to_premise_cast():
+    """Bug 1: the freeform prompt must instruct the LLM to NOT invent
+    side characters that aren't in the user's premise."""
+    from pipeline.script_freeform import build_freeform_prompt, FreeformControls
+    from pipeline.types import ThemeSeed
+    p = build_freeform_prompt(
+        ThemeSeed(theme="folkloric", premise="قصة خيانة فراولة للموزة"),
+        FreeformControls(),
+    )
+    p_lower = p.lower()
+    # At least one of these instructional phrases must appear
+    assert (
+        "do not invent" in p_lower
+        or "stick to" in p_lower
+        or "only use characters" in p_lower
+        or "do not add" in p_lower
+        or "ممنوع اختراع" in p
+        or "التزم" in p
+    ), "prompt should instruct LLM not to invent extra characters"
