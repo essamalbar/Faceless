@@ -100,6 +100,7 @@ def build_veo_prompt(
     with_dialogue: bool = False,
     cast_negation: str = "",
     dialect: str | None = None,
+    character_descriptions: dict[str, str] | None = None,
 ) -> str:
     """Compose the final Veo prompt for one beat.
 
@@ -117,9 +118,41 @@ def build_veo_prompt(
 
     `dialect` selects which entry from `_DIALECT_AUDIO_LOCK` is injected
     into the audio-lock clause. Defaults to "syrian" for back-compat.
+
+    `character_descriptions` maps Arabic character_name → short English
+    physical description. When non-empty, the descriptions for any character
+    that appears in this beat (the speaker + any name found in english_motion)
+    are prepended as a preamble so Veo locks identity visually across clips.
+    Empty dict (or None) → no preamble, fully backwards-compatible.
     """
+    descs = character_descriptions or {}
+
+    # Determine which characters appear in this beat:
+    #   1. The speaking character (beat.character_name)
+    #   2. Any character_name found by substring match in english_motion
+    active: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    speaker_name = (beat.character_name or "").strip()
+    if speaker_name and speaker_name in descs:
+        active.append((speaker_name, descs[speaker_name]))
+        seen.add(speaker_name)
+    for name, desc in descs.items():
+        if name in seen:
+            continue
+        if name and name in beat.english_motion:
+            active.append((name, desc))
+            seen.add(name)
+
+    desc_preamble = ""
+    if active:
+        lines = "; ".join(f"{n}: {d}" for n, d in active)
+        desc_preamble = (
+            f"Character physical descriptions (consistent across all clips, "
+            f"MUST match the supplied character lineup): {lines}. "
+        )
+
     head = f"{cast_negation} " if cast_negation else ""
-    base = f"{head}{global_setting}, {beat.english_motion}"
+    base = f"{head}{desc_preamble}{global_setting}, {beat.english_motion}"
 
     if with_dialogue:
         if beat.arabic:
@@ -227,6 +260,7 @@ def generate_clips(
     reroll_indices: list[int] | None = None,
     character_template: str | None = None,
     dialect: str | None = None,
+    character_descriptions: dict[str, str] | None = None,
 ) -> None:
     """Render each beat to clips_dir/NN.mp4. Resumable + reroll-aware.
 
@@ -271,7 +305,12 @@ def generate_clips(
         if idx in reroll_set:
             seed += REROLL_SEED_BUMP
 
-        prompt = build_veo_prompt(beat, script.global_setting, cast_negation=cast_negation, dialect=dialect)
+        prompt = build_veo_prompt(
+            beat, script.global_setting,
+            cast_negation=cast_negation,
+            dialect=dialect,
+            character_descriptions=character_descriptions,
+        )
         generate_clip(
             client=client,
             prompt=prompt,
@@ -371,6 +410,7 @@ def generate_clips_chained(
     with_dialogue: bool = False,
     character_template: str | None = None,
     dialect: str | None = None,
+    character_descriptions: dict[str, str] | None = None,
 ) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
@@ -424,6 +464,7 @@ def generate_clips_chained(
             with_dialogue=with_dialogue,
             cast_negation=cast_negation,
             dialect=dialect,
+            character_descriptions=character_descriptions,
         )
         image_urls = [sheet_url]
         if prev_last_frame_url:

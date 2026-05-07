@@ -135,3 +135,23 @@ def test_parser_still_rejects_empty_speaker():
     }'''
     with pytest.raises(ValueError):
         _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+
+
+# ---------------------------------------------------------------------------
+# PB-2: _parse_shorts_script_json reads character_descriptions
+# ---------------------------------------------------------------------------
+
+def test_parser_reads_character_descriptions():
+    from pipeline.script import _parse_shorts_script_json
+    raw = '''{
+      "title":"t","theme":"folkloric","global_setting":"g","music_mood":"dread",
+      "target_duration_s":8,
+      "character_descriptions": {
+        "خالد": "young man mid-20s, slim, short black hair, white thobe",
+        "أم خالد": "woman mid-50s, black hijab, dark grey dress"
+      },
+      "beats":[{"arabic":"x","english_motion":"y","clip_duration_s":8,"speaker":"son","character_name":"خالد"}]
+    }'''
+    script = _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+    assert script.character_descriptions["خالد"].startswith("young man")
+    assert "أم خالد" in script.character_descriptions

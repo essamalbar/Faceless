@@ -166,3 +166,18 @@ def test_freeform_prompt_instructs_writer_to_stick_to_premise_cast():
         or "ممنوع اختراع" in p
         or "التزم" in p
     ), "prompt should instruct LLM not to invent extra characters"
+
+
+# ---------------------------------------------------------------------------
+# PB-2: freeform prompt asks for character_descriptions
+# ---------------------------------------------------------------------------
+
+def test_freeform_prompt_asks_for_character_descriptions():
+    from pipeline.script_freeform import build_freeform_prompt, FreeformControls
+    from pipeline.types import ThemeSeed
+    p = build_freeform_prompt(
+        ThemeSeed(theme="urban", premise="x"),
+        FreeformControls(),
+    )
+    p_lower = p.lower()
+    assert "character_descriptions" in p_lower

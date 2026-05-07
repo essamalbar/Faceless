@@ -1723,3 +1723,45 @@ def test_from_script_rejects_empty_speaker(tmp_path, client):
     resp = client.post("/runs/from-script", json=payload,
                        headers={"Authorization": f"Bearer {TOKEN}"})
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# PB-2: character_descriptions in ScriptResponse
+# ---------------------------------------------------------------------------
+
+def test_get_script_returns_character_descriptions(tmp_path, client):
+    """The /script endpoint propagates the character_descriptions field."""
+    run_id = _create_run_with_script_json(tmp_path)
+    import json as _json
+    sp = tmp_path / "out" / run_id / "script.json"
+    sp.write_text(_json.dumps({
+        "title": "t", "theme": "folkloric",
+        "global_setting": "g", "music_mood": "dread",
+        "target_duration_s": 8.0,
+        "story_combined": "م",
+        "character_descriptions": {"خالد": "young man mid-20s"},
+        "beats": [{
+            "arabic": "م", "english_motion": "x",
+            "clip_duration_s": 8.0, "speaker": "son",
+            "character_name": "خالد",
+        }],
+    }, ensure_ascii=False), encoding="utf-8")
+    resp = client.get(
+        f"/runs/{run_id}/script",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["character_descriptions"]["خالد"].startswith("young man")
+
+
+def test_get_script_returns_empty_character_descriptions_for_legacy(tmp_path, client):
+    """Legacy script.json without character_descriptions → empty dict in response."""
+    run_id = _create_run_with_script_json(tmp_path)
+    resp = client.get(
+        f"/runs/{run_id}/script",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["character_descriptions"] == {}

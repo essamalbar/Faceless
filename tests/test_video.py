@@ -752,3 +752,72 @@ def test_voiceover_with_character_name_set_treated_as_dialogue():
     p = build_veo_prompt(b, "g", with_dialogue=True)
     assert "faces the camera at medium close-up" in p.lower()
     assert "الراوي خالد" in p
+
+
+# ---------------------------------------------------------------------------
+# PB-2: character_descriptions preamble in build_veo_prompt
+# ---------------------------------------------------------------------------
+
+def test_build_veo_prompt_prepends_character_descriptions_for_speaker():
+    """When character_descriptions is provided AND the speaker is named, the
+    prompt prepends a physical description for visual continuity."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x",
+        english_motion="medium close-up on Khaled",
+        clip_duration_s=8.0,
+        speaker="son",
+        character_name="خالد",
+    )
+    p = build_veo_prompt(
+        b, "g", with_dialogue=True,
+        character_descriptions={
+            "خالد": "young man mid-20s, slim, short black hair, white thobe",
+            "أم خالد": "woman mid-50s, black hijab",
+        },
+    )
+    p_lower = p.lower()
+    # Description for the active speaker is prepended
+    assert "young man mid-20s" in p_lower
+    assert "خالد" in p
+    # Inactive characters NOT included if not mentioned in this beat's english_motion
+    assert "أم خالد" not in p
+
+
+def test_build_veo_prompt_includes_descriptions_for_chars_mentioned_in_motion():
+    """If english_motion mentions other character_names, include their
+    descriptions too — they may appear in the frame."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="نحن قادمون يا أم خالد",
+        english_motion="OTS from خالد looking at أم خالد across the room",
+        clip_duration_s=8.0,
+        speaker="son",
+        character_name="خالد",
+    )
+    p = build_veo_prompt(
+        b, "g", with_dialogue=True,
+        character_descriptions={
+            "خالد": "young man mid-20s, slim, short black hair",
+            "أم خالد": "woman mid-50s, black hijab, grey dress",
+        },
+    )
+    # Both descriptions present
+    assert "young man mid-20s" in p
+    assert "woman mid-50s" in p
+
+
+def test_build_veo_prompt_no_descriptions_when_dict_empty():
+    """Backwards compat: empty character_descriptions → no preamble."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x", english_motion="y", clip_duration_s=8.0,
+        speaker="son", character_name="خالد",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True, character_descriptions={})
+    # No "character physical descriptions" preamble
+    p_lower = p.lower()
+    assert "character physical descriptions" not in p_lower

@@ -495,6 +495,7 @@ def _stage_video_chained(
         with_dialogue=cfg.kie.native_audio,
         character_template=character_template,
         dialect=dialect,
+        character_descriptions=script.character_descriptions or None,
     )
 
 

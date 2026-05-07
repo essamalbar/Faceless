@@ -150,6 +150,12 @@ Requirements:
   speaking character (e.g. "خالد", "فاطمة", "أم يوسف"). Use the SAME character_name
   for the same character across beats. For silent or voice-over beats with
   speaker="narrator", character_name may be empty "".
+- Provide a `character_descriptions` map alongside `beats`. For every unique
+  character_name that appears in any beat, include ONE concise English physical
+  description (~12 words: age, build, hair, clothing) — these pin Veo's identity
+  rendering across all clips for visual continuity. Keep each description short.
+  Do NOT include the narrator (silent / voice-over beats use character_name=""
+  and don't need a description).
 - english_motion describes the SHOT (English, ~30 words). In cinematic mode, this is
   cinematic shot direction: wide establishing, slow push-in, over-the-shoulder,
   hand-held tracking, reaction close-up, locked-off — NOT "facing camera, mouth open
@@ -168,6 +174,10 @@ Return JSON only, no markdown:
   "global_setting": "short English visual style summary",
   "music_mood": "drone|dread|cosmic|discovery",
   "target_duration_s": <int>,
+  "character_descriptions": {{
+    "اسم شخصية 1": "short physical description in English (~12 words: age, build, hair, clothing)",
+    "اسم شخصية 2": "..."
+  }},
   "beats": [
     {{"arabic":"...","english_motion":"...","clip_duration_s":<float>,"speaker":"...","character_name":"اسم عربي قصير أو فارغ للراوي"}},
     ...exactly {num_beats} beats...

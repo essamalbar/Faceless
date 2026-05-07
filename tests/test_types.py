@@ -136,3 +136,33 @@ def test_beat_from_dict_accepts_legacy_no_character_name():
     }
     b = Beat.from_dict(legacy)
     assert b.character_name == ""
+
+
+# ---------------------------------------------------------------------------
+# PB-2: character_descriptions field on Script
+# ---------------------------------------------------------------------------
+
+def test_script_carries_character_descriptions():
+    s = Script(
+        title="t", theme="folkloric",
+        global_setting="g", music_mood="dread",
+        beats=(),
+        story_combined="", target_duration_s=0,
+        character_descriptions={"خالد": "young man, slim, black hair"},
+    )
+    assert s.character_descriptions == {"خالد": "young man, slim, black hair"}
+    d = s.to_dict()
+    assert d["character_descriptions"]["خالد"].startswith("young man")
+    s2 = Script.from_dict(d)
+    assert s2 == s
+
+
+def test_script_legacy_loads_without_character_descriptions():
+    """Existing script.json files lack the field — must default to empty dict."""
+    legacy = {
+        "title": "t", "theme": "folkloric",
+        "global_setting": "g", "music_mood": "dread",
+        "beats": [],
+    }
+    s = Script.from_dict(legacy)
+    assert s.character_descriptions == {}
