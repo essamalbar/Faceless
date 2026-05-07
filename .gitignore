@@ -20,6 +20,12 @@ theme_log.json
 # Local secrets
 .env
 *.local
+*.key
+*.pem
+*.crt
+# Tailscale-issued TLS certs/keys (cloudflared tunnel uses them locally)
+*.ts.net.crt
+*.ts.net.key
 
 # Existing Flutter ignores (mirrors typical Flutter .gitignore — keep additive)
 .dart_tool/
