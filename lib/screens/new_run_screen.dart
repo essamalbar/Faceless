@@ -46,8 +46,10 @@ const _themes = [
   'travel', 'wilderness', 'tech', 'memory',
 ];
 
-const _validSpeakers = [
-  'mother', 'son', 'father', 'doctor', 'neighbor',
+// Suggestions only — speaker is now a free-form string (PA-1 loosened the
+// backend enum). The user can type any role label; these are just quick picks.
+const _speakerSuggestions = [
+  'narrator', 'mother', 'son', 'father', 'doctor', 'neighbor',
   'grandmother', 'wife', 'daughter', 'friend', 'enemy',
 ];
 
@@ -806,25 +808,35 @@ class _PasteBeatEditor extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _validSpeakers.contains(beat.speaker)
-                        ? beat.speaker
-                        : _validSpeakers.first,
-                    decoration: const InputDecoration(
-                      labelText: 'Speaker',
-                      contentPadding: EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 0),
-                    ),
-                    isDense: true,
-                    items: _validSpeakers
-                        .map((s) =>
-                            DropdownMenuItem(value: s, child: Text(s)))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) {
-                        beat.speaker = v;
-                        onChanged();
-                      }
+                  child: Autocomplete<String>(
+                    initialValue: TextEditingValue(text: beat.speaker),
+                    optionsBuilder: (TextEditingValue textEditingValue) {
+                      final query = textEditingValue.text.toLowerCase();
+                      if (query.isEmpty) return _speakerSuggestions;
+                      return _speakerSuggestions.where(
+                        (s) => s.toLowerCase().contains(query),
+                      );
+                    },
+                    fieldViewBuilder:
+                        (context, controller, focusNode, onFieldSubmitted) {
+                      return TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'Speaker (free-text)',
+                          hintText: 'e.g. mother, narrator, warrior, …',
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 0),
+                        ),
+                        onChanged: (v) {
+                          beat.speaker = v.trim();
+                          onChanged();
+                        },
+                      );
+                    },
+                    onSelected: (s) {
+                      beat.speaker = s;
+                      onChanged();
                     },
                   ),
                 ),
