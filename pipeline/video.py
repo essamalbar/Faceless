@@ -125,32 +125,58 @@ def build_veo_prompt(
         if beat.arabic:
             # Dialogue beat — character_name (per-script) is the primary identifier.
             name = (beat.character_name or "").strip()
-            if name:
-                speaker_desc = (
-                    f"the character named {name} — appearance MUST match this "
-                    f"character as drawn in the supplied character lineup "
-                    f"reference image"
-                )
-            else:
-                # Legacy script with no character_name. Fall back to a generic
-                # speaker label — no fruit-cast injection. This means older
-                # Sunstoriz scripts will look slightly different but won't have
-                # the cross-cast fruit leak that SPEAKER_DESCRIPTIONS caused.
-                speaker_desc = f"the {beat.speaker or 'speaking'} character"
+            is_voice_over = (
+                beat.speaker.strip().lower() == "narrator" and not name
+            )
 
             dialect_key = (dialect or "syrian").lower()
             lock = _DIALECT_AUDIO_LOCK.get(dialect_key, _DIALECT_AUDIO_LOCK["syrian"])
-            base += (
-                f". {speaker_desc} faces the camera at medium close-up, "
-                f"mouth open mid-speech with realistic synchronized lip movement. "
-                f"⚠️ AUDIO LANGUAGE LOCK: the spoken voice MUST be in ARABIC. "
-                f"{lock} "
-                f"يجب أن يكون النطق باللغة العربية فقط، وممنوع النطق "
-                f"بالإنجليزية أو أي لغة أخرى. "
-                f"The exact spoken line (in Arabic) is: \"{beat.arabic}\". "
-                f"Final reminder: dialogue audio MUST be in Arabic, never "
-                f"English or any other language."
-            )
+
+            if is_voice_over:
+                # Voice-over narration — audio yes, on-camera speaker no.
+                # The visual is whatever english_motion described; do NOT add
+                # frontal-MCU framing or speaker descriptor.
+                base += (
+                    ". This beat is a VOICE-OVER narration: an off-screen narrator "
+                    "speaks the line below over the visual described above. NO "
+                    "on-screen character speaks; NO mouth movement; NO close-up "
+                    "of a speaker. The narrator is heard but not seen — the "
+                    "visual stays exactly as described in the shot direction. "
+                    f"⚠️ AUDIO LANGUAGE LOCK: the narrator's voice MUST be in "
+                    f"ARABIC. {lock} "
+                    f"يجب أن يكون النطق باللغة العربية فقط، وممنوع النطق "
+                    f"بالإنجليزية أو أي لغة أخرى. "
+                    f"The exact narration line (in Arabic) is: \"{beat.arabic}\". "
+                    f"Final reminder: narrator audio MUST be in Arabic, never "
+                    f"English; visual is the shot described above, NOT a "
+                    f"close-up of a speaker."
+                )
+            else:
+                # On-camera dialogue — character_name is the primary identifier.
+                if name:
+                    speaker_desc = (
+                        f"the character named {name} — appearance MUST match "
+                        f"this character as drawn in the supplied character "
+                        f"lineup reference image"
+                    )
+                else:
+                    # Legacy script with no character_name. Fall back to a generic
+                    # speaker label — no fruit-cast injection. This means older
+                    # Sunstoriz scripts will look slightly different but won't have
+                    # the cross-cast fruit leak that SPEAKER_DESCRIPTIONS caused.
+                    speaker_desc = f"the {beat.speaker or 'speaking'} character"
+
+                base += (
+                    f". {speaker_desc} faces the camera at medium close-up, "
+                    f"mouth open mid-speech with realistic synchronized lip movement. "
+                    f"⚠️ AUDIO LANGUAGE LOCK: the spoken voice MUST be in ARABIC. "
+                    f"{lock} "
+                    f"يجب أن يكون النطق باللغة العربية فقط، وممنوع النطق "
+                    f"بالإنجليزية أو أي لغة أخرى. "
+                    f"The exact spoken line (in Arabic) is: \"{beat.arabic}\". "
+                    f"Final reminder: dialogue audio MUST be in Arabic, never "
+                    f"English or any other language."
+                )
         else:
             # Silent / atmospheric beat — explicitly block Veo from inventing
             # English narration / voice-over.

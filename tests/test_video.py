@@ -672,3 +672,83 @@ def test_speaker_can_be_arbitrary_string():
     # Just shouldn't crash; the speaker value is used as a label only
     p = build_veo_prompt(b, "g", with_dialogue=True)
     assert "غاندالف" in p
+
+
+# ===========================================================================
+# PB-1: Voice-over narration must NOT render an on-camera speaker face
+# ===========================================================================
+
+def test_voice_over_beat_does_not_render_on_camera_speaker():
+    """Voice-over: speaker=narrator + no character_name + non-empty arabic.
+    The prompt MUST NOT instruct Veo to render a speaking face — instead
+    it should preserve the english_motion visual and only add an audio-only
+    narrator instruction."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="منذ ثلاثة أيام غاب سامر في هذه الصحراء.",
+        english_motion="Extreme wide establishing shot of a lone armored "
+                       "warrior on a dune ridge at golden hour",
+        clip_duration_s=9.0,
+        speaker="narrator",
+        character_name="",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    p_lower = p.lower()
+    # Must NOT include the on-camera dialogue framing
+    assert "faces the camera at medium close-up" not in p_lower
+    assert "mouth open mid-speech" not in p_lower
+    assert "synchronized lip movement" not in p_lower
+    # Must include voice-over guidance
+    assert ("voice-over" in p_lower or "voiceover" in p_lower
+            or "off-screen narrator" in p_lower or "narrator's voice" in p_lower)
+    # Must still include the audio-lock (Arabic + dialect)
+    assert "language lock" in p_lower or "must be in arabic" in p_lower.lower()
+    # The exact spoken line is still in the prompt
+    assert "منذ ثلاثة أيام" in p
+
+
+def test_dialogue_beat_unchanged_still_renders_speaker_face():
+    """Regression: a beat with character_name set still gets the
+    'faces the camera at medium close-up' instruction (existing behavior)."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="سامر! أين أنت يا أخي؟",
+        english_motion="Hand-held tracking shot",
+        clip_duration_s=8.5,
+        speaker="father",
+        character_name="طارق",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "faces the camera at medium close-up" in p.lower()
+    assert "طارق" in p
+
+
+def test_silent_beat_unchanged():
+    """Regression: silent beats (arabic='') still get the no-speech block."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(arabic="", english_motion="ambient wide", clip_duration_s=9.0,
+             speaker="narrator", character_name="")
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "no spoken dialogue" in p.lower()
+    assert "voice-over" in p.lower() or "voiceover" in p.lower()  # silent says NO voice-over
+
+
+def test_voiceover_with_character_name_set_treated_as_dialogue():
+    """Edge case: speaker=narrator BUT character_name is set (e.g. an
+    omniscient named narrator like 'Khaled the elder narrator'). Treat as
+    on-camera dialogue, not voice-over."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x",
+        english_motion="y",
+        clip_duration_s=8.0,
+        speaker="narrator",
+        character_name="الراوي خالد",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "faces the camera at medium close-up" in p.lower()
+    assert "الراوي خالد" in p
