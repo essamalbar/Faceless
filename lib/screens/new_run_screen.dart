@@ -5,8 +5,8 @@ import '../api/models.dart';
 import '../theme.dart';
 
 /// Two modes:
-///   - **AI Write** (existing): theme + premise → Claude generates the full
-///     script. The dialogue you write isn't used verbatim.
+///   - **AI Generate**: theme + premise + controls → AI generates the full
+///     script. Pick dialect, art style, character template, and narration style.
 ///   - **Paste Script** (new): theme + title + per-beat fields. The pipeline
 ///     uses your text exactly. No LLM rewrite, no $0.05 of LLM spend.
 class NewRunScreen extends StatelessWidget {
@@ -16,7 +16,7 @@ class NewRunScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('New Episode'),
@@ -25,16 +25,14 @@ class NewRunScreen extends StatelessWidget {
             labelColor: FacelessTheme.accent,
             unselectedLabelColor: FacelessTheme.textSecondary,
             tabs: [
-              Tab(icon: Icon(Icons.auto_awesome), text: 'AI Write'),
-              Tab(icon: Icon(Icons.tune), text: 'AI Freeform'),
+              Tab(icon: Icon(Icons.tune), text: 'AI Generate'),
               Tab(icon: Icon(Icons.edit_note), text: 'Paste Script'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _AiWriteTab(client: client),
-            _AiFreeformTab(client: client),
+            _AiGenerateTab(client: client),
             _PasteScriptTab(client: client),
           ],
         ),
@@ -54,148 +52,17 @@ const _validSpeakers = [
 ];
 
 // ---------------------------------------------------------------------------
-// AI Write — original flow
+// AI Generate — structured controls, AI-written script
 // ---------------------------------------------------------------------------
 
-class _AiWriteTab extends StatefulWidget {
+class _AiGenerateTab extends StatefulWidget {
   final FacelessApiClient client;
-  const _AiWriteTab({required this.client});
-
+  const _AiGenerateTab({required this.client});
   @override
-  State<_AiWriteTab> createState() => _AiWriteTabState();
+  State<_AiGenerateTab> createState() => _AiGenerateTabState();
 }
 
-class _AiWriteTabState extends State<_AiWriteTab> {
-  String _theme = 'folkloric';
-  final _premiseCtrl = TextEditingController();
-  final _maxBeatsCtrl = TextEditingController();
-  bool _submitting = false;
-  String? _error;
-
-  Future<void> _submit() async {
-    final premise = _premiseCtrl.text.trim();
-    if (premise.length < 4) {
-      setState(() => _error = 'Premise too short');
-      return;
-    }
-    int? maxBeats;
-    if (_maxBeatsCtrl.text.trim().isNotEmpty) {
-      maxBeats = int.tryParse(_maxBeatsCtrl.text.trim());
-      if (maxBeats == null || maxBeats < 1 || maxBeats > 20) {
-        setState(() => _error = 'Max beats must be between 1 and 20');
-        return;
-      }
-    }
-    setState(() {
-      _submitting = true;
-      _error = null;
-    });
-    try {
-      final run = await widget.client.createRun(
-        theme: _theme,
-        premise: premise,
-        maxBeats: maxBeats,
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop<RunSummary?>(run);
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _submitting = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Card(
-            color: FacelessTheme.surface2,
-            child: const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Claude writes a full Arabic script from your premise. '
-                'You review the dialogue + cost BEFORE Veo spend.',
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          DropdownButtonFormField<String>(
-            initialValue: _theme,
-            decoration: const InputDecoration(
-                labelText: 'Theme', border: OutlineInputBorder()),
-            items: _themes
-                .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                .toList(),
-            onChanged: (v) => setState(() => _theme = v ?? 'folkloric'),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _premiseCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Premise (Arabic)',
-              hintText: 'مثل: أم سورية فقيرة، ابنها مات بحرب...',
-              border: OutlineInputBorder(),
-              alignLabelWithHint: true,
-            ),
-            textDirection: TextDirection.rtl,
-            maxLines: 4,
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _maxBeatsCtrl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Max beats (optional, 1–20)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_error!,
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.error)),
-            ),
-          FilledButton.icon(
-            onPressed: _submitting ? null : _submit,
-            icon: _submitting
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.auto_stories),
-            label: Text(_submitting ? 'Writing…' : 'Generate Script'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _premiseCtrl.dispose();
-    _maxBeatsCtrl.dispose();
-    super.dispose();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// AI Freeform — structured controls, still AI-written
-// ---------------------------------------------------------------------------
-
-class _AiFreeformTab extends StatefulWidget {
-  final FacelessApiClient client;
-  const _AiFreeformTab({required this.client});
-  @override
-  State<_AiFreeformTab> createState() => _AiFreeformTabState();
-}
-
-class _AiFreeformTabState extends State<_AiFreeformTab> {
+class _AiGenerateTabState extends State<_AiGenerateTab> {
   String _theme = 'folkloric';
   String _dialect = 'msa';
   String _artStyle = 'cinematic_photo_real';
@@ -305,8 +172,8 @@ class _AiFreeformTabState extends State<_AiFreeformTab> {
             child: const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Freeform AI: the script writer follows YOUR premise '
-                'instead of any fixed character/dialect template.',
+                'AI generates a script from your premise. Pick the dialect, art style, '
+                'character template, and narration style; the writer follows your choices.',
               ),
             ),
           ),
