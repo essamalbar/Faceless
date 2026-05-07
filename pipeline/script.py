@@ -398,11 +398,6 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
     beats_raw = data.get("beats") or []
     if not isinstance(beats_raw, list) or not beats_raw:
         raise ValueError("shorts script must contain a non-empty 'beats' list")
-    valid_speakers = {
-        "mother", "son", "father", "doctor", "neighbor",
-        "grandmother", "wife", "daughter", "friend", "enemy", "shadow",
-        "narrator",
-    }
     beats: tuple[Beat, ...] = tuple(
         Beat(
             arabic=str(b.get("arabic", "")).strip(),
@@ -413,12 +408,12 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
         )
         for b in beats_raw
     )
-    # Enforce: every beat must use a known speaker role.
+    # Speaker is now free-form — any non-empty string is valid.
     for i, b in enumerate(beats):
-        if b.speaker not in valid_speakers:
+        if not (b.speaker or "").strip():
             raise ValueError(
-                f"beat {i+1} has invalid speaker={b.speaker!r}; "
-                f"must be one of {sorted(valid_speakers)}."
+                f"beat {i+1} has empty speaker — speaker is now free-form but "
+                f"cannot be empty (use 'narrator' for silent / voice-over beats)."
             )
     # Reject if the visual prompt is missing — Veo needs it for every beat.
     # Empty arabic is allowed (silent action / atmospheric beats).

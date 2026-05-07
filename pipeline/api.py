@@ -724,14 +724,9 @@ def create_run_from_script(req: CreateFromScriptRequest):
     flow applies, so you can still tweak before paying for Veo."""
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
-    valid_speakers = _VALID_SPEAKERS
     for i, b in enumerate(req.beats, start=1):
-        sp = (b.speaker or "").strip().lower()
-        if sp not in valid_speakers:
-            raise HTTPException(
-                400,
-                f"beat {i}: speaker={sp!r} not in {sorted(valid_speakers)}",
-            )
+        if not (b.speaker or "").strip():
+            raise HTTPException(400, f"beat {i}: speaker cannot be empty")
         if not b.english_motion.strip():
             raise HTTPException(400, f"beat {i}: english_motion is required")
 
@@ -1063,10 +1058,7 @@ class EditScriptRequest(BaseModel):
     beats: list[EditScriptBeat]
 
 
-_VALID_SPEAKERS = {
-    "mother", "son", "father", "doctor", "neighbor",
-    "grandmother", "wife", "daughter", "friend", "enemy", "shadow",
-}
+# _VALID_SPEAKERS removed in PA-1 — speaker is now a free-form non-empty string.
 
 
 @app.put(
@@ -1089,12 +1081,8 @@ def edit_script(run_id: str, req: EditScriptRequest):
     if not req.beats:
         raise HTTPException(400, "at least one beat required")
     for i, b in enumerate(req.beats, start=1):
-        sp = (b.speaker or "").strip().lower()
-        if sp not in _VALID_SPEAKERS:
-            raise HTTPException(
-                400,
-                f"beat {i}: speaker={sp!r} not in {sorted(_VALID_SPEAKERS)}",
-            )
+        if not (b.speaker or "").strip():
+            raise HTTPException(400, f"beat {i}: speaker cannot be empty")
         if not b.english_motion.strip():
             raise HTTPException(400, f"beat {i}: english_motion is required")
 

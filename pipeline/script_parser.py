@@ -97,15 +97,16 @@ class ParsedScript:
     beats: list[ParsedBeat]
 
 
-def parse_arabic_speaker(label: str, default: str = "son") -> str:
+def parse_arabic_speaker(label: str, default: str = "narrator") -> str:
     """Public alias kept for backwards-compat tests. Looks up an Arabic OR
     English speaker label in the map. Strips trailing punctuation and
     parentheticals before matching, case-insensitive on English."""
     return _lookup_speaker(label, default)
 
 
-def _lookup_speaker(label: str, default: str = "son") -> str:
-    """Normalize a speaker label and look it up in the alias map.
+def _lookup_speaker(label: str, default: str = "narrator") -> str:
+    """Normalize a speaker label and look it up in the alias map. If unknown,
+    return the cleaned label as-is (loosened from the closed enum).
 
     Handles all of:
       "الشاب"             → son
@@ -113,6 +114,7 @@ def _lookup_speaker(label: str, default: str = "son") -> str:
       "الأم (قوي):"       → mother   (parenthetical THEN colon)
       "Mother (soft):"    → mother
       "the young man"     → son
+      "warrior"           → warrior  (unknown → pass-through)
     """
     # Strip trailing punctuation FIRST so "(soft):" → "(soft)"
     cleaned = label.strip().rstrip("：:،.,؟!").strip()
@@ -122,7 +124,7 @@ def _lookup_speaker(label: str, default: str = "son") -> str:
     # Lowercase lookup — Arabic is unchanged by .lower(), English maps store keys lowercase
     return _SPEAKER_LABEL_TO_EN.get(
         cleaned.lower(),
-        _SPEAKER_LABEL_TO_EN.get(cleaned, default),
+        _SPEAKER_LABEL_TO_EN.get(cleaned, cleaned.lower() or default),
     )
 
 

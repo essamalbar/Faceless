@@ -37,94 +37,9 @@ VIDEO_STYLE_SUFFIX = (
 VIDEO_NEGATIVE_PROMPT = ""  # unused (Veo ignores it); kept for API stability
 REROLL_SEED_BUMP = 100_000
 
-# Per-speaker character lock — the SAME description is injected into every
-# beat's Veo prompt for that speaker, so visual identity stays consistent
-# across clips. Each entry pins outfit, age, eye type, and signature
-# accessory. We deliberately commit to ONE age band per character (no
-# "child vs adult" variants) because Veo cannot age-shift a character
-# mid-video without visible identity drift — the user noticed son being
-# small in one clip and an adult in another.
-SPEAKER_DESCRIPTIONS: dict[str, str] = {
-    "mother": (
-        "the LEMON MOTHER character — middle-aged anthropomorphic lemon-headed "
-        "woman (mid-50s), bright yellow lemon-shaped head with smooth skin, "
-        "large tired sad brown eyes, gentle wrinkles around eyes, "
-        "wearing a plain BLACK hijab covering hair and a long dark grey dress "
-        "with simple embroidery, weary maternal expression, thin frame"
-    ),
-    "son": (
-        "the STRAWBERRY SON character — young adult anthropomorphic strawberry-headed "
-        "man (early 20s), red strawberry-shaped head with small green leaves on top "
-        "as hair, dark expressive eyes, light beard stubble, "
-        "wearing a casual grey t-shirt and dark trousers, "
-        "regretful tired expression, lean build "
-        "(NEVER a child or boy — always an adult young man across all clips)"
-    ),
-    "father": (
-        "the OLDER LEMON FATHER character — elderly anthropomorphic lemon-headed "
-        "man (mid-60s), pale yellow lemon-shaped head with deep wrinkles, "
-        "white beard and white moustache, hollow tired eyes, "
-        "wearing a traditional white thobe with brown vest, "
-        "weak weary expression, slightly stooped posture"
-    ),
-    "doctor": (
-        "the APPLE DOCTOR character — middle-aged anthropomorphic red-apple-headed "
-        "man (mid-40s), shiny red apple-shaped head with a small green leaf, "
-        "round glasses, serious composed eyes, clean-shaven, "
-        "wearing a crisp white doctor's coat over a blue shirt, "
-        "stethoscope around neck, professional grim expression"
-    ),
-    "neighbor": (
-        "the MANGO NEIGHBOR character — middle-aged anthropomorphic mango-headed "
-        "man (early 50s), orange-yellow mango-shaped head, "
-        "smug confident eyes, well-groomed, "
-        "wearing a beige traditional dishdasha and gold watch, "
-        "indifferent dismissive expression"
-    ),
-    "grandmother": (
-        "the LEMON GRANDMOTHER character — elderly anthropomorphic lemon-headed "
-        "woman (mid-70s), pale yellow wrinkled lemon-shaped head, "
-        "kind sad eyes, white hair under a black headscarf, "
-        "wearing a long dark dress with prayer beads in hand, "
-        "gentle frail expression"
-    ),
-    "wife": (
-        "the PEACH WIFE character — young adult anthropomorphic peach-headed "
-        "woman (mid-20s), soft pink-orange peach-shaped head, "
-        "anxious worried brown eyes, "
-        "wearing a beige hijab and pale rose-colored dress, "
-        "concerned tired expression"
-    ),
-    "daughter": (
-        "the CHERRY DAUGHTER character — small child anthropomorphic cherry-headed "
-        "girl (around 6 years old), red round cherry-shaped head with green stem hair, "
-        "big innocent dark eyes, "
-        "wearing a simple white dress with red details, "
-        "frightened or confused expression"
-    ),
-    "friend": (
-        "the BLUEBERRY FRIEND character — young adult anthropomorphic blueberry-headed "
-        "man (early 20s, same age as the strawberry son), deep blue blueberry-shaped "
-        "head with a small green leaf, kind dark eyes, "
-        "wearing a navy blue tunic with leather straps, "
-        "loyal warm expression "
-        "(NEVER the same fruit as the son — always blueberry, distinct from him)"
-    ),
-    "enemy": (
-        "the DARK GRAPE ENEMY soldier — anthropomorphic dark-purple grape-headed warrior, "
-        "menacing glowing red eyes, sharp jagged scar across the face, "
-        "wearing black scaled armor with spiked shoulders, "
-        "cruel smirking expression, deeper raspy voice"
-    ),
-    "shadow": (
-        "the SHADOW STRAWBERRY character — same young adult anthropomorphic "
-        "strawberry-headed man (early 20s) as the regular son but corrupted "
-        "by darkness: deep blood-red strawberry head with darker tones, "
-        "glowing dark crimson eyes, swirling dark smoke around him, "
-        "wearing tattered black robes, cold cruel smirk, deeper colder voice — "
-        "this is the son's alter ego / inner darkness given form, NOT a different person"
-    ),
-}
+# SPEAKER_DESCRIPTIONS was removed in PA-1. Character identity is now provided
+# exclusively via beat.character_name. See commit "refactor(speaker): drop
+# SPEAKER_DESCRIPTIONS + free-form speaker enum".
 
 
 def clip_seed(title: str, index: int) -> int:
@@ -208,31 +123,20 @@ def build_veo_prompt(
 
     if with_dialogue:
         if beat.arabic:
-            # Dialogue beat — speaker description + audio lock.
+            # Dialogue beat — character_name (per-script) is the primary identifier.
             name = (beat.character_name or "").strip()
             if name:
-                # Always prefer the script's per-beat character_name over the
-                # legacy fruit-cast SPEAKER_DESCRIPTIONS — applies to BOTH
-                # Sunstoriz (cast_negation='') and freeform (cast_negation!='')
-                # paths, so a Sunstoriz story whose script picks "فراولة" /
-                # "موزة" / "عنب" doesn't get overridden into "BLUEBERRY FRIEND".
                 speaker_desc = (
                     f"the character named {name} — appearance MUST match this "
                     f"character as drawn in the supplied character lineup "
                     f"reference image"
                 )
-            elif cast_negation:
-                # Freeform with no character_name → generic non-fruit fallback.
-                speaker_desc = (
-                    f"the {beat.speaker} character — appearance MUST match "
-                    f"this character as drawn in the supplied character "
-                    f"lineup reference image"
-                )
             else:
-                # Legacy Sunstoriz fallback (no character_name, no cast_negation).
-                speaker_desc = SPEAKER_DESCRIPTIONS.get(
-                    beat.speaker, "the speaking character"
-                )
+                # Legacy script with no character_name. Fall back to a generic
+                # speaker label — no fruit-cast injection. This means older
+                # Sunstoriz scripts will look slightly different but won't have
+                # the cross-cast fruit leak that SPEAKER_DESCRIPTIONS caused.
+                speaker_desc = f"the {beat.speaker or 'speaking'} character"
 
             dialect_key = (dialect or "syrian").lower()
             lock = _DIALECT_AUDIO_LOCK.get(dialect_key, _DIALECT_AUDIO_LOCK["syrian"])

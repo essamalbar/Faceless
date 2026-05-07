@@ -45,11 +45,6 @@ Input prose:
 
 NAIVE_FALLBACK_SENTINEL = "(auto-generated visual — please review)"
 
-_VALID_SPEAKERS = {
-    "mother", "son", "father", "doctor", "neighbor",
-    "grandmother", "wife", "daughter", "friend", "enemy", "shadow",
-}
-
 
 def _normalize(s: str) -> str:
     """Remove all whitespace — used by the verbatim guard so trivial whitespace
@@ -76,9 +71,7 @@ def _parse_response(raw_response: str) -> list[ParsedBeat]:
     beats_raw = data.get("beats") or []
     beats: list[ParsedBeat] = []
     for b in beats_raw:
-        speaker = str(b.get("speaker", "")).strip().lower()
-        if speaker not in _VALID_SPEAKERS:
-            speaker = "mother"  # safe default
+        speaker = str(b.get("speaker", "")).strip().lower() or "narrator"
         beats.append(ParsedBeat(
             arabic=str(b.get("arabic", "")).strip(),
             english_motion=str(b.get("english_motion", "")).strip(),

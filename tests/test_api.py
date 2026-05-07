@@ -311,12 +311,13 @@ def test_create_from_script_writes_script_and_seed_no_llm(client, auth, tmp_path
     assert script["target_duration_s"] == 17.0
 
 
-def test_create_from_script_rejects_invalid_speaker(client, auth):
+def test_create_from_script_rejects_empty_speaker(client, auth):
+    """PA-1: empty speaker is rejected; 'narrator' and any other non-empty value are now valid."""
     body = {
         "title": "x",
         "theme": "folkloric",
         "beats": [{"arabic": "ج", "english_motion": "m",
-                   "speaker": "narrator",  # forbidden
+                   "speaker": "",  # empty → forbidden
                    "clip_duration_s": 8.0}],
     }
     r = client.post("/runs/from-script", json=body, headers=auth)
@@ -1140,13 +1141,14 @@ def test_edit_script_rejected_after_approval(client, auth, tmp_path: Path):
     assert r.status_code == 409
 
 
-def test_edit_script_rejects_invalid_speaker(client, auth, tmp_path: Path):
+def test_edit_script_rejects_empty_speaker(client, auth, tmp_path: Path):
+    """PA-1: empty speaker is rejected; 'narrator' and any other non-empty value are now valid."""
     rd = _make_run_dir(tmp_path)
     _seed_awaiting_approval(rd)
     body = {
         "title": "x",
         "beats": [{"arabic": "ج", "english_motion": "m",
-                   "speaker": "narrator", "clip_duration_s": 8.0}],
+                   "speaker": "", "clip_duration_s": 8.0}],
     }
     r = client.put(f"/runs/{rd.name}/script", json=body, headers=auth)
     assert r.status_code == 400
@@ -1657,3 +1659,34 @@ def test_create_freeform_run_writes_controls_file(tmp_path, client, monkeypatch)
     assert persisted["character_template"] == "animal"
     assert persisted["narration_style"] == "cinematic"
     assert persisted["num_beats"] == 8
+
+
+# ===========================================================================
+# PA-1: free-form speaker enum in API
+# ===========================================================================
+
+def test_from_script_accepts_any_speaker_string(tmp_path, client):
+    """Loosened enum: speaker can be any non-empty string."""
+    payload = {
+        "title": "Hand", "theme": "folkloric",
+        "beats": [{
+            "arabic": "x", "english_motion": "y", "speaker": "warrior",
+            "clip_duration_s": 8.0, "character_name": "خالد",
+        }],
+    }
+    resp = client.post("/runs/from-script", json=payload,
+                       headers={"Authorization": f"Bearer {TOKEN}"})
+    assert resp.status_code == 201
+
+
+def test_from_script_rejects_empty_speaker(tmp_path, client):
+    payload = {
+        "title": "Hand", "theme": "folkloric",
+        "beats": [{
+            "arabic": "x", "english_motion": "y", "speaker": "",
+            "clip_duration_s": 8.0, "character_name": "خالد",
+        }],
+    }
+    resp = client.post("/runs/from-script", json=payload,
+                       headers={"Authorization": f"Bearer {TOKEN}"})
+    assert resp.status_code == 400

@@ -119,7 +119,9 @@ def test_silent_scene_produces_silent_beat():
     assert "Scene 5" in out.beats[0].english_motion
 
 
-def test_unknown_speaker_falls_back_to_son():
+def test_unknown_speaker_passes_through_as_lowercased_label():
+    """PA-1: Unknown speaker labels are no longer coerced to 'son' —
+    they pass through as the cleaned/lowercased label itself."""
     raw = _norm("""
         **المشهد 1 – x**
 
@@ -127,7 +129,8 @@ def test_unknown_speaker_falls_back_to_son():
         "test line"
     """)
     out = parse_episode_markdown(raw)
-    assert out.beats[0].speaker == "son"   # safe default
+    # شخصية مجهولة is not in the alias map → passes through as-is (lowercased)
+    assert out.beats[0].speaker == "شخصية مجهولة"
 
 
 def test_scenes_separated_by_horizontal_rules():

@@ -198,18 +198,17 @@ def test_parser_still_rejects_missing_english_motion():
         _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
 
 
-def test_parser_still_rejects_unknown_speaker():
-    """A speaker that's neither a named role nor 'narrator' is rejected."""
-    import pytest
+def test_parser_accepts_unknown_speaker_alien():
+    """PA-1: A speaker like 'alien' is now valid — free-form speaker enum."""
     from pipeline.script import _parse_shorts_script_json
     from pipeline.types import ThemeSeed
     raw = '''{
       "title":"t","theme":"folkloric","global_setting":"g","music_mood":"dread",
       "target_duration_s":8,
-      "beats":[{"arabic":"x","english_motion":"y","speaker":"alien","clip_duration_s":8}]
+      "beats":[{"arabic":"x","english_motion":"y","speaker":"alien","clip_duration_s":8,"character_name":"زيد"}]
     }'''
-    with pytest.raises(ValueError):
-        _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+    script = _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+    assert script.beats[0].speaker == "alien"
 
 
 def test_repetition_guard_rejects_when_too_similar(fake_gemini, tmp_path: Path):
@@ -415,9 +414,9 @@ def test_shorts_rejects_missing_speaker(fake_gemini):
     fake_gemini.when(lambda p: True, json.dumps({
         "title": "x", "theme": "folkloric", "global_setting": "x",
         "music_mood": "dread",
-        "beats": [{"arabic": "ج1", "english_motion": "m1"}],  # no speaker
+        "beats": [{"arabic": "ج1", "english_motion": "m1"}],  # no speaker → empty
     }, ensure_ascii=False))
-    with pytest.raises(ValueError, match="invalid speaker"):
+    with pytest.raises(ValueError, match="empty speaker"):
         generate_shorts_script(fake_gemini, seed, min_beats=1, max_beats=20)
 
 
@@ -553,3 +552,39 @@ def test_sunstoriz_writer_prefers_premise_characters():
         or "التزم" in p
         or "اختار" in p
     ), "Sunstoriz writer should reference the premise as a cast guide"
+
+
+# ===========================================================================
+# PA-1: free-form speaker enum in _parse_shorts_script_json
+# ===========================================================================
+
+def test_parser_accepts_any_speaker_string():
+    """Loosened enum: speaker can be 'warrior', 'wizard', 'pet', etc."""
+    from pipeline.script import _parse_shorts_script_json
+    from pipeline.types import ThemeSeed
+    raw = '''{
+      "title":"t","theme":"folkloric","global_setting":"g","music_mood":"dread",
+      "target_duration_s":16,
+      "beats":[
+        {"arabic":"x","english_motion":"y","clip_duration_s":8,"speaker":"warrior","character_name":"خالد"},
+        {"arabic":"x","english_motion":"y","clip_duration_s":8,"speaker":"wizard","character_name":"عمر"}
+      ]
+    }'''
+    script = _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))
+    assert script.beats[0].speaker == "warrior"
+    assert script.beats[1].speaker == "wizard"
+
+
+def test_parser_still_rejects_empty_speaker():
+    """Even loosened, empty speaker is invalid (would make the beat
+    untraceable)."""
+    import pytest
+    from pipeline.script import _parse_shorts_script_json
+    from pipeline.types import ThemeSeed
+    raw = '''{
+      "title":"t","theme":"folkloric","global_setting":"g","music_mood":"dread",
+      "target_duration_s":8,
+      "beats":[{"arabic":"x","english_motion":"y","clip_duration_s":8,"speaker":""}]
+    }'''
+    with pytest.raises(ValueError):
+        _parse_shorts_script_json(raw, ThemeSeed(theme="folkloric", premise="x"))

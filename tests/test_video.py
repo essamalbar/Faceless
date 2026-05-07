@@ -94,10 +94,11 @@ def test_build_veo_prompt_silent_default_omits_dialogue():
 def test_build_veo_prompt_with_dialogue_quotes_arabic_and_names_speaker():
     """Tier-4 native-audio path: dialogue line appears inside double-quotes
     with a speaker description, so Veo 3 generates lip-synced speech."""
-    b = Beat(arabic="أنا قلبي مكسور", english_motion="m", speaker="mother")
+    b = Beat(arabic="أنا قلبي مكسور", english_motion="m", speaker="mother",
+             character_name="أم خالد")
     p = build_veo_prompt(b, global_setting="g", with_dialogue=True)
     assert '"أنا قلبي مكسور"' in p           # exact quoting matters for Veo
-    assert "LEMON MOTHER" in p                # speaker description applied
+    assert "أم خالد" in p                     # character_name used (no fruit desc)
     assert "synchronized lip movement" in p
     assert "Syrian" in p
     # Audio-language lock — the prompt explicitly forbids English plus the
@@ -110,10 +111,12 @@ def test_build_veo_prompt_with_dialogue_quotes_arabic_and_names_speaker():
 
 def test_build_veo_prompt_with_dialogue_unknown_speaker_falls_back():
     """Unknown speaker labels still produce a usable prompt — Veo gets
-    a generic 'speaking character' instead of failing."""
-    b = Beat(arabic="ج", english_motion="m", speaker="auntie")  # not in map
+    a generic 'the {speaker} character' label instead of failing."""
+    b = Beat(arabic="ج", english_motion="m", speaker="auntie",
+             character_name="")  # no character_name → generic fallback
     p = build_veo_prompt(b, global_setting="g", with_dialogue=True)
-    assert "the speaking character" in p
+    # PA-1: generic fallback is "the {speaker} character", not SPEAKER_DESCRIPTIONS
+    assert "the auntie character" in p
     assert '"ج"' in p
 
 
@@ -415,10 +418,9 @@ def test_with_dialogue_freeform_human_cast_strips_fruit_speaker_desc():
     assert "أم خالد" in p
 
 
-def test_with_dialogue_sunstoriz_keeps_fruit_speaker_desc():
-    """Without cast_negation (Sunstoriz / AI Write mode) AND without a
-    character_name, the existing fruit-character SPEAKER_DESCRIPTIONS path
-    is preserved so the legacy style still works."""
+def test_with_dialogue_sunstoriz_no_fruit_leak_when_character_name_empty():
+    """PA-1: Without cast_negation AND without a character_name, the prompt
+    falls back to a generic speaker label — no fruit-cast injection."""
     from pipeline.video import build_veo_prompt
     from pipeline.types import Beat
     b = Beat(
@@ -426,11 +428,15 @@ def test_with_dialogue_sunstoriz_keeps_fruit_speaker_desc():
         english_motion="medium close-up, mother speaks",
         clip_duration_s=8.0,
         speaker="mother",
-        character_name="",   # empty → legacy fruit fallback applies
+        character_name="",   # empty → generic fallback (no fruit)
     )
     p = build_veo_prompt(b, "global setting", with_dialogue=True)
-    # Cast_negation empty AND character_name empty → SPEAKER_DESCRIPTIONS["mother"]
-    assert "LEMON MOTHER" in p
+    p_lower = p.lower()
+    # PA-1: SPEAKER_DESCRIPTIONS removed — no fruit descriptions
+    assert "lemon mother" not in p_lower
+    assert "lemon-shaped head" not in p_lower
+    # Generic fallback label appears instead
+    assert "the mother" in p_lower
 
 
 def test_with_dialogue_freeform_no_character_name_uses_speaker_label():
@@ -476,10 +482,10 @@ def test_speaker_uses_character_name_in_sunstoriz_when_present():
     assert "فراولة" in p
 
 
-def test_legacy_sunstoriz_falls_back_when_character_name_empty():
-    """When cast_negation='' AND character_name='', the legacy fruit
-    SPEAKER_DESCRIPTIONS still fires (preserves any old script that
-    predates the character_name field)."""
+def test_legacy_sunstoriz_no_fruit_when_character_name_empty():
+    """PA-1: When cast_negation='' AND character_name='', the old fruit
+    SPEAKER_DESCRIPTIONS is no longer injected — a generic speaker label
+    is used instead."""
     from pipeline.video import build_veo_prompt
     from pipeline.types import Beat
     b = Beat(
@@ -490,7 +496,9 @@ def test_legacy_sunstoriz_falls_back_when_character_name_empty():
         character_name="",
     )
     p = build_veo_prompt(b, "g", with_dialogue=True)
-    assert "LEMON MOTHER" in p   # legacy fallback still works
+    p_lower = p.lower()
+    assert "lemon mother" not in p_lower   # PA-1: fruit-cast map gone
+    assert "the mother" in p_lower          # generic label used
 
 
 def test_dialect_param_threads_to_audio_lock():
@@ -600,3 +608,67 @@ def test_speaker_desc_no_role_leak_for_freeform_animal():
     )
     assert "the friend role" not in p.lower()
     assert "سالم" in p
+
+
+# ===========================================================================
+# PA-1: SPEAKER_DESCRIPTIONS deleted + free-form speaker
+# ===========================================================================
+
+def test_speaker_descriptions_constant_is_gone():
+    """SPEAKER_DESCRIPTIONS should no longer be defined as a public constant
+    in pipeline.video — it was the source of fruit-cast leak into Veo prompts."""
+    import pipeline.video as v
+    assert not hasattr(v, "SPEAKER_DESCRIPTIONS"), (
+        "SPEAKER_DESCRIPTIONS must be deleted in PA-1 — character_name is now "
+        "the source of truth for character identity."
+    )
+
+
+def test_dialogue_without_character_name_uses_generic_speaker_label():
+    """When character_name is empty and cast_negation is empty (legacy
+    Sunstoriz path), the prompt no longer injects fruit descriptions —
+    instead it falls back to a simple 'the {speaker} character' label."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x", english_motion="y", clip_duration_s=8.0,
+        speaker="mother", character_name="",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    p_lower = p.lower()
+    # Generic fallback is used
+    assert "the mother" in p_lower or "the speaking character" in p_lower
+    # No fruit-cast leak
+    assert "lemon mother" not in p_lower
+    assert "lemon-shaped head" not in p_lower
+    assert "strawberry son" not in p_lower
+    assert "blueberry friend" not in p_lower
+
+
+def test_freeform_path_unchanged_when_character_name_set():
+    """Regression: when character_name is set, the existing 'character named X'
+    descriptor still works."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x", english_motion="y", clip_duration_s=8.0,
+        speaker="warrior", character_name="ليلى",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "ليلى" in p
+    assert "the character named" in p.lower() or "named ليلى" in p
+
+
+def test_speaker_can_be_arbitrary_string():
+    """Loosened enum: any non-empty string works as a speaker (e.g.
+    'warrior', 'wizard', 'computer-AI', etc.)."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x", english_motion="y", clip_duration_s=8.0,
+        speaker="wizard",  # not in the legacy enum
+        character_name="غاندالف",
+    )
+    # Just shouldn't crash; the speaker value is used as a label only
+    p = build_veo_prompt(b, "g", with_dialogue=True)
+    assert "غاندالف" in p

@@ -90,3 +90,20 @@ def test_splitter_prompt_mentions_character_name():
     """The splitter LLM prompt instructs it to pick Arabic character names."""
     from pipeline.script_splitter import _PROMPT_TEMPLATE
     assert "character_name" in _PROMPT_TEMPLATE
+
+
+# ===========================================================================
+# PA-1: free-form speaker enum in script_splitter
+# ===========================================================================
+
+def test_splitter_accepts_any_speaker_string():
+    from pipeline.script_splitter import split_prose_into_beats
+    raw = "أنا خالد، أنا محارب. سأنقذ المدينة."
+    response = '''{"beats":[
+        {"arabic":"أنا خالد، أنا محارب.","english_motion":"x","speaker":"warrior","clip_duration_s":7,"character_name":"خالد"},
+        {"arabic":"سأنقذ المدينة.","english_motion":"y","speaker":"warrior","clip_duration_s":7,"character_name":"خالد"}
+    ]}'''
+    class _Stub:
+        def complete(self, p, system=""): return response
+    beats = split_prose_into_beats(_Stub(), raw, target_beats=2, per_beat_seconds=7)
+    assert beats[0].speaker == "warrior"  # not coerced to "mother"
