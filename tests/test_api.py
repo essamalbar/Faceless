@@ -142,6 +142,36 @@ def test_create_run_spawns_pipeline_with_pause_flag(client, auth, tmp_path: Path
     assert captured["run_dir"].parent == tmp_path / "out"
 
 
+TOKEN = "test-token-abc"
+
+
+def test_post_runs_proxies_to_freeform(tmp_path, client, monkeypatch):
+    """PA-3: POST /runs is now a thin proxy that spawns the freeform pipeline
+    with character_template=fruit_sunstoriz + narration_style=first_person_monologue
+    + dialect=syrian (the previous Sunstoriz defaults)."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    from pipeline.api import set_spawn_fn
+    captured: list[list[str]] = []
+
+    def stub_spawn(args, run_dir):
+        captured.append(args)
+        return 1234
+
+    set_spawn_fn(stub_spawn)
+    resp = client.post(
+        "/runs",
+        json={"theme": "folkloric", "premise": "أم سورية فقدت ابنها"},
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 201
+    args = captured[0]
+    # Spawned the freeform path with Sunstoriz defaults
+    assert "--freeform" in args
+    assert "--ff-character-template" in args
+    idx = args.index("--ff-character-template")
+    assert args[idx + 1] == "fruit_sunstoriz"
+
+
 def test_parse_script_endpoint_returns_structured_beats(client, auth):
     """The HTTP path of /runs/parse-script. Unit tests in test_script_parser.py
     cover the parser itself; this test verifies the endpoint wires it up,
@@ -343,6 +373,8 @@ def test_create_from_script_rejects_empty_beats(client, auth):
 
 
 def test_create_run_passes_max_beats(client, auth):
+    """PA-3: max_beats on CreateRunRequest now maps to --ff-num-beats
+    (the legacy --max-beats flag no longer exists)."""
     captured: dict = {"args": None}
     from pipeline import api as api_mod
 
@@ -356,8 +388,9 @@ def test_create_run_passes_max_beats(client, auth):
                 json={"theme": "folkloric", "premise": "تجربة قصيرة جداً", "max_beats": 3},
                 headers=auth)
     args = captured["args"]
-    assert "--max-beats" in args
-    assert "3" in args
+    assert "--ff-num-beats" in args
+    idx = args.index("--ff-num-beats")
+    assert args[idx + 1] == "3"
 
 
 # ---------------------------------------------------------------------------

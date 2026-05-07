@@ -581,26 +581,18 @@ def test_pause_after_character_sheet_ignored_with_skip_video(
     assert (run_dir / "final.mp4").exists()
 
 
-def test_freeform_flag_routes_to_freeform_writer(tmp_path, monkeypatch, music_bundle):
-    """When --freeform is passed, the shorts-script stage calls
-    generate_freeform_script, NOT generate_shorts_script."""
-    called = {"freeform": False, "shorts": False}
+def test_freeform_is_the_only_shorts_writer(tmp_path, monkeypatch, music_bundle):
+    """PA-3: a --shorts run without --freeform should still go through the
+    freeform writer (because the legacy Sunstoriz writer is gone). Without
+    --ff-character-template, character_template defaults to ai_choose."""
+    called = {"freeform": False}
 
     def fake_freeform(llm, seed, controls):
         called["freeform"] = True
         return _MINIMAL_SCRIPT
 
-    def fake_shorts(*a, **kw):
-        called["shorts"] = True
-        return _MINIMAL_SCRIPT
-
     monkeypatch.setattr(
-        "pipeline.script_freeform.generate_freeform_script", fake_freeform,
-    )
-    monkeypatch.setattr(
-        "pipeline.script.generate_shorts_script", fake_shorts,
-    )
-
+        "pipeline.script_freeform.generate_freeform_script", fake_freeform)
     monkeypatch.setattr("run._build_gemini", lambda: object())
     monkeypatch.setattr("run._build_kie", lambda: object())
     monkeypatch.setattr("run._stage_character_sheet", lambda *a, **kw: None)
@@ -611,21 +603,15 @@ def test_freeform_flag_routes_to_freeform_writer(tmp_path, monkeypatch, music_bu
     config_path = REPO_ROOT / "config.yaml"
     import run
     rc = run.main_with_args([
-        "--shorts", "--freeform",
-        "--theme", "urban", "--seed", "test premise",
+        "--shorts",
+        "--theme", "folkloric", "--seed", "premise here",
         "--out-root", str(tmp_path),
         "--pause-after-script",
-        "--ff-dialect", "egyptian",
-        "--ff-art-style", "anime_2d",
-        "--ff-character-template", "human",
-        "--ff-ending-type", "twist",
-        "--ff-num-beats", "6",
         "--config", str(config_path),
         "--music-bundle", str(music_bundle),
     ])
     assert rc == 0
     assert called["freeform"] is True
-    assert called["shorts"] is False
 
 
 def test_freeform_mode_passes_custom_lineup_prompt(tmp_path, monkeypatch):

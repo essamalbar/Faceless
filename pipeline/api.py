@@ -784,6 +784,10 @@ def create_run_from_script(req: CreateFromScriptRequest):
     dependencies=[Depends(require_token)],
 )
 def create_run(req: CreateRunRequest):
+    """Legacy endpoint — proxies to the freeform pipeline with
+    Sunstoriz-style defaults. Kept for back-compat with old API clients;
+    new clients should call POST /runs/freeform directly with their
+    chosen controls."""
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
 
@@ -791,15 +795,34 @@ def create_run(req: CreateRunRequest):
     run_dir = _out_root() / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    # Persist freeform controls so reroll/approve survive (matches /runs/freeform)
+    controls_doc = {
+        "dialect": "syrian",
+        "art_style": "pixar_3d",
+        "character_template": "fruit_sunstoriz",
+        "ending_type": "ai_choose",
+        "num_beats": req.max_beats or 8,
+        "per_beat_seconds": 8,
+        "narration_style": "first_person_monologue",
+    }
+    (run_dir / "freeform_controls.json").write_text(
+        json.dumps(controls_doc, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     args = [
-        "--shorts", "--pause-after-script",
+        "--shorts", "--freeform", "--pause-after-script",
         "--theme", req.theme,
         "--seed", req.premise,
         "--run-dir", str(run_dir),
+        "--ff-dialect", "syrian",
+        "--ff-art-style", "pixar_3d",
+        "--ff-character-template", "fruit_sunstoriz",
+        "--ff-ending-type", "ai_choose",
+        "--ff-num-beats", str(req.max_beats or 8),
+        "--ff-per-beat-seconds", "8",
+        "--ff-narration-style", "first_person_monologue",
     ]
-    if req.max_beats is not None:
-        args += ["--max-beats", str(req.max_beats)]
-
     pid = _SPAWN_FN(args, run_dir)
     _write_state(
         run_dir,

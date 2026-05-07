@@ -37,7 +37,7 @@ from pipeline.llm import GeminiClient
 from pipeline.llm_groq import GroqClient
 from pipeline.music import select_music_track
 from pipeline.runlog import RunLog
-from pipeline.script import generate_script_with_uniqueness, generate_shorts_script
+from pipeline.script import generate_script_with_uniqueness
 from pipeline.seed import auto_seed, manual_seed, record_theme_use
 from pipeline.shots import generate_shots
 from pipeline.types import RunPaths, Script, Shot, ThemeSeed, WordTiming
@@ -225,25 +225,6 @@ def _stage_assemble(cfg: Config, shots: list[Shot], paths: RunPaths,
 # ============================================================================
 
 from pipeline.cast_guidance import flux_lineup_override
-
-def _stage_shorts_script(gemini, seed: ThemeSeed, cfg: Config, paths: RunPaths,
-                         max_beats_override: int | None = None) -> Script:
-    if paths.script_json.exists():
-        return Script.from_dict(json.loads(paths.script_json.read_text(encoding="utf-8")))
-    if max_beats_override is not None:
-        min_beats = min(2, max_beats_override)
-        max_beats = max_beats_override
-    else:
-        min_beats = cfg.kie.num_clips
-        max_beats = max(cfg.kie.num_clips, 15)
-    script = generate_shorts_script(
-        gemini, seed, min_beats=min_beats, max_beats=max_beats,
-    )
-    paths.script_json.write_text(
-        json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return script
 
 
 def _stage_shorts_voice(args, cfg: Config, script: Script, paths: RunPaths) -> list[WordTiming]:
@@ -590,10 +571,6 @@ def main_with_args(argv: list[str]) -> int:
                    help="Use placeholder black mp4 clips (Shorts dev only)")
     p.add_argument("--max-spend", type=float, default=None,
                    help="Override config.kie.max_spend_usd for this run")
-    p.add_argument("--max-beats", type=int, default=None,
-                   help="Cap the writer to ≤ N beats (Shorts validation runs). "
-                        "Forces min_beats=min(2,N) and max_beats=N so a $2 test "
-                        "is achievable without editing config.yaml.")
     p.add_argument("--pause-after-script", action="store_true",
                    help="Exit cleanly after the script stage. Used by the API server "
                         "to gate paid stages on human approval. Resume with --resume "
@@ -685,30 +662,31 @@ def main_with_args(argv: list[str]) -> int:
             with log.stage("seed"):
                 seed = _stage_seed(args, gemini, log, paths, project_theme_log)
             with log.stage("script"):
-                if args.freeform:
-                    if paths.script_json.exists():
-                        script = Script.from_dict(json.loads(paths.script_json.read_text(encoding="utf-8")))
-                    else:
-                        from pipeline.script_freeform import (
-                            FreeformControls, generate_freeform_script,
-                        )
-                        controls = FreeformControls(
-                            dialect=args.ff_dialect,
-                            art_style=args.ff_art_style,
-                            character_template=args.ff_character_template,
-                            ending_type=args.ff_ending_type,
-                            num_beats=args.ff_num_beats,
-                            per_beat_seconds=args.ff_per_beat_seconds,
-                            narration_style=args.ff_narration_style,
-                        )
-                        script = generate_freeform_script(gemini, seed, controls)
-                        paths.script_json.write_text(
-                            json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
-                            encoding="utf-8",
-                        )
+                if paths.script_json.exists():
+                    from pipeline.types import Script as _Script
+                    import json as _json
+                    script = _Script.from_dict(
+                        _json.loads(paths.script_json.read_text(encoding="utf-8"))
+                    )
                 else:
-                    script = _stage_shorts_script(gemini, seed, cfg, paths,
-                                                   max_beats_override=args.max_beats)
+                    from pipeline.script_freeform import (
+                        FreeformControls, generate_freeform_script,
+                    )
+                    controls = FreeformControls(
+                        dialect=args.ff_dialect,
+                        art_style=args.ff_art_style,
+                        character_template=args.ff_character_template,
+                        ending_type=args.ff_ending_type,
+                        num_beats=args.ff_num_beats,
+                        per_beat_seconds=args.ff_per_beat_seconds,
+                        narration_style=args.ff_narration_style,
+                    )
+                    script = generate_freeform_script(gemini, seed, controls)
+                    import json as _json
+                    paths.script_json.write_text(
+                        _json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
             if args.pause_after_script:
                 # Approval gate for the mobile-app workflow. Script is on disk;
                 # bail out before any paid stage so a human reviewer can decide.
@@ -731,8 +709,8 @@ def main_with_args(argv: list[str]) -> int:
                 else:
                     _stage_character_sheet(
                         _build_kie(), cfg, paths, script,
-                        freeform_mode=args.freeform,
-                        character_template=args.ff_character_template if args.freeform else None,
+                        freeform_mode=True,
+                        character_template=args.ff_character_template,
                     )
             if args.pause_after_character_sheet:
                 if args.skip_video:
@@ -745,8 +723,8 @@ def main_with_args(argv: list[str]) -> int:
             with log.stage("video"):
                 _stage_video_chained(
                     args, cfg, script, paths,
-                    character_template=args.ff_character_template if args.freeform else None,
-                    dialect=args.ff_dialect if args.freeform else None,
+                    character_template=args.ff_character_template,
+                    dialect=args.ff_dialect,
                 )
             if use_native_audio:
                 with log.stage("native_audio_timings"):
