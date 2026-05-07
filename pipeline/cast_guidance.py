@@ -35,6 +35,18 @@ _CAST_FLUX_GUIDANCE: dict[str, str] = {
         "animals, and NOT fruit characters. NO lemons, NO strawberries, NO "
         "apples, NO mangoes, NO blueberries."
     ),
+    "fruit_sunstoriz": (
+        "Anthropomorphic fruit characters in the Sunstoriz Arabic-melodrama "
+        "tradition. Each character has a fruit-shaped head and a humanoid body, "
+        "wearing traditional clothing appropriate to the character (hijab and "
+        "dress for mother figures; thobe / dishdasha for father / neighbor; "
+        "doctor's coat for medical role; embroidered tunic for friend / son). "
+        "Canonical fruits when applicable: lemon for mother / grandmother, "
+        "strawberry for son, apple for doctor, mango for neighbor, peach for "
+        "wife, cherry for daughter, blueberry for friend, grape for enemy. "
+        "Pixar-style 3D rendering, expressive faces. STRICTLY NOT real humans, "
+        "NOT real animals, NOT surreal — anthropomorphic fruit only."
+    ),
 }
 
 
@@ -58,7 +70,9 @@ _CAST_VEO_GUIDANCE: dict[str, str] = {
 
 
 def flux_lineup_override(character_template: str | None) -> str:
-    """Flux character-sheet override clause; '' for fruit_sunstoriz/ai_choose/unknown."""
+    """Flux character-sheet override clause; '' for ai_choose/unknown/None.
+
+    fruit_sunstoriz now returns a non-empty string (PA-2: first-class preset)."""
     return _CAST_FLUX_GUIDANCE.get(character_template or "", "")
 
 

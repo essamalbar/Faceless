@@ -229,6 +229,54 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     assert (run_dir / "character_sheet.png").exists()
 
 
+# ---------------------------------------------------------------------------
+# PA-2 tests
+# ---------------------------------------------------------------------------
+
+
+def test_stage_character_sheet_never_passes_none_lineup_prompt(tmp_path, monkeypatch):
+    """PA-2: even in legacy/sunstoriz mode the function builds a lineup_prompt
+    from the script's actual content rather than passing None and falling
+    back to a hardcoded fruit prompt."""
+    captured: dict = {}
+    def fake_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet", fake_sheet)
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="dragons and wizards in a mountain kingdom",
+        music_mood="dread",
+        beats=(
+            Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                 speaker="warrior", character_name="غاندالف"),
+            Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                 speaker="dragon", character_name="درغون"),
+        ),
+        story_combined="x", target_duration_s=16.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    # Even with freeform_mode=False (legacy path), no None lineup
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        freeform_mode=False,
+    )
+    p = captured["lineup_prompt"]
+    assert p is not None and p != ""
+    # The lineup should mention the script's character names
+    assert "غاندالف" in p
+    assert "درغون" in p
+    # And the global_setting
+    assert "dragons" in p.lower() or "wizards" in p.lower()
+
+
 def test_run_shorts_pause_after_script_stops_before_paid_stages(
     monkeypatch, tmp_path: Path, fixtures_dir: Path, music_bundle: Path,
 ):
@@ -830,39 +878,10 @@ def test_freeform_ai_choose_falls_through_to_setting_only(tmp_path, monkeypatch)
     assert "not fruit" not in p_lower
 
 
-def test_legacy_mode_passes_none_lineup_prompt(tmp_path, monkeypatch):
-    """When freeform_mode is False (default), lineup_prompt is None so the
-    Sunstoriz hardcoded prompt fires inside generate_character_sheet."""
-    captured: dict = {}
-
-    def fake_generate_sheet(client, *, out_path, lineup_prompt=None, **kw):
-        captured["lineup_prompt"] = lineup_prompt
-        out_path.write_bytes(b"fake-png")
-
-    monkeypatch.setattr(
-        "pipeline.character_sheet.generate_character_sheet",
-        fake_generate_sheet,
-    )
-
-    from pipeline.types import RunPaths, Script, Beat
-    from pipeline.config import load_config
-    paths = RunPaths(root=tmp_path / "run2")
-    paths.root.mkdir()
-    script = Script(
-        title="t", theme="folkloric",
-        global_setting="anything",
-        music_mood="dread",
-        beats=(Beat(arabic="a", english_motion="x", clip_duration_s=8.0,
-                    speaker="mother"),),
-        story_combined="a", target_duration_s=8.0,
-    )
-    cfg = load_config(REPO_ROOT / "config.yaml")
-    import run
-    run._stage_character_sheet(
-        client=object(), cfg=cfg, paths=paths, script=script,
-        # freeform_mode defaults to False
-    )
-    assert captured["lineup_prompt"] is None
+# test_legacy_mode_passes_none_lineup_prompt was deleted in PA-2.
+# The old behaviour (freeform_mode=False → pass None → fall back to hardcoded
+# fruit prompt) is replaced by always composing a lineup_prompt from the
+# script's actual content. See test_stage_character_sheet_never_passes_none_lineup_prompt.
 
 
 def test_resume_auto_loads_freeform_controls(tmp_path, monkeypatch, music_bundle):

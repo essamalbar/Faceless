@@ -1,9 +1,9 @@
 """Stage X (Tier-3): Generate a single Flux character sheet for a video.
 
-The sheet is a 1024×1024 image showing all the named anthropomorphic fruit
-characters (lemon mother, strawberry son child + adult, apple doctor, etc.)
-together. It's then passed via `imageUrls` as a reference to every Veo clip
-to anchor character appearance across all clips.
+The caller is responsible for composing the lineup_prompt — this module
+no longer has a hardcoded fruit-cast fallback. See run.py:_stage_character_sheet
+for the standard composition (script.global_setting + unique character_names
++ pipeline.cast_guidance.flux_lineup_override).
 
 Idempotent: skips Flux call if `out_path` already exists.
 """
@@ -16,41 +16,31 @@ from pipeline.kie import KieClient
 
 _SLEEP = time.sleep
 
-CHARACTER_SHEET_PROMPT = (
-    "Character lineup sheet for a tragic Arabic family-drama animated short. "
-    "Five anthropomorphic fruit characters standing side by side, full body, "
-    "facing camera, neutral expressions, plain warm-grey background, "
-    "consistent 3D Pixar-style rendering, photorealistic CGI textures: "
-    "(1) Lemon mother — yellow lemon-shaped head with sad eyes, wearing a black hijab and dark dress; "
-    "(2) Strawberry child — small red strawberry head with green leaves on top, wearing blue t-shirt and jeans; "
-    "(3) Strawberry adult son — same red strawberry head but with a beard, wearing a traditional thobe; "
-    "(4) Apple doctor — red apple head, white doctor coat, stethoscope; "
-    "(5) Mango neighbor — orange mango head, casual button-up shirt. "
-    "High detail, consistent shading, design-sheet aesthetic. NO text, NO watermark, NO logo."
-)
-
 
 def generate_character_sheet(
     client: KieClient,
     out_path: Path,
-    global_setting: str = "",                     # kept for back-compat; ignored
     *,
-    lineup_prompt: str | None = None,             # NEW
+    lineup_prompt: str,
     model: str = "flux-kontext-pro",
     poll_interval_s: int = 5,
     poll_timeout_s: int = 300,
 ) -> None:
     """Submit a Flux job for the character sheet, poll, download. Idempotent.
 
-    `lineup_prompt`: when provided, used verbatim as the Flux prompt. When
-    None, falls back to CHARACTER_SHEET_PROMPT (the Sunstoriz fruit cast).
-    The legacy `global_setting` argument is kept for source-level
-    backwards-compat but is no longer used."""
+    `lineup_prompt`: required, non-empty. The caller builds it from the
+    script's actual content (global_setting + character_names +
+    cast_guidance). Empty / None raises ValueError — there is no
+    hardcoded fallback after Phase A."""
     if out_path.exists():
         return
-    prompt = lineup_prompt if (lineup_prompt and lineup_prompt.strip()) else CHARACTER_SHEET_PROMPT
+    if not (lineup_prompt or "").strip():
+        raise ValueError(
+            "lineup_prompt is required and must be non-empty — "
+            "the legacy CHARACTER_SHEET_PROMPT fallback was removed in PA-2"
+        )
     job_id = client.submit_flux_image_job(
-        prompt=prompt,
+        prompt=lineup_prompt,
         model=model,
         aspect_ratio="1:1",
     )

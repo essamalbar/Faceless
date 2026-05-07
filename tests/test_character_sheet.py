@@ -31,7 +31,7 @@ def test_generates_when_missing(monkeypatch, tmp_path: Path, fixtures_dir: Path)
     generate_character_sheet(
         client=_client(),
         out_path=out,
-        global_setting="anthropomorphic fruit characters family",
+        lineup_prompt="anthropomorphic fruit characters family",
         model="flux-1.1-pro",
         poll_interval_s=1, poll_timeout_s=10,
     )
@@ -49,39 +49,14 @@ def test_skips_when_already_present(monkeypatch, tmp_path: Path):
 
     generate_character_sheet(
         client=_client(), out_path=out,
-        global_setting="x", model="flux-1.1-pro",
+        lineup_prompt="x", model="flux-1.1-pro",
         poll_interval_s=1, poll_timeout_s=10,
     )
     assert called["n"] == 0
 
 
-def test_legacy_path_uses_hardcoded_sunstoriz_prompt(tmp_path):
-    """When no lineup_prompt is passed, fall back to the legacy Sunstoriz cast."""
-    from pipeline.character_sheet import (
-        generate_character_sheet as gen_sheet,
-        CHARACTER_SHEET_PROMPT,
-    )
-    captured: list[str] = []
-
-    class _StubClient:
-        def submit_flux_image_job(self, *, prompt, model, aspect_ratio):
-            captured.append(prompt)
-            return "job-1"
-
-        def wait_for_flux_image(self, *_, **__):
-            return "http://fake/url"
-
-        def download(self, _url, path):
-            path.write_bytes(b"png")
-
-    out = tmp_path / "sheet.png"
-    gen_sheet(_StubClient(), out_path=out, global_setting="ignored")
-    assert captured[0] == CHARACTER_SHEET_PROMPT
-
-
-def test_lineup_prompt_overrides_default(tmp_path):
-    """When lineup_prompt is passed, it is used verbatim — the legacy Sunstoriz
-    cast must NOT leak into the prompt."""
+def test_lineup_prompt_used_verbatim(tmp_path):
+    """lineup_prompt is used verbatim — no legacy Sunstoriz cast leaks in."""
     from pipeline.character_sheet import generate_character_sheet as gen_sheet
     captured: list[str] = []
 
@@ -99,10 +74,61 @@ def test_lineup_prompt_overrides_default(tmp_path):
     custom = "Character lineup: bears, rabbits, foxes, design-sheet aesthetic."
     out = tmp_path / "sheet.png"
     gen_sheet(
-        _StubClient(), out_path=out, global_setting="x",
+        _StubClient(), out_path=out,
         lineup_prompt=custom,
     )
     assert captured[0] == custom
-    # Sunstoriz cast must not be in the freeform prompt
+    # Sunstoriz cast must not be in the prompt
     assert "Lemon mother" not in captured[0]
     assert "Strawberry" not in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# PA-2 tests
+# ---------------------------------------------------------------------------
+
+
+def test_character_sheet_prompt_constant_is_gone():
+    """The legacy hardcoded fruit-cast Flux prompt must be removed in PA-2.
+    Lineup is now always composed by the caller from the script's actual content."""
+    import pipeline.character_sheet as cs
+    assert not hasattr(cs, "CHARACTER_SHEET_PROMPT"), (
+        "CHARACTER_SHEET_PROMPT must be deleted in PA-2 — the lineup is "
+        "now always composed from the script's actual character_names + "
+        "global_setting + cast guidance."
+    )
+
+
+def test_generate_character_sheet_requires_non_empty_lineup_prompt(tmp_path):
+    """No more silent fallback — caller must pass a real prompt."""
+    from pipeline.character_sheet import generate_character_sheet
+
+    class _StubClient:
+        def submit_flux_image_job(self, **kw): return "job-x"
+        def wait_for_flux_image(self, *_, **__): return "http://fake/url"
+        def download(self, _url, path): path.write_bytes(b"png")
+
+    out = tmp_path / "sheet.png"
+    with pytest.raises(ValueError):
+        generate_character_sheet(_StubClient(), out_path=out, lineup_prompt="")
+
+    out2 = tmp_path / "sheet2.png"
+    with pytest.raises(ValueError):
+        generate_character_sheet(_StubClient(), out_path=out2, lineup_prompt=None)
+
+
+def test_generate_character_sheet_uses_provided_prompt_verbatim(tmp_path):
+    from pipeline.character_sheet import generate_character_sheet
+    captured: list[str] = []
+
+    class _StubClient:
+        def submit_flux_image_job(self, *, prompt, model, aspect_ratio):
+            captured.append(prompt)
+            return "job-1"
+        def wait_for_flux_image(self, *_, **__): return "http://fake/url"
+        def download(self, _url, path): path.write_bytes(b"png")
+
+    out = tmp_path / "sheet.png"
+    generate_character_sheet(_StubClient(), out_path=out,
+                             lineup_prompt="Custom lineup of dragons and wizards.")
+    assert captured[0] == "Custom lineup of dragons and wizards."

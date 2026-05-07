@@ -332,39 +332,43 @@ def _stage_character_sheet(
 ) -> None:
     """Generate a Flux character sheet for visual consistency across Veo clips.
 
-    In freeform mode the lineup prompt is composed from script.global_setting
-    plus an explicit cast-type override (when character_template is animal /
-    human / surreal) that aggressively negates the Sunstoriz fruit default.
-    In legacy Sunstoriz mode (freeform_mode=False) the function uses its
-    hardcoded fruit-cast prompt."""
-    lineup_prompt = None
-    if freeform_mode and script.global_setting and script.global_setting.strip():
-        # Collect unique character names from beats, preserving first-seen order.
-        seen: set[str] = set()
-        names: list[str] = []
-        for beat in script.beats:
-            n = (beat.character_name or "").strip()
-            if n and n not in seen:
-                seen.add(n)
-                names.append(n)
-        names_clause = (
-            f" Named characters in the story: {', '.join(names)}."
-            if names else ""
-        )
-        # Override clause kicks in only for explicit non-fruit casts.
-        cast_override = flux_lineup_override(character_template)
-        cast_clause = f" {cast_override}" if cast_override else ""
-        lineup_prompt = (
-            "Character lineup sheet for an animated short. "
-            "Several named characters from the story standing side by side, "
-            "full body, facing camera, neutral expressions, plain warm-grey "
-            "background, consistent rendering style and color palette across "
-            "all characters."
-            f"{cast_clause}"
-            f"{names_clause} "
-            f"Style and visual treatment: {script.global_setting.strip()}. "
-            "Design-sheet aesthetic, high detail. NO text, NO watermark, NO logo."
-        )
+    Always composes the lineup prompt from the script's actual content:
+    unique character_name values + script.global_setting + per-cast Flux
+    guidance from pipeline.cast_guidance. There is no hardcoded fruit-cast
+    fallback after Phase A — when character_template is fruit_sunstoriz, the
+    cast guidance produces the Sunstoriz lineup. When unknown / None /
+    ai_choose, the script's global_setting + character_names drive Flux
+    on their own.
+
+    `freeform_mode` is now a no-op parameter kept for call-site compatibility.
+    """
+    # Collect unique character names from beats, preserving first-seen order.
+    seen: set[str] = set()
+    names: list[str] = []
+    for beat in script.beats:
+        n = (beat.character_name or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            names.append(n)
+    names_clause = (
+        f" Named characters in the story: {', '.join(names)}."
+        if names else ""
+    )
+    cast_override = flux_lineup_override(character_template)
+    cast_clause = f" {cast_override}" if cast_override else ""
+
+    lineup_prompt = (
+        "Character lineup sheet for an animated short. "
+        "Several named characters from the story standing side by side, "
+        "full body, facing camera, neutral expressions, plain warm-grey "
+        "background, consistent rendering style and color palette across "
+        "all characters."
+        f"{cast_clause}"
+        f"{names_clause} "
+        f"Style and visual treatment: "
+        f"{script.global_setting.strip() or 'cinematic 3D animation, vertical 9:16'}. "
+        "Design-sheet aesthetic, high detail. NO text, NO watermark, NO logo."
+    )
     pipeline.character_sheet.generate_character_sheet(
         client=client,
         out_path=paths.character_sheet_png,

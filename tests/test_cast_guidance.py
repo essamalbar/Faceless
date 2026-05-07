@@ -16,7 +16,9 @@ def test_flux_human_negates_both_fruit_and_animals():
 
 
 def test_flux_fruit_sunstoriz_returns_empty():
-    assert flux_lineup_override("fruit_sunstoriz") == ""
+    # Legacy assertion — superseded by PA-2 test below; kept to document the
+    # old behaviour so the PA-2 test failure is obvious.
+    pass  # PA-2 promotes fruit_sunstoriz to a first-class preset (see below)
 
 
 def test_flux_ai_choose_returns_empty():
@@ -49,3 +51,19 @@ def test_veo_fruit_sunstoriz_returns_empty():
 
 def test_veo_ai_choose_returns_empty():
     assert veo_clip_negation("ai_choose") == ""
+
+
+# ---------------------------------------------------------------------------
+# PA-2 tests
+# ---------------------------------------------------------------------------
+
+
+def test_flux_fruit_sunstoriz_now_has_explicit_lineup():
+    """fruit_sunstoriz becomes a first-class preset (no longer empty)."""
+    s = flux_lineup_override("fruit_sunstoriz").lower()
+    assert s != ""
+    # Must list the canonical Sunstoriz fruits
+    assert "lemon" in s
+    assert "strawberry" in s
+    assert "apple" in s or "doctor" in s
+    assert "mango" in s or "neighbor" in s
