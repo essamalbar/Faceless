@@ -1,7 +1,7 @@
 """Config loader. Maps config.yaml into typed dataclasses."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -17,6 +17,10 @@ class VoiceConfig:
     elevenlabs_voice_id: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
     fallback_to_edge_tts: bool = True
+    # Per-character voice IDs. Keys are speaker labels emitted by the writer
+    # (e.g. "mother", "son", "father", "doctor", "narrator"); values are
+    # ElevenLabs voice IDs. Unknown speakers fall back to elevenlabs_voice_id.
+    character_voices: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -71,6 +75,11 @@ class KieConfig:
     # Tier-3 Flux character sheet
     flux_model: str = "flux-1.1-pro"
     flux_cost_per_image_usd: float = 0.05
+    # Tier-4 native dialogue: when true, the Veo prompt embeds each beat's
+    # Arabic line so the character speaks it on-camera (lip-synced). The
+    # ElevenLabs voice stage is skipped — Veo generates the audio. We lose
+    # voice-ID control but gain real lip sync at no extra cost.
+    native_audio: bool = True
 
 
 @dataclass(frozen=True)

@@ -149,6 +149,105 @@ def test_generate_narration_dispatches_to_elevenlabs(monkeypatch, tmp_run_dir: P
     assert len(timings) >= 1
 
 
+def test_generate_narration_per_beat_routes_voices_by_speaker(
+    monkeypatch, tmp_run_dir: Path, fixtures_dir: Path,
+):
+    """Each beat is synthesized with its speaker's voice, then concatenated."""
+    sample = (fixtures_dir / "narration_sample.mp3").read_bytes()
+    calls: list[dict] = []
+
+    class FakeEL:
+        def synthesize(self, text, voice_id, model, out_path, **kw):
+            calls.append({"text": text, "voice_id": voice_id})
+            out_path.write_bytes(sample)
+
+    concat_calls: list[dict] = []
+
+    def fake_concat(parts, out):
+        concat_calls.append({"parts": list(parts), "out": out})
+        out.write_bytes(sample)
+
+    # Per-part durations come from the test fixture; map them so timings are computed.
+    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
+    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s", fake_concat)
+    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 4000)
+
+    from pipeline.types import Beat
+    from pipeline.voice import generate_narration_per_beat
+
+    beats = [
+        Beat(arabic="الأم تبكي في صمت.", english_motion="m1",
+             clip_duration_s=8.0, speaker="mother"),
+        Beat(arabic="الابن يقول لها سامحيني.", english_motion="m2",
+             clip_duration_s=8.0, speaker="son"),
+        Beat(arabic="ثم تأتي النهاية.", english_motion="m3",
+             clip_duration_s=8.0, speaker="narrator"),
+    ]
+    voices = {"mother": "vid-fem", "son": "vid-male", "narrator": "vid-fem"}
+
+    parts_dir = tmp_run_dir / "narration_beats"
+    combined = tmp_run_dir / "narration.mp3"
+    timings_path = tmp_run_dir / "word_timings.json"
+
+    generate_narration_per_beat(
+        beats=beats, character_voices=voices,
+        parts_dir=parts_dir, combined_mp3_path=combined,
+        timings_path=timings_path,
+        fallback_voice_id="vid-fem",
+    )
+
+    # Three synthesize calls, in beat order, with the right voice ID each.
+    assert [c["voice_id"] for c in calls] == ["vid-fem", "vid-male", "vid-fem"]
+    assert calls[0]["text"] == "الأم تبكي في صمت."
+    # Concat happened, combined mp3 written.
+    assert combined.exists()
+    # Timings: original Arabic words, monotonic offsets, beats stack at 4s each.
+    timings = json.loads(timings_path.read_text(encoding="utf-8"))
+    words = [t["word"] for t in timings]
+    assert "الأم" in words and "سامحيني." in words and "النهاية." in words
+    # Beat 1 starts at 0, beat 2 starts at 4000ms (first beat = 4000ms), beat 3 at 8000ms.
+    beat2_first_offset = next(t["offset_ms"] for t in timings if t["word"] == "الابن")
+    assert beat2_first_offset == 4000
+
+
+def test_generate_narration_per_beat_skips_existing_parts(
+    monkeypatch, tmp_run_dir: Path, fixtures_dir: Path,
+):
+    """If an individual beat mp3 already exists, don't re-synthesize it."""
+    sample = (fixtures_dir / "narration_sample.mp3").read_bytes()
+    calls: list[str] = []
+
+    class FakeEL:
+        def synthesize(self, text, voice_id, model, out_path, **kw):
+            calls.append(voice_id)
+            out_path.write_bytes(sample)
+
+    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
+    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s",
+                        lambda parts, out: out.write_bytes(b"x"))
+    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 1000)
+
+    from pipeline.types import Beat
+    from pipeline.voice import generate_narration_per_beat
+
+    parts_dir = tmp_run_dir / "narration_beats"
+    parts_dir.mkdir()
+    (parts_dir / "01.mp3").write_bytes(sample)  # already done
+
+    generate_narration_per_beat(
+        beats=[
+            Beat(arabic="x.", english_motion="", clip_duration_s=8, speaker="mother"),
+            Beat(arabic="y.", english_motion="", clip_duration_s=8, speaker="son"),
+        ],
+        character_voices={"mother": "f", "son": "m"},
+        parts_dir=parts_dir,
+        combined_mp3_path=tmp_run_dir / "n.mp3",
+        timings_path=tmp_run_dir / "t.json",
+    )
+    # Only the second beat was synthesized.
+    assert calls == ["m"]
+
+
 def test_generate_narration_falls_back_to_edge_tts_when_no_eleven_key(
     monkeypatch, tmp_run_dir: Path, fixtures_dir: Path,
 ):

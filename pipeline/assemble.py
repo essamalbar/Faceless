@@ -171,6 +171,8 @@ def build_shorts_filter_graph(
     crossfade_ms: int,
     burn_caption_ass: Path | None,
     ambient_volume: float = 0.15,
+    narration_duration_s: float | None = None,
+    native_audio: bool = False,
 ) -> str:
     """Build the FFmpeg -filter_complex graph for Shorts mode.
 
@@ -179,6 +181,11 @@ def build_shorts_filter_graph(
       [N:a]                      : narration mp3
       [N+1:a]                    : music mp3
     Output streams: [vout], [aout]
+
+    `narration_duration_s` (optional): if the narration is longer than the
+    cumulative video timeline, the last frame is held (tpad clone) to cover
+    the gap. Without this, `-shortest` would clip the audio at the video's
+    natural end and the story would lose its ending.
     """
     n = len(clip_durations_s)
     if n == 0:
@@ -210,7 +217,18 @@ def build_shorts_filter_graph(
             cumulative += clip_durations_s[i] - crossfade_s
             last_v = new_label
 
-    # 3. Optional captions burn-in (TikTok karaoke .ass).
+    # 3. Pad the video tail with the last frame if the narration runs longer
+    #    than the cumulative clip timeline. Without this, `-shortest` truncates
+    #    the audio at the video's natural end and the story's ending is lost.
+    video_duration_s = sum(clip_durations_s) - max(n - 1, 0) * crossfade_s
+    if narration_duration_s is not None and narration_duration_s > video_duration_s + 0.05:
+        gap_s = narration_duration_s - video_duration_s
+        parts.append(
+            f"[{last_v}]tpad=stop_mode=clone:stop_duration={gap_s:.3f}[vpad]"
+        )
+        last_v = "vpad"
+
+    # 4. Optional captions burn-in (TikTok karaoke .ass).
     # FFmpeg 8.x rejects `subtitles='...'` quote-wrapping; use the explicit
     # `filename=` form and only escape FFmpeg-special chars in the path.
     if burn_caption_ass is not None:
@@ -226,30 +244,73 @@ def build_shorts_filter_graph(
     else:
         parts.append(f"[{last_v}]copy[vout]")
 
-    # 4. Audio mix.
-    # Concat the N clips' ambient audio into one stream (very low volume),
-    # mix with narration (full volume) and music (looped + sidechain ducked).
-    if n == 1:
-        parts.append(f"[0:a]volume={ambient_volume}[ambient]")
-    else:
-        ambient_inputs = "".join(f"[{i}:a]" for i in range(n))
+    # 4. Audio mix. Two modes:
+    #
+    #   A) ElevenLabs path (native_audio=False, default before Tier-4):
+    #      Inputs are clip audio (ambient) + narration mp3 [N:a] + music [N+1:a].
+    #      Mix = narration (full) + music (ducked) + ambient clip noise (low).
+    #
+    #   B) Veo native-audio path (native_audio=True):
+    #      No narration input. Each Veo clip already contains the lip-synced
+    #      dialogue audio. We concat clip audio at full volume, then duck music
+    #      sidechained against THAT.
+    if native_audio:
+        if n == 1:
+            parts.append(f"[0:a]asetpts=PTS-STARTPTS[voice_raw]")
+        else:
+            voice_inputs = "".join(f"[{i}:a]" for i in range(n))
+            parts.append(f"{voice_inputs}concat=n={n}:v=0:a=1[voice_raw]")
+        # asplit is REQUIRED: [voice_raw] is consumed by both the sidechain
+        # input (for ducking) and the amix input (as the primary track). FFmpeg
+        # only auto-fans-out for input labels like [N:a]; intermediate labels
+        # must be split explicitly or the second reference fails silently and
+        # the amix stops at the first clip's duration.
+        parts.append(f"[voice_raw]asplit=2[voice_a][voice_b]")
+        # Music is the LAST audio input. Without a narration track, the music
+        # input lives at index N (not N+1).
         parts.append(
-            f"{ambient_inputs}concat=n={n}:v=0:a=1[amb_concat];"
-            f"[amb_concat]volume={ambient_volume}[ambient]"
+            f"[{n}:a]aloop=loop=-1:size=2e+09[mloop];"
+            f"[mloop][voice_a]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];"
+            f"[voice_b][ducked]amix=inputs=2:duration=first:dropout_transition=0[aout]"
         )
+    else:
+        # Concat the N clips' ambient audio into one stream (very low volume),
+        # mix with narration (full volume) and music (looped + sidechain ducked).
+        if n == 1:
+            parts.append(f"[0:a]volume={ambient_volume}[ambient]")
+        else:
+            ambient_inputs = "".join(f"[{i}:a]" for i in range(n))
+            parts.append(
+                f"{ambient_inputs}concat=n={n}:v=0:a=1[amb_concat];"
+                f"[amb_concat]volume={ambient_volume}[ambient]"
+            )
 
-    parts.append(
-        f"[{n+1}:a]aloop=loop=-1:size=2e+09[mloop];"
-        f"[mloop][{n}:a]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];"
-        f"[{n}:a][ducked][ambient]amix=inputs=3:duration=first:dropout_transition=0[aout]"
-    )
+        parts.append(
+            f"[{n+1}:a]aloop=loop=-1:size=2e+09[mloop];"
+            f"[mloop][{n}:a]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];"
+            f"[{n}:a][ducked][ambient]amix=inputs=3:duration=first:dropout_transition=0[aout]"
+        )
     return ";".join(parts)
+
+
+def _probe_audio_duration_s(path: Path) -> float | None:
+    """Best-effort ffprobe — returns None on failure (test stubs may pass empty mp3s)."""
+    import subprocess
+    try:
+        out = subprocess.check_output([
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "csv=p=0", str(path),
+        ], text=True).strip()
+        return float(out) if out else None
+    except (subprocess.CalledProcessError, ValueError):
+        return None
 
 
 def assemble_shorts_video(
     clip_paths: list[Path],
     clip_durations_s: list[float],
-    narration_path: Path,
+    narration_path: Path | None,
     music_path: Path,
     out_path: Path,
     burn_caption_ass: Path | None,
@@ -257,18 +318,35 @@ def assemble_shorts_video(
     output_height: int = 1920,
     crossfade_ms: int = 350,
     ambient_volume: float = 0.15,
+    narration_duration_s: float | None = None,
 ) -> None:
-    """Stitch Veo clips into a vertical 9:16 final video. Resumable."""
+    """Stitch Veo clips into a vertical 9:16 final video. Resumable.
+
+    `narration_path=None` selects native-audio mode: each Veo clip already
+    contains lip-synced dialogue, so the assembler uses clip audio as the
+    primary track and only mixes in music. No external narration mp3 is
+    expected.
+
+    Otherwise the legacy ElevenLabs path runs: narration mp3 mixes with
+    music + low-volume ambient clip audio. When narration > total video,
+    the last frame is held to cover the gap so `-shortest` doesn't truncate
+    the story's ending.
+    """
     if out_path.exists():
         return
     if len(clip_paths) != len(clip_durations_s):
         raise ValueError("clip_paths and clip_durations_s must be same length")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    native_audio = narration_path is None
+    if narration_duration_s is None and not native_audio:
+        narration_duration_s = _probe_audio_duration_s(narration_path)
+
     args: list[str] = ["ffmpeg", "-y"]
     for p in clip_paths:
         args += ["-i", str(p)]
-    args += ["-i", str(narration_path)]
+    if not native_audio:
+        args += ["-i", str(narration_path)]
     args += ["-i", str(music_path)]
 
     graph = build_shorts_filter_graph(
@@ -277,6 +355,8 @@ def assemble_shorts_video(
         crossfade_ms=crossfade_ms,
         burn_caption_ass=burn_caption_ass,
         ambient_volume=ambient_volume,
+        narration_duration_s=narration_duration_s,
+        native_audio=native_audio,
     )
     args += [
         "-filter_complex", graph,

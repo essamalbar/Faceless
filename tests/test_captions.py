@@ -101,7 +101,11 @@ def test_chunk_tiktok_max_3_words_per_line():
         assert len(line["words"]) <= 3
 
 
-def test_format_ass_tiktok_has_karaoke_tags():
+def test_format_ass_tiktok_no_karaoke_tags_arabic_rtl_safe():
+    """Per-word `{\\k}` tags broke Arabic RTL: each tag is a separate text
+    run, libass+FriBidi treated runs as left-to-right, and word ORDER
+    visually reversed. The TikTok formatter now emits one Arabic line per
+    Dialogue event with no inline tags so bidi handles it as one run."""
     from pipeline.captions import chunk_into_tiktok_lines, format_ass_tiktok_karaoke
     timings = [
         WordTiming(word="كنتُ", offset_ms=0, duration_ms=400),
@@ -114,13 +118,14 @@ def test_format_ass_tiktok_has_karaoke_tags():
     # Vertical play resolution
     assert "PlayResX: 1080" in ass
     assert "PlayResY: 1920" in ass
-    # Karaoke tags present on each word (at least 3 \k tags)
-    assert ass.count("\\k") == 3
+    # Regression guard: NO karaoke tags anywhere in the dialogue text
+    assert "\\k" not in ass
     # Alignment 5 (middle-center) is in the Style line
     assert "Cairo-Black" in ass
-    # Words preserved
+    # Words preserved verbatim, in script order, as one Arabic run
     assert "كنتُ" in ass
     assert "وحيداً" in ass
+    assert "هناك." in ass
 
 
 def test_generate_captions_tiktok_style(tmp_run_dir: Path):
@@ -139,7 +144,8 @@ def test_generate_captions_tiktok_style(tmp_run_dir: Path):
     assert ass.exists()
     text = ass.read_text(encoding="utf-8")
     assert "PlayResX: 1080" in text
-    assert "\\k" in text  # karaoke tag
+    # No karaoke tags — single-run Arabic text per Dialogue event for bidi safety
+    assert "\\k" not in text
 
 
 def test_generate_captions_default_style_unchanged(tmp_run_dir: Path):

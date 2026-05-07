@@ -129,12 +129,14 @@ def format_ass_tiktok_karaoke(
     play_res_x: int = 1080,
     play_res_y: int = 1920,
 ) -> str:
-    """Vertical TikTok-style karaoke .ass.
+    """Vertical TikTok-style Arabic captions, one line at a time.
 
-    Each line renders for its full span; individual words light up via {\\k<cs>}
-    karaoke tags. Style is centered horizontally, slightly above middle vertically
-    (Alignment=5 = middle-center; MarginV nudges toward the upper third).
-    Bold white text, thick black outline + shadow — readable on any background.
+    Earlier versions injected per-word `{\\k<cs>}` karaoke tags so words lit
+    up sequentially. That broke Arabic right-to-left rendering: each tag is a
+    separate text run, libass+FriBidi treated runs as left-to-right, and the
+    visible word ORDER reversed (e.g. "ابني مات" displayed as "مات ابني").
+    Per-line rendering with no inline tags keeps each Arabic sentence as one
+    bidi run and displays correctly.
     """
     header = (
         "[Script Info]\n"
@@ -170,12 +172,10 @@ def format_ass_tiktok_karaoke(
         words: list[WordTiming] = list(line["words"])
         if not words:
             continue
-        # Build the karaoke text: {\k<cs>}<word> per word.
-        parts: list[str] = []
-        for w in words:
-            cs = max(int(round(w.duration_ms / 10)), 1)  # min 1cs to avoid zero
-            parts.append(f"{{\\k{cs}}}{w.word}")
-        text = " ".join(parts)
+        # Single Arabic text run, no inline tags. libass+FriBidi (COMPLEX
+        # shaper) reorders the whole string for RTL display correctly; any
+        # tag in the middle would break that into separate LTR-treated runs.
+        text = line.get("text") or " ".join(w.word for w in words)
         events.append(
             f"Dialogue: 0,{_ms_to_ass_time(line['start_ms'])},"
             f"{_ms_to_ass_time(line['end_ms'])},Default,,0,0,0,,{text}"

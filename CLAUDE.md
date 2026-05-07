@@ -9,7 +9,7 @@ This repo holds two unrelated codebases coexisting:
 1. **Python pipeline** at the repo root (`pipeline/`, `tests/`, `run.py`, `pyproject.toml`) — the active MVP. Generates Arabic horror videos end-to-end (script → narration → images → assembly). See `docs/superpowers/specs/2026-05-01-arabic-horror-faceless-system-design.md` for design and `docs/superpowers/plans/2026-05-01-arabic-horror-faceless-system.md` for the build plan.
 2. **Flutter app scaffold** (`lib/`, `pubspec.yaml`, `android/`, `ios/`, etc.) — untouched in MVP. Will become the dashboard in Phase 2+.
 
-When working on the Python pipeline, **never modify Flutter files**. When working on Flutter, **never modify the Python pipeline**.
+**Phase 1 (MVP):** isolation rule applied — Python pipeline and Flutter scaffold lived as separate codebases. **Phase 2 (active now):** they're integrated through `pipeline/api.py`. Cross-stack work is expected when adding mobile-app features. The Flutter `lib/` will consume the FastAPI endpoints documented below.
 
 ## Common commands (Python pipeline)
 
@@ -46,7 +46,66 @@ source .env
 uv run python run.py --shorts --theme folkloric --seed "أم فقيرة..."
 ```
 
-## Common commands (Flutter app — unchanged from scaffold)
+## Backend API (Phase 2 — controls the pipeline from a mobile app)
+
+The HTTP API in `pipeline/api.py` wraps the orchestrator so a Flutter app can:
+trigger a run, review the script before paying, approve it, and resume after
+failures. Auth is a single bearer token (solo-user software).
+
+### Zero-config launcher (recommended)
+
+`scripts/run-app.sh` does everything in one command — checks the API is up
+(starts it if not), checks the Cloudflare Tunnel is up (starts it if not),
+captures the live tunnel URL, and runs `flutter` with the URL and token
+baked in via `--dart-define` so the app skips the Settings screen entirely.
+
+```bash
+# One-time setup: pick a token and put it in .env
+echo "export FACELESS_API_TOKEN=$(openssl rand -hex 32)" >> .env
+
+# Then every launch:
+./scripts/run-app.sh                  # default: chrome web
+./scripts/run-app.sh -d <device-id>   # ios/android — see `flutter devices`
+```
+
+### Manual mode (debugging)
+
+If you want to start each piece yourself:
+
+```bash
+# 1) API server
+source .env && uv run uvicorn pipeline.api:app --host 0.0.0.0 --port 8000
+
+# 2) Cloudflare Tunnel (separate terminal)
+cloudflared tunnel --url http://localhost:8000
+
+# 3) Flutter app (separate terminal) — pass URL+token via --dart-define
+flutter run -d chrome \
+  --dart-define=FACELESS_API_URL=https://xyz.trycloudflare.com \
+  --dart-define=FACELESS_API_TOKEN="$FACELESS_API_TOKEN"
+```
+
+In manual mode you can also skip the dart-defines and configure the app from
+its first-launch Settings screen.
+
+API endpoints (all require `Authorization: Bearer $FACELESS_API_TOKEN`
+except `/healthz`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/healthz` | liveness, no auth |
+| GET | `/runs` | list past runs with status + thumbnails |
+| POST | `/runs` | start new run (writer pass only — pauses for approval) |
+| GET | `/runs/{id}` | full status |
+| GET | `/runs/{id}/script` | Arabic script + cost estimate |
+| POST | `/runs/{id}/approve` | green-light Veo spend |
+| POST | `/runs/{id}/resume` | retry after a transient failure |
+| POST | `/runs/{id}/cancel` | kill the running subprocess |
+| GET | `/runs/{id}/video` | stream final.mp4 |
+| GET | `/runs/{id}/thumbnail` | poster image |
+| GET | `/runs/{id}/log?lines=N` | tail subprocess log |
+
+## Common commands (Flutter app — Phase 2 frontend)
 
 ```bash
 flutter pub get
@@ -54,6 +113,9 @@ flutter analyze
 flutter test
 flutter run -d chrome
 ```
+
+The Flutter scaffold is being upgraded into the dashboard that talks to the
+backend API above. Cross-stack work is now expected.
 
 Note: `lib/main.dart:31` and `:105` have invalid Dart (missing type names on `.fromSeed(...)` and `.center`) — `flutter analyze` will fail until these are fixed. Not blocking the Python work.
 

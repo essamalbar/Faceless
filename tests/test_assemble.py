@@ -155,6 +155,92 @@ def test_shorts_filter_graph_audio_mix_three_inputs():
     assert "[5:a]" in g
 
 
+def test_shorts_filter_graph_pads_last_frame_when_narration_longer():
+    """When narration runs past the video, hold the last frame so -shortest
+    trims to narration length instead of cutting the audio off early."""
+    from pipeline.assemble import build_shorts_filter_graph
+    # 4 clips × 8s − 3 × 0.35s xfade = 30.95s of video, narration = 60s.
+    g = build_shorts_filter_graph(
+        clip_durations_s=[8.0, 8.0, 8.0, 8.0],
+        output_w=1080, output_h=1920, crossfade_ms=350,
+        burn_caption_ass=None,
+        narration_duration_s=60.0,
+    )
+    assert "tpad=stop_mode=clone" in g
+    # Gap ≈ 60 − 30.95 = 29.05s
+    assert "stop_duration=29.0" in g or "stop_duration=29.1" in g
+
+
+def test_shorts_filter_graph_native_audio_uses_clip_audio_only():
+    """Tier-4 path: no narration mp3 is supplied; clip audio (Veo's lip-synced
+    dialogue) is the primary track, mixed only with ducked music."""
+    from pipeline.assemble import build_shorts_filter_graph
+    g = build_shorts_filter_graph(
+        clip_durations_s=[8.0, 8.0, 8.0, 8.0],
+        output_w=1080, output_h=1920, crossfade_ms=350,
+        burn_caption_ass=None,
+        native_audio=True,
+    )
+    # Clip audio concatenated into a [voice_raw] track and asplit-fanned-out
+    # so both the sidechain input AND the amix input get the full concat.
+    # Without asplit, ffmpeg would silently drop the second reference and the
+    # output would truncate to the first clip's duration.
+    assert "[voice_raw]" in g
+    assert "asplit=2[voice_a][voice_b]" in g
+    # Music mixed against the voice via sidechain compress
+    assert "sidechaincompress" in g
+    # No three-input mix — only voice + ducked music
+    assert "amix=inputs=2" in g
+    assert "amix=inputs=3" not in g
+    # Music is at index N=4 (no narration input shifts the indices down)
+    assert "[4:a]aloop" in g
+    # Legacy ambient track is not used in native-audio mode
+    assert "[ambient]" not in g
+
+
+def test_assemble_shorts_native_audio_omits_narration_input(monkeypatch, tmp_run_dir: Path):
+    """When narration_path is None, the ffmpeg command line includes only
+    clip inputs and music — no extra -i for a narration mp3."""
+    from pipeline.assemble import assemble_shorts_video
+    captured: dict = {}
+    monkeypatch.setattr("pipeline.assemble._run_ffmpeg",
+                        lambda args: captured.update(args=args))
+
+    clips_dir = tmp_run_dir / "clips"
+    clips_dir.mkdir()
+    clip_paths = []
+    for i in range(1, 4):
+        p = clips_dir / f"{i:02d}.mp4"
+        p.write_bytes(b"x")
+        clip_paths.append(p)
+    music = tmp_run_dir / "music.mp3"; music.write_bytes(b"x")
+
+    assemble_shorts_video(
+        clip_paths=clip_paths,
+        clip_durations_s=[8.0, 8.0, 8.0],
+        narration_path=None,           # native-audio mode
+        music_path=music,
+        out_path=tmp_run_dir / "final.mp4",
+        burn_caption_ass=None,
+    )
+    args = captured["args"]
+    # 3 clip inputs + 1 music = 4 -i flags total. With a narration mp3 it'd be 5.
+    assert args.count("-i") == 4
+    assert str(music) in args
+
+
+def test_shorts_filter_graph_no_pad_when_video_longer():
+    """When the video already covers the audio, no padding is added."""
+    from pipeline.assemble import build_shorts_filter_graph
+    g = build_shorts_filter_graph(
+        clip_durations_s=[8.0, 8.0, 8.0, 8.0],
+        output_w=1080, output_h=1920, crossfade_ms=350,
+        burn_caption_ass=None,
+        narration_duration_s=20.0,
+    )
+    assert "tpad=" not in g
+
+
 def test_assemble_shorts_invokes_ffmpeg(monkeypatch, tmp_run_dir: Path):
     from pipeline.assemble import assemble_shorts_video
     captured: dict = {}

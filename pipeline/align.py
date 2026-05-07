@@ -1,12 +1,18 @@
 """Whisper-based force-alignment of Arabic narration audio.
 
-Given the generated narration mp3 and the original Arabic text, produce
-ms-precise word timings by transcribing the audio with Whisper's word_timestamps
-mode. Whisper local model `small` is the default — accurate enough for Arabic
-TikTok captions and runs in ~30s on M3 Pro.
+We use Whisper purely as a stopwatch: it tells us WHEN each spoken word
+starts and ends in the audio. We always RENDER the original Arabic
+script text in the captions — Whisper's transcription itself is
+discarded, because Arabic transcription at `small`/`medium` quality
+hallucinates words that don't match the source script.
 
-If Whisper returns no word-level data (rare, on very short or noisy audio),
-fall back to evenly distributing the expected words across the audio duration.
+Procedure:
+  1. Whisper transcribes audio → list of (transcribed_word, start, end).
+  2. We zip those timings with the ORIGINAL script's word list by index.
+     - If counts match exactly: 1:1 replacement.
+     - If they differ (typical for Arabic): we anchor on Whisper's
+       FIRST and LAST word boundaries and linearly distribute the
+       original words across that range, so the sync stays usable.
 """
 from __future__ import annotations
 
@@ -15,6 +21,12 @@ from pathlib import Path
 
 from pipeline.types import WordTiming
 
+# Default to `small` (483 MB, downloads reliably). `medium` (1.5 GB)
+# transcribes Arabic better but its download repeatedly stalls partway
+# on flaky VPNs, leaving a corrupt file that fails SHA256 forever after.
+# We use Whisper as a stopwatch (timings only — original script text is
+# rendered against those timings), so transcription accuracy matters
+# less than the model loading reliably.
 _DEFAULT_MODEL = "small"
 
 
@@ -33,15 +45,8 @@ def _audio_duration_s(path: Path) -> float:
     return float(out)
 
 
-def align_arabic(
-    audio_path: Path, expected_text: str, model: str = _DEFAULT_MODEL,
-) -> list[WordTiming]:
-    """Transcribe audio with Whisper word_timestamps and produce ms-precise word timings.
-
-    `expected_text` is the original Arabic narration; we use Whisper's transcript
-    primarily for the timing data and don't insist Whisper got the words right
-    (Arabic transcription is imperfect at the `small` size).
-    """
+def _whisper_word_timings(audio_path: Path, model: str) -> list[tuple[float, float]]:
+    """Run Whisper and return (start_s, end_s) tuples — words are dropped on purpose."""
     m = _load_whisper(model)
     result = m.transcribe(
         str(audio_path),
@@ -49,28 +54,69 @@ def align_arabic(
         word_timestamps=True,
         verbose=False,
     )
-
-    timings: list[WordTiming] = []
+    spans: list[tuple[float, float]] = []
     for seg in result.get("segments", []):
         for w in seg.get("words", []) or []:
             word = str(w.get("word", "")).strip()
-            start = float(w.get("start", 0.0))
-            end = float(w.get("end", start))
             if not word:
                 continue
+            start = float(w.get("start", 0.0))
+            end = float(w.get("end", start))
+            spans.append((start, max(end, start)))
+    return spans
+
+
+def _spans_to_timings(words: list[str], spans: list[tuple[float, float]]) -> list[WordTiming]:
+    """Place each `words[i]` onto the audio timeline implied by `spans`.
+
+    Strategy:
+    - If len(spans) == len(words): zip directly, each original word inherits
+      its corresponding Whisper-detected timing. This is the happy path.
+    - Otherwise: anchor on the first and last spans (most robust signals)
+      and linearly interpolate across the original word indices. The total
+      window stays right; per-word offsets are approximate but consistent.
+    """
+    if not words or not spans:
+        return []
+    if len(spans) == len(words):
+        out: list[WordTiming] = []
+        for w, (start, end) in zip(words, spans):
             offset_ms = int(start * 1000)
             duration_ms = max(int((end - start) * 1000), 1)
-            timings.append(WordTiming(
-                word=word, offset_ms=offset_ms, duration_ms=duration_ms,
-            ))
+            out.append(WordTiming(word=w, offset_ms=offset_ms, duration_ms=duration_ms))
+        return out
 
-    if timings:
-        return timings
+    first_start = spans[0][0]
+    last_end = spans[-1][1]
+    total_window = max(last_end - first_start, 0.001)
+    per_word = total_window / len(words)
+    out = []
+    for i, w in enumerate(words):
+        start = first_start + i * per_word
+        offset_ms = int(start * 1000)
+        duration_ms = max(int(per_word * 1000), 1)
+        out.append(WordTiming(word=w, offset_ms=offset_ms, duration_ms=duration_ms))
+    return out
 
-    # Fallback: even split across audio duration
+
+def align_arabic(
+    audio_path: Path, expected_text: str, model: str = _DEFAULT_MODEL,
+) -> list[WordTiming]:
+    """Force-align: Whisper's timings + ORIGINAL Arabic words from the script.
+
+    `expected_text` is the source-of-truth narration text. Captions and
+    karaoke MUST use these words verbatim — never Whisper's transcription.
+    """
     words = [w for w in expected_text.split() if w.strip()]
     if not words:
         return []
+
+    spans = _whisper_word_timings(audio_path, model)
+    if spans:
+        return _spans_to_timings(words, spans)
+
+    # Last-resort fallback: no Whisper output at all (very short / silent audio).
+    # Distribute words evenly across the full audio duration.
     total_ms = int(_audio_duration_s(audio_path) * 1000)
     per_word = max(total_ms // len(words), 1)
     return [
