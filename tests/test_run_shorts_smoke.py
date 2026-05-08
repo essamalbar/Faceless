@@ -107,15 +107,6 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
         ]
     monkeypatch.setattr("pipeline.voice._synthesize", fake_synthesize)
 
-    # ---- 2b) ElevenLabs fake (Shorts per-character path) ----
-    class FakeEL:
-        def synthesize(self, text, voice_id, model, out_path, **kw):
-            out_path.write_bytes(sample_mp3)
-    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
-    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s",
-                        lambda parts, out: out.write_bytes(sample_mp3))
-    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 1000)
-
     # ---- 3) Kie.ai fake — Kie client never actually constructed; we mock _build_kie ----
     class FakeKie:
         pass
@@ -373,15 +364,6 @@ def test_run_shorts_skip_video_uses_placeholder_clips(
         return [{"word": "ج", "offset_ms": 0, "duration_ms": 400}]
     monkeypatch.setattr("pipeline.voice._synthesize", fake_synthesize)
 
-    # ElevenLabs per-beat fake (config defaults to elevenlabs provider)
-    class FakeEL:
-        def synthesize(self, text, voice_id, model, out_path, **kw):
-            out_path.write_bytes(sample_mp3)
-    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
-    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s",
-                        lambda parts, out: out.write_bytes(sample_mp3))
-    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 1000)
-
     # Mock Whisper align — return synthetic timings (no real model load)
     from pipeline.types import WordTiming as _WordTiming
     monkeypatch.setattr(
@@ -541,14 +523,6 @@ def test_pause_after_character_sheet_ignored_with_skip_video(
         mp3_path.write_bytes(sample_mp3)
         return [{"word": "ج", "offset_ms": 0, "duration_ms": 400}]
     monkeypatch.setattr("pipeline.voice._synthesize", fake_synthesize)
-
-    class FakeEL:
-        def synthesize(self, text, voice_id, model, out_path, **kw):
-            out_path.write_bytes(sample_mp3)
-    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
-    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s",
-                        lambda parts, out: out.write_bytes(sample_mp3))
-    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 1000)
 
     from pipeline.types import WordTiming as _WordTiming
     monkeypatch.setattr(

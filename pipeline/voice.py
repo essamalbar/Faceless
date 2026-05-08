@@ -108,12 +108,6 @@ def _synthesize_timings_from_duration(text: str, total_duration_ms: int) -> list
     return timings
 
 
-def _build_elevenlabs():
-    """Indirection so tests can monkeypatch."""
-    from pipeline.elevenlabs import ElevenLabsClient
-    return ElevenLabsClient()
-
-
 def _ffmpeg_concat_mp3s(part_paths: list[Path], out_path: Path) -> None:
     """Concat per-beat mp3s into a single narration mp3. Replaceable in tests."""
     import subprocess
@@ -135,85 +129,6 @@ def _ffmpeg_concat_mp3s(part_paths: list[Path], out_path: Path) -> None:
         list_file.unlink(missing_ok=True)
 
 
-def _audio_duration_ms_safe(path: Path) -> int:
-    """ffprobe wrapper that returns 0 on failure (test fixtures may be tiny)."""
-    try:
-        return _audio_duration_ms(path)
-    except Exception:
-        return 0
-
-
-def generate_narration_per_beat(
-    beats,  # list[Beat] (avoid circular import at module-load time)
-    character_voices: dict,
-    parts_dir: Path,
-    combined_mp3_path: Path,
-    timings_path: Path,
-    *,
-    elevenlabs_model: str = "eleven_multilingual_v2",
-    fallback_voice_id: str = "",
-) -> None:
-    """Synthesize one mp3 per beat with the speaker's voice, then concat.
-
-    Output:
-      - parts_dir/01.mp3, 02.mp3, …  : per-beat audio
-      - combined_mp3_path             : full narration (concat of parts)
-      - timings_path                  : word_timings.json built from
-        per-beat durations, with each beat's words evenly distributed
-        across that beat's measured audio length. No Whisper needed —
-        the per-beat boundaries are exact, so caption sync is precise
-        without depending on transcription accuracy.
-    """
-    if not beats:
-        raise ValueError("no beats")
-    parts_dir.mkdir(parents=True, exist_ok=True)
-    combined_mp3_path.parent.mkdir(parents=True, exist_ok=True)
-
-    client = _build_elevenlabs()
-    part_paths: list[Path] = []
-    for i, beat in enumerate(beats, start=1):
-        part = parts_dir / f"{i:02d}.mp3"
-        if not part.exists():
-            voice_id = character_voices.get(beat.speaker) or fallback_voice_id
-            if not voice_id:
-                raise RuntimeError(
-                    f"no voice id for speaker={beat.speaker!r} and no fallback"
-                )
-            client.synthesize(
-                text=beat.arabic,
-                voice_id=voice_id,
-                model=elevenlabs_model,
-                out_path=part,
-            )
-        part_paths.append(part)
-
-    if not combined_mp3_path.exists():
-        _ffmpeg_concat_mp3s(part_paths, combined_mp3_path)
-
-    # Build deterministic word timings from per-beat audio durations.
-    timings: list[dict] = []
-    cursor_ms = 0
-    for part, beat in zip(part_paths, beats):
-        beat_ms = _audio_duration_ms_safe(part)
-        words = [w for w in beat.arabic.split() if w.strip()]
-        if not words:
-            cursor_ms += beat_ms
-            continue
-        per_word = max(beat_ms // len(words), 1) if beat_ms > 0 else 1
-        for j, w in enumerate(words):
-            timings.append({
-                "word": w,
-                "offset_ms": cursor_ms + j * per_word,
-                "duration_ms": per_word,
-            })
-        cursor_ms += beat_ms
-
-    timings_path.write_text(
-        json.dumps(timings, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-
 def generate_narration(
     text: str,
     voice: str,
@@ -221,21 +136,12 @@ def generate_narration(
     pitch: str,
     mp3_path: Path,
     timings_path: Path,
-    *,
-    provider: str = "edge_tts",
-    elevenlabs_voice_id: str = "",
-    elevenlabs_model: str = "eleven_multilingual_v2",
-    fallback_to_edge_tts: bool = True,
 ) -> None:
     """Resumable: if both outputs present and timings non-empty, skip.
 
-    provider:
-      - "edge_tts"    — original Edge TTS path (free, lower quality)
-      - "elevenlabs"  — ElevenLabs Multilingual v2 (paid, natural voice)
-
-    Whichever provider is used, we always write a synthesized timings file
-    (duration / word count). The Whisper align stage in run.py refines these
-    into accurate per-word timings before captions are rendered.
+    Uses Edge TTS (free). Writes a synthesized timings file (duration / word
+    count). The Whisper align stage in run.py refines these into accurate
+    per-word timings before captions are rendered.
     """
     # Resume guard
     if mp3_path.exists() and timings_path.exists():
@@ -245,25 +151,10 @@ def generate_narration(
         except json.JSONDecodeError:
             pass
 
-    # 1. Produce mp3
+    # 1. Produce mp3 via Edge TTS.
     if not mp3_path.exists():
-        if provider == "elevenlabs":
-            try:
-                client = _build_elevenlabs()
-                client.synthesize(
-                    text=text, voice_id=elevenlabs_voice_id,
-                    model=elevenlabs_model, out_path=mp3_path,
-                )
-            except Exception as e:
-                if not fallback_to_edge_tts:
-                    raise
-                print(f"[voice] elevenlabs failed ({type(e).__name__}: {e}); "
-                      f"falling back to edge_tts")
-                ssml_text = inject_ssml_pauses(text)
-                _synthesize(ssml_text, voice, rate, pitch, mp3_path)
-        else:
-            ssml_text = inject_ssml_pauses(text)
-            _synthesize(ssml_text, voice, rate, pitch, mp3_path)
+        ssml_text = inject_ssml_pauses(text)
+        _synthesize(ssml_text, voice, rate, pitch, mp3_path)
 
     # 2. Write a placeholder timings file. The align stage will overwrite
     #    this with Whisper-derived ms-precise timings before captions render.
