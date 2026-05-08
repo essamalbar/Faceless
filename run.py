@@ -227,6 +227,35 @@ def _stage_assemble(cfg: Config, shots: list[Shot], paths: RunPaths,
 from pipeline.cast_guidance import flux_lineup_override
 
 
+def _assign_character_voices(script, pool: list[str]) -> dict[str, str]:
+    """Deterministically assign one voice_id per unique character_name
+    (and 'narrator') from the pool. Hash on (title, name) so re-runs of
+    the same script produce the same voice assignment.
+
+    'narrator' is added when any beat's speaker field is "narrator".
+    Characters with an empty character_name are skipped (atmospheric beats).
+    """
+    if not pool:
+        return {}
+    import hashlib
+    seen: list[str] = []
+    has_narrator_beat = False
+    for b in script.beats:
+        n = (b.character_name or "").strip()
+        if n and n not in seen:
+            seen.append(n)
+        if (b.speaker or "").strip().lower() == "narrator":
+            has_narrator_beat = True
+    if has_narrator_beat:
+        seen.append("narrator")
+
+    def pick(name: str) -> str:
+        h = hashlib.sha256(f"{script.title}::{name}".encode("utf-8")).hexdigest()
+        return pool[int(h[:8], 16) % len(pool)]
+
+    return {n: pick(n) for n in seen}
+
+
 def _stage_shorts_voice(args, cfg: Config, script: Script, paths: RunPaths) -> list[WordTiming]:
     """Voice stage for Shorts mode.
 
@@ -700,6 +729,13 @@ def main_with_args(argv: list[str]) -> int:
                         narration_style=args.ff_narration_style,
                     )
                     script = generate_freeform_script(gemini, seed, controls)
+                    # Auto-assign per-character voice IDs from the pool if not already set.
+                    if not script.character_voices and cfg.voice.elevenlabs_voice_pool:
+                        from dataclasses import replace as _dc_replace
+                        voices = _assign_character_voices(
+                            script, list(cfg.voice.elevenlabs_voice_pool)
+                        )
+                        script = _dc_replace(script, character_voices=voices)
                     import json as _json
                     paths.script_json.write_text(
                         _json.dumps(script.to_dict(), ensure_ascii=False, indent=2),

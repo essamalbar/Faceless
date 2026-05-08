@@ -80,6 +80,11 @@ class Script:
     # Keys are Arabic character_name values; values are short English descriptions.
     # Empty by default so existing script.json files without this field still load.
     character_descriptions: dict[str, str] = field(default_factory=dict)
+    # Per-script ElevenLabs voice assignment. Keys are Arabic character_name values
+    # (or "narrator"); values are ElevenLabs voice IDs. Auto-assigned by run.py from
+    # cfg.voice.elevenlabs_voice_pool when not already populated. Empty by default so
+    # existing script.json files without this field still load (backwards compat).
+    character_voices: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.music_mood not in VALID_MOODS:
@@ -99,6 +104,10 @@ class Script:
         # script.json files that predate this field.
         if "character_descriptions" not in d:
             d["character_descriptions"] = {}
+        # character_voices is optional — default to empty dict for legacy
+        # script.json files that predate this field.
+        if "character_voices" not in d:
+            d["character_voices"] = {}
         return cls(**d, beats=beats)
 
 

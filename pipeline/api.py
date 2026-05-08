@@ -398,6 +398,7 @@ class ScriptResponse(BaseModel):
     target_duration_s: float
     estimated_cost_usd: float
     character_descriptions: dict[str, str] = {}  # NEW — per-character physical descriptions
+    character_voices: dict[str, str] = {}  # TS-1 — per-character ElevenLabs voice IDs
 
 
 # ---------------------------------------------------------------------------
@@ -944,6 +945,7 @@ def get_script(run_id: str):
         target_duration_s=float(doc.get("target_duration_s", 0.0)),
         estimated_cost_usd=_cost_estimate_usd(beats),
         character_descriptions=dict(doc.get("character_descriptions") or {}),
+        character_voices=dict(doc.get("character_voices") or {}),
     )
 
 

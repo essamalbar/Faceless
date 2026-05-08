@@ -152,8 +152,15 @@ def generate_narration_per_beat(
     *,
     elevenlabs_model: str = "eleven_multilingual_v2",
     fallback_voice_id: str = "",
+    character_name_voices: dict[str, str] | None = None,  # preferred: keyed by character_name
 ) -> None:
     """Synthesize one mp3 per beat with the speaker's voice, then concat.
+
+    Voice lookup priority (highest to lowest):
+      1. character_name_voices[beat.character_name]  — exact Arabic-name match
+      2. character_name_voices["narrator"]            — when beat.speaker == "narrator"
+      3. character_voices[beat.speaker]               — legacy speaker-keyed map
+      4. fallback_voice_id                            — last resort
 
     Output:
       - parts_dir/01.mp3, 02.mp3, …  : per-beat audio
@@ -169,15 +176,24 @@ def generate_narration_per_beat(
     parts_dir.mkdir(parents=True, exist_ok=True)
     combined_mp3_path.parent.mkdir(parents=True, exist_ok=True)
 
+    name_voices: dict[str, str] = character_name_voices or {}
     client = _build_elevenlabs()
     part_paths: list[Path] = []
     for i, beat in enumerate(beats, start=1):
         part = parts_dir / f"{i:02d}.mp3"
         if not part.exists():
-            voice_id = character_voices.get(beat.speaker) or fallback_voice_id
+            cname = (beat.character_name or "").strip()
+            sp = (beat.speaker or "").strip().lower()
+            voice_id = (
+                name_voices.get(cname)
+                or (name_voices.get("narrator") if sp == "narrator" else None)
+                or character_voices.get(sp)
+                or fallback_voice_id
+            )
             if not voice_id:
                 raise RuntimeError(
-                    f"no voice id for speaker={beat.speaker!r} and no fallback"
+                    f"no voice id for character_name={cname!r} / "
+                    f"speaker={beat.speaker!r} and no fallback"
                 )
             client.synthesize(
                 text=beat.arabic,

@@ -1040,6 +1040,91 @@ def test_lineup_prompt_handles_zero_named_characters(tmp_path, monkeypatch):
     assert "exactly 0" not in p.lower()
 
 
+def test_run_auto_assigns_character_voices_from_pool(tmp_path, monkeypatch, music_bundle):
+    """After script generation, run.py auto-assigns voice_ids for every
+    unique character_name + 'narrator' from the configured voice pool.
+    Deterministic per (title, name) hash."""
+    import json as _json
+    pool = ["voiceA", "voiceB", "voiceC", "voiceD"]
+
+    def fake_freeform(llm, seed, controls):
+        from pipeline.types import Beat, Script
+        s = Script(
+            title="The Test Story", theme="folkloric",
+            global_setting="g", music_mood="dread",
+            beats=(
+                Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                     speaker="father", character_name="طارق"),
+                Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                     speaker="son", character_name="سامر"),
+                Beat(arabic="", english_motion="z", clip_duration_s=8.0,
+                     speaker="narrator", character_name=""),
+            ),
+            story_combined="x", target_duration_s=24.0,
+        )
+        return s
+
+    monkeypatch.setattr(
+        "pipeline.script_freeform.generate_freeform_script", fake_freeform)
+    monkeypatch.setattr("run._build_gemini", lambda: object())
+    monkeypatch.setattr("run._build_kie", lambda: object())
+    monkeypatch.setattr("run._stage_character_sheet", lambda *a, **kw: None)
+    monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
+
+    # Patch the config to inject the test pool via monkeypatching load_config.
+    from pipeline.config import load_config as _real_load_config
+
+    def patched_load_config(path):
+        cfg = _real_load_config(path)
+        from dataclasses import replace as _dc_replace
+        new_voice = _dc_replace(cfg.voice, elevenlabs_voice_pool=pool)
+        return _dc_replace(cfg, voice=new_voice)
+
+    monkeypatch.setattr("run.load_config", patched_load_config)
+
+    import run
+    config_path = REPO_ROOT / "config.yaml"
+    out_root = tmp_path / "out"
+    rc = run.main_with_args([
+        "--shorts", "--theme", "folkloric", "--seed", "premise",
+        "--out-root", str(out_root),
+        "--pause-after-script",
+        "--config", str(config_path),
+        "--music-bundle", str(music_bundle),
+    ])
+    assert rc == 0
+    # Find the run dir
+    run_dirs = [p for p in out_root.iterdir() if p.is_dir()]
+    assert len(run_dirs) == 1
+    script_path = run_dirs[0] / "script.json"
+    doc = _json.loads(script_path.read_text(encoding="utf-8"))
+    voices = doc.get("character_voices", {})
+    # Both named characters get a voice from the pool
+    assert "طارق" in voices and voices["طارق"] in pool
+    assert "سامر" in voices and voices["سامر"] in pool
+    # Narrator (used by the silent beat with empty character_name) gets a voice too
+    assert "narrator" in voices and voices["narrator"] in pool
+    # Deterministic: same title + name produces the same voice on a re-run
+    # (verify by calling _assign_character_voices directly with the same inputs)
+    from run import _assign_character_voices
+    from pipeline.types import Beat, Script
+    s2 = Script(
+        title="The Test Story", theme="folkloric",
+        global_setting="g", music_mood="dread",
+        beats=(
+            Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                 speaker="father", character_name="طارق"),
+            Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                 speaker="son", character_name="سامر"),
+            Beat(arabic="", english_motion="z", clip_duration_s=8.0,
+                 speaker="narrator", character_name=""),
+        ),
+        story_combined="x", target_duration_s=24.0,
+    )
+    recomputed = _assign_character_voices(s2, pool)
+    assert recomputed == voices
+
+
 def test_lineup_prompt_one_character(tmp_path, monkeypatch):
     """Single-character story: 'EXACTLY 1 character' (singular, not 'characters')."""
     captured: dict = {}
