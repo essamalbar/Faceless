@@ -1,0 +1,56 @@
+# Cloud Run Job: the pipeline worker. One execution per video render.
+# Deploy with:
+#   gcloud run jobs replace deploy/cloud-run-job.yaml --region=us-central1
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: faceless-pipeline
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    spec:
+      template:
+        metadata:
+          annotations:
+            run.googleapis.com/execution-environment: gen2
+            run.googleapis.com/launch-stage: BETA
+        spec:
+          serviceAccountName: faceless-runtime@${PROJECT_ID}.iam.gserviceaccount.com
+          containers:
+            - image: us-central1-docker.pkg.dev/${PROJECT_ID}/faceless/faceless:latest
+              env:
+                - name: FACELESS_CONTAINER_MODE
+                  value: worker
+                - name: FACELESS_OUT_ROOT
+                  value: /mnt/runs
+                # FACELESS_RUN_ARGS is injected at execute-time via
+                # gcloud run jobs execute --update-env-vars
+                # (handled by pipeline.spawn_backends.CloudRunJobsBackend).
+                - name: ANTHROPIC_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: anthropic-api-key
+                      key: latest
+                - name: KIE_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: kie-api-key
+                      key: latest
+              resources:
+                limits:
+                  cpu: "2"
+                  memory: "4Gi"
+              volumeMounts:
+                - name: runs-bucket
+                  mountPath: /mnt/runs
+          volumes:
+            - name: runs-bucket
+              csi:
+                driver: gcsfuse.run.googleapis.com
+                volumeAttributes:
+                  bucketName: ${BUCKET_NAME}
+                  mountOptions: "implicit-dirs"
+          timeoutSeconds: 3600   # 1 hour cap per pipeline run
+      parallelism: 1
+      taskCount: 1

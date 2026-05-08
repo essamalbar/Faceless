@@ -178,6 +178,26 @@ docker buildx build \
   --push .
 ```
 
+### Production deployment to Google Cloud Run (free tier)
+
+Single command from your Mac (re-runnable, idempotent):
+
+```bash
+./scripts/setup-cloud-run.sh
+```
+
+Provisions: GCS bucket + Artifact Registry + service account + secrets +
+Cloud Run Service (API) + Cloud Run Job (pipeline worker).
+
+Daily redeploys after code changes:
+
+```bash
+./scripts/build-and-push.sh
+```
+
+Full guide: `docs/DEPLOY-CLOUDRUN.md`. Free-tier capacity: ~300 video
+renders/month before any cost.
+
 ## Key invariants
 
 - **External services are mocked in tests.** Every external API (Gemini, Edge TTS, mflux, FFmpeg) is wrapped behind a small interface; tests replace the function via `monkeypatch`. Never hit real APIs in tests.

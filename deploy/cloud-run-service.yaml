@@ -1,0 +1,71 @@
+# Cloud Run Service: the always-on API.
+# Deploy with:
+#   gcloud run services replace deploy/cloud-run-service.yaml --region=us-central1
+#
+# Env vars are mostly populated by the deploy script (which substitutes
+# ${PROJECT_ID}, ${BUCKET_NAME}, etc. before applying).
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: faceless-api
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/execution-environment: gen2
+        # Mount the GCS bucket as a POSIX filesystem at /mnt/runs.
+        run.googleapis.com/launch-stage: BETA
+    spec:
+      serviceAccountName: faceless-runtime@${PROJECT_ID}.iam.gserviceaccount.com
+      containers:
+        - image: us-central1-docker.pkg.dev/${PROJECT_ID}/faceless/faceless:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: FACELESS_CONTAINER_MODE
+              value: api
+            - name: FACELESS_OUT_ROOT
+              value: /mnt/runs
+            - name: FACELESS_SPAWN_BACKEND
+              value: cloudrun_jobs
+            - name: FACELESS_GCP_PROJECT
+              value: ${PROJECT_ID}
+            - name: FACELESS_CLOUD_RUN_REGION
+              value: us-central1
+            - name: FACELESS_CLOUD_RUN_JOB_NAME
+              value: faceless-pipeline
+            # Secrets — populated from Secret Manager
+            - name: FACELESS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: faceless-api-token
+                  key: latest
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-api-key
+                  key: latest
+            - name: KIE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kie-api-key
+                  key: latest
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          volumeMounts:
+            - name: runs-bucket
+              mountPath: /mnt/runs
+      volumes:
+        - name: runs-bucket
+          csi:
+            driver: gcsfuse.run.googleapis.com
+            volumeAttributes:
+              bucketName: ${BUCKET_NAME}
+              mountOptions: "implicit-dirs"
+      timeoutSeconds: 60
+      containerConcurrency: 80

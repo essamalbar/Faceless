@@ -56,5 +56,11 @@ USER app
 
 EXPOSE 8000
 
-# uvicorn entrypoint — uses uv so the venv is activated automatically
-CMD ["uv", "run", "uvicorn", "pipeline.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Entrypoint script — switches between api and worker mode based on
+# FACELESS_CONTAINER_MODE (default: api, for back-compat with docker compose up).
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+USER root
+RUN chmod +x /usr/local/bin/entrypoint.sh
+USER app
+ENV FACELESS_CONTAINER_MODE=api
+CMD ["/usr/local/bin/entrypoint.sh"]
