@@ -256,18 +256,28 @@ def _assign_character_voices(script, pool: list[str]) -> dict[str, str]:
     return {n: pick(n) for n in seen}
 
 
-def _stage_shorts_voice(args, cfg: Config, script: Script, paths: RunPaths) -> list[WordTiming]:
+def _stage_shorts_voice(
+    args, cfg: Config, script: Script, paths: RunPaths,
+    *, character_name_voices: dict[str, str] | None = None,
+) -> list[WordTiming]:
     """Voice stage for Shorts mode.
 
-    Uses per-beat synthesis when speakers are tagged AND character voices
-    are configured (the @sunstoriz path: mother voice + son voice routed by
-    each beat's `speaker` field). Falls back to single-voice narration of
-    the concatenated story_combined for older scripts without speaker tags.
+    Uses per-beat synthesis when speakers are tagged AND either:
+      - `character_name_voices` is provided (freeform / TS-2 path), or
+      - `cfg.voice.character_voices` is populated (legacy @sunstoriz path).
+
+    Falls back to single-voice narration of story_combined otherwise.
+
+    `character_name_voices` (keyed by character_name) takes priority over
+    the legacy `cfg.voice.character_voices` (keyed by speaker) inside
+    `generate_narration_per_beat`.
     """
-    use_per_beat = (
-        cfg.voice.provider == "elevenlabs"
-        and bool(cfg.voice.character_voices)
-        and any(b.speaker != "narrator" for b in script.beats)
+    use_per_beat = cfg.voice.provider == "elevenlabs" and (
+        bool(character_name_voices)
+        or (
+            bool(cfg.voice.character_voices)
+            and any(b.speaker != "narrator" for b in script.beats)
+        )
     )
     if use_per_beat:
         generate_narration_per_beat(
@@ -278,6 +288,7 @@ def _stage_shorts_voice(args, cfg: Config, script: Script, paths: RunPaths) -> l
             timings_path=paths.word_timings_json,
             elevenlabs_model=cfg.voice.elevenlabs_model,
             fallback_voice_id=cfg.voice.elevenlabs_voice_id,
+            character_name_voices=character_name_voices,  # TS-2: per-character_name map
         )
     else:
         voice = args.voice or cfg.voice.name
@@ -493,11 +504,16 @@ def _stage_video_chained(
     args, cfg: Config, script: Script, paths: RunPaths,
     *, character_template: str | None = None,
     dialect: str | None = None,
+    native_audio: bool | None = None,
 ) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
     Replaces _stage_video for the --shorts path. --skip-video uses the same
     black-frame placeholder approach (per beat's clip_duration_s).
+
+    `native_audio` overrides `cfg.kie.native_audio` for this run when
+    explicitly supplied (e.g. freeform mode forces False so Veo renders
+    silent video; ElevenLabs handles the audio overlay in assemble).
     """
     if args.skip_video:
         # Black mp4 placeholder per beat (same approach as old _stage_video).
@@ -538,7 +554,7 @@ def _stage_video_chained(
         poll_interval_s=cfg.kie.poll_interval_s,
         poll_timeout_s=cfg.kie.poll_timeout_s,
         reroll_indices=reroll,
-        with_dialogue=cfg.kie.native_audio,
+        with_dialogue=(cfg.kie.native_audio if native_audio is None else native_audio),
         character_template=character_template,
         dialect=dialect,
         character_descriptions=script.character_descriptions or None,
@@ -704,7 +720,16 @@ def main_with_args(argv: list[str]) -> int:
             #
             # `--skip-video` keeps using the ElevenLabs path so the placeholder
             # run still has audio to verify captions/duration logic against.
-            use_native_audio = cfg.kie.native_audio and not args.skip_video
+            #
+            # Freeform runs (TS-2) always use the ElevenLabs overlay path for
+            # consistent per-character voices across clips, regardless of the
+            # cfg.kie.native_audio knob (which stays for non-freeform runs).
+            freeform_mode = bool(args.freeform)
+            use_native_audio = (
+                cfg.kie.native_audio
+                and not args.skip_video
+                and not freeform_mode
+            )
 
             with log.stage("seed"):
                 seed = _stage_seed(args, gemini, log, paths, project_theme_log)
@@ -750,7 +775,10 @@ def main_with_args(argv: list[str]) -> int:
                 return 0
             if not use_native_audio:
                 with log.stage("voice"):
-                    _stage_shorts_voice(args, cfg, script, paths)
+                    _stage_shorts_voice(
+                        args, cfg, script, paths,
+                        character_name_voices=script.character_voices or None,
+                    )
                 with log.stage("align"):
                     timings = _stage_align(paths, script)
             else:
@@ -779,6 +807,7 @@ def main_with_args(argv: list[str]) -> int:
                     args, cfg, script, paths,
                     character_template=args.ff_character_template,
                     dialect=args.ff_dialect,
+                    native_audio=use_native_audio,
                 )
             if use_native_audio:
                 with log.stage("native_audio_timings"):

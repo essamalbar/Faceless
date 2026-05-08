@@ -900,6 +900,18 @@ def test_resume_auto_loads_freeform_controls(tmp_path, monkeypatch, music_bundle
         "pipeline.character_sheet.generate_character_sheet", fake_sheet)
     monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
 
+    # TS-2: freeform runs now use ElevenLabs overlay path; stub the voice stage
+    # so this test (which focuses on character_sheet behaviour) doesn't need a key.
+    def fake_narration_resume(beats, character_voices, parts_dir, combined_mp3_path,
+                              timings_path, **kw):
+        parts_dir.mkdir(parents=True, exist_ok=True)
+        for i, _ in enumerate(beats, start=1):
+            (parts_dir / f"{i:02d}.mp3").write_bytes(b"fake")
+        combined_mp3_path.write_bytes(b"fake-combined")
+        timings_path.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr("run.generate_narration_per_beat", fake_narration_resume)
+    monkeypatch.setattr("run._stage_align", lambda paths, script: [])
+
     config_path = REPO_ROOT / "config.yaml"
     import run
     rc = run.main_with_args([
@@ -935,6 +947,18 @@ def test_explicit_freeform_flag_still_works_without_file(tmp_path, monkeypatch, 
     monkeypatch.setattr(
         "pipeline.character_sheet.generate_character_sheet", fake_sheet)
     monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
+
+    # TS-2: freeform runs now use ElevenLabs overlay path; stub the voice stage
+    # so this test (which focuses on character_sheet behaviour) doesn't need a key.
+    def fake_narration_explicit(beats, character_voices, parts_dir, combined_mp3_path,
+                                timings_path, **kw):
+        parts_dir.mkdir(parents=True, exist_ok=True)
+        for i, _ in enumerate(beats, start=1):
+            (parts_dir / f"{i:02d}.mp3").write_bytes(b"fake")
+        combined_mp3_path.write_bytes(b"fake-combined")
+        timings_path.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr("run.generate_narration_per_beat", fake_narration_explicit)
+    monkeypatch.setattr("run._stage_align", lambda paths, script: [])
 
     config_path = REPO_ROOT / "config.yaml"
     import run
@@ -1158,3 +1182,89 @@ def test_lineup_prompt_one_character(tmp_path, monkeypatch):
     assert p is not None
     assert "exactly 1 character" in p.lower()
     assert "ليلى" in p
+
+
+def test_freeform_run_uses_elevenlabs_overlay_not_native_audio(tmp_path, monkeypatch, music_bundle):
+    """TS-2: when freeform mode is active, the voice/align stage runs (calling
+    generate_narration_per_beat) and Veo gets native_audio=False — i.e.
+    we use ElevenLabs overlay, not Veo native audio, regardless of cfg.kie.native_audio."""
+    import json as _json
+    captured = {
+        "narration_called": False,
+        "narration_kwargs": None,
+        "assemble_native_audio": None,
+    }
+
+    def fake_freeform(llm, seed, controls):
+        from pipeline.types import Beat, Script
+        return Script(
+            title="Two Brothers Test", theme="folkloric",
+            global_setting="g", music_mood="dread",
+            beats=(
+                Beat(arabic="مرحبا", english_motion="x",
+                     clip_duration_s=8.0, speaker="father",
+                     character_name="طارق"),
+                Beat(arabic="x", english_motion="y",
+                     clip_duration_s=8.0, speaker="son",
+                     character_name="سامر"),
+            ),
+            story_combined="x", target_duration_s=16.0,
+        )
+
+    monkeypatch.setattr(
+        "pipeline.script_freeform.generate_freeform_script", fake_freeform)
+
+    def fake_narration(beats, character_voices, parts_dir, combined_mp3_path,
+                       timings_path, *, elevenlabs_model="...",
+                       fallback_voice_id="", character_name_voices=None):
+        captured["narration_called"] = True
+        captured["narration_kwargs"] = {
+            "character_name_voices": character_name_voices,
+            "fallback_voice_id": fallback_voice_id,
+        }
+        # Stub: write expected outputs so downstream stages don't break
+        parts_dir.mkdir(parents=True, exist_ok=True)
+        for i, _b in enumerate(beats, start=1):
+            (parts_dir / f"{i:02d}.mp3").write_bytes(b"fake")
+        combined_mp3_path.write_bytes(b"fake-combined")
+        timings_path.write_text("[]", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "run.generate_narration_per_beat", fake_narration)
+
+    # Capture assemble native_audio flag to confirm ElevenLabs overlay path
+    def spy_shorts_assemble(cfg, script, paths, burn_ass, *, native_audio):
+        captured["assemble_native_audio"] = native_audio
+        # Don't actually assemble
+
+    monkeypatch.setattr("run._stage_shorts_assemble", spy_shorts_assemble)
+
+    monkeypatch.setattr("run._build_gemini", lambda: object())
+    monkeypatch.setattr("run._build_kie", lambda: object())
+    monkeypatch.setattr("run._stage_character_sheet", lambda *a, **kw: None)
+    monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
+    monkeypatch.setattr("run._stage_align", lambda paths, script: [])
+    monkeypatch.setattr("run._stage_shorts_captions", lambda *a, **kw: False)
+
+    config_path = REPO_ROOT / "config.yaml"
+    import run
+    rc = run.main_with_args([
+        "--shorts", "--freeform", "--theme", "folkloric", "--seed", "premise",
+        "--out-root", str(tmp_path),
+        "--config", str(config_path),
+        "--music-bundle", str(music_bundle),
+    ])
+    assert rc == 0
+
+    # ElevenLabs overlay path: voice/align stage ran
+    assert captured["narration_called"] is True
+
+    # character_name_voices was passed (not just legacy speaker-keyed)
+    name_voices = captured["narration_kwargs"]["character_name_voices"]
+    assert name_voices is not None
+    # Includes both characters from the script (auto-assigned via TS-1)
+    assert "طارق" in name_voices
+    assert "سامر" in name_voices
+
+    # Assemble got native_audio=False (ElevenLabs overlay, not Veo native audio)
+    assert captured["assemble_native_audio"] is False
