@@ -821,3 +821,78 @@ def test_build_veo_prompt_no_descriptions_when_dict_empty():
     # No "character physical descriptions" preamble
     p_lower = p.lower()
     assert "character physical descriptions" not in p_lower
+
+
+# ===========================================================================
+# PE-2: per-character voice profile injected into audio-lock block
+# ===========================================================================
+
+def test_dialogue_prompt_injects_speaker_voice_profile_into_audio_lock():
+    """When a character_description exists for the speaker, build_veo_prompt
+    injects it as a voice profile in the audio-lock block (not just the
+    visual preamble) — so Veo locks both face AND voice to the description."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="مرحباً يا أبي",
+        english_motion="OTS shot",
+        clip_duration_s=8.0,
+        speaker="son",
+        character_name="خالد",
+    )
+    desc = (
+        "young man mid-20s, slim build, short black hair, white thobe; "
+        "voice: warm tenor, slightly raspy, measured pace"
+    )
+    p = build_veo_prompt(
+        b, "g", with_dialogue=True,
+        character_descriptions={"خالد": desc},
+    )
+    # The voice profile MUST appear inside the audio-lock block (after
+    # "AUDIO LANGUAGE LOCK" / before "The exact spoken line")
+    audio_idx = p.lower().find("audio language lock")
+    line_idx = p.lower().find("the exact spoken line")
+    assert audio_idx > 0 and line_idx > audio_idx
+    # The voice substring is inside the audio-lock window
+    voice_idx = p.lower().find("warm tenor")
+    assert audio_idx < voice_idx < line_idx, (
+        f"voice profile must be inside the audio-lock block; "
+        f"got audio_idx={audio_idx} voice_idx={voice_idx} line_idx={line_idx}"
+    )
+
+
+def test_voice_over_prompt_can_inject_narrator_voice_profile():
+    """For voice-over beats, if a 'narrator' description is provided in
+    character_descriptions, inject it as the narrator voice profile."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="منذ ثلاثة أيام...",
+        english_motion="wide dune shot",
+        clip_duration_s=9.0,
+        speaker="narrator",
+        character_name="",
+    )
+    p = build_veo_prompt(
+        b, "g", with_dialogue=True,
+        character_descriptions={
+            "narrator": "deep masculine voice, late 40s, contemplative pacing, no visual"
+        },
+    )
+    # Narrator voice profile present
+    p_lower = p.lower()
+    assert "deep masculine voice" in p_lower or "deep masculine" in p_lower
+
+
+def test_dialogue_audio_lock_unchanged_without_descriptions():
+    """Regression: empty character_descriptions → audio-lock block has no
+    voice profile injection (existing behavior)."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(
+        arabic="x", english_motion="y", clip_duration_s=8.0,
+        speaker="son", character_name="خالد",
+    )
+    p = build_veo_prompt(b, "g", with_dialogue=True, character_descriptions={})
+    # No "voice profile" preamble inside the audio block
+    assert "voice profile for this character" not in p.lower()

@@ -127,6 +127,20 @@ def build_veo_prompt(
     """
     descs = character_descriptions or {}
 
+    def _physical_only(desc: str) -> str:
+        """Return the physical part of a description, stripping any voice section.
+
+        Descriptions may include '; voice: ...' or ', voice: ...' suffix added
+        in PE-2. The visual preamble only needs the physical appearance part so
+        that voice-specific text does not appear before the audio-lock block
+        (which is where Veo should read voice guidance).
+        """
+        for sep in ("; voice:", ", voice:", ";voice:", ",voice:"):
+            idx = desc.lower().find(sep)
+            if idx != -1:
+                return desc[:idx].strip()
+        return desc
+
     # Determine which characters appear in this beat:
     #   1. The speaking character (beat.character_name)
     #   2. Any character_name found by substring match in english_motion
@@ -145,7 +159,7 @@ def build_veo_prompt(
 
     desc_preamble = ""
     if active:
-        lines = "; ".join(f"{n}: {d}" for n, d in active)
+        lines = "; ".join(f"{n}: {_physical_only(d)}" for n, d in active)
         desc_preamble = (
             f"Character physical descriptions (consistent across all clips, "
             f"MUST match the supplied character lineup): {lines}. "
@@ -169,6 +183,14 @@ def build_veo_prompt(
                 # Voice-over narration — audio yes, on-camera speaker no.
                 # The visual is whatever english_motion described; do NOT add
                 # frontal-MCU framing or speaker descriptor.
+                voice_profile = ""
+                narrator_desc = (descs.get("narrator") or "").strip()
+                if narrator_desc:
+                    voice_profile = (
+                        f"Voice profile for the narrator (consistent across ALL "
+                        f"voice-over beats in this video — same voice every time): "
+                        f"{narrator_desc}. "
+                    )
                 base += (
                     ". This beat is a VOICE-OVER narration: an off-screen narrator "
                     "speaks the line below over the visual described above. NO "
@@ -179,6 +201,7 @@ def build_veo_prompt(
                     f"ARABIC. {lock} "
                     f"يجب أن يكون النطق باللغة العربية فقط، وممنوع النطق "
                     f"بالإنجليزية أو أي لغة أخرى. "
+                    f"{voice_profile}"
                     f"The exact narration line (in Arabic) is: \"{beat.arabic}\". "
                     f"Final reminder: narrator audio MUST be in Arabic, never "
                     f"English; visual is the shot described above, NOT a "
@@ -199,6 +222,15 @@ def build_veo_prompt(
                     # the cross-cast fruit leak that SPEAKER_DESCRIPTIONS caused.
                     speaker_desc = f"the {beat.speaker or 'speaking'} character"
 
+                voice_profile = ""
+                if name:
+                    char_desc = (descs.get(name) or "").strip()
+                    if char_desc:
+                        voice_profile = (
+                            f"Voice profile for this character (consistent across ALL "
+                            f"clips where {name} speaks — same voice every time): "
+                            f"{char_desc}. "
+                        )
                 base += (
                     f". {speaker_desc} faces the camera at medium close-up, "
                     f"mouth open mid-speech with realistic synchronized lip movement. "
@@ -206,6 +238,7 @@ def build_veo_prompt(
                     f"{lock} "
                     f"يجب أن يكون النطق باللغة العربية فقط، وممنوع النطق "
                     f"بالإنجليزية أو أي لغة أخرى. "
+                    f"{voice_profile}"
                     f"The exact spoken line (in Arabic) is: \"{beat.arabic}\". "
                     f"Final reminder: dialogue audio MUST be in Arabic, never "
                     f"English or any other language."

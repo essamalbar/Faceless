@@ -181,3 +181,22 @@ def test_freeform_prompt_asks_for_character_descriptions():
     )
     p_lower = p.lower()
     assert "character_descriptions" in p_lower
+
+
+def test_freeform_prompt_asks_for_voice_in_character_descriptions():
+    """Each character_description must include a voice profile (tone/age/etc.)
+    so Veo has a textual anchor for voice consistency across clips."""
+    from pipeline.script_freeform import build_freeform_prompt, FreeformControls
+    from pipeline.types import ThemeSeed
+    p = build_freeform_prompt(
+        ThemeSeed(theme="urban", premise="x"),
+        FreeformControls(),
+    )
+    p_lower = p.lower()
+    # Voice-related guidance present in the writer prompt
+    assert "voice" in p_lower
+    # Should mention what to include — tone / age / accent / pitch
+    assert any(k in p_lower for k in (
+        "voice tone", "voice profile", "voice characteristics",
+        "tone of voice", "vocal", "pitch",
+    ))
