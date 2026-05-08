@@ -246,7 +246,7 @@ def build_shorts_filter_graph(
 
     # 4. Audio mix. Two modes:
     #
-    #   A) ElevenLabs path (native_audio=False, default before Tier-4):
+    #   A) External-TTS path (native_audio=False, used by long-form + --skip-video):
     #      Inputs are clip audio (ambient) + narration mp3 [N:a] + music [N+1:a].
     #      Mix = narration (full) + music (ducked) + ambient clip noise (low).
     #
@@ -327,7 +327,7 @@ def assemble_shorts_video(
     primary track and only mixes in music. No external narration mp3 is
     expected.
 
-    Otherwise the legacy ElevenLabs path runs: narration mp3 mixes with
+    Otherwise the external-TTS path runs: narration mp3 mixes with
     music + low-volume ambient clip audio. When narration > total video,
     the last frame is held to cover the gap so `-shortest` doesn't truncate
     the story's ending.
