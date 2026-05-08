@@ -119,6 +119,65 @@ backend API above. Cross-stack work is now expected.
 
 Note: `lib/main.dart:31` and `:105` have invalid Dart (missing type names on `.fromSeed(...)` and `.center`) — `flutter analyze` will fail until these are fixed. Not blocking the Python work.
 
+## Docker / Cloud deployment
+
+The backend runs as a Docker container — locally for testing or on Oracle Cloud Always-Free for production.
+
+### Local Docker test (Mac)
+
+```bash
+# Build image and start the API on localhost:8000
+docker compose up --build
+
+# Verify health
+curl http://localhost:8000/healthz   # → {"ok":true}
+
+# Authenticated endpoint check (should return 200 with runs list)
+source .env
+curl -s -H "Authorization: Bearer $FACELESS_API_TOKEN" http://localhost:8000/runs
+
+# Stop
+docker compose down
+```
+
+Artifacts in `out/` are bind-mounted so they survive `docker compose down/up`.
+Whisper models are cached in a named Docker volume (`whisper-cache`) so they
+are not re-downloaded on every rebuild.
+
+### Production deployment to Oracle Always-Free
+
+Full step-by-step guide: `docs/DEPLOY-ORACLE.md`
+
+Quick version (on the Oracle VM after `git clone` + `.env` setup):
+
+```bash
+./scripts/deploy-oracle.sh
+```
+
+The prod overlay (`docker-compose.prod.yml`) adds a `cloudflare/cloudflared`
+container that creates a named Cloudflare Tunnel so the API is reachable at
+`https://api.yourdomain.com` without opening any VM firewall ports.
+
+```bash
+# Start with prod overlay (Cloudflare Tunnel)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Update after a git pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+### Multi-arch image build
+
+The image targets `linux/arm64` by default (Mac Apple Silicon + Oracle Ampere A1
+are both ARM64). To push a multi-arch image to a registry:
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/<you>/faceless:latest \
+  --push .
+```
+
 ## Key invariants
 
 - **External services are mocked in tests.** Every external API (Gemini, Edge TTS, mflux, FFmpeg) is wrapped behind a small interface; tests replace the function via `monkeypatch`. Never hit real APIs in tests.

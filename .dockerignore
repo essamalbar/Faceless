@@ -1,0 +1,71 @@
+# Python
+.venv/
+.uv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime artifacts — mounted as a volume at runtime
+out/
+*.log
+
+# Secrets — NEVER bake into the image
+.env
+.env.*
+*.key
+*.pem
+*.crt
+
+# Tests — not needed in the production image
+tests/
+test/
+
+# Docs
+docs/
+
+# Flutter / mobile app — not part of the backend image
+lib/
+android/
+ios/
+macos/
+linux/
+windows/
+web/
+pubspec.yaml
+pubspec.lock
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+*.iml
+analysis_options.yaml
+
+# Git
+.git/
+.gitignore
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Node (if any)
+node_modules/
+
+# Generated music (large binaries — mounted or re-created outside container)
+assets/music/*.mp3
+
+# Claude Code session state
+.claude/
+
+# Reference videos
+Download.mp4
+reference.mp4
+*.reference.mp4

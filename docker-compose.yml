@@ -1,0 +1,35 @@
+# Local development — runs the API only, port-forwarded to localhost:8000.
+#
+# Usage:
+#   docker compose up --build        # build image and start
+#   docker compose up -d             # detached
+#   docker compose logs api -f       # follow logs
+#   docker compose down              # stop and remove containers
+#
+# Secrets come from .env (never baked into the image).
+# Out/ artifacts are persisted on the host via a bind-mount.
+
+services:
+  api:
+    build: .
+    image: faceless:latest
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # Run artifacts — bind-mount so they survive container restarts and
+      # are directly accessible on the host for inspection.
+      - ./out:/app/out
+      # Whisper model cache — named volume so the ~150–1500 MB model files
+      # are downloaded once and reused across image rebuilds.
+      - whisper-cache:/cache/whisper
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  whisper-cache:
