@@ -21,11 +21,6 @@ class VoiceConfig:
     # (e.g. "mother", "son", "father", "doctor", "narrator"); values are
     # ElevenLabs voice IDs. Unknown speakers fall back to elevenlabs_voice_id.
     character_voices: dict = field(default_factory=dict)
-    # Pool of ElevenLabs voice IDs for per-character auto-assignment.
-    # run.py hashes (title, character_name) → index into this pool so the
-    # same character always gets the same voice across re-runs. Duplicates
-    # are fine — they just reduce variety when the pool is small.
-    elevenlabs_voice_pool: list = field(default_factory=list)
 
 
 @dataclass(frozen=True)

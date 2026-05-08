@@ -23,17 +23,6 @@ voice:
     enemy: 127eIvt3Nz57jlNc8P9x      # male (dark grape soldier, menacing)
     shadow: 127eIvt3Nz57jlNc8P9x     # male (son's dark alter-ego, deeper voice)
     narrator: jAAHNNqlbAX9iWjJPEtE
-  # Pool for per-character auto-assignment in freeform mode.
-  # run.py hashes (title, character_name) → pool index for stable re-runs.
-  # Add more distinct voice IDs here as you acquire them; duplicates are fine
-  # today and just reduce variety until you have ≥8 distinct IDs.
-  elevenlabs_voice_pool:
-    - jAAHNNqlbAX9iWjJPEtE   # female (default narrator)
-    - 127eIvt3Nz57jlNc8P9x   # male (default son/father/etc.)
-    - jAAHNNqlbAX9iWjJPEtE
-    - 127eIvt3Nz57jlNc8P9x
-    - jAAHNNqlbAX9iWjJPEtE
-    - 127eIvt3Nz57jlNc8P9x
 
 script:
   word_count_target: 320

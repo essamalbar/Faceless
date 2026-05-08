@@ -307,7 +307,6 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
 
     story_combined = " ".join(b.arabic for b in beats)
     character_descriptions = dict(data.get("character_descriptions") or {})
-    character_voices = dict(data.get("character_voices") or {})
     try:
         return Script(
             title=str(data.get("title", "")).strip() or "بلا عنوان",
@@ -318,7 +317,6 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
             story_combined=story_combined,
             target_duration_s=target_duration_s,
             character_descriptions=character_descriptions,
-            character_voices=character_voices,
             # Long-form fields stay default (empty)
         )
     except (TypeError, ValueError) as e:

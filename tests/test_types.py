@@ -166,33 +166,3 @@ def test_script_legacy_loads_without_character_descriptions():
     }
     s = Script.from_dict(legacy)
     assert s.character_descriptions == {}
-
-
-# ---------------------------------------------------------------------------
-# TS-1: character_voices field on Script
-# ---------------------------------------------------------------------------
-
-def test_script_carries_character_voices():
-    from pipeline.types import Script, Beat
-    s = Script(
-        title="t", theme="folkloric",
-        global_setting="g", music_mood="dread",
-        beats=(),
-        story_combined="", target_duration_s=0,
-        character_voices={"خالد": "voice_id_xxx", "narrator": "voice_id_yyy"},
-    )
-    assert s.character_voices["خالد"] == "voice_id_xxx"
-    d = s.to_dict()
-    assert d["character_voices"]["narrator"] == "voice_id_yyy"
-    s2 = Script.from_dict(d)
-    assert s2 == s
-
-
-def test_script_legacy_loads_without_character_voices():
-    from pipeline.types import Script
-    legacy = {
-        "title": "t", "theme": "folkloric", "global_setting": "g",
-        "music_mood": "dread", "beats": [],
-    }
-    s = Script.from_dict(legacy)
-    assert s.character_voices == {}
