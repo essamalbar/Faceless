@@ -15,7 +15,7 @@ from pathlib import Path
 
 import requests
 
-from pipeline.kie import KieClient, generate_clip
+from pipeline.kie import KieClient, generate_clip, submit_and_wait_with_retry
 from pipeline.types import Beat, Script
 
 # Style suffix appended to every Veo prompt for visual consistency across clips.
@@ -503,16 +503,18 @@ def generate_clips_chained(
         if prev_last_frame_url:
             image_urls.append(prev_last_frame_url)
 
-        job_id = client.submit_video_job(
-            prompt=prompt,
-            model=model,
-            aspect_ratio=aspect_ratio,
-            generation_type="REFERENCE_2_VIDEO",
-            image_urls=image_urls,
-            duration_s=beat.clip_duration_s,
-        )
-        url = client.wait_for_video(
-            job_id, poll_interval_s=poll_interval_s, timeout_s=poll_timeout_s,
+        url = submit_and_wait_with_retry(
+            client,
+            submit_kwargs={
+                "prompt": prompt,
+                "model": model,
+                "aspect_ratio": aspect_ratio,
+                "generation_type": "REFERENCE_2_VIDEO",
+                "image_urls": image_urls,
+                "duration_s": beat.clip_duration_s,
+            },
+            poll_interval_s=poll_interval_s,
+            timeout_s=poll_timeout_s,
         )
         client.download(url, out_path)
         # Move moov atom to the front so HTML5 players can stream progressively

@@ -48,6 +48,11 @@ class KieError(RuntimeError):
     """Any Kie.ai-side failure (HTTP error, timeout, job failure)."""
 
 
+class TransientKieError(KieError):
+    """Recoverable Kie failure — capacity / rate-limit / 'try again later'.
+    Callers should retry with exponential backoff."""
+
+
 class KieClient:
     """Thin sync HTTP client. Tests monkeypatch _post_json / _get_json / _download."""
 
@@ -194,7 +199,23 @@ class KieClient:
                     raise KieError(f"task {job_id} succeeded but no fullResultUrls: {resp}")
                 return str(urls[0])
             if flag_int in FAILED_FLAGS:
-                raise KieError(f"task {job_id} successFlag={flag_int}: {resp}")
+                err_msg = (
+                    (data.get("errorMessage") or "").lower()
+                    + " " + (resp.get("errorMessage") or "").lower()
+                )
+                transient_markers = (
+                    "temporarily unavailable",
+                    "try again later",
+                    "high traffic",
+                    "rate limit",
+                    "rate-limit",
+                    "too many requests",
+                    "service unavailable",
+                )
+                err_class = TransientKieError if any(
+                    m in err_msg for m in transient_markers
+                ) else KieError
+                raise err_class(f"task {job_id} successFlag={flag_int}: {resp}")
             _SLEEP(poll_interval_s)
         raise KieError(f"task {job_id} did not complete within {timeout_s}s")
 
@@ -275,6 +296,53 @@ class KieClient:
         }
 
 
+def submit_and_wait_with_retry(
+    client: "KieClient",
+    *,
+    submit_kwargs: dict,
+    poll_interval_s: int,
+    timeout_s: int,
+    max_attempts: int = 4,
+    seed_bump: int = 100_000,
+) -> str:
+    """Submit + poll a Veo job; auto-retry on transient failures.
+
+    Each retry submits a FRESH job (new taskId) with the seed bumped by
+    `seed_bump` to avoid hitting the same content-flag if any. Backoff is
+    exponential: 30s, 60s, 120s between retries.
+
+    Permanent errors (content-flag, auth, missing API key) bubble through
+    on the first attempt — no retry.
+    """
+    backoffs_s = (30, 60, 120, 240)
+    last_err: TransientKieError | None = None
+    submit_kwargs = dict(submit_kwargs)  # don't mutate caller's dict
+    seed = submit_kwargs.get("seed")
+
+    for attempt in range(max_attempts):
+        if attempt > 0 and seed is not None:
+            submit_kwargs["seed"] = seed + attempt * seed_bump
+        try:
+            job_id = client.submit_video_job(**submit_kwargs)
+            return client.wait_for_video(
+                job_id, poll_interval_s=poll_interval_s, timeout_s=timeout_s,
+            )
+        except TransientKieError as e:
+            last_err = e
+            if attempt + 1 >= max_attempts:
+                break
+            wait = backoffs_s[min(attempt, len(backoffs_s) - 1)]
+            print(
+                f"[kie] transient failure on attempt {attempt+1}/{max_attempts}: "
+                f"{e}; retrying in {wait}s with seed bumped"
+            )
+            _SLEEP(wait)
+            continue
+
+    assert last_err is not None
+    raise last_err
+
+
 def generate_clip(
     client: KieClient,
     prompt: str,
@@ -287,21 +355,21 @@ def generate_clip(
     poll_interval_s: int = 5,
     timeout_s: int = 300,
 ) -> None:
-    """End-to-end: submit → poll → download. Raises KieError on failure.
-
-    duration_s, seed, negative_prompt are accepted for API stability but
-    ignored — Veo does not expose those parameters. Pre-bake any "no
-    text/watermark" guidance into `prompt` itself.
-    """
-    job_id = client.submit_video_job(
-        prompt=prompt,
-        model=model,
-        aspect_ratio=aspect_ratio,
-        seed=seed,
-        negative_prompt=negative_prompt,
-        duration_s=duration_s,
+    """End-to-end: submit → poll (with auto-retry on transient failures)
+    → download. Raises KieError on permanent failure."""
+    url = submit_and_wait_with_retry(
+        client,
+        submit_kwargs={
+            "prompt": prompt,
+            "model": model,
+            "aspect_ratio": aspect_ratio,
+            "seed": seed,
+            "negative_prompt": negative_prompt,
+            "duration_s": duration_s,
+        },
+        poll_interval_s=poll_interval_s,
+        timeout_s=timeout_s,
     )
-    url = client.wait_for_video(job_id, poll_interval_s=poll_interval_s, timeout_s=timeout_s)
     client.download(url, out_path)
     # Move moov atom to the front so HTML5 players can stream progressively
     # instead of waiting for the full file. Silent no-op on failure.
