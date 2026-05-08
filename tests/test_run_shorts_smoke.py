@@ -951,3 +951,125 @@ def test_explicit_freeform_flag_still_works_without_file(tmp_path, monkeypatch, 
     # Human cast negation
     assert ("not fruit" in p_lower or "no fruit" in p_lower
             or "not anthropomorphic fruit" in p_lower or "no lemons" in p_lower)
+
+
+# ---------------------------------------------------------------------------
+# PE-1 tests — lineup_prompt must say "EXACTLY N" derived from script.beats
+# ---------------------------------------------------------------------------
+
+
+def test_lineup_prompt_says_exactly_n_characters(tmp_path, monkeypatch):
+    """PE-1: lineup_prompt explicitly says 'EXACTLY N' where N = unique
+    character_names from script.beats. Empty character_names not counted."""
+    captured: dict = {}
+    def fake_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet", fake_sheet)
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="desert at dusk",
+        music_mood="dread",
+        beats=(
+            Beat(arabic="", english_motion="x", clip_duration_s=8.0,
+                 speaker="narrator", character_name=""),  # silent — no name
+            Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                 speaker="father", character_name="طارق"),
+            Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                 speaker="son", character_name="سامر"),
+            Beat(arabic="", english_motion="z", clip_duration_s=8.0,
+                 speaker="narrator", character_name=""),  # silent — no name
+        ),
+        story_combined="x", target_duration_s=32.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        character_template="human",
+    )
+    p = captured["lineup_prompt"]
+    assert p is not None
+    # Exactly 2 unique character_names → "EXACTLY 2"
+    assert "exactly 2" in p.lower()
+    assert "exactly 2 character" in p.lower()
+    assert "طارق" in p
+    assert "سامر" in p
+
+
+def test_lineup_prompt_handles_zero_named_characters(tmp_path, monkeypatch):
+    """Edge case: script with only narrator beats (no character_names).
+    Should NOT say 'EXACTLY 0' (a 0-character lineup is meaningless);
+    fall back to a generic phrasing."""
+    captured: dict = {}
+    def fake_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet", fake_sheet)
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run-zero")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="atmospheric beats only",
+        music_mood="dread",
+        beats=(
+            Beat(arabic="", english_motion="x", clip_duration_s=8.0,
+                 speaker="narrator", character_name=""),
+        ),
+        story_combined="", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        character_template="human",
+    )
+    p = captured["lineup_prompt"]
+    assert p is not None
+    # Don't claim "exactly 0"
+    assert "exactly 0" not in p.lower()
+
+
+def test_lineup_prompt_one_character(tmp_path, monkeypatch):
+    """Single-character story: 'EXACTLY 1 character' (singular, not 'characters')."""
+    captured: dict = {}
+    def fake_sheet(client, *, out_path, lineup_prompt=None, **kw):
+        captured["lineup_prompt"] = lineup_prompt
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet", fake_sheet)
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    paths = RunPaths(root=tmp_path / "run-one")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric",
+        global_setting="lone wanderer",
+        music_mood="dread",
+        beats=(
+            Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                 speaker="protagonist", character_name="ليلى"),
+        ),
+        story_combined="x", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+    run._stage_character_sheet(
+        client=object(), cfg=cfg, paths=paths, script=script,
+        character_template="human",
+    )
+    p = captured["lineup_prompt"]
+    assert p is not None
+    assert "exactly 1 character" in p.lower()
+    assert "ليلى" in p

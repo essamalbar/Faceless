@@ -331,19 +331,36 @@ def _stage_character_sheet(
         if n and n not in seen:
             seen.add(n)
             names.append(n)
-    names_clause = (
-        f" Named characters in the story: {', '.join(names)}."
-        if names else ""
-    )
+    n = len(names)
+    if n == 0:
+        count_phrase = (
+            "Character mood-board for an animated short. "
+            "A single representative character (or atmospheric placeholder) "
+            "standing centered, "
+        )
+        names_clause = ""
+    elif n == 1:
+        count_phrase = (
+            "Character lineup sheet for an animated short. "
+            "EXACTLY 1 character standing centered, full body, "
+        )
+        names_clause = f" The character: {names[0]}."
+    else:
+        count_phrase = (
+            f"Character lineup sheet for an animated short. "
+            f"EXACTLY {n} characters and ONLY {n} characters standing side by side "
+            f"(no extra characters, no background figures, no crowd), "
+            f"full body, "
+        )
+        names_clause = f" The {n} characters in order: {', '.join(names)}."
+
     cast_override = flux_lineup_override(character_template)
     cast_clause = f" {cast_override}" if cast_override else ""
 
     lineup_prompt = (
-        "Character lineup sheet for an animated short. "
-        "Several named characters from the story standing side by side, "
-        "full body, facing camera, neutral expressions, plain warm-grey "
-        "background, consistent rendering style and color palette across "
-        "all characters."
+        f"{count_phrase}"
+        "facing camera, neutral expressions, plain warm-grey background, "
+        "consistent rendering style and color palette across all characters."
         f"{cast_clause}"
         f"{names_clause} "
         f"Style and visual treatment: "
