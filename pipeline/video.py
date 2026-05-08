@@ -108,7 +108,8 @@ def build_veo_prompt(
     Arabic line is quoted in the prompt with a speaking instruction, and
     Veo generates the speech audio + matching mouth movement in one pass.
     No separate TTS stage runs. Voice characteristics are set by Veo, not
-    by an external voice ID — so stability across clips is approximate.
+    by an external voice ID — so stability across clips is approximate,
+    not pinned to ElevenLabs.
 
     `cast_negation` (from pipeline.cast_guidance.veo_clip_negation) is
     prepended to the prompt when non-empty so Veo sees it at the earliest

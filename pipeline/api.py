@@ -1233,8 +1233,8 @@ def get_spend_summary():
     """Total Kie.ai (Veo + Flux) spend across all runs, plus per-run breakdown.
 
     Reads kie_spend.json artifacts written by the pipeline. Doesn't include
-    LLM costs (those don't write spend logs). Useful for answering 'how
-    much have I spent this month'."""
+    ElevenLabs / LLM costs (those don't write spend logs). Useful for
+    answering 'how much have I spent this month'."""
     out = _out_root()
     if not out.exists():
         return SpendSummary(total_usd=0.0, by_run=[], run_count=0)

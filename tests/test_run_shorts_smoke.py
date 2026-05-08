@@ -182,7 +182,7 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
 
     # All Shorts artifacts present. With kie.native_audio=true (the post-Tier-4
     # default), Veo generates the dialogue audio per clip and the orchestrator
-    # skips the external TTS stage entirely — narration.mp3 is not produced.
+    # skips ElevenLabs entirely — narration.mp3 is not produced.
     assert (run_dir / "seed.json").exists()
     assert (run_dir / "script.json").exists()
     assert (run_dir / "word_timings.json").exists()

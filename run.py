@@ -643,11 +643,11 @@ def main_with_args(argv: list[str]) -> int:
 
         if args.shorts:
             # Native-audio mode: Veo generates voice + lip sync per clip from
-            # the dialogue baked into the prompt. We skip the TTS stage and
-            # the Whisper align stage; word timings are derived from clip
-            # lengths after the video stage runs.
+            # the dialogue baked into the prompt. We skip ElevenLabs and the
+            # Whisper align stage; word timings are derived from clip lengths
+            # after the video stage runs.
             #
-            # `--skip-video` keeps using the Edge-TTS path so the placeholder
+            # `--skip-video` keeps using the ElevenLabs path so the placeholder
             # run still has audio to verify captions/duration logic against.
             use_native_audio = cfg.kie.native_audio and not args.skip_video
 

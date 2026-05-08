@@ -69,7 +69,7 @@ class KieConfig:
     flux_cost_per_image_usd: float = 0.05
     # Tier-4 native dialogue: when true, the Veo prompt embeds each beat's
     # Arabic line so the character speaks it on-camera (lip-synced). The
-    # external TTS stage is skipped — Veo generates the audio. We lose
+    # ElevenLabs voice stage is skipped — Veo generates the audio. We lose
     # voice-ID control but gain real lip sync at no extra cost.
     native_audio: bool = True
 
