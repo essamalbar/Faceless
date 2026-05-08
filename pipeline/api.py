@@ -404,28 +404,19 @@ class ScriptResponse(BaseModel):
 # Subprocess spawning — overridable in tests
 # ---------------------------------------------------------------------------
 
-def _spawn(args: list[str], run_dir: Path) -> int:
-    """Start `run.py` in the background. Returns PID. Stdout/stderr → state.log
-    in the run dir so the caller can pull error context for the UI.
+from pipeline.spawn_backends import select_backend
 
-    The log file handle is closed in the parent immediately after Popen
-    forks — Popen dups it into the child, so the child keeps writing while
-    the parent doesn't leak a file descriptor per spawn (which would leak
-    one FD on every create/approve/resume/reroll over the API's lifetime)."""
-    log_path = run_dir / "api_subprocess.log"
-    log_fh = open(log_path, "ab")
-    try:
-        proc = subprocess.Popen(
-            [sys.executable, str(RUNPY), *args],
-            cwd=str(REPO_ROOT),
-            stdout=log_fh,
-            stderr=subprocess.STDOUT,
-            env=os.environ.copy(),
-            start_new_session=True,
-        )
-    finally:
-        log_fh.close()
-    return proc.pid
+
+def _spawn(args: list[str], run_dir: Path) -> int:
+    """Start `run.py` in the background via the configured spawn backend
+    (local Popen or Cloud Run Jobs — see pipeline.spawn_backends)."""
+    backend = select_backend()
+    return backend.spawn(
+        args=args,
+        run_dir=run_dir,
+        runpy_path=RUNPY,
+        repo_root=REPO_ROOT,
+    )
 
 
 # Indirection so tests can replace with a no-op
@@ -434,8 +425,8 @@ _SPAWN_FN = _spawn
 
 def set_spawn_fn(fn) -> None:
     """Tests use this to replace _spawn with a stub that doesn't actually
-    fork run.py. The stub is responsible for whatever fake artifacts the
-    test scenario expects (e.g. writing script.json directly)."""
+    fork or call gcloud. The stub is responsible for whatever fake
+    artifacts the test scenario expects."""
     global _SPAWN_FN
     _SPAWN_FN = fn
 
