@@ -42,7 +42,7 @@ from pipeline.seed import auto_seed, manual_seed, record_theme_use
 from pipeline.shots import generate_shots
 from pipeline.types import RunPaths, Script, Shot, ThemeSeed, WordTiming
 from pipeline.video import generate_clips
-from pipeline.voice import generate_narration
+from pipeline.voice import generate_narration, generate_narration_per_beat
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -228,13 +228,39 @@ from pipeline.cast_guidance import flux_lineup_override
 
 
 def _stage_shorts_voice(args, cfg: Config, script: Script, paths: RunPaths) -> list[WordTiming]:
-    """Voice stage for Shorts mode. Uses Edge TTS narration of the combined script."""
-    voice = args.voice or cfg.voice.name
-    generate_narration(
-        text=script.story_combined,
-        voice=voice, rate=cfg.voice.rate, pitch=cfg.voice.pitch,
-        mp3_path=paths.narration_mp3, timings_path=paths.word_timings_json,
+    """Voice stage for Shorts mode.
+
+    Uses per-beat synthesis when speakers are tagged AND character voices
+    are configured (the @sunstoriz path: mother voice + son voice routed by
+    each beat's `speaker` field). Falls back to single-voice narration of
+    the concatenated story_combined for older scripts without speaker tags.
+    """
+    use_per_beat = (
+        cfg.voice.provider == "elevenlabs"
+        and bool(cfg.voice.character_voices)
+        and any(b.speaker != "narrator" for b in script.beats)
     )
+    if use_per_beat:
+        generate_narration_per_beat(
+            beats=list(script.beats),
+            character_voices=dict(cfg.voice.character_voices),
+            parts_dir=paths.root / "narration_beats",
+            combined_mp3_path=paths.narration_mp3,
+            timings_path=paths.word_timings_json,
+            elevenlabs_model=cfg.voice.elevenlabs_model,
+            fallback_voice_id=cfg.voice.elevenlabs_voice_id,
+        )
+    else:
+        voice = args.voice or cfg.voice.name
+        generate_narration(
+            text=script.story_combined,
+            voice=voice, rate=cfg.voice.rate, pitch=cfg.voice.pitch,
+            mp3_path=paths.narration_mp3, timings_path=paths.word_timings_json,
+            provider=cfg.voice.provider,
+            elevenlabs_voice_id=cfg.voice.elevenlabs_voice_id,
+            elevenlabs_model=cfg.voice.elevenlabs_model,
+            fallback_to_edge_tts=cfg.voice.fallback_to_edge_tts,
+        )
     return [WordTiming.from_dict(d)
             for d in json.loads(paths.word_timings_json.read_text(encoding="utf-8"))]
 

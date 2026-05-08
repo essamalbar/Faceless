@@ -11,10 +11,13 @@ def test_load_full_config(tmp_path: Path):
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(textwrap.dedent("""
         voice:
-          provider: edge_tts
+          provider: elevenlabs
           name: ar-EG-SalmaNeural
           rate: "+0%"
           pitch: "+0Hz"
+          elevenlabs_voice_id: 21m00Tcm4TlvDq8ikWAM
+          elevenlabs_model: eleven_multilingual_v2
+          fallback_to_edge_tts: true
         script:
           word_count_target: 320
           word_count_tolerance: 60
@@ -53,8 +56,9 @@ def test_load_full_config(tmp_path: Path):
           flux_cost_per_image_usd: 0.05
     """))
     cfg = load_config(cfg_path)
-    assert cfg.voice.provider == "edge_tts"
-    assert cfg.voice.name == "ar-EG-SalmaNeural"
+    assert cfg.voice.provider == "elevenlabs"
+    assert cfg.voice.elevenlabs_voice_id == "21m00Tcm4TlvDq8ikWAM"
+    assert cfg.voice.fallback_to_edge_tts is True
     assert cfg.script.min_beats == 8
     assert cfg.script.max_beats == 15
     assert cfg.kie.model == "veo3"

@@ -1,8 +1,28 @@
 voice:
-  provider: edge_tts
+  provider: elevenlabs           # tier-3 default; falls back to edge_tts if no key
   name: ar-EG-SalmaNeural
   rate: "+0%"
   pitch: "+0Hz"
+  elevenlabs_voice_id: jAAHNNqlbAX9iWjJPEtE   # default narrator voice (female)
+  elevenlabs_model: eleven_multilingual_v2
+  fallback_to_edge_tts: true
+  # Per-character routing: writer tags each beat with `speaker`, this map
+  # assigns the matching ElevenLabs voice ID. Unknown speakers fall back to
+  # `elevenlabs_voice_id` above. There is no lip sync — this just picks the
+  # right voice for the line being said over the matching clip.
+  character_voices:
+    mother: jAAHNNqlbAX9iWjJPEtE     # female (lemon mom, narrator pov)
+    grandmother: jAAHNNqlbAX9iWjJPEtE
+    wife: jAAHNNqlbAX9iWjJPEtE
+    daughter: jAAHNNqlbAX9iWjJPEtE
+    son: 127eIvt3Nz57jlNc8P9x        # male (strawberry son)
+    father: 127eIvt3Nz57jlNc8P9x
+    doctor: 127eIvt3Nz57jlNc8P9x
+    neighbor: 127eIvt3Nz57jlNc8P9x
+    friend: 127eIvt3Nz57jlNc8P9x     # male (blueberry friend, same age as son)
+    enemy: 127eIvt3Nz57jlNc8P9x      # male (dark grape soldier, menacing)
+    shadow: 127eIvt3Nz57jlNc8P9x     # male (son's dark alter-ego, deeper voice)
+    narrator: jAAHNNqlbAX9iWjJPEtE
 
 script:
   word_count_target: 320
@@ -45,3 +65,4 @@ kie:
   flux_model: flux-kontext-pro   # Kie.ai model identifier — also: flux-kontext-max
   flux_cost_per_image_usd: 0.05
   native_audio: true             # Veo speaks each beat's dialogue with native lip sync.
+                                 # Skips ElevenLabs. Set false to use the old text-to-speech path.
