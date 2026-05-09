@@ -56,7 +56,9 @@ def test_protected_endpoint_requires_authorization_header(client):
 
 def test_protected_endpoint_rejects_wrong_token(client):
     r = client.get("/runs", headers={"Authorization": "Bearer wrong"})
-    assert r.status_code == 403
+    # /runs is now guarded by require_user (T3); it treats an invalid
+    # bearer as 401 Unauthorized rather than 403 Forbidden.
+    assert r.status_code == 401
 
 
 def test_protected_endpoint_rejects_non_bearer_scheme(client):
@@ -456,7 +458,10 @@ def test_list_runs_empty_when_no_runs(client, auth):
 
 
 def test_list_runs_returns_summaries(client, auth, tmp_path: Path):
-    rd1 = _make_run_dir(tmp_path, "2026-05-05-A")
+    # T3: /runs is scoped per-user. The service-token fixture authenticates
+    # as User(id="admin"), so seeds need to live under out/admin/.
+    rd1 = tmp_path / "out" / "admin" / "2026-05-05-A"
+    rd1.mkdir(parents=True)
     (rd1 / "script.json").write_text(json.dumps({
         "title": "حسرة الأم", "theme": "folkloric",
         "global_setting": "x", "music_mood": "dread",
@@ -465,7 +470,8 @@ def test_list_runs_returns_summaries(client, auth, tmp_path: Path):
         "theme": "folkloric", "premise": "premise text",
     }, ensure_ascii=False))
 
-    rd2 = _make_run_dir(tmp_path, "2026-05-05-B")
+    rd2 = tmp_path / "out" / "admin" / "2026-05-05-B"
+    rd2.mkdir(parents=True)
     (rd2 / "script.json").write_text("{}")
     (rd2 / "final.mp4").write_bytes(b"x")
 
@@ -1765,3 +1771,26 @@ def test_get_script_returns_empty_character_descriptions_for_legacy(tmp_path, cl
     assert resp.status_code == 200
     body = resp.json()
     assert body["character_descriptions"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Per-user run isolation (Task 3 of B2 Supabase Auth)
+# ---------------------------------------------------------------------------
+
+def test_user_a_cannot_see_user_b_runs(monkeypatch, tmp_path, client_factory):
+    """A run created under one user_id must not appear in another user's listing."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    # Stage one run under "alice", one under "bob"
+    (tmp_path / "alice" / "run-1").mkdir(parents=True)
+    (tmp_path / "alice" / "run-1" / "manifest.json").write_text('{"theme":"a"}')
+    (tmp_path / "bob" / "run-2").mkdir(parents=True)
+    (tmp_path / "bob" / "run-2" / "manifest.json").write_text('{"theme":"b"}')
+
+    alice = client_factory(user_id="alice")
+    bob = client_factory(user_id="bob")
+
+    a_runs = alice.get("/runs").json()
+    b_runs = bob.get("/runs").json()
+
+    assert {r["id"] for r in a_runs} == {"run-1"}
+    assert {r["id"] for r in b_runs} == {"run-2"}

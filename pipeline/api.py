@@ -41,6 +41,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+from pipeline.auth import User, require_user
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_ROOT = REPO_ROOT / "out"
 RUNPY = REPO_ROOT / "run.py"
@@ -460,6 +462,11 @@ def _out_root() -> Path:
     return Path(os.environ.get("FACELESS_OUT_ROOT", DEFAULT_OUT_ROOT))
 
 
+def _user_runs_root(user: "User") -> Path:
+    """Per-user runs directory. All endpoints scope file reads/writes here."""
+    return _out_root() / user.id
+
+
 def _make_run_id() -> str:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
     base = _out_root() / ts
@@ -504,10 +511,10 @@ def healthz():
 @app.get(
     "/runs",
     response_model=list[RunSummary],
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def list_runs():
-    out = _out_root()
+def list_runs(user: User = Depends(require_user)):
+    out = _user_runs_root(user)
     if not out.exists():
         return []
     runs: list[RunSummary] = []

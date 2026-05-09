@@ -59,3 +59,42 @@ class FakeGemini:
 @pytest.fixture
 def fake_gemini():
     return FakeGemini()
+
+
+@pytest.fixture
+def client_factory():
+    """Returns a callable that builds a TestClient with a forced user_id.
+
+    The fixture overrides the require_user FastAPI dependency, so endpoints
+    behave as if the request came from the given user. Each client carries
+    its own user_id via a request header (X-Test-User-Id), so multiple
+    clients in the same test are independent. Cleared after the test.
+    """
+    from fastapi import Header
+    from fastapi.testclient import TestClient
+
+    from pipeline.api import app
+    from pipeline.auth import User, require_user
+
+    # Per-client identity is encoded in a header so multiple TestClients
+    # in the same test (e.g. alice + bob) don't clobber each other's
+    # overrides.
+    _users: dict[str, User] = {}
+
+    async def _resolve_user(x_test_user_id: str | None = Header(default=None)):
+        if x_test_user_id and x_test_user_id in _users:
+            return _users[x_test_user_id]
+        # Fall back to a default admin if the header isn't set — preserves
+        # the simplest single-client case.
+        return User(id="admin", email=None, role="user")
+
+    app.dependency_overrides[require_user] = _resolve_user
+
+    def _make(user_id: str = "admin", role: str = "user", email: str | None = None):
+        _users[user_id] = User(id=user_id, email=email, role=role)
+        client = TestClient(app)
+        client.headers.update({"X-Test-User-Id": user_id})
+        return client
+
+    yield _make
+    app.dependency_overrides.clear()
