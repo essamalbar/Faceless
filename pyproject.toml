@@ -15,6 +15,7 @@ dependencies = [
     "mflux>=0.4.0; platform_system == 'Darwin'",
     "ffmpeg-python>=0.2.0",
     "pyyaml>=6.0",
+    "pyjwt>=2.8",
     "Pillow>=10.0",
     "pydub>=0.25",
     "click>=8.1",
