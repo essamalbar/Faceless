@@ -93,3 +93,23 @@ def require_user(authorization: str | None = Header(None)) -> User:
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid token.",
     )
+
+
+def require_user_header_or_query(
+    authorization: str | None = Header(None),
+    token: str | None = None,
+) -> User:
+    """Like require_user, but also accepts ?token=... in the query string.
+
+    Used by /video and /thumbnail endpoints — Flutter's video_player on Chrome
+    web silently drops httpHeaders, so a query-string token is the standard
+    workaround for browser-driven media streaming.
+    """
+    if authorization and authorization.startswith("Bearer "):
+        return require_user(authorization=authorization)
+    if token:
+        return require_user(authorization=f"Bearer {token}")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Provide either Authorization: Bearer header or ?token=… query.",
+    )

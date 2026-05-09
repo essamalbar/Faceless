@@ -140,8 +140,8 @@ def test_create_run_spawns_pipeline_with_pause_flag(client, auth, tmp_path: Path
     assert "--pause-after-script" in args
     assert "--theme" in args and "folkloric" in args
     assert "--seed" in args
-    # run_dir was created under the mocked FACELESS_OUT_ROOT
-    assert captured["run_dir"].parent == tmp_path / "out"
+    # run_dir was created under the mocked FACELESS_OUT_ROOT, scoped per-user
+    assert captured["run_dir"].parent == tmp_path / "out" / "admin"
 
 
 TOKEN = "test-token-abc"
@@ -330,8 +330,8 @@ def test_create_from_script_writes_script_and_seed_no_llm(client, auth, tmp_path
     # NO subprocess spawned — the LLM never ran
     assert spawned == []
 
-    # Files on disk match input verbatim
-    out_root = Path(api_mod._out_root())  # uses FACELESS_OUT_ROOT
+    # Files on disk match input verbatim — scoped under the admin user
+    out_root = Path(api_mod._out_root()) / "admin"  # service token → admin
     rd = out_root / body_out["id"]
     seed = json.loads((rd / "seed.json").read_text(encoding="utf-8"))
     assert seed["theme"] == "folkloric"
@@ -400,7 +400,7 @@ def test_create_run_passes_max_beats(client, auth):
 # ---------------------------------------------------------------------------
 
 def _make_run_dir(tmp_path: Path, run_id: str = "2026-05-05-r1") -> Path:
-    p = tmp_path / "out" / run_id
+    p = tmp_path / "out" / "admin" / run_id
     p.mkdir(parents=True)
     return p
 
@@ -601,7 +601,7 @@ def test_safety_filter_error_hint_suggests_softer_wording(
 def test_cleanup_failed_removes_only_failed_runs(client, auth, tmp_path: Path):
     """Bulk-discards every run in `failed` status; leaves complete + running
     runs alone."""
-    out = tmp_path / "out"
+    out = tmp_path / "out" / "admin"
     # Failed run #1 (script + log error)
     rd1 = out / "2026-05-05-fail1"; rd1.mkdir(parents=True)
     (rd1 / "script.json").write_text("{}")
@@ -629,7 +629,7 @@ def test_cleanup_failed_skips_runs_with_live_subprocess(
 ):
     """Defensive: never bulk-delete a run whose pipeline is still running.
     The user can manually Discard those — bulk cleanup is for orphans."""
-    out = tmp_path / "out"
+    out = tmp_path / "out" / "admin"
     rd = out / "2026-05-05-live"; rd.mkdir(parents=True)
     (rd / "script.json").write_text("{}")
     (rd / "run.log").write_text("ERROR transient\n", encoding="utf-8")
@@ -644,7 +644,7 @@ def test_cleanup_failed_skips_runs_with_live_subprocess(
 def test_spend_summary_aggregates_kie_spend_logs(client, auth, tmp_path: Path):
     """The /spend endpoint sums kie_spend.json across all runs and returns
     per-run totals + grand total. Useful for monthly cost tracking."""
-    out = tmp_path / "out"
+    out = tmp_path / "out" / "admin"
     rd1 = out / "ep1"; rd1.mkdir(parents=True)
     (rd1 / "script.json").write_text(json.dumps({"title": "EP 1"}), encoding="utf-8")
     (rd1 / "kie_spend.json").write_text(json.dumps({
@@ -875,7 +875,9 @@ def test_get_video_query_token_must_match(client, tmp_path: Path):
     rd = _make_run_dir(tmp_path)
     (rd / "final.mp4").write_bytes(b"mp4-bytes")
     r = client.get(f"/runs/{rd.name}/video?token=wrong")
-    assert r.status_code == 403
+    # T4: require_user_header_or_query treats an invalid token as 401 Unauthorized
+    # (consistent with require_user) rather than the old 403 Forbidden.
+    assert r.status_code == 401
 
 
 def test_get_thumbnail_accepts_query_token(client, api_token, tmp_path: Path):
@@ -1200,7 +1202,7 @@ def test_edit_script_allowed_in_awaiting_veo_approval(tmp_path, client, auth):
     run_id = _create_run_in_awaiting_veo_approval(tmp_path)
     # Seed a script.json that has at least one beat (the helper from Task 4
     # may write a minimal one — we ensure it has real beats).
-    script_path = (tmp_path / "out" / run_id / "script.json")
+    script_path = (tmp_path / "out" / "admin" / run_id / "script.json")
     script_path.write_text(
         '{"title":"original","beats":[{"arabic":"old","english_motion":"x",'
         '"speaker":"mother","clip_duration_s":8.0}],"target_duration_s":8.0,'
@@ -1377,7 +1379,7 @@ def _create_run_in_awaiting_veo_approval(tmp_path: Path, run_id: str = "2026-05-
     - api_state.json with pid=null (no live process)
     - no clips/, no final.mp4
     Returns the run_id string."""
-    rd = tmp_path / "out" / run_id
+    rd = tmp_path / "out" / "admin" / run_id
     rd.mkdir(parents=True, exist_ok=True)
     (rd / "script.json").write_text(json.dumps({
         "title": "x", "theme": "folkloric", "global_setting": "g",
@@ -1445,7 +1447,7 @@ def test_character_sheet_reroll_deletes_and_respawns(tmp_path, client, auth):
     api_mod.set_spawn_fn(stub_spawn)
 
     run_id = _create_run_in_awaiting_veo_approval(tmp_path)
-    sheet = tmp_path / "out" / run_id / "character_sheet.png"
+    sheet = tmp_path / "out" / "admin" / run_id / "character_sheet.png"
     assert sheet.exists(), "test setup: helper must put a sheet on disk"
 
     resp = client.post(
@@ -1536,7 +1538,7 @@ def _create_run_with_script_json(tmp_path: Path) -> str:
     """Write a minimal run dir with a script.json (no character_name) and
     return the run_id. Uses the same out-root the `client` fixture points at."""
     run_id = "2026-05-06-cn-a"
-    rd = tmp_path / "out" / run_id
+    rd = tmp_path / "out" / "admin" / run_id
     rd.mkdir(parents=True, exist_ok=True)
     (rd / "script.json").write_text(json.dumps({
         "title": "t", "theme": "folkloric",
@@ -1555,7 +1557,7 @@ def test_get_script_returns_character_name(tmp_path, client):
     """When script.json carries character_name on each beat, the API serves it."""
     run_id = _create_run_with_script_json(tmp_path)
     # Overwrite the helper-written script with one that has character_name
-    sp = tmp_path / "out" / run_id / "script.json"
+    sp = tmp_path / "out" / "admin" / run_id / "script.json"
     sp.write_text(json.dumps({
         "title": "t", "theme": "folkloric",
         "global_setting": "x", "music_mood": "dread",
@@ -1691,7 +1693,7 @@ def test_create_freeform_run_writes_controls_file(tmp_path, client, monkeypatch)
                        headers={"Authorization": f"Bearer {TOKEN}"})
     assert resp.status_code == 201
     run_id = resp.json()["id"]
-    controls_path = tmp_path / run_id / "freeform_controls.json"
+    controls_path = tmp_path / "admin" / run_id / "freeform_controls.json"
     assert controls_path.exists(), "freeform_controls.json must be persisted on creation"
     persisted = _json.loads(controls_path.read_text(encoding="utf-8"))
     assert persisted["dialect"] == "syrian"
@@ -1739,7 +1741,7 @@ def test_get_script_returns_character_descriptions(tmp_path, client):
     """The /script endpoint propagates the character_descriptions field."""
     run_id = _create_run_with_script_json(tmp_path)
     import json as _json
-    sp = tmp_path / "out" / run_id / "script.json"
+    sp = tmp_path / "out" / "admin" / run_id / "script.json"
     sp.write_text(_json.dumps({
         "title": "t", "theme": "folkloric",
         "global_setting": "g", "music_mood": "dread",

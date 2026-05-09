@@ -28,20 +28,19 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Literal
 
 from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
-    Header,
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from pipeline.auth import User, require_user
+from pipeline.auth import User, require_user, require_user_header_or_query
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_ROOT = REPO_ROOT / "out"
@@ -53,64 +52,6 @@ COST_PER_SECOND_USD = 0.10        # Kie.ai's published Veo 3 Fast rate
 FLUX_COST_PER_RUN_USD = 0.05      # Single Flux character sheet per run
 BUDGET_BUFFER_RATIO = 1.30        # ~30 % cushion for retries / Kie billing 9.5s when we asked for 9
 BUDGET_BUFFER_FLAT_USD = 0.50     # Plus a small flat cushion for the Flux sheet
-
-
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-def _expected_token() -> str:
-    tok = os.environ.get("FACELESS_API_TOKEN", "").strip()
-    if not tok:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="FACELESS_API_TOKEN not configured on the server",
-        )
-    return tok
-
-
-def require_token(authorization: Annotated[str | None, Header()] = None) -> None:
-    """Bearer-token check. Mobile app sends `Authorization: Bearer <token>`."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="missing or malformed Authorization header",
-        )
-    presented = authorization.removeprefix("Bearer ").strip()
-    if presented != _expected_token():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="invalid token",
-        )
-
-
-def require_token_header_or_query(
-    authorization: Annotated[str | None, Header()] = None,
-    token: str | None = None,
-) -> None:
-    """Bearer auth that ALSO accepts `?token=...` in the query string.
-
-    Used by /video and /thumbnail endpoints. The Flutter `video_player`
-    plugin on Chrome web silently drops `httpHeaders` (only iOS/Android
-    honor them), so we have no way to attach an Authorization header to
-    the `<video>` element's request. A query-string token is the standard
-    workaround for browser-driven media streaming."""
-    expected = _expected_token()
-    presented: str | None = None
-    if authorization and authorization.startswith("Bearer "):
-        presented = authorization.removeprefix("Bearer ").strip()
-    elif token:
-        presented = token.strip()
-    if not presented:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="provide either Authorization: Bearer header or ?token=… query",
-        )
-    if presented != expected:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="invalid token",
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -480,15 +421,15 @@ def _make_run_id() -> str:
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
-def _run_dir(run_id: str) -> Path:
-    """Resolve a run id to its on-disk directory under FACELESS_OUT_ROOT.
+def _run_dir(run_id: str, user: "User") -> Path:
+    """Resolve a run id to its on-disk directory under the user's runs root.
 
     Strict allowlist — only the chars our generator emits (digits, letters,
     `-`, `_`). This blocks `..`, `/`, NUL, backslash, control chars, and
     anything else that could escape the out-root."""
     if not _RUN_ID_RE.fullmatch(run_id):
         raise HTTPException(400, "invalid run_id")
-    p = _out_root() / run_id
+    p = _user_runs_root(user) / run_id
     if not p.exists():
         raise HTTPException(404, f"run {run_id} not found")
     return p
@@ -656,7 +597,7 @@ def _get_splitter_llm():
 @app.post(
     "/runs/parse-script",
     response_model=ParseScriptResponse,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
 def parse_script(req: ParseScriptRequest):
     """Hybrid parser. Step 1: try the regex parser (fast, free, exact for
@@ -712,9 +653,9 @@ def parse_script(req: ParseScriptRequest):
     "/runs/from-script",
     response_model=RunSummary,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def create_run_from_script(req: CreateFromScriptRequest):
+def create_run_from_script(req: CreateFromScriptRequest, user: User = Depends(require_user)):
     """Create a run with a HAND-WRITTEN script (no LLM call). Use this when
     you already have the exact Arabic dialogue + scene descriptions and want
     Veo to render them verbatim — the writer/critique pass cannot rewrite
@@ -731,7 +672,7 @@ def create_run_from_script(req: CreateFromScriptRequest):
             raise HTTPException(400, f"beat {i}: english_motion is required")
 
     run_id = _make_run_id()
-    run_dir = _out_root() / run_id
+    run_dir = _user_runs_root(user) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     seed = {"theme": req.theme, "premise": req.premise or req.title}
@@ -781,9 +722,9 @@ def create_run_from_script(req: CreateFromScriptRequest):
     "/runs",
     response_model=RunSummary,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def create_run(req: CreateRunRequest):
+def create_run(req: CreateRunRequest, user: User = Depends(require_user)):
     """Legacy endpoint — proxies to the freeform pipeline with
     Sunstoriz-style defaults. Kept for back-compat with old API clients;
     new clients should call POST /runs/freeform directly with their
@@ -792,7 +733,7 @@ def create_run(req: CreateRunRequest):
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
 
     run_id = _make_run_id()
-    run_dir = _out_root() / run_id
+    run_dir = _user_runs_root(user) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # Persist freeform controls so reroll/approve survive (matches /runs/freeform)
@@ -855,9 +796,9 @@ class CreateFreeformRunRequest(BaseModel):
     "/runs/freeform",
     response_model=RunSummary,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def create_freeform_run(req: CreateFreeformRunRequest):
+def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(require_user)):
     """Spawn a new run using the freeform script writer (no Sunstoriz lock).
     Mirrors POST /runs but adds --freeform and --ff-* flags so the writer
     follows the user's controls (dialect, art style, character cast, ending
@@ -866,7 +807,7 @@ def create_freeform_run(req: CreateFreeformRunRequest):
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
 
     run_id = _make_run_id()
-    run_dir = _out_root() / run_id
+    run_dir = _user_runs_root(user) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     controls_doc = {
@@ -910,19 +851,19 @@ def create_freeform_run(req: CreateFreeformRunRequest):
 @app.get(
     "/runs/{run_id}",
     response_model=RunSummary,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def get_run(run_id: str):
-    return _summarize(_run_dir(run_id))
+def get_run(run_id: str, user: User = Depends(require_user)):
+    return _summarize(_run_dir(run_id, user))
 
 
 @app.get(
     "/runs/{run_id}/script",
     response_model=ScriptResponse,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def get_script(run_id: str):
-    run_dir = _run_dir(run_id)
+def get_script(run_id: str, user: User = Depends(require_user)):
+    run_dir = _run_dir(run_id, user)
     script_path = run_dir / "script.json"
     if not script_path.exists():
         raise HTTPException(409, "script not generated yet")
@@ -955,10 +896,10 @@ class ApprovalAck(BaseModel):
 @app.post(
     "/runs/{run_id}/approve",
     response_model=ApprovalAck,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def approve_run(run_id: str):
-    run_dir = _run_dir(run_id)
+def approve_run(run_id: str, user: User = Depends(require_user)):
+    run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_approval":
         raise HTTPException(
@@ -979,14 +920,14 @@ def approve_run(run_id: str):
 @app.post(
     "/runs/{run_id}/approve-veo",
     response_model=ApprovalAck,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def approve_veo_run(run_id: str):
+def approve_veo_run(run_id: str, user: User = Depends(require_user)):
     """Second approval gate. The user has reviewed the Flux character sheet
     and wants Veo to start spending. Only valid from awaiting_veo_approval.
     Spawns run.py --resume with NO pause flags so the pipeline runs Veo +
     captions + assemble end-to-end."""
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_veo_approval":
         raise HTTPException(
@@ -1008,13 +949,13 @@ def approve_veo_run(run_id: str):
 @app.post(
     "/runs/{run_id}/character-sheet/reroll",
     response_model=ApprovalAck,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def reroll_character_sheet(run_id: str):
+def reroll_character_sheet(run_id: str, user: User = Depends(require_user)):
     """Throw away the current Flux character sheet and regenerate it. Costs
     another $0.05 of Flux. Only valid from awaiting_veo_approval — by
     construction, you only reroll when you can SEE the sheet is wrong."""
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_veo_approval":
         raise HTTPException(
@@ -1038,14 +979,14 @@ def reroll_character_sheet(run_id: str):
 @app.post(
     "/runs/{run_id}/resume",
     response_model=ApprovalAck,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def resume_run(run_id: str):
+def resume_run(run_id: str, user: User = Depends(require_user)):
     """Force a resume regardless of current status — used after a transient
     failure (TLS reset, Kie 500, etc.). Idempotent: spawning while already
     running just produces a duplicate process which will see all artifacts
     on disk and exit quickly. We try to avoid that by checking PID first."""
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     if _process_alive(state.get("pid")):
         raise HTTPException(409, "a pipeline process is already running for this run")
@@ -1088,13 +1029,13 @@ class EditScriptRequest(BaseModel):
 @app.put(
     "/runs/{run_id}/script",
     response_model=ScriptResponse,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def edit_script(run_id: str, req: EditScriptRequest):
+def edit_script(run_id: str, req: EditScriptRequest, user: User = Depends(require_user)):
     """Replace beats in script.json. Only allowed when the run is paused
     awaiting human approval — once paid stages start the dialogue is locked
     into the (already-generated) Veo clips and editing it does nothing."""
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s not in ("awaiting_approval", "awaiting_veo_approval"):
         raise HTTPException(
@@ -1142,7 +1083,7 @@ def edit_script(run_id: str, req: EditScriptRequest):
         json.dumps(doc, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    return get_script(run_id)
+    return get_script(run_id, user)
 
 
 # ---------------------------------------------------------------------------
@@ -1187,15 +1128,15 @@ class CleanupAck(BaseModel):
 @app.post(
     "/runs/cleanup-failed",
     response_model=CleanupAck,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def cleanup_failed_runs():
+def cleanup_failed_runs(user: User = Depends(require_user)):
     """Bulk-discard every run currently in `failed` status. Saves the user
     from having to long-press each broken run individually.
 
     Skips any run with a live (non-zombie) subprocess — those need an
     explicit cancel first. Won't touch complete or in-progress runs."""
-    out = _out_root()
+    out = _user_runs_root(user)
     if not out.exists():
         return CleanupAck(deleted_run_ids=[])
     deleted: list[str] = []
@@ -1226,15 +1167,15 @@ class SpendSummary(BaseModel):
 @app.get(
     "/spend",
     response_model=SpendSummary,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def get_spend_summary():
+def get_spend_summary(user: User = Depends(require_user)):
     """Total Kie.ai (Veo + Flux) spend across all runs, plus per-run breakdown.
 
     Reads kie_spend.json artifacts written by the pipeline. Doesn't include
     ElevenLabs / LLM costs (those don't write spend logs). Useful for
     answering 'how much have I spent this month'."""
-    out = _out_root()
+    out = _user_runs_root(user)
     if not out.exists():
         return SpendSummary(total_usd=0.0, by_run=[], run_count=0)
     rows: list[dict] = []
@@ -1279,16 +1220,16 @@ def get_spend_summary():
 @app.delete(
     "/runs/{run_id}",
     response_model=DeleteAck,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def delete_run(run_id: str):
+def delete_run(run_id: str, user: User = Depends(require_user)):
     """Discard a run entirely.
 
     If a pipeline subprocess is still running, this stops it (SIGTERM,
     wait up to 5s, SIGKILL fallback) BEFORE removing the directory — the
     user just wants the run gone, they shouldn't have to call /cancel
     first and then race the OS to clean it up."""
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     pid = state.get("pid")
     if _process_alive(pid):
@@ -1311,9 +1252,9 @@ class RerollRequest(BaseModel):
 @app.post(
     "/runs/{run_id}/reroll",
     response_model=ApprovalAck,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def reroll_clips(run_id: str, req: RerollRequest):
+def reroll_clips(run_id: str, req: RerollRequest, user: User = Depends(require_user)):
     """Regenerate specific clips without losing the others.
 
     Use cases:
@@ -1325,7 +1266,7 @@ def reroll_clips(run_id: str, req: RerollRequest):
     them as "missing" and regenerates only those. Then spawns `run.py
     --resume --reroll-clips N,M,...` to do the work.
     """
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     if _process_alive(state.get("pid")):
         raise HTTPException(409, "a pipeline process is already running for this run")
@@ -1374,13 +1315,13 @@ def reroll_clips(run_id: str, req: RerollRequest):
 @app.post(
     "/runs/{run_id}/cancel",
     response_model=CancelAck,
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def cancel_run(run_id: str):
+def cancel_run(run_id: str, user: User = Depends(require_user)):
     """Stop a running pipeline subprocess. Waits for the process to actually
     exit (SIGTERM → wait → SIGKILL fallback) before returning, so a
     follow-up resume/reroll never races with a half-dead process."""
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     pid = state.get("pid")
     if not _process_alive(pid):
@@ -1391,9 +1332,9 @@ def cancel_run(run_id: str):
 
 
 @app.get("/runs/{run_id}/video",
-         dependencies=[Depends(require_token_header_or_query)])
-def get_video(run_id: str):
-    run_dir = _run_dir(run_id)
+         dependencies=[Depends(require_user_header_or_query)])
+def get_video(run_id: str, user: User = Depends(require_user_header_or_query)):
+    run_dir = _run_dir(run_id, user)
     p = run_dir / "final.mp4"
     if not p.exists():
         raise HTTPException(404, "final.mp4 not produced yet")
@@ -1405,10 +1346,10 @@ def get_video(run_id: str):
 
 
 @app.get("/runs/{run_id}/thumbnail",
-         dependencies=[Depends(require_token_header_or_query)])
-def get_thumbnail(run_id: str):
+         dependencies=[Depends(require_user_header_or_query)])
+def get_thumbnail(run_id: str, user: User = Depends(require_user_header_or_query)):
     """First frame as a JPG, extracted on demand (cached on disk)."""
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     cache = run_dir / "thumbnail.jpg"
     if cache.exists():
         return FileResponse(str(cache), media_type="image/jpeg")
@@ -1435,15 +1376,15 @@ def _extract_thumbnail(video_path: Path, out_path: Path) -> None:
 
 @app.get(
     "/runs/{run_id}/clips/{clip_index}/thumbnail",
-    dependencies=[Depends(require_token_header_or_query)],
+    dependencies=[Depends(require_user_header_or_query)],
 )
-def get_clip_thumbnail(run_id: str, clip_index: int):
+def get_clip_thumbnail(run_id: str, clip_index: int, user: User = Depends(require_user_header_or_query)):
     """First-frame JPG of a specific clip. Lets the run-detail screen
     show a small thumbnail next to each beat so the user can spot which
     clip rendered wrong without playing the full mp4. Cached on disk."""
     if clip_index < 1 or clip_index > 99:
         raise HTTPException(400, "clip_index out of range")
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     clip_path = run_dir / "clips" / f"{clip_index:02d}.mp4"
     if not clip_path.exists():
         raise HTTPException(404, "clip not generated yet")
@@ -1458,9 +1399,9 @@ def get_clip_thumbnail(run_id: str, clip_index: int):
 
 @app.get(
     "/runs/{run_id}/clips/{clip_index}/video",
-    dependencies=[Depends(require_token_header_or_query)],
+    dependencies=[Depends(require_user_header_or_query)],
 )
-def get_clip_video(run_id: str, clip_index: int):
+def get_clip_video(run_id: str, clip_index: int, user: User = Depends(require_user_header_or_query)):
     """Stream a single Veo clip's mp4. Mirrors /clips/{i}/thumbnail but for
     full-motion playback. Used by the run-detail screen's tap-to-play UX.
 
@@ -1469,7 +1410,7 @@ def get_clip_video(run_id: str, clip_index: int):
     /runs/{id}/video endpoint."""
     if clip_index < 1 or clip_index > 99:
         raise HTTPException(400, "clip_index out of range")
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     clip_path = run_dir / "clips" / f"{clip_index:02d}.mp4"
     if not clip_path.exists():
         raise HTTPException(404, "clip not generated yet")
@@ -1482,11 +1423,11 @@ def get_clip_video(run_id: str, clip_index: int):
 
 @app.get(
     "/runs/{run_id}/log",
-    dependencies=[Depends(require_token)],
+    dependencies=[Depends(require_user)],
 )
-def get_log(run_id: str, lines: int = 200):
+def get_log(run_id: str, lines: int = 200, user: User = Depends(require_user)):
     """Tail of the subprocess log — useful for showing the user what failed."""
-    run_dir = _run_dir(run_id)
+    run_dir = _run_dir(run_id, user)
     log_path = run_dir / "api_subprocess.log"
     if not log_path.exists():
         return Response(content="", media_type="text/plain")

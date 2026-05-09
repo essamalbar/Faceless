@@ -111,3 +111,31 @@ def test_require_user_503_when_neither_secret_set(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         require_user(authorization="Bearer anything")
     assert exc.value.status_code == 503
+
+
+def test_require_user_header_or_query_accepts_query_token(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
+            SUPABASE_JWT_SECRET=SECRET)
+    from pipeline.auth import require_user_header_or_query
+    user = require_user_header_or_query(authorization=None, token="svc-secret")
+    assert user.id == "admin"
+
+
+def test_require_user_header_or_query_accepts_header(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
+            SUPABASE_JWT_SECRET=SECRET)
+    from pipeline.auth import require_user_header_or_query
+    user = require_user_header_or_query(
+        authorization="Bearer svc-secret", token=None,
+    )
+    assert user.id == "admin"
+
+
+def test_require_user_header_or_query_401_when_neither(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
+            SUPABASE_JWT_SECRET=SECRET)
+    from pipeline.auth import require_user_header_or_query
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        require_user_header_or_query(authorization=None, token=None)
+    assert exc.value.status_code == 401
