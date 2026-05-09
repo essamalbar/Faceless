@@ -83,15 +83,16 @@ def _build_kie() -> KieClient:
     return KieClient()
 
 
-def _make_run_dir(out_root: Path) -> Path:
-    out_root.mkdir(parents=True, exist_ok=True)
+def _make_run_dir(out_root: Path, user_id: str = "admin") -> Path:
+    user_root = out_root / user_id
+    user_root.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d-%H%M")
-    run_dir = out_root / ts
+    run_dir = user_root / ts
     # Ensure uniqueness if two runs start in the same minute.
     suffix = 0
     while run_dir.exists():
         suffix += 1
-        run_dir = out_root / f"{ts}-{suffix}"
+        run_dir = user_root / f"{ts}-{suffix}"
     run_dir.mkdir()
     return run_dir
 
@@ -101,7 +102,7 @@ def _resolve_run_dir(args, out_root: Path) -> Path:
         return Path(args.resume).resolve()
     if args.run_dir:
         return Path(args.run_dir).resolve()
-    return _make_run_dir(out_root)
+    return _make_run_dir(out_root, user_id=args.user_id)
 
 
 def _stage_seed(args, gemini, log: RunLog, paths: RunPaths,
@@ -573,6 +574,12 @@ def main_with_args(argv: list[str]) -> int:
     p.add_argument("--seed", help="Arabic premise (manual mode)")
     p.add_argument("--resume", help="Resume an existing run dir")
     p.add_argument("--run-dir", help="Use a specific run dir (advanced)")
+    p.add_argument(
+        "--user-id",
+        default="admin",
+        help="User who owns this run. Defaults to 'admin' for CLI / cron use. "
+             "Runs land in out/<user_id>/<timestamp>/ unless --run-dir is given.",
+    )
     p.add_argument("--reroll-images", help="Comma-separated 1-based indices to regenerate")
     p.add_argument("--skip-images", action="store_true", help="Use placeholder images (dev only)")
     p.add_argument("--voice", help="Override Edge TTS voice (e.g. ar-EG-ShakirNeural)")

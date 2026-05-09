@@ -185,7 +185,10 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     assert code == 0
 
     # ---- 6) Verify artifacts ----
-    runs = [p for p in out_root.iterdir() if p.is_dir()]
+    # Default --user-id is "admin", so runs land under out_root/admin/<ts>/.
+    user_root = out_root / "admin"
+    assert user_root.is_dir()
+    runs = [p for p in user_root.iterdir() if p.is_dir()]
     assert len(runs) == 1
     run_dir = runs[0]
 
@@ -325,7 +328,10 @@ def test_run_shorts_pause_after_script_stops_before_paid_stages(
         "--config", str(config_path),
     ])
     assert code == 0
-    runs = [p for p in out_root.iterdir() if p.is_dir()]
+    # Default --user-id is "admin", so runs land under out_root/admin/<ts>/.
+    user_root = out_root / "admin"
+    assert user_root.is_dir()
+    runs = [p for p in user_root.iterdir() if p.is_dir()]
     assert len(runs) == 1
     run_dir = runs[0]
 
@@ -419,7 +425,10 @@ def test_run_shorts_skip_video_uses_placeholder_clips(
         "--config", str(config_path),
     ])
     assert code == 0
-    runs = [p for p in out_root.iterdir() if p.is_dir()]
+    # Default --user-id is "admin", so runs land under out_root/admin/<ts>/.
+    user_root = out_root / "admin"
+    assert user_root.is_dir()
+    runs = [p for p in user_root.iterdir() if p.is_dir()]
     run_dir = runs[0]
     assert (run_dir / "clips" / "01.mp4").exists()
     assert (run_dir / "clips" / "08.mp4").exists()
