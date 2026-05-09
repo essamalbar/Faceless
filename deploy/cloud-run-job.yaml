@@ -9,12 +9,12 @@ metadata:
     run.googleapis.com/launch-stage: BETA
 spec:
   template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/launch-stage: BETA
     spec:
       template:
-        metadata:
-          annotations:
-            run.googleapis.com/execution-environment: gen2
-            run.googleapis.com/launch-stage: BETA
         spec:
           serviceAccountName: faceless-runtime@${PROJECT_ID}.iam.gserviceaccount.com
           containers:

@@ -137,12 +137,41 @@ write_secret "elevenlabs-api-key" "${ELEVENLABS_API_KEY:-}"
 
 # ---------- 5. Build + push image ----------
 echo
-echo "[5/6] Building + pushing Docker image..."
+echo "[5/6] Building + pushing Docker image via Cloud Build..."
 echo "  -> image: ${IMAGE}"
-docker buildx build \
-  --platform linux/amd64 \
-  -t "${IMAGE}" \
-  --push \
+# Cloud Build runs the build server-side: uploads only the source tarball
+# (~24 MB with .gcloudignore), builds on a Google-hosted 8-vCPU machine,
+# then pushes to Artifact Registry over the internal network. Avoids the
+# gigabyte-scale upload of a local `docker buildx --push`, which silently
+# stalls on slow connections (mobile hotspot, hotel WiFi). Build APIs
+# need to be enabled and the default Compute SA needs Cloud Build perms;
+# both are handled in steps 0a/0b below.
+
+# 0a) Enable Cloud Build API (no-op if already on)
+gcloud services enable cloudbuild.googleapis.com \
+  --project="${PROJECT_ID}" --quiet
+
+# 0b) Grant Cloud Build perms to the default Compute SA
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" \
+  --format="value(projectNumber)")
+COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+for role in \
+    roles/cloudbuild.builds.builder \
+    roles/storage.objectViewer \
+    roles/artifactregistry.writer \
+    roles/logging.logWriter; do
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${COMPUTE_SA}" \
+    --role="${role}" \
+    --condition=None \
+    --quiet >/dev/null
+done
+
+gcloud builds submit \
+  --tag "${IMAGE}" \
+  --machine-type=e2-highcpu-8 \
+  --timeout=30m \
+  --project="${PROJECT_ID}" \
   .
 
 # ---------- 6. Deploy Service + Job ----------
@@ -183,9 +212,9 @@ echo "==================================================="
 echo " Deployment complete"
 echo
 echo "   API service URL:  ${SERVICE_URL}"
-echo "   Healthcheck:      ${SERVICE_URL}/healthz"
+echo "   Healthcheck:      ${SERVICE_URL}/health"
 echo
 echo " Test from your Mac:"
-echo "   curl ${SERVICE_URL}/healthz"
+echo "   curl ${SERVICE_URL}/health"
 echo "   curl -H \"Authorization: Bearer \$FACELESS_API_TOKEN\" ${SERVICE_URL}/runs"
 echo "==================================================="

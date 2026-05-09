@@ -7,8 +7,17 @@ PROJECT_ID="${GCP_PROJECT:-$(gcloud config get-value project)}"
 REGION="${GCP_REGION:-us-central1}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/faceless/faceless:latest"
 
-echo "-> Building + pushing ${IMAGE}"
-docker buildx build --platform linux/amd64 -t "${IMAGE}" --push .
+echo "-> Building + pushing ${IMAGE} via Cloud Build (server-side)"
+# Cloud Build uploads the source tarball (~24 MB) and builds the image inside
+# Google's datacenter on an 8-vCPU machine, then pushes to Artifact Registry
+# over the internal network. Avoids the gigabyte-scale upload of a local
+# `docker buildx --push`, which stalls on slow/mobile connections.
+gcloud builds submit \
+  --tag "${IMAGE}" \
+  --machine-type=e2-highcpu-8 \
+  --timeout=30m \
+  --project="${PROJECT_ID}" \
+  .
 
 echo "-> Updating Service to roll out the new image"
 gcloud run services update faceless-api \
@@ -25,4 +34,4 @@ URL=$(gcloud run services describe faceless-api \
   --format="value(status.url)")
 echo
 echo "Done. API at: $URL"
-echo "  curl $URL/healthz"
+echo "  curl $URL/health"

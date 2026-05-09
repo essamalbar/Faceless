@@ -496,6 +496,7 @@ def _cost_estimate_usd(beats: list[dict]) -> float:
 
 
 @app.get("/healthz")
+@app.get("/health")
 def healthz():
     return {"ok": True}
 

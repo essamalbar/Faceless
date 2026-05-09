@@ -67,8 +67,8 @@ This rebuilds the image and rolls out a new revision of both the Service and Job
 SERVICE_URL=$(gcloud run services describe faceless-api \
   --region=us-central1 --format="value(status.url)")
 
-# Liveness
-curl $SERVICE_URL/healthz
+# Liveness — use /health on Cloud Run (the LB reserves /healthz for itself)
+curl $SERVICE_URL/health
 
 # Authed list
 source .env
@@ -106,7 +106,8 @@ In a future stage we'll automate this via a Cloud Scheduler cron + Cloud Functio
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `gcloud run services replace` fails with "permission denied" | Missing `roles/run.developer` on your user | `gcloud projects add-iam-policy-binding <project> --member=user:you@example.com --role=roles/run.developer` |
-| Service deploys but `/healthz` returns 502 | Container crashed on startup — check logs | `gcloud run services logs read faceless-api --region=us-central1` |
+| Service deploys but `/health` returns 502 | Container crashed on startup — check logs | `gcloud run services logs read faceless-api --region=us-central1` |
+| `/healthz` returns 404 from Google's frontend | Cloud Run's load balancer reserves `/healthz` for its own probes | Use `/health` instead — the API exposes both paths and `/health` reaches the container |
 | API returns 503 "FACELESS_API_TOKEN not configured" | Secret not mounted | Verify the secret exists: `gcloud secrets versions list faceless-api-token` |
 | Job never starts when API calls it | API service account missing `roles/run.developer` | Re-run `setup-cloud-run.sh` (idempotent) |
 | `gcsfuse` mount fails | Volume mount only available with `gen2` execution environment | Already set in the YAML; if it errors, re-deploy |

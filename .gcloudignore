@@ -1,0 +1,66 @@
+# Files in this list are NOT uploaded to Cloud Build.
+# Keep upload tiny — only source the Dockerfile actually needs.
+
+# Python venvs / caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Flutter build output (huge, irrelevant to backend image)
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+ios/Pods/
+android/.gradle/
+macos/Pods/
+
+# Run artifacts (videos, images, audio — generated locally)
+out/
+runs/
+.cache/
+
+# IDE / system
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Git history (Cloud Build doesn't need it)
+.git/
+.gitignore
+
+# Local env / secrets — secrets come from Secret Manager, not the image
+.env
+.env.*
+*.crt
+*.key
+
+# Tailscale cert
+giless-macbook-pro.tail*
+
+# Docs / tests / scripts not needed in image
+docs/
+tests/
+test/
+
+# Flutter platform scaffolds + plugin symlinks (only `lib/` matters, and even
+# that isn't needed for the Python backend image — but keep it cheap)
+android/
+ios/
+linux/
+windows/
+macos/
+
+# Stray downloads at repo root
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.m4a
+!assets/music/**
+!assets/sfx/**
+

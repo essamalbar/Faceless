@@ -31,7 +31,19 @@ WORKDIR /app
 # Copy lockfiles first — dep-install layer is cached when only source changes
 COPY pyproject.toml uv.lock ./
 
-# Install only production deps (no dev extras like pytest)
+# Install only production deps (no dev extras like pytest).
+#
+# UV_TORCH_BACKEND=cpu tells uv to pull torch from PyTorch's CPU-only wheel
+# index instead of the default PyPI wheel that bundles ~5GB of NVIDIA CUDA
+# libraries. Cloud Run has no GPU — shipping CUDA wastes build time, image
+# size, and cold-start latency. Affects ONLY this Docker build; the local
+# Mac dev environment keeps its default (MPS-accelerated) torch via uv sync
+# without this env var.
+#
+# We drop --frozen because UV_TORCH_BACKEND requires re-resolving the torch
+# package source. The lockfile still pins everything else; the resolution
+# delta is just torch's wheel URL.
+ENV UV_TORCH_BACKEND=cpu
 RUN uv sync --frozen --no-dev
 
 # Copy application source

@@ -6,13 +6,24 @@ requires-python = ">=3.11"
 dependencies = [
     "google-genai>=0.3.0",
     "edge-tts>=6.1.0",
-    "mflux>=0.4.0",
+    # mflux is the Apple-Silicon MLX Flux runtime, used only by the
+    # long-form (slideshow) pipeline that generates Flux images locally.
+    # The shorts pipeline calls Flux via Kie.ai's API, so we don't need
+    # mflux on Linux (where it would pull ~5 GB of unnecessary CUDA libs
+    # via mlx-cuda transitively). pipeline/images.py lazy-imports mflux
+    # inside _get_flux(), so module-import doesn't break on Linux.
+    "mflux>=0.4.0; platform_system == 'Darwin'",
     "ffmpeg-python>=0.2.0",
     "pyyaml>=6.0",
     "Pillow>=10.0",
     "pydub>=0.25",
     "click>=8.1",
     "curl-cffi>=0.15.0",
+    # torch: declared as a direct dep so [tool.uv.sources] below can override
+    # its source per-platform (CPU wheel on Linux, default MPS wheel on macOS).
+    # openai-whisper requires torch transitively; without this declaration the
+    # source override would NOT apply.
+    "torch>=2.0",
     "openai-whisper>=20240930",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -32,3 +43,14 @@ pythonpath = ["."]
 
 [tool.uv]
 package = false
+
+# CPU-only PyTorch on Linux — Cloud Run / Oracle / Docker have no GPU,
+# and the default PyPI torch wheel ships ~5 GB of CUDA libraries we'll
+# never use. macOS keeps the default (MPS-accelerated) torch.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu", marker = "platform_system == 'Linux'" }
