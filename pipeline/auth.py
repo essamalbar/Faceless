@@ -51,3 +51,45 @@ def verify_supabase_jwt(token: str, secret: str) -> User:
         email=payload.get("email"),
         role="user",
     )
+
+
+def require_user(authorization: str | None = Header(None)) -> User:
+    """FastAPI dependency. Tries service token first, then Supabase JWT.
+
+    Returns a User on success; raises HTTPException(401) on auth failure or
+    HTTPException(503) if the server has neither auth mechanism configured.
+    """
+    service_token = os.environ.get("FACELESS_API_TOKEN")
+    jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
+
+    if not service_token and not jwt_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Auth not configured (FACELESS_API_TOKEN or "
+                   "SUPABASE_JWT_SECRET must be set).",
+        )
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or malformed Authorization header.",
+        )
+
+    token = authorization.removeprefix("Bearer ").strip()
+
+    if service_token and token == service_token:
+        return User(id="admin", email=None, role="service")
+
+    if jwt_secret:
+        try:
+            return verify_supabase_jwt(token, jwt_secret)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token: {e}",
+            ) from None
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid token.",
+    )

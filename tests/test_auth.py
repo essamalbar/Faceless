@@ -57,3 +57,57 @@ def test_verify_rejects_token_without_sub():
     token = _encode(payload)
     with pytest.raises(ValueError, match="sub"):
         verify_supabase_jwt(token, SECRET)
+
+
+from pipeline.auth import require_user
+
+
+def _setenv(monkeypatch, **kw):
+    for k, v in kw.items():
+        if v is None:
+            monkeypatch.delenv(k, raising=False)
+        else:
+            monkeypatch.setenv(k, v)
+
+
+def test_require_user_accepts_service_token(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
+            SUPABASE_JWT_SECRET=SECRET)
+    user = require_user(authorization="Bearer svc-secret")
+    assert user == User(id="admin", email=None, role="service")
+
+
+def test_require_user_accepts_supabase_jwt(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
+            SUPABASE_JWT_SECRET=SECRET)
+    token = _encode(GOOD_PAYLOAD)
+    user = require_user(authorization=f"Bearer {token}")
+    assert user.id == GOOD_PAYLOAD["sub"]
+    assert user.email == "alice@example.com"
+    assert user.role == "user"
+
+
+def test_require_user_rejects_no_header(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
+            SUPABASE_JWT_SECRET=SECRET)
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        require_user(authorization=None)
+    assert exc.value.status_code == 401
+
+
+def test_require_user_rejects_garbage_token(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
+            SUPABASE_JWT_SECRET=SECRET)
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        require_user(authorization="Bearer not-a-real-token")
+    assert exc.value.status_code == 401
+
+
+def test_require_user_503_when_neither_secret_set(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN=None, SUPABASE_JWT_SECRET=None)
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        require_user(authorization="Bearer anything")
+    assert exc.value.status_code == 503
