@@ -160,12 +160,19 @@ while [ $# -gt 0 ]; do
 done
 
 echo "[boot]  flutter run -d ${DEVICE}"
-echo "        URL:   ${TUNNEL_URL}"
-echo "        Token: ${FACELESS_API_TOKEN:0:8}…"
+echo "        URL:        ${TUNNEL_URL}"
+echo "        Service token: ${FACELESS_API_TOKEN:0:8}… (legacy/CLI fallback)"
+if [ -n "${SUPABASE_URL:-}" ] && [ -n "${SUPABASE_ANON_KEY:-}" ]; then
+  echo "        Supabase:   ${SUPABASE_URL} (sign-in screen will load)"
+else
+  echo "        Supabase:   not configured — set SUPABASE_URL + SUPABASE_ANON_KEY in .env"
+fi
 # `${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}` is a bash idiom for "expand the array
 # only if it has elements" — necessary under `set -u` since an empty array
 # is treated as unbound and would otherwise abort.
 exec flutter run -d "${DEVICE}" \
   --dart-define="FACELESS_API_URL=${TUNNEL_URL}" \
   --dart-define="FACELESS_API_TOKEN=${FACELESS_API_TOKEN}" \
+  --dart-define="SUPABASE_URL=${SUPABASE_URL:-}" \
+  --dart-define="SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}" \
   ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
