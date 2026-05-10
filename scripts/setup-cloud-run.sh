@@ -134,6 +134,7 @@ write_secret "faceless-api-token" "${FACELESS_API_TOKEN:-}"
 write_secret "anthropic-api-key" "${ANTHROPIC_API_KEY:-}"
 write_secret "kie-api-key" "${KIE_API_KEY:-}"
 write_secret "elevenlabs-api-key" "${ELEVENLABS_API_KEY:-}"
+write_secret "supabase-jwt-secret" "${SUPABASE_JWT_SECRET:-}"
 
 # ---------- 5. Build + push image ----------
 echo

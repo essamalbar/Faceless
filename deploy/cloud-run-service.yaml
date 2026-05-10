@@ -53,6 +53,13 @@ spec:
                 secretKeyRef:
                   name: kie-api-key
                   key: latest
+            - name: SUPABASE_URL
+              value: https://eorpqwvjbljsjlzvmvom.supabase.co
+            - name: SUPABASE_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: supabase-jwt-secret
+                  key: latest
           resources:
             limits:
               cpu: "1"
