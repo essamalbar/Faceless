@@ -1,11 +1,14 @@
 /// HTTP client for the Faceless Pipeline API.
 ///
-/// Reads base URL + bearer token from FacelessSettings (secure storage).
+/// Reads base URL from FacelessSettings (secure storage). The bearer token
+/// is the Supabase session JWT (preferred) or a legacy dart-define-baked
+/// token (fallback for dev/local-only mode).
 /// All endpoints except `/healthz` send `Authorization: Bearer <token>`.
 library;
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
 import 'settings.dart';
@@ -29,13 +32,26 @@ class FacelessApiClient {
   Future<Map<String, String>> _headers({bool authed = true}) async {
     final h = <String, String>{'Accept': 'application/json'};
     if (authed) {
-      final token = await _settings.token();
+      final token = await _resolveToken();
       if (token == null || token.isEmpty) {
-        throw FacelessApiException('API token not configured (open Settings)');
+        throw FacelessApiException('Not signed in');
       }
       h['Authorization'] = 'Bearer $token';
     }
     return h;
+  }
+
+  /// Returns the bearer token to send. Prefers the Supabase access token; falls
+  /// back to a settings-baked token only when Supabase isn't initialized (e.g.
+  /// dev mode without --dart-define values, or legacy local-only deployments).
+  Future<String?> _resolveToken() async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) return session.accessToken;
+    } catch (_) {
+      // Supabase not initialized — fall through to settings.
+    }
+    return _settings.tokenForLegacyMode();
   }
 
   Future<Uri> _uri(String path) async {
@@ -106,7 +122,7 @@ class FacelessApiClient {
   /// `Authorization: Bearer <t>` OR `?token=<t>`.
   Future<Uri> videoUrl(String runId) async {
     final base = await _settings.baseUrl();
-    final token = await _settings.token();
+    final token = await _resolveToken();
     if (base == null || token == null) {
       throw FacelessApiException('Not configured');
     }
@@ -115,7 +131,7 @@ class FacelessApiClient {
 
   Future<Uri> thumbnailUrl(String runId) async {
     final base = await _settings.baseUrl();
-    final token = await _settings.token();
+    final token = await _resolveToken();
     if (base == null || token == null) {
       throw FacelessApiException('Not configured');
     }
@@ -126,7 +142,7 @@ class FacelessApiClient {
   /// script panel so each beat shows what its rendered clip looks like.
   Future<Uri> clipThumbnailUrl(String runId, int clipIndex) async {
     final base = await _settings.baseUrl();
-    final token = await _settings.token();
+    final token = await _resolveToken();
     if (base == null || token == null) {
       throw FacelessApiException('Not configured');
     }
@@ -141,7 +157,7 @@ class FacelessApiClient {
   /// `httpHeaders` (same workaround as `videoUrl`).
   Future<Uri> clipVideoUrl(String runId, int clipIndex) async {
     final base = await _settings.baseUrl();
-    final token = await _settings.token();
+    final token = await _resolveToken();
     if (base == null || token == null) {
       throw FacelessApiException('Not configured');
     }

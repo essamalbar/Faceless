@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../api/client.dart';
 import '../api/settings.dart';
@@ -16,7 +17,6 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _settings = FacelessSettings();
   final _urlCtrl = TextEditingController();
-  final _tokenCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _loading = false;
   String? _testResult;
@@ -29,10 +29,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final url = await _settings.baseUrl();
-    final tok = await _settings.token();
     if (mounted) {
       _urlCtrl.text = url ?? '';
-      _tokenCtrl.text = tok ?? '';
       setState(() {});
     }
   }
@@ -49,15 +47,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // dart-define default, those bad URLs survived launcher updates and
     // manifested as "the app keeps trying the old Cloudflare URL even after
     // I switched to Tailscale". The Test button must be a pure read op.
-    final ephemeral = _EphemeralSettings(
-      baseUrl: _urlCtrl.text.trim(),
-      token: _tokenCtrl.text.trim(),
-    );
+    final ephemeral = _EphemeralSettings(baseUrl: _urlCtrl.text.trim());
     final client = FacelessApiClient(ephemeral);
     try {
-      final ok = await client.healthz();
-      if (!ok) throw Exception('healthz returned non-200');
-      await client.listRuns();   // verifies the bearer token works
+      // Cloud Run reserves /healthz at the LB so it never reaches FastAPI;
+      // exercise the real authenticated path instead.
+      await client.listRuns();
       setState(() => _testResult = '✓ Connected');
     } catch (e) {
       setState(() => _testResult = '✗ ${e.toString()}');
@@ -69,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    await _settings.save(baseUrl: _urlCtrl.text, token: _tokenCtrl.text);
+    await _settings.save(baseUrl: _urlCtrl.text);
     if (!mounted) return;
     Navigator.of(context).pop(true);
   }
@@ -80,10 +75,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Reset to launcher defaults?'),
         content: const Text(
-          'This clears your saved Server URL and API Token from the device. '
-          'The app will fall back to whatever the launcher script (run-app.sh) '
-          'baked in via --dart-define on the next launch. Use this when the '
-          'tunnel URL has changed and the saved value is stale.',
+          'This clears your saved Server URL from the device. The app will '
+          'fall back to whatever the launcher script (run-app.sh) baked in '
+          'via --dart-define on the next launch. Use this when the tunnel '
+          'URL has changed and the saved value is stale.',
         ),
         actions: [
           TextButton(
@@ -101,14 +96,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (yes != true || !mounted) return;
     await _settings.clear();
     if (!mounted) return;
-    // Reload to show the dart-define defaults if any
+    // Reload to show the dart-define default if any
     final url = await _settings.baseUrl();
-    final tok = await _settings.token();
     if (mounted) {
       _urlCtrl.text = url ?? '';
-      _tokenCtrl.text = tok ?? '';
       setState(() => _testResult = '✓ Reset — using launcher defaults');
     }
+  }
+
+  Future<void> _signOut() async {
+    try {
+      await Supabase.instance.client.auth.signOut();
+    } catch (_) {
+      // Supabase not initialized (legacy mode) — nothing to do.
+    }
+    // The auth-state stream in main.dart will route us back to LoginScreen.
+    if (mounted) Navigator.of(context).maybePop();
   }
 
   @override
@@ -133,8 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Text(
                         'First-time setup. Paste your Cloudflare Tunnel URL '
-                        '(or Mac LAN IP if on home WiFi) and the API token from '
-                        'your .env file.',
+                        '(or Mac LAN IP if on home WiFi).',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
@@ -152,22 +154,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return 'required';
                     if (!v.startsWith('http')) return 'must start with http:// or https://';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _tokenCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'API Token (FACELESS_API_TOKEN)',
-                    hintText: '64-char hex',
-                    border: OutlineInputBorder(),
-                  ),
-                  obscureText: true,
-                  autocorrect: false,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'required';
-                    if (v.trim().length < 16) return 'token looks too short';
                     return null;
                   },
                 ),
@@ -203,7 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ],
                 ),
-                if (FacelessConfig.hasBakedDefaults) ...[
+                if (FacelessConfig.apiUrl.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   const Divider(height: 1),
                   const SizedBox(height: 12),
@@ -220,7 +206,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: Text(
                       'Use this when the tunnel URL has changed. Clears '
-                      'the saved values; next launch will use whatever '
+                      'the saved value; next launch will use whatever '
                       'run-app.sh provides via --dart-define.',
                       style: TextStyle(
                         color: Theme.of(context)
@@ -232,6 +218,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Sign out'),
+                  onPressed: _loading ? null : _signOut,
+                ),
               ],
             ),
           ),
@@ -243,35 +235,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _urlCtrl.dispose();
-    _tokenCtrl.dispose();
     super.dispose();
   }
 }
 
 
 /// Drop-in `FacelessSettings` replacement for the Test Connection flow that
-/// keeps the URL/token in memory only. The Test button must NEVER write to
-/// the keychain — a failing test would otherwise persist bad credentials.
+/// keeps the URL in memory only. The Test button must NEVER write to the
+/// keychain — a failing test would otherwise persist bad credentials.
 class _EphemeralSettings implements FacelessSettings {
   final String _baseUrl;
-  final String _token;
-  _EphemeralSettings({required String baseUrl, required String token})
-      : _baseUrl = baseUrl,
-        _token = token;
+  _EphemeralSettings({required String baseUrl}) : _baseUrl = baseUrl;
 
   @override
   Future<String?> baseUrl() async => _baseUrl;
   @override
-  Future<String?> token() async => _token;
+  Future<String?> tokenForLegacyMode() async =>
+      FacelessConfig.apiToken.isNotEmpty ? FacelessConfig.apiToken : null;
   @override
-  Future<bool> isConfigured() async =>
-      _baseUrl.isNotEmpty && _token.isNotEmpty;
+  Future<bool> isConfigured() async => _baseUrl.isNotEmpty;
   @override
   Future<bool> isUsingBakedDefaults() async => false;
 
   // Writes are no-ops — that's the whole point.
   @override
-  Future<void> save({required String baseUrl, required String token}) async {}
+  Future<void> save({required String baseUrl}) async {}
   @override
   Future<void> clear() async {}
 }

@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
 import '../api/settings.dart';
+import '../config.dart';
 import '../theme.dart';
 import 'edit_script_screen.dart';
 import 'log_viewer_screen.dart';
@@ -973,7 +975,7 @@ class _ClipThumbBoxState extends State<_ClipThumbBox> {
   Future<void> _resolve() async {
     final settings = FacelessSettings();
     final base = await settings.baseUrl();
-    final token = await settings.token();
+    final token = _currentBearerToken();
     if (base == null || token == null) return;
     final cleaned =
         base.endsWith('/') ? base.substring(0, base.length - 1) : base;
@@ -983,6 +985,20 @@ class _ClipThumbBoxState extends State<_ClipThumbBox> {
             '$cleaned/runs/${widget.runId}/clips/${widget.clipIndex}/thumbnail?token=$token';
       });
     }
+  }
+
+  /// Supabase JWT first, legacy dart-define token as fallback. Mirrors the
+  /// resolution order in FacelessApiClient.
+  String? _currentBearerToken() {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) return session.accessToken;
+    } catch (_) {
+      // Supabase not initialized — fall through.
+    }
+    return FacelessConfig.apiToken.isNotEmpty
+        ? FacelessConfig.apiToken
+        : null;
   }
 
   @override

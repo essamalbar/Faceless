@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
 import '../api/settings.dart';
+import '../config.dart';
 import '../theme.dart';
 import 'cost_screen.dart';
 import 'new_run_screen.dart';
@@ -38,13 +40,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadAndRefresh() async {
     _baseUrl = await _settings.baseUrl();
-    _token = await _settings.token();
+    _token = _currentBearerToken();
     if (mounted) {
       setState(() {
         _runsFuture = _client.listRuns();
       });
     }
     _fetchSpend();
+  }
+
+  /// Bearer token for embedding in `<img>`/`<video>` URLs (browsers can't
+  /// attach Authorization headers to those). Mirrors the resolution order
+  /// in FacelessApiClient: Supabase session JWT first, legacy dart-define
+  /// token as fallback.
+  String? _currentBearerToken() {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) return session.accessToken;
+    } catch (_) {
+      // Supabase not initialized — fall through.
+    }
+    return FacelessConfig.apiToken.isNotEmpty
+        ? FacelessConfig.apiToken
+        : null;
   }
 
   Future<void> _fetchSpend() async {
