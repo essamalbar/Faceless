@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api/settings.dart';
 import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
 import 'theme.dart';
 
@@ -29,7 +30,26 @@ class FacelessApp extends StatelessWidget {
       title: 'Faceless',
       debugShowCheckedModeBanner: false,
       theme: FacelessTheme.build(),
-      home: const _Bootstrap(),
+      home: Builder(
+        builder: (context) {
+          try {
+            // Smoke-test that Supabase is initialized. If it throws, fall back.
+            Supabase.instance.client;
+          } catch (_) {
+            return const _Bootstrap();
+          }
+          return StreamBuilder<AuthState>(
+            stream: Supabase.instance.client.auth.onAuthStateChange,
+            builder: (context, snap) {
+              final session = Supabase.instance.client.auth.currentSession;
+              if (session == null) {
+                return const LoginScreen();
+              }
+              return const _Bootstrap();
+            },
+          );
+        },
+      ),
     );
   }
 }
