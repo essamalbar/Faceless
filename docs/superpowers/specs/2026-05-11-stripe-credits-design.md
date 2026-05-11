@@ -22,7 +22,7 @@ there's billing.
 |---|---|---|
 | Credit unit | **1 credit = 1 second of Veo video** | Matches Kie wholesale cost (~$0.10/sec). User sees "this 30-sec video costs 30 credits" — instantly understandable. |
 | Pricing model | **Subscription + top-up packs** | Subscription captures regulars, top-ups catch overage and one-offs. |
-| Free trial | **30 credits at signup** | One ~30-sec test video. Cost to us: ~$3 worst case. |
+| Free trial | **60 credits at signup** | Two 30-sec videos worth. Generous enough to survive one Veo content-filter rejection. Cost to us: ~$6 worst case per signup, fine as acquisition cost. |
 | Deduction timing | **Per-clip at Veo submit, refund on failure** | Failed clips never charge. Charging upfront would refund-storm; charging on completion would race. |
 | Balance store | **Supabase Postgres**, append-only ledger | Free tier already provisioned. Append-only avoids race conditions; balance = `SUM(amount)`. |
 | Stripe surfaces | **Hosted Checkout + Customer Portal** | We don't build payment UIs. Both are PCI-compliant by default and handle EU/MENA tax. |
@@ -33,7 +33,7 @@ there's billing.
 
 | Plan | Price | Credits | $/credit | ~30s videos | Cost to us (Kie @ $0.10/s) |
 |---|---|---|---|---|---|
-| Free trial | $0 (one-time) | 30 | — | 1 | $3 |
+| Free trial | $0 (one-time) | 60 | — | 2 | $6 |
 | Starter | $9 / mo | 60 / mo | $0.15 | 1-2 | $6/mo gross → $3/mo profit |
 | Creator | $29 / mo | 250 / mo | $0.12 | 5-8 | $25/mo gross → $4/mo profit |
 | Pro | $79 / mo | 800 / mo | $0.10 | 15-25 | $80/mo cost → break-even (loss leader for high-volume creators) |
@@ -179,7 +179,7 @@ The service role bypasses RLS so the backend can write on behalf of users.
 The credit business logic — sits on top of `db.py`:
 
 ```python
-SIGNUP_GRANT = 30
+SIGNUP_GRANT = 60
 PLAN_GRANTS = {'starter': 60, 'creator': 250, 'pro': 800}
 TOPUP_PACKS = {'topup_30': 30, 'topup_100': 100, 'topup_300': 300}
 
@@ -416,7 +416,7 @@ on cancellation.
 
 ## Acceptance criteria
 
-1. New user signs up via the Flutter app → on first API call, 30 credits land in their ledger.
+1. New user signs up via the Flutter app → on first API call, 60 credits land in their ledger.
 2. User generates a 30-second video → 30 credits deducted (after Veo success); UI balance shows -30.
 3. User generates a video that fails on clip 4 of 6 → 30 credits charged (3 successful × 10s), 30 refunded (3 failed × 10s), net 0 change for the failed half.
 4. User runs out of credits → POST `/runs/freeform` returns 402; Flutter shows the paywall dialog.
