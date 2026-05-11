@@ -29,6 +29,7 @@ import pipeline.align
 import pipeline.character_sheet
 import pipeline.video as _pipeline_video
 from pipeline.assemble import assemble_shorts_video, assemble_video
+from pipeline.auth import User as _User
 from pipeline.captions import generate_captions
 from pipeline.config import Config, load_config
 from pipeline.images import generate_images
@@ -496,6 +497,9 @@ def _stage_video_chained(
         reroll = [int(x) for x in args.reroll_clips.split(",")]
     max_spend = args.max_spend if args.max_spend is not None else cfg.kie.max_spend_usd
     client = _build_kie()
+    role = "service" if args.user_id == "admin" else "user"
+    user = _User(id=args.user_id, email=None, role=role)
+    run_id = paths.root.name  # the run dir's name = the run_id
     _pipeline_video.generate_clips_chained(
         client=client,
         script=script,
@@ -514,6 +518,8 @@ def _stage_video_chained(
         character_template=character_template,
         dialect=dialect,
         character_descriptions=script.character_descriptions or None,
+        user=user,
+        run_id=run_id,
     )
 
 

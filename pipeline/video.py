@@ -10,13 +10,59 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 
 import requests
 
+from pipeline import credits as _credits
+from pipeline.auth import User as _User
 from pipeline.kie import KieClient, generate_clip, submit_and_wait_with_retry
 from pipeline.types import Beat, Script
+
+
+def _charge_and_submit_clip(
+    *,
+    user: "_User",
+    run_id: str,
+    beat,
+    clip_index: int,
+    submit_fn,
+):
+    """Deduct credits for one clip, submit to Veo, refund on failure.
+
+    `beat` can be a dataclass (with `.clip_duration_s`) or a dict
+    (`['clip_duration_s']`) so the same helper works from tests + production.
+    Charge = ceil(clip_duration_s) to match Kie's billing ("9.5s billed as 10s").
+
+    `submit_fn(beat, *, clip_index)` is the actual Veo submission — passed in
+    so this function is independently testable without hitting Kie. Raises
+    propagate after a refund is recorded.
+    """
+    duration = (
+        beat.clip_duration_s if hasattr(beat, "clip_duration_s")
+        else float(beat.get("clip_duration_s", 8.0))
+    )
+    seconds = math.ceil(float(duration))
+    # Resolve via the module so pytest monkeypatch.setattr("pipeline.credits.X")
+    # is honored both from tests and from production callers.
+    _credits.check_or_deduct(
+        user,
+        amount=seconds,
+        run_id=run_id,
+        reason=f"clip {clip_index + 1} ({seconds}s)",
+    )
+    try:
+        return submit_fn(beat, clip_index=clip_index)
+    except Exception:
+        _credits.refund(
+            user,
+            amount=seconds,
+            run_id=run_id,
+            reason=f"clip {clip_index + 1} failed",
+        )
+        raise
 
 # Style suffix appended to every Veo prompt for visual consistency across clips.
 # Veo on Kie.ai does NOT accept a separate negative_prompt — guidance about what
@@ -444,6 +490,8 @@ def generate_clips_chained(
     character_template: str | None = None,
     dialect: str | None = None,
     character_descriptions: dict[str, str] | None = None,
+    user: "_User | None" = None,
+    run_id: str = "",
 ) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
@@ -503,19 +551,41 @@ def generate_clips_chained(
         if prev_last_frame_url:
             image_urls.append(prev_last_frame_url)
 
-        url = submit_and_wait_with_retry(
-            client,
-            submit_kwargs={
-                "prompt": prompt,
-                "model": model,
-                "aspect_ratio": aspect_ratio,
-                "generation_type": "REFERENCE_2_VIDEO",
-                "image_urls": image_urls,
-                "duration_s": beat.clip_duration_s,
-            },
-            poll_interval_s=poll_interval_s,
-            timeout_s=poll_timeout_s,
-        )
+        if user is not None:
+            def _do_submit(b, *, clip_index):
+                return submit_and_wait_with_retry(
+                    client,
+                    submit_kwargs={
+                        "prompt": prompt,
+                        "model": model,
+                        "aspect_ratio": aspect_ratio,
+                        "generation_type": "REFERENCE_2_VIDEO",
+                        "image_urls": image_urls,
+                        "duration_s": b.clip_duration_s,
+                    },
+                    poll_interval_s=poll_interval_s,
+                    timeout_s=poll_timeout_s,
+                )
+            url = _charge_and_submit_clip(
+                user=user, run_id=run_id, beat=beat, clip_index=i,
+                submit_fn=_do_submit,
+            )
+        else:
+            # Legacy path — no credit accounting (used by CLI without --user-id
+            # when run.py doesn't pass user= to keep backwards compat).
+            url = submit_and_wait_with_retry(
+                client,
+                submit_kwargs={
+                    "prompt": prompt,
+                    "model": model,
+                    "aspect_ratio": aspect_ratio,
+                    "generation_type": "REFERENCE_2_VIDEO",
+                    "image_urls": image_urls,
+                    "duration_s": beat.clip_duration_s,
+                },
+                poll_interval_s=poll_interval_s,
+                timeout_s=poll_timeout_s,
+            )
         client.download(url, out_path)
         # Move moov atom to the front so HTML5 players can stream progressively
         # instead of waiting for the full file. Silent no-op on failure.
