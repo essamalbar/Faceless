@@ -37,6 +37,7 @@ dependencies:
   intl: ^0.20.0                         # date formatting
   cached_network_image: ^3.4.1          # thumbnails with HTTP headers
   supabase_flutter: ^2.5.0              # Supabase auth + client
+  url_launcher: ^6.3.0                  # opens Stripe-hosted URLs (Checkout / Portal)
 
 dev_dependencies:
   flutter_test:
