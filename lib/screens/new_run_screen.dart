@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../theme.dart';
+import '../widgets/paywall_dialog.dart';
 
 /// Two modes:
 ///   - **AI Generate**: theme + premise + controls → AI generates the full
@@ -138,6 +139,11 @@ class _AiGenerateTabState extends State<_AiGenerateTab> {
       );
       if (!mounted) return;
       Navigator.of(context).pop<RunSummary?>(run);
+    } on InsufficientCreditsException catch (e) {
+      if (mounted) {
+        setState(() => _submitting = false);
+        await PaywallDialog.show(context, balance: e.balance, required: e.required);
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -425,6 +431,11 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
       );
       if (!mounted) return;
       Navigator.of(context).pop<RunSummary?>(run);
+    } on InsufficientCreditsException catch (e) {
+      if (mounted) {
+        setState(() => _submitting = false);
+        await PaywallDialog.show(context, balance: e.balance, required: e.required);
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();
