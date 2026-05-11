@@ -2039,3 +2039,32 @@ def test_stripe_webhook_rejects_bad_signature(monkeypatch):
     c = TestClient(app)
     r = c.post("/stripe/webhook", content=b"{}", headers={"stripe-signature": "wrong"})
     assert r.status_code == 400
+
+
+def test_billing_get_endpoints_bypass_db_for_service_tokens(client_factory, monkeypatch):
+    """Service tokens (admin / CLI) have id='admin' which isn't a UUID — querying
+    Postgres would 500 with 22P02. The 3 GET billing endpoints must short-circuit
+    on role='service' BEFORE hitting the DB."""
+    db_was_called = []
+    monkeypatch.setattr(
+        "pipeline.db.get_balance",
+        lambda uid: db_was_called.append(("balance", uid)) or 99,
+    )
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: db_was_called.append(("profile", uid)) or None,
+    )
+    monkeypatch.setattr(
+        "pipeline.db.list_transactions",
+        lambda uid, limit: db_was_called.append(("txs", uid)) or [],
+    )
+
+    c = client_factory(user_id="admin", role="service")
+    assert c.get("/billing/balance").json() == {"balance": 0}
+    assert c.get("/billing/plan").json() == {
+        "plan": "free", "current_period_end": None, "balance": 0,
+    }
+    assert c.get("/billing/transactions").json() == []
+
+    # Critical: the DB was NEVER called with the synthetic "admin" id.
+    assert db_was_called == []

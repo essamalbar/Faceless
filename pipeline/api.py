@@ -584,6 +584,12 @@ def list_runs(user: User = Depends(require_user)):
     dependencies=[Depends(require_user)],
 )
 def get_balance_endpoint(user: User = Depends(require_user)):
+    # Service tokens (CLI / admin) aren't real billing customers and their
+    # user_id ("admin") isn't a UUID — querying Postgres would 500 with 22P02.
+    # Skip the DB and report 0; the worker's service-token bypass means
+    # the admin never actually spends anything anyway.
+    if user.role == "service":
+        return BalanceResponse(balance=0)
     from pipeline.db import get_balance
     return BalanceResponse(balance=get_balance(user.id))
 
@@ -594,6 +600,8 @@ def get_balance_endpoint(user: User = Depends(require_user)):
     dependencies=[Depends(require_user)],
 )
 def get_plan_endpoint(user: User = Depends(require_user)):
+    if user.role == "service":
+        return PlanResponse(plan="free", current_period_end=None, balance=0)
     from pipeline.db import get_balance, get_user_profile
     profile = get_user_profile(user.id)
     return PlanResponse(
@@ -612,6 +620,8 @@ def get_transactions_endpoint(
     user: User = Depends(require_user),
     limit: int = 50,
 ):
+    if user.role == "service":
+        return []
     from pipeline.db import list_transactions
     rows = list_transactions(user.id, limit=min(limit, 200))
     return [
