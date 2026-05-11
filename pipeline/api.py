@@ -34,6 +34,7 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
+    Request,
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
@@ -672,6 +673,24 @@ def billing_portal(req: PortalRequest, user: User = Depends(require_user)):
     from pipeline.stripe_billing import create_portal_session
     url = create_portal_session(user, req.return_url)
     return CheckoutResponse(url=url)
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Stripe → us. No bearer auth; signature is the proof.
+
+    Returns 200 even for ignored event types so Stripe doesn't keep retrying;
+    400 only for bad signatures (treat as malicious / misconfigured).
+    """
+    raw = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+    from pipeline.stripe_billing import handle_webhook
+    import stripe as _stripe
+    try:
+        outcome = handle_webhook(raw, signature)
+    except _stripe.SignatureVerificationError:
+        raise HTTPException(400, "invalid signature")
+    return {"received": True, "handled": outcome.handled, "note": outcome.note}
 
 
 def _derive_progress(run_dir: Path, status: str) -> RunProgress | None:

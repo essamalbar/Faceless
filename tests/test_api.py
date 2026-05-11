@@ -1999,3 +1999,43 @@ def test_billing_endpoints_reject_service_tokens(client_factory):
     ]:
         r = c.post(path, json=body)
         assert r.status_code == 400, f"{path} should reject service token"
+
+
+def test_stripe_webhook_calls_handler(monkeypatch):
+    """The webhook endpoint forwards raw bytes + signature header to the
+    handler, with NO bearer auth required."""
+    captured = {}
+    from pipeline.stripe_billing import WebhookOutcome
+    def fake_handle(raw, sig):
+        captured["raw"] = raw
+        captured["sig"] = sig
+        return WebhookOutcome(event_type="checkout.session.completed",
+                              handled=True, note="ok")
+    monkeypatch.setattr("pipeline.stripe_billing.handle_webhook", fake_handle)
+    # No client_factory / bearer here — webhook is unauthenticated.
+    from fastapi.testclient import TestClient
+    from pipeline.api import app
+    c = TestClient(app)
+    r = c.post("/stripe/webhook",
+               content=b'{"event":"x"}',
+               headers={"stripe-signature": "sig=test"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["received"] is True
+    assert body["handled"] is True
+    assert captured["raw"] == b'{"event":"x"}'
+    assert captured["sig"] == "sig=test"
+
+
+def test_stripe_webhook_rejects_bad_signature(monkeypatch):
+    """Bad signature → 400. Stripe will retry, but at that point it's
+    clearly misconfigured or being spoofed."""
+    import stripe
+    def fake_handle(raw, sig):
+        raise stripe.SignatureVerificationError("bad sig", sig)
+    monkeypatch.setattr("pipeline.stripe_billing.handle_webhook", fake_handle)
+    from fastapi.testclient import TestClient
+    from pipeline.api import app
+    c = TestClient(app)
+    r = c.post("/stripe/webhook", content=b"{}", headers={"stripe-signature": "wrong"})
+    assert r.status_code == 400
