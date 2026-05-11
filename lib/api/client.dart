@@ -22,6 +22,13 @@ class FacelessApiException implements Exception {
       status == null ? 'FacelessApiError: $message' : 'FacelessApiError $status: $message';
 }
 
+class InsufficientCreditsException extends FacelessApiException {
+  final int balance;
+  final int required;
+  InsufficientCreditsException({required this.balance, required this.required})
+      : super('Insufficient credits: have $balance, need $required', status: 402);
+}
+
 class FacelessApiClient {
   final FacelessSettings _settings;
   final http.Client _http;
@@ -64,6 +71,25 @@ class FacelessApiClient {
   }
 
   T _parse<T>(http.Response r, T Function(dynamic) decode) {
+    // Special case: 402 with a structured insufficient_credits detail.
+    // Surface as a typed exception so the UI can route to the paywall.
+    if (r.statusCode == 402) {
+      try {
+        final body = jsonDecode(r.body);
+        final detailMap = body is Map ? body['detail'] : null;
+        if (detailMap is Map && detailMap['code'] == 'insufficient_credits') {
+          throw InsufficientCreditsException(
+            balance: (detailMap['balance'] ?? 0) as int,
+            required: (detailMap['required'] ?? 0) as int,
+          );
+        }
+      } on InsufficientCreditsException {
+        rethrow;
+      } catch (_) {
+        // jsonDecode failed or shape wasn't what we expected — fall through to generic.
+      }
+    }
+
     if (r.statusCode >= 400) {
       String detail;
       try {
@@ -353,6 +379,63 @@ class FacelessApiClient {
     if (r.statusCode >= 400) {
       throw FacelessApiException(r.body, status: r.statusCode);
     }
+  }
+
+  // ---------- billing ----------
+
+  Future<Balance> getBalance() async {
+    final r = await _http.get(await _uri('/billing/balance'), headers: await _headers());
+    return _parse(r, (j) => Balance.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<PlanInfo> getPlan() async {
+    final r = await _http.get(await _uri('/billing/plan'), headers: await _headers());
+    return _parse(r, (j) => PlanInfo.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<List<CreditTx>> getTransactions({int limit = 50}) async {
+    final r = await _http.get(
+      await _uri('/billing/transactions?limit=$limit'),
+      headers: await _headers(),
+    );
+    return _parse(r, (j) => (j as List)
+        .map((x) => CreditTx.fromJson(x as Map<String, dynamic>))
+        .toList());
+  }
+
+  Future<String> createSubscriptionCheckout({
+    required String plan,
+    required String successUrl,
+    required String cancelUrl,
+  }) async {
+    final r = await _http.post(
+      await _uri('/billing/checkout-subscription'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'plan': plan, 'success_url': successUrl, 'cancel_url': cancelUrl}),
+    );
+    return _parse(r, (j) => (j as Map)['url'] as String);
+  }
+
+  Future<String> createTopupCheckout({
+    required String pack,
+    required String successUrl,
+    required String cancelUrl,
+  }) async {
+    final r = await _http.post(
+      await _uri('/billing/checkout-topup'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'pack': pack, 'success_url': successUrl, 'cancel_url': cancelUrl}),
+    );
+    return _parse(r, (j) => (j as Map)['url'] as String);
+  }
+
+  Future<String> createPortalSession({required String returnUrl}) async {
+    final r = await _http.post(
+      await _uri('/billing/portal'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'return_url': returnUrl}),
+    );
+    return _parse(r, (j) => (j as Map)['url'] as String);
   }
 
   void close() => _http.close();

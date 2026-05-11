@@ -245,3 +245,46 @@ class ApprovalAck {
         startedPaidStages: j['started_paid_stages'] as bool? ?? false,
       );
 }
+
+class Balance {
+  final int balance;
+  Balance({required this.balance});
+  factory Balance.fromJson(Map<String, dynamic> j) => Balance(balance: j['balance'] as int);
+}
+
+class PlanInfo {
+  final String plan;            // 'free' | 'starter' | 'creator' | 'pro'
+  final String? currentPeriodEnd;
+  final int balance;
+  PlanInfo({required this.plan, required this.currentPeriodEnd, required this.balance});
+  factory PlanInfo.fromJson(Map<String, dynamic> j) => PlanInfo(
+        plan: j['plan'] as String,
+        currentPeriodEnd: j['current_period_end'] as String?,
+        balance: j['balance'] as int,
+      );
+}
+
+class CreditTx {
+  final String id;
+  final int amount;
+  final String kind;
+  final String? referenceId;
+  final String? description;
+  final String createdAt;
+  CreditTx({
+    required this.id,
+    required this.amount,
+    required this.kind,
+    this.referenceId,
+    this.description,
+    required this.createdAt,
+  });
+  factory CreditTx.fromJson(Map<String, dynamic> j) => CreditTx(
+        id: j['id'] as String,
+        amount: j['amount'] as int,
+        kind: j['kind'] as String,
+        referenceId: j['reference_id'] as String?,
+        description: j['description'] as String?,
+        createdAt: j['created_at'] as String,
+      );
+}
