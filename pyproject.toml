@@ -24,6 +24,10 @@ dependencies = [
     # SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (already in Secret Manager
     # from B2) to bypass RLS for ledger writes.
     "supabase>=2.6",
+    # Stripe Python SDK for Hosted Checkout, Customer Portal, and webhook
+    # signature verification. We never build payment UIs ourselves — Stripe
+    # hosts all card collection / 3DS / SCA flows.
+    "stripe>=10.0",
     "Pillow>=10.0",
     "pydub>=0.25",
     "click>=8.1",

@@ -1,0 +1,174 @@
+"""Tests for pipeline.stripe_billing — Stripe SDK wrapper, all mocked."""
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from pipeline.auth import User
+from pipeline.stripe_billing import (
+    create_portal_session,
+    create_subscription_checkout,
+    create_topup_checkout,
+    ensure_customer,
+    handle_webhook,
+)
+
+
+@pytest.fixture
+def stripe_env(monkeypatch):
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_x")
+    monkeypatch.setenv("STRIPE_PRICE_STARTER", "price_starter")
+    monkeypatch.setenv("STRIPE_PRICE_CREATOR", "price_creator")
+    monkeypatch.setenv("STRIPE_PRICE_PRO", "price_pro")
+    monkeypatch.setenv("STRIPE_PRICE_TOPUP_30", "price_t30")
+    monkeypatch.setenv("STRIPE_PRICE_TOPUP_100", "price_t100")
+    monkeypatch.setenv("STRIPE_PRICE_TOPUP_300", "price_t300")
+
+
+@pytest.fixture
+def mock_db(monkeypatch):
+    db_state = {"profiles": {}, "transactions": []}
+
+    def fake_get_profile(uid):
+        if uid not in db_state["profiles"]:
+            return None
+        p = db_state["profiles"][uid]
+        return SimpleNamespace(
+            id=uid,
+            stripe_customer_id=p.get("stripe_customer_id"),
+            current_plan=p.get("current_plan", "free"),
+            current_period_end=p.get("current_period_end"),
+        )
+
+    monkeypatch.setattr("pipeline.stripe_billing.get_user_profile", fake_get_profile)
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.upsert_user_profile",
+        lambda uid, **f: db_state["profiles"].setdefault(uid, {}).update(f) or None,
+    )
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.record_transaction",
+        lambda **kw: db_state["transactions"].append(kw),
+    )
+    return db_state
+
+
+def _user():
+    return User(id="u1", email="alice@example.com", role="user")
+
+
+def test_ensure_customer_creates_when_missing(stripe_env, mock_db, monkeypatch):
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Customer.create",
+                       lambda **kw: SimpleNamespace(id="cus_new"))
+    cid = ensure_customer(_user())
+    assert cid == "cus_new"
+    assert mock_db["profiles"]["u1"]["stripe_customer_id"] == "cus_new"
+
+
+def test_ensure_customer_reuses_existing(stripe_env, mock_db, monkeypatch):
+    mock_db["profiles"]["u1"] = {"stripe_customer_id": "cus_old"}
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Customer.create",
+                       lambda **kw: pytest.fail("should not create"))
+    assert ensure_customer(_user()) == "cus_old"
+
+
+def test_create_subscription_checkout_url(stripe_env, mock_db, monkeypatch):
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Customer.create",
+                       lambda **kw: SimpleNamespace(id="cus_x"))
+    captured = {}
+    def fake_create(**kw):
+        captured.update(kw)
+        return SimpleNamespace(url="https://checkout.stripe.com/x")
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.checkout.Session.create", fake_create)
+
+    url = create_subscription_checkout(_user(), "starter",
+                                       "https://app/success", "https://app/cancel")
+    assert url == "https://checkout.stripe.com/x"
+    assert captured["mode"] == "subscription"
+    assert captured["line_items"][0]["price"] == "price_starter"
+    # Critical: metadata must be on the subscription too
+    assert captured["subscription_data"]["metadata"]["user_id"] == "u1"
+
+
+def test_create_subscription_checkout_rejects_unknown_plan(stripe_env, mock_db):
+    with pytest.raises(ValueError, match="unknown plan"):
+        create_subscription_checkout(_user(), "elite", "u1", "u2")
+
+
+def test_create_topup_checkout_url(stripe_env, mock_db, monkeypatch):
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Customer.create",
+                       lambda **kw: SimpleNamespace(id="cus_x"))
+    captured = {}
+    def fake_create(**kw):
+        captured.update(kw)
+        return SimpleNamespace(url="https://checkout.stripe.com/y")
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.checkout.Session.create", fake_create)
+
+    url = create_topup_checkout(_user(), "topup_100",
+                                "https://app/success", "https://app/cancel")
+    assert url == "https://checkout.stripe.com/y"
+    assert captured["mode"] == "payment"
+    assert captured["line_items"][0]["price"] == "price_t100"
+
+
+def test_handle_webhook_topup_grants_credits(stripe_env, mock_db, monkeypatch):
+    fake_event = {
+        "type": "checkout.session.completed",
+        "data": {"object": {
+            "id": "cs_abc",
+            "mode": "payment",
+            "metadata": {"user_id": "u1", "pack": "topup_30"},
+        }},
+    }
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig=anything")
+    assert outcome.handled
+    assert mock_db["transactions"][-1] == {
+        "user_id": "u1", "amount": 30, "kind": "topup",
+        "reference_id": "cs_abc", "description": "Top-up pack (topup_30)",
+    }
+
+
+def test_handle_webhook_subscription_renewal_grants(stripe_env, mock_db, monkeypatch):
+    fake_event = {
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {"id": "inv_1", "subscription": "sub_1"}},
+    }
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.stripe.Subscription.retrieve",
+        lambda sid: {
+            "id": sid,
+            "metadata": {"user_id": "u1", "plan": "creator"},
+            "current_period_end": 1788000000,
+        },
+    )
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    last_tx = mock_db["transactions"][-1]
+    assert last_tx["amount"] == 250  # PLAN_GRANTS["creator"]
+    assert last_tx["kind"] == "subscription_renewal"
+    assert mock_db["profiles"]["u1"]["current_plan"] == "creator"
+
+
+def test_handle_webhook_subscription_deleted_resets_plan(stripe_env, mock_db, monkeypatch):
+    mock_db["profiles"]["u1"] = {"current_plan": "starter"}
+    fake_event = {
+        "type": "customer.subscription.deleted",
+        "data": {"object": {"metadata": {"user_id": "u1"}}},
+    }
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    assert mock_db["profiles"]["u1"]["current_plan"] == "free"
+
+
+def test_handle_webhook_unknown_event_is_ignored(stripe_env, mock_db, monkeypatch):
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: {"type": "ping", "data": {"object": {}}})
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled is False
