@@ -1882,3 +1882,61 @@ def test_get_transactions_returns_list(client_factory, monkeypatch):
     assert len(body) == 2
     assert body[0]["kind"] == "signup_grant"
     assert body[1]["amount"] == -10
+
+
+# ---------------------------------------------------------------------------
+# T6: pre-flight credit check on run-creation endpoints
+# ---------------------------------------------------------------------------
+
+def test_freeform_run_returns_402_when_user_has_no_credits(client_factory, monkeypatch):
+    """A non-service user with zero credits hits the paywall instead of spawning the worker."""
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 0)
+    spawned: list = []
+    monkeypatch.setattr(
+        "pipeline.api._SPAWN_FN",
+        lambda args, run_dir: spawned.append(args) or 999,
+    )
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/runs/freeform", json={
+        "theme": "folkloric",
+        "premise": "بئر قديم",
+        "max_beats": 8,
+    })
+    assert r.status_code == 402
+    detail = r.json()["detail"]
+    assert detail["code"] == "insufficient_credits"
+    assert detail["balance"] == 0
+    assert detail["required"] == 64  # 8 beats × 8s default
+    assert spawned == []
+
+
+def test_freeform_run_passes_when_balance_sufficient(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    spawned: list = []
+    monkeypatch.setattr(
+        "pipeline.api._SPAWN_FN",
+        lambda args, run_dir: spawned.append(args) or 4242,
+    )
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/runs/freeform", json={
+        "theme": "folkloric",
+        "premise": "بئر قديم",
+        "max_beats": 8,
+    })
+    assert r.status_code == 201
+    assert len(spawned) == 1
+
+
+def test_freeform_run_bypasses_credit_check_for_service_token(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    # Even with balance=0, service tokens should pass through.
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 0)
+    monkeypatch.setattr("pipeline.api._SPAWN_FN", lambda args, run_dir: 4242)
+    c = client_factory(user_id="admin", role="service")
+    r = c.post("/runs/freeform", json={
+        "theme": "folkloric",
+        "premise": "بئر قديم",
+        "max_beats": 8,
+    })
+    assert r.status_code == 201
