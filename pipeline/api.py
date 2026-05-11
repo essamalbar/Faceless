@@ -41,6 +41,23 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from pipeline.auth import User, require_user, require_user_header_or_query
+from pipeline.spawn_backends import LocalSubprocessBackend, select_backend
+
+
+def _process_alive(pid: int | None, run_dir: Path | None = None) -> bool:
+    """Is the spawned worker still running?
+
+    Delegates to the configured spawn backend. For the local-subprocess path
+    only `pid` matters; for the Cloud Run Jobs path the backend reads the
+    execution resource name out of `run_dir/api_state.json`.
+
+    `run_dir` is optional purely for backwards compatibility with older test
+    stubs that monkeypatch this function with a single-arg lambda — when it's
+    None we fall back to the local-subprocess behavior (os.kill / waitpid).
+    """
+    if run_dir is None:
+        return LocalSubprocessBackend().is_alive(pid=pid, run_dir=Path("/"))
+    return select_backend().is_alive(pid=pid, run_dir=run_dir)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_ROOT = REPO_ROOT / "out"
@@ -92,35 +109,6 @@ def _write_state(run_dir: Path, **kwargs) -> None:
     )
 
 
-def _process_alive(pid: int | None) -> bool:
-    """Return True only if the PID is a *running* (non-zombie) process.
-
-    `os.kill(pid, 0)` returns success for ZOMBIE processes too — defunct
-    subprocesses that have exited but haven't been reaped by their parent
-    via wait()/waitpid(). The pipeline subprocess is our child, so on Unix
-    we can opportunistically reap any zombie child non-blockingly first
-    (WNOHANG never blocks; if there's no zombie, it returns immediately
-    with `(0, 0)`). After that, `os.kill(pid, 0)` correctly fails for the
-    just-reaped PID, and we stop falsely reporting it as alive.
-
-    Without this, the API would think a long-since-exited script-pause
-    subprocess was still running, which:
-      - Made cancel/discard report "process still running" forever
-      - Made `derive_status` return `running_paid` instead of
-        `awaiting_approval`, hiding the approval bar in the UI."""
-    if not pid:
-        return False
-    try:
-        # WNOHANG = don't block. Reaps any single zombie child we own.
-        # ECHILD = no child by that pid (already reaped or not ours) — fine.
-        os.waitpid(pid, os.WNOHANG)
-    except (ChildProcessError, OSError):
-        pass
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
 
 
 def _compute_max_spend_for_run(run_dir: Path) -> float | None:
@@ -254,7 +242,7 @@ def derive_status(run_dir: Path) -> RunStatus:
     state = _read_state(run_dir)
     pid = state.get("pid")
     last_error = state.get("last_error")
-    process_running = _process_alive(pid)
+    process_running = _process_alive(pid, run_dir)
     script_exists = (run_dir / "script.json").exists()
     sheet_exists = (run_dir / "character_sheet.png").exists()
     clips_dir = run_dir / "clips"
@@ -964,7 +952,7 @@ def reroll_character_sheet(run_id: str, user: User = Depends(require_user)):
             f"(expected awaiting_veo_approval)",
         )
     state = _read_state(run_dir)
-    if _process_alive(state.get("pid")):
+    if _process_alive(state.get("pid"), run_dir):
         raise HTTPException(409, "a pipeline process is already running")
     (run_dir / "character_sheet.png").unlink(missing_ok=True)
     args = ["--shorts", "--resume", str(run_dir),
@@ -988,7 +976,7 @@ def resume_run(run_id: str, user: User = Depends(require_user)):
     on disk and exit quickly. We try to avoid that by checking PID first."""
     run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
-    if _process_alive(state.get("pid")):
+    if _process_alive(state.get("pid"), run_dir):
         raise HTTPException(409, "a pipeline process is already running for this run")
     args = ["--shorts", "--resume", str(run_dir)]
     max_spend = _compute_max_spend_for_run(run_dir)
@@ -1148,7 +1136,7 @@ def cleanup_failed_runs(user: User = Depends(require_user)):
             continue
         state = _read_state(p)
         # Defensive: never bulk-delete a run with a live subprocess
-        if _process_alive(state.get("pid")):
+        if _process_alive(state.get("pid"), p):
             continue
         try:
             shutil.rmtree(p)
@@ -1232,7 +1220,7 @@ def delete_run(run_id: str, user: User = Depends(require_user)):
     run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     pid = state.get("pid")
-    if _process_alive(pid):
+    if _process_alive(pid, run_dir):
         if not _stop_process_and_wait(pid):
             raise HTTPException(
                 500,
@@ -1268,7 +1256,7 @@ def reroll_clips(run_id: str, req: RerollRequest, user: User = Depends(require_u
     """
     run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
-    if _process_alive(state.get("pid")):
+    if _process_alive(state.get("pid"), run_dir):
         raise HTTPException(409, "a pipeline process is already running for this run")
     if not (run_dir / "script.json").exists():
         raise HTTPException(409, "script.json missing — nothing to reroll against")
@@ -1324,7 +1312,7 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
     run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     pid = state.get("pid")
-    if not _process_alive(pid):
+    if not _process_alive(pid, run_dir):
         return CancelAck(run_id=run_id, killed_pid=None)
     _stop_process_and_wait(pid)
     _write_state(run_dir, last_error="cancelled by user", last_action="cancel")

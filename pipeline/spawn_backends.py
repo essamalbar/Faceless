@@ -26,7 +26,7 @@ from pathlib import Path
 class SpawnBackend(ABC):
     """Common interface — given pipeline args + a run_dir, kick off the
     pipeline somewhere and return an identifier that the API can later use
-    to check liveness via _process_alive."""
+    to check liveness via `is_alive`."""
 
     @abstractmethod
     def spawn(
@@ -38,12 +38,34 @@ class SpawnBackend(ABC):
         repo_root: Path,
     ) -> int:
         """Returns a 'pid' integer. For local backends it's the OS pid; for
-        cloud backends it's a stable hash of the execution name (the API
-        only uses it for boolean `_process_alive` checks)."""
+        cloud backends it's a stable hash of the execution name."""
+
+    @abstractmethod
+    def is_alive(self, *, pid: int | None, run_dir: Path) -> bool:
+        """Is the spawned worker still running?
+
+        `run_dir` is passed so backends can read additional state they wrote
+        during spawn (e.g. the Cloud Run execution resource name stored in
+        api_state.json).
+        """
 
 
 class LocalSubprocessBackend(SpawnBackend):
     """Spawn `run.py` as a child process on the same host. Original behavior."""
+
+    def is_alive(self, *, pid, run_dir) -> bool:
+        if not pid:
+            return False
+        try:
+            # WNOHANG = don't block. Reaps any single zombie child we own.
+            os.waitpid(pid, os.WNOHANG)
+        except (ChildProcessError, OSError):
+            pass
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
 
     def spawn(self, *, args, run_dir, runpy_path, repo_root) -> int:
         log_path = run_dir / "api_subprocess.log"
@@ -129,9 +151,68 @@ class CloudRunJobsBackend(SpawnBackend):
         else:
             execution_name = operation.operation.name
 
+        # Persist the execution resource name in api_state.json so is_alive
+        # can query the Cloud Run Executions API later. Merge — don't clobber
+        # any state the API has already written (or might write right after
+        # we return).
+        self._stash_execution_name(run_dir, execution_name)
+
         h = sha256(execution_name.encode()).hexdigest()
         pid = int(h[:8], 16) or 1
         return pid
+
+    @staticmethod
+    def _stash_execution_name(run_dir: Path, execution_name: str) -> None:
+        """Merge `cloudrun_execution_name` into api_state.json."""
+        state_path = run_dir / "api_state.json"
+        state: dict = {}
+        if state_path.exists():
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+            except Exception:
+                state = {}
+        state["cloudrun_execution_name"] = execution_name
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def is_alive(self, *, pid, run_dir) -> bool:
+        """Query the Cloud Run Executions API to see if the worker is
+        still going. The `pid` is ignored — we use the resource name
+        stashed in api_state.json instead, because the pid is a hash."""
+        state_path = run_dir / "api_state.json"
+        if not state_path.exists():
+            return False
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+        exec_name = state.get("cloudrun_execution_name")
+        if not exec_name:
+            return False
+
+        from google.cloud import run_v2
+        client = run_v2.ExecutionsClient()
+        try:
+            execution = client.get_execution(name=exec_name)
+        except Exception:
+            # API call failed — be conservative and assume it's still alive
+            # so we don't show "failed" for a transient API hiccup. The next
+            # poll will re-check.
+            return True
+
+        # A Cloud Run Job execution is "running" if completion_time isn't set.
+        # Once it ends (success/fail/cancel) the completion_time is populated.
+        completion = getattr(execution, "completion_time", None)
+        if completion is None:
+            return True
+        # completion_time may be a Timestamp proto whose seconds=0 means "unset"
+        seconds = getattr(completion, "seconds", None)
+        if seconds == 0 or seconds is None:
+            return True
+        return False
 
 
 def select_backend() -> SpawnBackend:

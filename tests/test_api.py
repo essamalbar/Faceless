@@ -635,7 +635,7 @@ def test_cleanup_failed_skips_runs_with_live_subprocess(
     (rd / "run.log").write_text("ERROR transient\n", encoding="utf-8")
     from pipeline import api as api_mod
     api_mod._write_state(rd, pid=4242)
-    monkeypatch.setattr(api_mod, "_process_alive", lambda pid: pid == 4242)
+    monkeypatch.setattr(api_mod, "_process_alive", lambda pid, run_dir=None: pid == 4242)
     r = client.post("/runs/cleanup-failed", headers=auth)
     assert rd.exists()
     assert "2026-05-05-live" not in r.json()["deleted_run_ids"]
@@ -792,7 +792,7 @@ def test_reroll_refuses_when_pipeline_already_running(
     _seed_with_clips(rd)
     from pipeline import api as api_mod
     api_mod._write_state(rd, pid=4242)
-    monkeypatch.setattr(api_mod, "_process_alive", lambda pid: pid == 4242)
+    monkeypatch.setattr(api_mod, "_process_alive", lambda pid, run_dir=None: pid == 4242)
     r = client.post(f"/runs/{rd.name}/reroll", json={"clips": [1]}, headers=auth)
     assert r.status_code == 409
 
@@ -807,7 +807,7 @@ def test_resume_refuses_when_a_process_is_already_running(
     from pipeline import api as api_mod
     # Write a state with a fake pid; monkeypatch process-alive check.
     api_mod._write_state(rd, pid=4242, last_action="approve")
-    monkeypatch.setattr(api_mod, "_process_alive", lambda pid: pid == 4242)
+    monkeypatch.setattr(api_mod, "_process_alive", lambda pid, run_dir=None: pid == 4242)
 
     r = client.post(f"/runs/{rd.name}/resume", headers=auth)
     assert r.status_code == 409
@@ -821,7 +821,7 @@ def test_cancel_kills_running_process(client, auth, tmp_path: Path, monkeypatch)
     rd = _make_run_dir(tmp_path)
     from pipeline import api as api_mod
     api_mod._write_state(rd, pid=4242)
-    monkeypatch.setattr(api_mod, "_process_alive", lambda pid: pid == 4242)
+    monkeypatch.setattr(api_mod, "_process_alive", lambda pid, run_dir=None: pid == 4242)
 
     killed: list = []
     monkeypatch.setattr(api_mod.os, "kill", lambda pid, sig: killed.append((pid, sig)))
@@ -1024,7 +1024,7 @@ def test_delete_kills_subprocess_then_removes_dir(
     # Simulate a process that "dies" after the first SIGTERM call
     state = {"alive": True}
     monkeypatch.setattr(api_mod, "_process_alive",
-                        lambda pid: pid == 4242 and state["alive"])
+                        lambda pid, run_dir=None: pid == 4242 and state["alive"])
     killed: list = []
 
     def fake_kill(pid, sig):
@@ -1106,7 +1106,7 @@ def test_stop_process_escalates_to_sigkill_when_sigterm_ignored(monkeypatch):
 
     monkeypatch.setattr(api_mod.os, "kill", fake_kill)
     monkeypatch.setattr(api_mod, "_process_alive",
-                        lambda pid: pid == 4242 and state["alive"])
+                        lambda pid, run_dir=None: pid == 4242 and state["alive"])
     # Speed up: zero out sleeps inside the helper
     import time as _time
     monkeypatch.setattr(_time, "sleep", lambda _s: None)
@@ -1269,7 +1269,7 @@ def test_progress_script_stage_when_no_script_yet(client, auth, tmp_path: Path):
     # Need a state to make derive_status not return failed
     from pipeline import api as api_mod
     api_mod._write_state(rd, pid=4242)
-    monkeypatch_alive = lambda pid: pid == 4242  # noqa: E731
+    monkeypatch_alive = lambda pid, run_dir=None: pid == 4242  # noqa: E731
     # Patch via app module instead — but TestClient won't see monkeypatch
     # without a fixture. Just check the progress endpoint when script-less.
     r = client.get(f"/runs/{rd.name}", headers=auth)
