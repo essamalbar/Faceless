@@ -346,6 +346,25 @@ class ScriptResponse(BaseModel):
     character_descriptions: dict[str, str] = {}  # NEW — per-character physical descriptions
 
 
+class BalanceResponse(BaseModel):
+    balance: int
+
+
+class PlanResponse(BaseModel):
+    plan: str                         # 'free' | 'starter' | 'creator' | 'pro'
+    current_period_end: str | None    # ISO timestamp, null on 'free'
+    balance: int
+
+
+class TransactionRow(BaseModel):
+    id: str
+    amount: int
+    kind: str
+    reference_id: str | None
+    description: str | None
+    created_at: str
+
+
 # ---------------------------------------------------------------------------
 # Subprocess spawning — overridable in tests
 # ---------------------------------------------------------------------------
@@ -467,6 +486,58 @@ def list_runs(user: User = Depends(require_user)):
             continue
         runs.append(_summarize(p))
     return runs
+
+
+# ---------------------------------------------------------------------------
+# Billing — read-only (balance, plan, transactions).
+# Write endpoints (checkout / portal / webhook) live below in T7-T9.
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/billing/balance",
+    response_model=BalanceResponse,
+    dependencies=[Depends(require_user)],
+)
+def get_balance_endpoint(user: User = Depends(require_user)):
+    from pipeline.db import get_balance
+    return BalanceResponse(balance=get_balance(user.id))
+
+
+@app.get(
+    "/billing/plan",
+    response_model=PlanResponse,
+    dependencies=[Depends(require_user)],
+)
+def get_plan_endpoint(user: User = Depends(require_user)):
+    from pipeline.db import get_balance, get_user_profile
+    profile = get_user_profile(user.id)
+    return PlanResponse(
+        plan=(profile.current_plan if profile else "free"),
+        current_period_end=(profile.current_period_end if profile else None),
+        balance=get_balance(user.id),
+    )
+
+
+@app.get(
+    "/billing/transactions",
+    response_model=list[TransactionRow],
+    dependencies=[Depends(require_user)],
+)
+def get_transactions_endpoint(
+    user: User = Depends(require_user),
+    limit: int = 50,
+):
+    from pipeline.db import list_transactions
+    rows = list_transactions(user.id, limit=min(limit, 200))
+    return [
+        TransactionRow(
+            id=t.id, amount=t.amount, kind=t.kind,
+            reference_id=t.reference_id, description=t.description,
+            created_at=t.created_at,
+        )
+        for t in rows
+    ]
 
 
 def _derive_progress(run_dir: Path, status: str) -> RunProgress | None:

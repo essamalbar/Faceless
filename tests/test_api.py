@@ -1822,3 +1822,63 @@ def test_user_a_cannot_see_user_b_runs(monkeypatch, tmp_path, client_factory):
 
     assert {r["id"] for r in a_runs} == {"run-1"}
     assert {r["id"] for r in b_runs} == {"run-2"}
+
+
+def test_get_balance_returns_db_value(client_factory, monkeypatch):
+    monkeypatch.setattr("pipeline.db.get_balance",
+                       lambda uid: 137 if uid == "alice" else 0)
+    c = client_factory(user_id="alice")
+    r = c.get("/billing/balance")
+    assert r.status_code == 200
+    assert r.json() == {"balance": 137}
+
+
+def test_get_plan_falls_back_to_free_for_new_users(client_factory, monkeypatch):
+    monkeypatch.setattr("pipeline.db.get_user_profile", lambda uid: None)
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 0)
+    c = client_factory(user_id="alice")
+    r = c.get("/billing/plan")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["plan"] == "free"
+    assert body["current_period_end"] is None
+    assert body["balance"] == 0
+
+
+def test_get_plan_returns_subscription_for_existing_user(client_factory, monkeypatch):
+    from pipeline.db import UserProfile
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: UserProfile(
+            id=uid, stripe_customer_id="cus_1",
+            current_plan="creator", current_period_end="2026-06-11T00:00:00Z",
+        ),
+    )
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 234)
+    c = client_factory(user_id="alice")
+    body = c.get("/billing/plan").json()
+    assert body == {
+        "plan": "creator",
+        "current_period_end": "2026-06-11T00:00:00Z",
+        "balance": 234,
+    }
+
+
+def test_get_transactions_returns_list(client_factory, monkeypatch):
+    from pipeline.db import Transaction
+    monkeypatch.setattr(
+        "pipeline.db.list_transactions",
+        lambda uid, limit: [
+            Transaction(id="t1", user_id=uid, amount=60, kind="signup_grant",
+                        reference_id=None, description=None,
+                        created_at="2026-05-11T00:00:00Z"),
+            Transaction(id="t2", user_id=uid, amount=-10, kind="run_charge",
+                        reference_id="r1", description="1 clip",
+                        created_at="2026-05-11T00:01:00Z"),
+        ],
+    )
+    c = client_factory(user_id="alice")
+    body = c.get("/billing/transactions").json()
+    assert len(body) == 2
+    assert body[0]["kind"] == "signup_grant"
+    assert body[1]["amount"] == -10
