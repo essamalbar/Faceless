@@ -191,6 +191,21 @@ _ERROR_HINTS: list[tuple[re.Pattern[str], str]] = [
      "Veo's generation failed (transient or content-flag). Tap Resume — if "
      "it keeps failing on the same clip, edit that beat's wording."),
 
+    # User-facing: the upstream generation provider (Kie.ai) ran out of credit.
+    # In the SaaS era this is what an end-user sees when their OWN credit
+    # balance hits zero — we route them to the billing screen rather than
+    # exposing the upstream error. The wording stays generic ("video credits")
+    # so the same hint covers both the operator-pays-Kie and the end-user-
+    # pays-Stripe paths.
+    (re.compile(
+        r"Credits? insufficient|Your current balance isn'?t enough|"
+        r"code['\":\s]+402|out of credits",
+        re.IGNORECASE,
+     ),
+     "You're out of video credits. Top up your plan and tap Resume — "
+     "your script and characters are saved, only the unfinished clips "
+     "will re-render."),
+
     (re.compile(r"cancelled by user", re.IGNORECASE),
      "You discarded this run. Use the Discard button on the run-detail "
      "screen to remove it from the gallery, or Resume to continue."),

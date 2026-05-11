@@ -598,6 +598,32 @@ def test_safety_filter_error_hint_suggests_softer_wording(
     assert "soften" in body["error_hint"].lower()
 
 
+def test_credits_exhausted_error_hint_is_user_friendly(
+    client, auth, tmp_path: Path,
+):
+    """When the upstream generator (Kie.ai) returns code 402, the user must
+    see a friendly 'top up your plan' hint — not the raw KieError JSON."""
+    rd = _make_run_dir(tmp_path)
+    (rd / "script.json").write_text("{}")
+    # The actual error string emitted by pipeline.kie.submit_video_job
+    (rd / "run.log").write_text(
+        "ERROR pipeline.kie.KieError: submit response missing taskId: "
+        "{'code': 402, 'msg': 'Credits insufficient : Your current balance "
+        "isn’t enough to run this request. Please top up to continue.', "
+        "'data': None}\n",
+        encoding="utf-8",
+    )
+    body = client.get(f"/runs/{rd.name}", headers=auth).json()
+    assert body["error_hint"] is not None
+    hint = body["error_hint"].lower()
+    assert "credit" in hint
+    # Must not leak vendor names — end users shouldn't see "Kie", "Veo", etc.
+    assert "kie" not in hint
+    assert "veo" not in hint
+    # Must include a clear call-to-action
+    assert "top up" in hint or "upgrade" in hint or "subscribe" in hint
+
+
 def test_cleanup_failed_removes_only_failed_runs(client, auth, tmp_path: Path):
     """Bulk-discards every run in `failed` status; leaves complete + running
     runs alone."""
