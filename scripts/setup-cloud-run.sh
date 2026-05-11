@@ -135,6 +135,10 @@ write_secret "anthropic-api-key" "${ANTHROPIC_API_KEY:-}"
 write_secret "kie-api-key" "${KIE_API_KEY:-}"
 write_secret "elevenlabs-api-key" "${ELEVENLABS_API_KEY:-}"
 write_secret "supabase-jwt-secret" "${SUPABASE_JWT_SECRET:-}"
+# B3 — Stripe + Supabase service-role for the credit ledger.
+write_secret "supabase-service-role-key" "${SUPABASE_SERVICE_ROLE_KEY:-}"
+write_secret "stripe-secret-key" "${STRIPE_SECRET_KEY:-}"
+write_secret "stripe-webhook-secret" "${STRIPE_WEBHOOK_SECRET:-}"
 
 # ---------- 5. Build + push image ----------
 echo
@@ -185,6 +189,12 @@ trap "rm -rf $tmpdir" EXIT
 
 sed -e "s|\\\${PROJECT_ID}|${PROJECT_ID}|g" \
     -e "s|\\\${BUCKET_NAME}|${BUCKET_NAME}|g" \
+    -e "s|\\\${STRIPE_PRICE_STARTER}|${STRIPE_PRICE_STARTER:-}|g" \
+    -e "s|\\\${STRIPE_PRICE_CREATOR}|${STRIPE_PRICE_CREATOR:-}|g" \
+    -e "s|\\\${STRIPE_PRICE_PRO}|${STRIPE_PRICE_PRO:-}|g" \
+    -e "s|\\\${STRIPE_PRICE_TOPUP_30}|${STRIPE_PRICE_TOPUP_30:-}|g" \
+    -e "s|\\\${STRIPE_PRICE_TOPUP_100}|${STRIPE_PRICE_TOPUP_100:-}|g" \
+    -e "s|\\\${STRIPE_PRICE_TOPUP_300}|${STRIPE_PRICE_TOPUP_300:-}|g" \
     deploy/cloud-run-service.yaml > "$tmpdir/service.yaml"
 sed -e "s|\\\${PROJECT_ID}|${PROJECT_ID}|g" \
     -e "s|\\\${BUCKET_NAME}|${BUCKET_NAME}|g" \

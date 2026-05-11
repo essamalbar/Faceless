@@ -60,6 +60,34 @@ spec:
                 secretKeyRef:
                   name: supabase-jwt-secret
                   key: latest
+            # B3 — credit ledger writes + Stripe integration
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: supabase-service-role-key
+                  key: latest
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stripe-secret-key
+                  key: latest
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: stripe-webhook-secret
+                  key: latest
+            - name: STRIPE_PRICE_STARTER
+              value: ${STRIPE_PRICE_STARTER}
+            - name: STRIPE_PRICE_CREATOR
+              value: ${STRIPE_PRICE_CREATOR}
+            - name: STRIPE_PRICE_PRO
+              value: ${STRIPE_PRICE_PRO}
+            - name: STRIPE_PRICE_TOPUP_30
+              value: ${STRIPE_PRICE_TOPUP_30}
+            - name: STRIPE_PRICE_TOPUP_100
+              value: ${STRIPE_PRICE_TOPUP_100}
+            - name: STRIPE_PRICE_TOPUP_300
+              value: ${STRIPE_PRICE_TOPUP_300}
           resources:
             limits:
               cpu: "1"
