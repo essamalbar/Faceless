@@ -20,6 +20,10 @@ dependencies = [
     # (P-256 elliptic curve); HS256 stays supported as a fallback for legacy
     # projects and our own service token.
     "pyjwt[crypto]>=2.8",
+    # supabase-py: server-side client for the Postgres ledger. Uses
+    # SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (already in Secret Manager
+    # from B2) to bypass RLS for ledger writes.
+    "supabase>=2.6",
     "Pillow>=10.0",
     "pydub>=0.25",
     "click>=8.1",
