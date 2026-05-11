@@ -1,10 +1,15 @@
 """Auth: Supabase JWT verification + FastAPI request dependency.
 
-Two paths:
+Three paths:
   1. Service token — the bearer matches FACELESS_API_TOKEN. Returns a synthetic
      "admin" user. Used by the CLI, cron jobs, and curl-based smoke tests.
-  2. Supabase JWT — HS256 verified against SUPABASE_JWT_SECRET. Returns a user
-     whose id is the Supabase auth.users.id (UUID).
+  2. Supabase HS256 JWT — verified against SUPABASE_JWT_SECRET. Used by older
+     Supabase projects and any test that signs its own tokens.
+  3. Supabase ES256 JWT — verified against the public key published at
+     SUPABASE_URL/auth/v1/.well-known/jwks.json. Supabase's newer projects
+     sign user access tokens with ES256 (P-256 elliptic curve) by default.
+
+The verifier peeks at the JWT header's `alg` and picks the right path.
 """
 from __future__ import annotations
 
@@ -13,6 +18,21 @@ from dataclasses import dataclass
 
 import jwt
 from fastapi import Header, HTTPException, status
+from jwt import PyJWKClient
+
+# Module-level cache for the JWKS client — first lookup hits the network,
+# subsequent calls reuse the cached keys. The client itself caches the
+# response for ~10 min per PyJWT defaults, plus refreshes on key rotation.
+_JWKS_CLIENTS: dict[str, PyJWKClient] = {}
+
+
+def _get_jwks_client(supabase_url: str) -> PyJWKClient:
+    key = supabase_url.rstrip("/")
+    if key not in _JWKS_CLIENTS:
+        _JWKS_CLIENTS[key] = PyJWKClient(
+            f"{key}/auth/v1/.well-known/jwks.json",
+        )
+    return _JWKS_CLIENTS[key]
 
 
 @dataclass(frozen=True)
@@ -22,18 +42,56 @@ class User:
     role: str          # "service" | "user"
 
 
-def verify_supabase_jwt(token: str, secret: str) -> User:
-    """Verify a Supabase HS256 access token and return the User.
+def verify_supabase_jwt(
+    token: str,
+    secret: str | None = None,
+    supabase_url: str | None = None,
+) -> User:
+    """Verify a Supabase access token and return the User.
 
-    Raises ValueError with a short reason on any failure.
+    Picks the verification method based on the JWT's `alg` header:
+      - HS256 → verify against `secret` (the project's legacy JWT secret).
+      - ES256 / RS256 → fetch the public key from Supabase's JWKS endpoint
+        at `{supabase_url}/auth/v1/.well-known/jwks.json`.
+
+    Raises ValueError on any failure (expired, bad signature, etc.).
     """
     try:
-        payload = jwt.decode(
-            token,
-            secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
+        unverified_header = jwt.get_unverified_header(token)
+    except jwt.DecodeError as e:
+        raise ValueError(f"invalid token: {e}") from None
+    alg = unverified_header.get("alg", "")
+
+    try:
+        if alg == "HS256":
+            if not secret:
+                raise ValueError(
+                    "HS256 token received but SUPABASE_JWT_SECRET not set",
+                )
+            payload = jwt.decode(
+                token,
+                secret,
+                algorithms=["HS256"],
+                audience="authenticated",
+            )
+        elif alg in ("ES256", "RS256"):
+            if not supabase_url:
+                raise ValueError(
+                    f"{alg} token received but SUPABASE_URL not set",
+                )
+            signing_key = (
+                _get_jwks_client(supabase_url)
+                .get_signing_key_from_jwt(token)
+                .key
+            )
+            payload = jwt.decode(
+                token,
+                signing_key,
+                algorithms=[alg],
+                audience="authenticated",
+            )
+        else:
+            raise ValueError(f"unsupported alg: {alg!r}")
     except jwt.ExpiredSignatureError:
         raise ValueError("token expired") from None
     except jwt.InvalidAudienceError:
@@ -61,12 +119,14 @@ def require_user(authorization: str | None = Header(None)) -> User:
     """
     service_token = os.environ.get("FACELESS_API_TOKEN")
     jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
+    supabase_url = os.environ.get("SUPABASE_URL")
+    can_verify_jwt = bool(jwt_secret) or bool(supabase_url)
 
-    if not service_token and not jwt_secret:
+    if not service_token and not can_verify_jwt:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth not configured (FACELESS_API_TOKEN or "
-                   "SUPABASE_JWT_SECRET must be set).",
+            detail="Auth not configured (FACELESS_API_TOKEN, or "
+                   "SUPABASE_URL + SUPABASE_JWT_SECRET, must be set).",
         )
 
     if not authorization or not authorization.startswith("Bearer "):
@@ -80,9 +140,13 @@ def require_user(authorization: str | None = Header(None)) -> User:
     if service_token and token == service_token:
         return User(id="admin", email=None, role="service")
 
-    if jwt_secret:
+    if can_verify_jwt:
         try:
-            return verify_supabase_jwt(token, jwt_secret)
+            return verify_supabase_jwt(
+                token,
+                secret=jwt_secret,
+                supabase_url=supabase_url,
+            )
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

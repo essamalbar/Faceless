@@ -15,7 +15,11 @@ dependencies = [
     "mflux>=0.4.0; platform_system == 'Darwin'",
     "ffmpeg-python>=0.2.0",
     "pyyaml>=6.0",
-    "pyjwt>=2.8",
+    # crypto extras pull in `cryptography` so PyJWT can verify ES256 / RS256
+    # signatures. Supabase's new projects sign user access tokens with ES256
+    # (P-256 elliptic curve); HS256 stays supported as a fallback for legacy
+    # projects and our own service token.
+    "pyjwt[crypto]>=2.8",
     "Pillow>=10.0",
     "pydub>=0.25",
     "click>=8.1",
@@ -28,6 +32,11 @@ dependencies = [
     "openai-whisper>=20240930",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    # google-cloud-run: REST/gRPC client for triggering Cloud Run Jobs from
+    # the API container. Cleaner than shelling out to `gcloud` (which isn't
+    # in the slim Python image anyway), and reuses the container's workload
+    # identity so we don't need to mount a service-account key.
+    "google-cloud-run>=0.10",
 ]
 
 [dependency-groups]

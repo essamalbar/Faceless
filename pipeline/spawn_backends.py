@@ -63,18 +63,22 @@ class LocalSubprocessBackend(SpawnBackend):
 
 
 class CloudRunJobsBackend(SpawnBackend):
-    """Trigger a Cloud Run Job execution via `gcloud run jobs execute`.
+    """Trigger a Cloud Run Job execution via the Google Cloud Run REST API.
 
     The Job container must already be deployed (see deploy/cloud-run-job.yaml
-    or the gcloud commands in docs/DEPLOY-CLOUDRUN.md). It runs the same
-    image as the API service, just with `python run.py` as the entrypoint
-    instead of uvicorn. Pipeline args are passed via the FACELESS_RUN_ARGS
-    env var so the Job's CMD reads them on startup.
+    or scripts/setup-cloud-run.sh). It runs the same image as the API
+    service, just with `python run.py` as the entrypoint instead of uvicorn.
+    Pipeline args are passed via the FACELESS_RUN_ARGS env var, which the
+    entrypoint script splits on U+001E and feeds to run.py.
 
-    The 'pid' returned is a stable hash of the execution name — there's no
-    real OS pid since the work runs in a different VM. The API's
+    Originally this shelled out to `gcloud run jobs execute`, but `gcloud`
+    isn't installed in the slim Python image we ship for Cloud Run. The
+    google-cloud-run Python client uses gRPC under the hood and picks up
+    the container's workload identity automatically — no key file needed.
+
+    The 'pid' returned is a stable hash of the execution name. The API's
     _process_alive check needs a corresponding cloudrun-aware liveness
-    probe (handled separately).
+    probe (separate concern).
     """
 
     def __init__(self, *, job_name: str, region: str, project: str) -> None:
@@ -83,45 +87,50 @@ class CloudRunJobsBackend(SpawnBackend):
         self.project = project
 
     def spawn(self, *, args, run_dir, runpy_path, repo_root) -> int:
-        # Pack args into a single env var the Job's entrypoint reads.
-        # We use a delimiter that's unlikely to appear in any of our flags.
+        # Lazy import: keeps the dep from being a hard requirement of the
+        # local-subprocess path used by tests + dev.
+        from google.cloud import run_v2
+
         run_args_str = "\x1e".join(args)
 
-        cmd = [
-            "gcloud", "run", "jobs", "execute", self.job_name,
-            f"--region={self.region}",
-            f"--project={self.project}",
-            f"--update-env-vars=FACELESS_RUN_ARGS={run_args_str},FACELESS_RUN_DIR={run_dir}",
-            "--format=json",
-            "--async",  # don't block — return immediately with the execution metadata
-        ]
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=120,
+        client = run_v2.JobsClient()
+        job_path = (
+            f"projects/{self.project}/locations/{self.region}"
+            f"/jobs/{self.job_name}"
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"gcloud run jobs execute failed (rc={result.returncode}): "
-                f"{result.stderr.strip() or result.stdout.strip()}"
-            )
 
-        # Derive a stable integer "pid" from the execution name so the API's
-        # state machine works unchanged. Liveness is checked separately
-        # via gcloud (not in this task).
-        # The execution name is in the JSON output's metadata.name field.
-        try:
-            execution = json.loads(result.stdout)
-            execution_name = execution.get("metadata", {}).get("name", "")
-        except json.JSONDecodeError:
-            execution_name = result.stdout.strip()
+        overrides = run_v2.RunJobRequest.Overrides(
+            container_overrides=[
+                run_v2.RunJobRequest.Overrides.ContainerOverride(
+                    env=[
+                        run_v2.EnvVar(
+                            name="FACELESS_RUN_ARGS",
+                            value=run_args_str,
+                        ),
+                        run_v2.EnvVar(
+                            name="FACELESS_RUN_DIR",
+                            value=str(run_dir),
+                        ),
+                    ],
+                ),
+            ],
+        )
 
-        # Hash to a non-zero integer
+        # Fire-and-forget — we don't call operation.result(), which would
+        # block until the Job finishes. The returned LRO has metadata
+        # containing the execution resource (projects/.../executions/<id>),
+        # which we hash into a stable pseudo-pid for the API state machine.
+        operation = client.run_job(
+            request=run_v2.RunJobRequest(name=job_path, overrides=overrides),
+        )
+
+        if operation.metadata and operation.metadata.name:
+            execution_name = operation.metadata.name
+        else:
+            execution_name = operation.operation.name
+
         h = sha256(execution_name.encode()).hexdigest()
-        pid = int(h[:8], 16) or 1   # never return 0 (treated as "no process")
+        pid = int(h[:8], 16) or 1
         return pid
 
 

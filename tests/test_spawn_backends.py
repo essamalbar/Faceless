@@ -85,13 +85,14 @@ def test_local_backend_spawns_subprocess(tmp_path, monkeypatch):
     assert (tmp_path / "api_subprocess.log").exists()
 
 
-def test_cloudrun_jobs_backend_calls_gcloud(tmp_path, monkeypatch):
-    """CloudRunJobsBackend invokes gcloud run jobs execute with the right args.
+def test_cloudrun_jobs_backend_calls_run_job(tmp_path, monkeypatch):
+    """CloudRunJobsBackend calls JobsClient.run_job with the right path and
+    overrides, and returns a non-zero pseudo-pid derived from the execution
+    resource name.
 
-    The spawn returns a fake 'pid' (actually the GCP execution name's hash) so
-    the API state machine doesn't need to know the difference. _process_alive
-    checks via gcloud rather than os.kill — but that's a separate concern; this
-    test only validates the gcloud invocation."""
+    The implementation uses google-cloud-run's gRPC client (no `gcloud` CLI
+    needed), which picks up the container's workload identity automatically.
+    """
     backend = CloudRunJobsBackend(
         job_name="faceless-pipeline",
         region="us-central1",
@@ -100,16 +101,55 @@ def test_cloudrun_jobs_backend_calls_gcloud(tmp_path, monkeypatch):
 
     captured: dict = {}
 
-    def fake_run(cmd, capture_output, text, check, timeout):
-        captured["cmd"] = cmd
-        # Return mock execution
-        class _R:
-            stdout = '{"metadata": {"name": "faceless-pipeline-abc123"}}\n'
-            stderr = ""
-            returncode = 0
-        return _R()
+    class _FakeMetadata:
+        name = (
+            "projects/test-project/locations/us-central1/"
+            "jobs/faceless-pipeline/executions/abc123"
+        )
 
-    monkeypatch.setattr("pipeline.spawn_backends.subprocess.run", fake_run)
+    class _FakeOperation:
+        def __init__(self):
+            self.metadata = _FakeMetadata()
+            self.operation = type("_", (), {"name": "lro/fake-name"})()
+
+    class _FakeJobsClient:
+        def run_job(self, *, request):
+            captured["request"] = request
+            return _FakeOperation()
+
+    from pipeline import spawn_backends as sb_mod
+
+    class _FakeRunV2:
+        JobsClient = _FakeJobsClient
+
+        class RunJobRequest:
+            def __init__(self, *, name, overrides):
+                self.name = name
+                self.overrides = overrides
+
+            class Overrides:
+                def __init__(self, *, container_overrides):
+                    self.container_overrides = container_overrides
+
+                class ContainerOverride:
+                    def __init__(self, *, env):
+                        self.env = env
+
+        class EnvVar:
+            def __init__(self, *, name, value):
+                self.name = name
+                self.value = value
+
+    monkeypatch.setattr(
+        "google.cloud.run_v2", _FakeRunV2, raising=False,
+    )
+    # The lazy `from google.cloud import run_v2` inside spawn() needs the
+    # parent package present; install the fake into sys.modules so the
+    # import resolves to our stub.
+    import sys
+    sys.modules["google.cloud.run_v2"] = _FakeRunV2
+    sys.modules["google.cloud"] = type(sb_mod)("google.cloud")
+    sys.modules["google.cloud"].run_v2 = _FakeRunV2
 
     pid = backend.spawn(
         args=["--shorts", "--theme", "folkloric"],
@@ -117,37 +157,58 @@ def test_cloudrun_jobs_backend_calls_gcloud(tmp_path, monkeypatch):
         runpy_path=Path("/fake/run.py"),
         repo_root=Path("/fake/repo"),
     )
-    cmd = captured["cmd"]
-    assert "gcloud" in cmd[0]
-    assert "run" in cmd
-    assert "jobs" in cmd
-    assert "execute" in cmd
-    assert "faceless-pipeline" in cmd  # job name
-    assert "--region=us-central1" in cmd or "us-central1" in cmd
-    assert "--project=test-project" in cmd or "test-project" in cmd
-    # Args are passed via --update-env-vars or similar
-    cmd_str = " ".join(cmd)
-    assert "--theme" in cmd_str or "FACELESS_RUN_ARGS" in cmd_str
-    # PID is non-zero (some integer derived from the execution name)
+
+    req = captured["request"]
+    assert req.name == (
+        "projects/test-project/locations/us-central1/jobs/faceless-pipeline"
+    )
+    # FACELESS_RUN_ARGS env var carries the args, joined by U+001E
+    co = req.overrides.container_overrides[0]
+    args_var = next(e for e in co.env if e.name == "FACELESS_RUN_ARGS")
+    assert "--shorts" in args_var.value
+    assert "folkloric" in args_var.value
+    assert "\x1e" in args_var.value  # delimiter intact
+    # PID is non-zero (some integer derived from the execution resource name)
     assert pid > 0
 
 
-def test_cloudrun_jobs_backend_handles_gcloud_failure(tmp_path, monkeypatch):
-    """If gcloud returns non-zero, raise an informative error."""
+def test_cloudrun_jobs_backend_propagates_run_job_failure(tmp_path, monkeypatch):
+    """If the run_job RPC fails, the spawn raises the underlying error."""
     backend = CloudRunJobsBackend(
         job_name="faceless-pipeline",
         region="us-central1",
         project="test-project",
     )
 
-    def fake_run(cmd, capture_output, text, check, timeout):
-        class _R:
-            stdout = ""
-            stderr = "ERROR: Permission denied"
-            returncode = 1
-        return _R()
+    class _FakeJobsClient:
+        def run_job(self, *, request):
+            raise RuntimeError("Permission denied (workload identity)")
 
-    monkeypatch.setattr("pipeline.spawn_backends.subprocess.run", fake_run)
+    class _FakeRunV2:
+        JobsClient = _FakeJobsClient
+
+        class RunJobRequest:
+            def __init__(self, *, name, overrides):
+                self.name = name
+                self.overrides = overrides
+
+            class Overrides:
+                def __init__(self, *, container_overrides):
+                    self.container_overrides = container_overrides
+
+                class ContainerOverride:
+                    def __init__(self, *, env):
+                        self.env = env
+
+        class EnvVar:
+            def __init__(self, *, name, value):
+                self.name = name
+                self.value = value
+
+    import sys
+    sys.modules["google.cloud.run_v2"] = _FakeRunV2
+    sys.modules["google.cloud"] = type(sys)("google.cloud")
+    sys.modules["google.cloud"].run_v2 = _FakeRunV2
 
     with pytest.raises(RuntimeError) as exc_info:
         backend.spawn(
@@ -156,4 +217,4 @@ def test_cloudrun_jobs_backend_handles_gcloud_failure(tmp_path, monkeypatch):
             runpy_path=Path("/fake/run.py"),
             repo_root=Path("/fake/repo"),
         )
-    assert "Permission denied" in str(exc_info.value) or "gcloud" in str(exc_info.value).lower()
+    assert "Permission denied" in str(exc_info.value)
