@@ -5,6 +5,7 @@ import '../api/client.dart';
 import '../api/settings.dart';
 import '../config.dart';
 import '../theme.dart';
+import 'billing_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool firstLaunch;
@@ -218,6 +219,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 24),
+                const Divider(),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.monetization_on,
+                                     color: FacelessTheme.accent),
+                  title: const Text('Billing'),
+                  subtitle: const Text('Manage your subscription and credits'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const BillingScreen()),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.logout),

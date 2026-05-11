@@ -9,6 +9,7 @@ import '../api/models.dart';
 import '../api/settings.dart';
 import '../config.dart';
 import '../theme.dart';
+import 'billing_screen.dart';
 import 'cost_screen.dart';
 import 'new_run_screen.dart';
 import 'run_detail_screen.dart';
@@ -237,6 +238,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 4),
+            child: Center(child: _BalanceBadge()),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
@@ -1207,3 +1212,60 @@ class _ErrorView extends StatelessWidget {
       );
 }
 
+
+
+class _BalanceBadge extends StatefulWidget {
+  const _BalanceBadge();
+  @override
+  State<_BalanceBadge> createState() => _BalanceBadgeState();
+}
+
+class _BalanceBadgeState extends State<_BalanceBadge> {
+  int? _balance;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final b = await FacelessApiClient(FacelessSettings()).getBalance();
+      if (mounted) setState(() => _balance = b.balance);
+    } catch (_) {
+      // Silent on error — non-critical UI element, don't crash the home screen.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_balance == null) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: () async {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const BillingScreen()),
+        );
+        // Refresh on return — user may have just topped up.
+        _refresh();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: FacelessTheme.surface2,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.monetization_on,
+                       color: FacelessTheme.accent, size: 16),
+            const SizedBox(width: 6),
+            Text('$_balance',
+                 style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
