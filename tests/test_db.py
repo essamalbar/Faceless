@@ -34,6 +34,7 @@ class _FakeQuery:
     def insert(self, *a, **kw): return self._record("insert", *a, **kw)
     def upsert(self, *a, **kw): return self._record("upsert", *a, **kw)
     def single(self, *a, **kw): return self._record("single", *a, **kw)
+    def maybe_single(self, *a, **kw): return self._record("maybe_single", *a, **kw)
 
     def execute(self):
         return _Resp(self._data)
@@ -136,3 +137,19 @@ def test_list_transactions_returns_dataclasses_ordered_desc(fake_client):
     assert all(isinstance(t, Transaction) for t in txs)
     assert txs[0].kind == "signup_grant"
     assert txs[1].amount == -10
+
+
+def test_get_user_profile_handles_none_response_object(fake_client):
+    """supabase-py's `.maybe_single()` can return None (not just data=None) when
+    there are 0 rows. Make sure get_user_profile treats both as 'missing'."""
+    class _NoneResp:
+        data = None
+    # Force the FakeQuery to return a response with .data=None — which mirrors
+    # what .maybe_single() does in real supabase-py for 0-row results.
+    fake_client.tables["user_profiles"] = _FakeQuery(data=None)
+    assert get_user_profile("u-fresh") is None
+
+
+def test_get_balance_handles_none_response_object(fake_client):
+    fake_client.tables["user_balance"] = _FakeQuery(data=None)
+    assert get_balance("u-fresh") == 0

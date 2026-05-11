@@ -45,15 +45,19 @@ def _client() -> Client:
 
 
 def get_user_profile(user_id: str) -> UserProfile | None:
+    # `.maybe_single()` returns data=None when there are 0 rows. `.single()`
+    # would raise PGRST116 — which we'd then have to catch and translate to
+    # None, every call site. A missing profile is the normal pre-signup-grant
+    # state for newly-signed-up users; an exception isn't the right signal.
     resp = (
         _client()
         .table("user_profiles")
         .select("id,stripe_customer_id,current_plan,current_period_end")
         .eq("id", user_id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not resp.data:
+    if resp is None or not resp.data:
         return None
     d = resp.data
     return UserProfile(
@@ -70,15 +74,17 @@ def upsert_user_profile(user_id: str, **fields) -> None:
 
 
 def get_balance(user_id: str) -> int:
+    # `.maybe_single()` returns data=None when there are 0 rows (new user with
+    # no transactions yet). `.single()` would raise PGRST116.
     resp = (
         _client()
         .table("user_balance")
         .select("user_id,balance")
         .eq("user_id", user_id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not resp.data:
+    if resp is None or not resp.data:
         return 0
     return int(resp.data.get("balance", 0))
 
