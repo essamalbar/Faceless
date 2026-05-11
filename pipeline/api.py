@@ -365,6 +365,26 @@ class TransactionRow(BaseModel):
     created_at: str
 
 
+class CheckoutSubscriptionRequest(BaseModel):
+    plan: str = Field(..., description="'starter' | 'creator' | 'pro'")
+    success_url: str
+    cancel_url: str
+
+
+class CheckoutTopupRequest(BaseModel):
+    pack: str = Field(..., description="'topup_30' | 'topup_100' | 'topup_300'")
+    success_url: str
+    cancel_url: str
+
+
+class PortalRequest(BaseModel):
+    return_url: str
+
+
+class CheckoutResponse(BaseModel):
+    url: str
+
+
 # ---------------------------------------------------------------------------
 # Subprocess spawning — overridable in tests
 # ---------------------------------------------------------------------------
@@ -601,6 +621,57 @@ def get_transactions_endpoint(
         )
         for t in rows
     ]
+
+
+@app.post(
+    "/billing/checkout-subscription",
+    response_model=CheckoutResponse,
+    dependencies=[Depends(require_user)],
+)
+def billing_checkout_subscription(
+    req: CheckoutSubscriptionRequest,
+    user: User = Depends(require_user),
+):
+    if user.role == "service":
+        raise HTTPException(400, "service tokens have no subscription")
+    from pipeline.stripe_billing import create_subscription_checkout
+    try:
+        url = create_subscription_checkout(user, req.plan, req.success_url, req.cancel_url)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return CheckoutResponse(url=url)
+
+
+@app.post(
+    "/billing/checkout-topup",
+    response_model=CheckoutResponse,
+    dependencies=[Depends(require_user)],
+)
+def billing_checkout_topup(
+    req: CheckoutTopupRequest,
+    user: User = Depends(require_user),
+):
+    if user.role == "service":
+        raise HTTPException(400, "service tokens have no top-ups")
+    from pipeline.stripe_billing import create_topup_checkout
+    try:
+        url = create_topup_checkout(user, req.pack, req.success_url, req.cancel_url)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return CheckoutResponse(url=url)
+
+
+@app.post(
+    "/billing/portal",
+    response_model=CheckoutResponse,
+    dependencies=[Depends(require_user)],
+)
+def billing_portal(req: PortalRequest, user: User = Depends(require_user)):
+    if user.role == "service":
+        raise HTTPException(400, "service tokens have no portal")
+    from pipeline.stripe_billing import create_portal_session
+    url = create_portal_session(user, req.return_url)
+    return CheckoutResponse(url=url)
 
 
 def _derive_progress(run_dir: Path, status: str) -> RunProgress | None:

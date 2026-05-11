@@ -1940,3 +1940,62 @@ def test_freeform_run_bypasses_credit_check_for_service_token(client_factory, mo
         "max_beats": 8,
     })
     assert r.status_code == 201
+
+
+# ---------------------------------------------------------------------------
+# T8: Stripe checkout / portal endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_checkout_subscription_returns_url(client_factory, monkeypatch):
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.create_subscription_checkout",
+        lambda user, plan, s, c: f"https://checkout/{plan}",
+    )
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/billing/checkout-subscription", json={
+        "plan": "starter",
+        "success_url": "https://app/success",
+        "cancel_url": "https://app/cancel",
+    })
+    assert r.status_code == 200
+    assert r.json() == {"url": "https://checkout/starter"}
+
+
+def test_checkout_topup_returns_url(client_factory, monkeypatch):
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.create_topup_checkout",
+        lambda user, pack, s, c: f"https://checkout/pack/{pack}",
+    )
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/billing/checkout-topup", json={
+        "pack": "topup_100",
+        "success_url": "https://app/success",
+        "cancel_url": "https://app/cancel",
+    })
+    assert r.status_code == 200
+    assert r.json()["url"].endswith("/pack/topup_100")
+
+
+def test_portal_returns_url(client_factory, monkeypatch):
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.create_portal_session",
+        lambda user, return_url: f"https://portal?return={return_url}",
+    )
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/billing/portal", json={"return_url": "https://app/home"})
+    assert r.status_code == 200
+    assert "portal" in r.json()["url"]
+
+
+def test_billing_endpoints_reject_service_tokens(client_factory):
+    c = client_factory(user_id="admin", role="service")
+    for path, body in [
+        ("/billing/checkout-subscription",
+         {"plan": "starter", "success_url": "x", "cancel_url": "y"}),
+        ("/billing/checkout-topup",
+         {"pack": "topup_30", "success_url": "x", "cancel_url": "y"}),
+        ("/billing/portal", {"return_url": "x"}),
+    ]:
+        r = c.post(path, json=body)
+        assert r.status_code == 400, f"{path} should reject service token"
