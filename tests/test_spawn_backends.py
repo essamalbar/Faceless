@@ -218,3 +218,64 @@ def test_cloudrun_jobs_backend_propagates_run_job_failure(tmp_path, monkeypatch)
             repo_root=Path("/fake/repo"),
         )
     assert "Permission denied" in str(exc_info.value)
+
+
+def test_cloudrun_jobs_is_alive_returns_false_for_completed_execution(tmp_path, monkeypatch):
+    """A Cloud Run Job execution that finished (succeeded/failed/cancelled) must
+    report is_alive=False. proto-plus converts Timestamp → datetime, breaking
+    the old completion_time.seconds check — use the lifecycle counters instead."""
+    backend = CloudRunJobsBackend(
+        job_name="faceless-pipeline", region="us-central1", project="test",
+    )
+    # Stash a fake api_state.json
+    state_path = tmp_path / "api_state.json"
+    state_path.write_text('{"cloudrun_execution_name": "projects/x/locations/us-central1/jobs/y/executions/z"}')
+
+    class _FakeExecution:
+        succeeded_count = 1
+        failed_count = 0
+        cancelled_count = 0
+
+    class _FakeClient:
+        def get_execution(self, *, name):
+            return _FakeExecution()
+
+    class _FakeRunV2:
+        ExecutionsClient = _FakeClient
+
+    import sys
+    sys.modules["google.cloud.run_v2"] = _FakeRunV2
+    sys.modules["google.cloud"] = type(sys)("google.cloud")
+    sys.modules["google.cloud"].run_v2 = _FakeRunV2
+
+    assert backend.is_alive(pid=999, run_dir=tmp_path) is False
+
+
+def test_cloudrun_jobs_is_alive_returns_true_for_running_execution(tmp_path, monkeypatch):
+    """An execution that's still provisioning or running (no terminal counters yet)
+    must report is_alive=True — the UI shouldn't flip to 'failed' during cold-start."""
+    backend = CloudRunJobsBackend(
+        job_name="faceless-pipeline", region="us-central1", project="test",
+    )
+    state_path = tmp_path / "api_state.json"
+    state_path.write_text('{"cloudrun_execution_name": "projects/x/locations/us-central1/jobs/y/executions/z"}')
+
+    class _FakeExecution:
+        succeeded_count = 0
+        failed_count = 0
+        cancelled_count = 0
+        # running_count > 0, or just provisioning — either way, no terminal state
+
+    class _FakeClient:
+        def get_execution(self, *, name):
+            return _FakeExecution()
+
+    class _FakeRunV2:
+        ExecutionsClient = _FakeClient
+
+    import sys
+    sys.modules["google.cloud.run_v2"] = _FakeRunV2
+    sys.modules["google.cloud"] = type(sys)("google.cloud")
+    sys.modules["google.cloud"].run_v2 = _FakeRunV2
+
+    assert backend.is_alive(pid=999, run_dir=tmp_path) is True

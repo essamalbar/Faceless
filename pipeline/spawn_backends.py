@@ -203,16 +203,20 @@ class CloudRunJobsBackend(SpawnBackend):
             # poll will re-check.
             return True
 
-        # A Cloud Run Job execution is "running" if completion_time isn't set.
-        # Once it ends (success/fail/cancel) the completion_time is populated.
-        completion = getattr(execution, "completion_time", None)
-        if completion is None:
-            return True
-        # completion_time may be a Timestamp proto whose seconds=0 means "unset"
-        seconds = getattr(completion, "seconds", None)
-        if seconds == 0 or seconds is None:
-            return True
-        return False
+        # Use the lifecycle counters, not completion_time. Reason: proto-plus
+        # auto-converts Timestamp to `datetime`, which has no `.seconds` attr —
+        # our old `getattr(completion, "seconds", None) == None` check then
+        # incorrectly returned True for every completed execution.
+        # The terminal-state counters are robust across proto-plus versions:
+        # any of succeeded/failed/cancelled being >0 means the worker is done.
+        succeeded = getattr(execution, "succeeded_count", 0) or 0
+        failed = getattr(execution, "failed_count", 0) or 0
+        cancelled = getattr(execution, "cancelled_count", 0) or 0
+        if succeeded > 0 or failed > 0 or cancelled > 0:
+            return False
+        # Otherwise: provisioning, pending, or actively running. All count
+        # as alive — we don't want to flip the UI to "failed" during cold-start.
+        return True
 
 
 def select_backend() -> SpawnBackend:
