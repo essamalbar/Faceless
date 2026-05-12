@@ -47,10 +47,17 @@ def mock_db(monkeypatch):
         })
         state["balances"][user_id] = state["balances"].get(user_id, 0) + amount
 
+    def fake_has_signup_grant(uid):
+        return any(
+            t["user_id"] == uid and t["kind"] == "signup_grant"
+            for t in state["transactions"]
+        )
+
     monkeypatch.setattr("pipeline.credits.get_user_profile", fake_get_profile)
     monkeypatch.setattr("pipeline.credits.upsert_user_profile", fake_upsert_profile)
     monkeypatch.setattr("pipeline.credits.get_balance", fake_get_balance)
     monkeypatch.setattr("pipeline.credits.record_transaction", fake_record)
+    monkeypatch.setattr("pipeline.credits._has_signup_grant", fake_has_signup_grant)
     return state
 
 
@@ -123,3 +130,41 @@ def test_refund_inserts_positive_transaction(mock_db):
 def test_refund_skips_service_user(mock_db):
     refund(_user(role="service"), amount=20, run_id="r", reason="")
     assert mock_db["transactions"] == []
+
+
+def test_ensure_signup_grant_checks_for_existing_grant_row_not_just_profile(monkeypatch, mock_db):
+    """Race fix: ensure_signup_grant must check for an existing signup_grant
+    transaction (not just a profile row), because the profile is upserted
+    BEFORE the transaction is inserted. Two concurrent first-auth calls can
+    both see 'no profile' → both upsert → both insert a grant → 2x credits.
+    The fix is to gate on the transaction row, not the profile."""
+    state = mock_db
+    # Simulate state where the profile exists AND a signup_grant exists.
+    state["profiles"]["u1"] = {"id": "u1", "current_plan": "free"}
+    state["transactions"].append({
+        "user_id": "u1", "amount": 60, "kind": "signup_grant",
+        "reference_id": None, "description": "Welcome",
+    })
+    state["balances"]["u1"] = 60
+
+    # Patch _has_signup_grant to return True (real impl reads from DB).
+    monkeypatch.setattr("pipeline.credits._has_signup_grant", lambda uid: True)
+
+    ensure_signup_grant(_user())
+    # No NEW signup_grant should have been inserted.
+    grants = [t for t in state["transactions"] if t["kind"] == "signup_grant"]
+    assert len(grants) == 1
+
+
+def test_ensure_signup_grant_uses_has_signup_grant_as_guard(monkeypatch, mock_db):
+    """When _has_signup_grant returns False, the grant fires. When True, it doesn't."""
+    state = mock_db
+    calls = {"fired": 0}
+    monkeypatch.setattr("pipeline.credits._has_signup_grant", lambda uid: False)
+    ensure_signup_grant(_user())
+    assert any(t["kind"] == "signup_grant" for t in state["transactions"])
+    # Now flip the guard — second call shouldn't double-grant.
+    monkeypatch.setattr("pipeline.credits._has_signup_grant", lambda uid: True)
+    txs_before = len(state["transactions"])
+    ensure_signup_grant(_user())
+    assert len(state["transactions"]) == txs_before

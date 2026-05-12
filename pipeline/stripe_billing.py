@@ -137,7 +137,12 @@ def handle_webhook(raw_body: bytes, signature: str) -> WebhookOutcome:
         secret=_webhook_secret(),
     )
     et = event["type"]
-    data = event["data"]["object"]
+    # Stripe's `StripeObject` has subtle surprises around `.get()` on nested
+    # children (sometimes triggers `__getattr__` → KeyError). Convert to a
+    # plain dict so the handlers stay simple — same code path for production
+    # webhooks and dict-shaped test fixtures.
+    raw_data = event["data"]["object"]
+    data = raw_data.to_dict() if hasattr(raw_data, "to_dict") else dict(raw_data)
 
     if et == "checkout.session.completed":
         return _on_checkout_completed(data)
@@ -184,7 +189,8 @@ def _on_invoice_paid(invoice) -> WebhookOutcome:
     sub_id = invoice.get("subscription")
     if not sub_id:
         return WebhookOutcome("invoice.payment_succeeded", False, "no subscription id")
-    subscription = stripe.Subscription.retrieve(sub_id)
+    raw_sub = stripe.Subscription.retrieve(sub_id)
+    subscription = raw_sub.to_dict() if hasattr(raw_sub, "to_dict") else dict(raw_sub)
     user_id = (subscription.get("metadata") or {}).get("user_id")
     plan = (subscription.get("metadata") or {}).get("plan")
     if not user_id or plan not in PLAN_GRANTS:

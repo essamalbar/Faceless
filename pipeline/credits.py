@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from pipeline.auth import User
 from pipeline.db import (
+    _client,
     get_balance,
     get_user_profile,
     record_transaction,
@@ -39,19 +40,43 @@ def _is_service(user: User) -> bool:
     return user.role == "service"
 
 
+def _has_signup_grant(user_id: str) -> bool:
+    """True iff a `signup_grant` transaction already exists for this user.
+
+    Used as the idempotency guard for ensure_signup_grant — it survives the
+    concurrent first-auth race that "check the profile" doesn't, because the
+    profile is upserted BEFORE the transaction is inserted. Two parallel calls
+    can both see no profile → both upsert (idempotent) → both insert a grant.
+    Checking for the grant row itself is the authoritative guard.
+    """
+    resp = (
+        _client()
+        .table("credit_transactions")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("kind", "signup_grant")
+        .limit(1)
+        .execute()
+    )
+    return bool(resp.data)
+
+
 def ensure_signup_grant(user: User) -> None:
-    """If user_profiles row doesn't exist yet, create it AND grant SIGNUP_GRANT
-    credits. Idempotent — safe to call on every authenticated request."""
+    """If user has no signup_grant transaction yet, create their profile + grant
+    SIGNUP_GRANT credits. Idempotent — safe to call on every authenticated
+    request, and safe under concurrent first-auth (modulo Postgres
+    serializability; for absolute safety, add a partial unique index — see
+    docs/superpowers/specs/2026-05-11-stripe-credits-design.md)."""
     if _is_service(user):
         return
-    if get_user_profile(user.id) is not None:
-        return  # already provisioned
+    if _has_signup_grant(user.id):
+        return  # already granted
     upsert_user_profile(user.id, current_plan="free")
     record_transaction(
         user_id=user.id,
         amount=SIGNUP_GRANT,
         kind="signup_grant",
-        description="Welcome — 60 free credits",
+        description=f"Welcome — {SIGNUP_GRANT} free credits",
     )
 
 
