@@ -215,6 +215,7 @@ def _on_invoice_paid(invoice) -> WebhookOutcome:
         user_id,
         current_plan=plan,
         current_period_end=_iso(period_end_unix),
+        cancel_at_period_end=bool(subscription.get("cancel_at_period_end", False)),
     )
     return WebhookOutcome("invoice.payment_succeeded", True,
                           f"+{PLAN_GRANTS[plan]} for {plan}")
@@ -233,6 +234,7 @@ def _on_subscription_updated(subscription) -> WebhookOutcome:
         user_id,
         current_plan=(plan if plan in PLAN_GRANTS else "free"),
         current_period_end=_iso(period_end_unix),
+        cancel_at_period_end=bool(subscription.get("cancel_at_period_end", False)),
     )
     return WebhookOutcome("customer.subscription.updated", True, f"plan={plan}")
 
@@ -251,7 +253,12 @@ def _on_subscription_deleted(subscription) -> WebhookOutcome:
     user_id = (subscription.get("metadata") or {}).get("user_id")
     if not user_id:
         return WebhookOutcome("customer.subscription.deleted", False, "no user_id metadata")
-    upsert_user_profile(user_id, current_plan="free", current_period_end=None)
+    upsert_user_profile(
+        user_id,
+        current_plan="free",
+        current_period_end=None,
+        cancel_at_period_end=False,
+    )
     return WebhookOutcome("customer.subscription.deleted", True, "plan reset to free")
 
 

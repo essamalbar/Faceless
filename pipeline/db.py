@@ -20,6 +20,7 @@ class UserProfile:
     stripe_customer_id: str | None
     current_plan: str
     current_period_end: str | None  # ISO timestamp as Supabase returns it
+    cancel_at_period_end: bool = False
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,10 @@ def get_user_profile(user_id: str) -> UserProfile | None:
     resp = (
         _client()
         .table("user_profiles")
-        .select("id,stripe_customer_id,current_plan,current_period_end")
+        .select(
+            "id,stripe_customer_id,current_plan,"
+            "current_period_end,cancel_at_period_end",
+        )
         .eq("id", user_id)
         .maybe_single()
         .execute()
@@ -65,6 +69,7 @@ def get_user_profile(user_id: str) -> UserProfile | None:
         stripe_customer_id=d.get("stripe_customer_id"),
         current_plan=d.get("current_plan", "free"),
         current_period_end=d.get("current_period_end"),
+        cancel_at_period_end=bool(d.get("cancel_at_period_end", False)),
     )
 
 

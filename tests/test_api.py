@@ -1860,6 +1860,7 @@ def test_get_plan_returns_subscription_for_existing_user(client_factory, monkeyp
     assert body == {
         "plan": "creator",
         "current_period_end": "2026-06-11T00:00:00Z",
+        "cancel_at_period_end": False,
         "balance": 234,
     }
 
@@ -2062,7 +2063,10 @@ def test_billing_get_endpoints_bypass_db_for_service_tokens(client_factory, monk
     c = client_factory(user_id="admin", role="service")
     assert c.get("/billing/balance").json() == {"balance": 0}
     assert c.get("/billing/plan").json() == {
-        "plan": "free", "current_period_end": None, "balance": 0,
+        "plan": "free",
+        "current_period_end": None,
+        "cancel_at_period_end": False,
+        "balance": 0,
     }
     assert c.get("/billing/transactions").json() == []
 

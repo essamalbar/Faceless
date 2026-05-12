@@ -354,6 +354,7 @@ class BalanceResponse(BaseModel):
 class PlanResponse(BaseModel):
     plan: str                         # 'free' | 'starter' | 'creator' | 'pro'
     current_period_end: str | None    # ISO timestamp, null on 'free'
+    cancel_at_period_end: bool = False  # true if user scheduled a cancel
     balance: int
 
 
@@ -601,12 +602,18 @@ def get_balance_endpoint(user: User = Depends(require_user)):
 )
 def get_plan_endpoint(user: User = Depends(require_user)):
     if user.role == "service":
-        return PlanResponse(plan="free", current_period_end=None, balance=0)
+        return PlanResponse(
+            plan="free",
+            current_period_end=None,
+            cancel_at_period_end=False,
+            balance=0,
+        )
     from pipeline.db import get_balance, get_user_profile
     profile = get_user_profile(user.id)
     return PlanResponse(
         plan=(profile.current_plan if profile else "free"),
         current_period_end=(profile.current_period_end if profile else None),
+        cancel_at_period_end=(profile.cancel_at_period_end if profile else False),
         balance=get_balance(user.id),
     )
 

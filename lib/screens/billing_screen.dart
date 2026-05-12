@@ -163,10 +163,20 @@ class _BalanceCard extends StatelessWidget {
               Text('Plan: ${plan.plan}',
                    style: const TextStyle(color: FacelessTheme.textPrimary)),
               if (plan.currentPeriodEnd != null)
-                Text('Renews ${plan.currentPeriodEnd!.substring(0, 10)}',
-                     style: const TextStyle(
-                       color: FacelessTheme.textSecondary, fontSize: 12,
-                     )),
+                Text(
+                  plan.cancelAtPeriodEnd
+                      ? 'Cancels ${plan.currentPeriodEnd!.substring(0, 10)}'
+                      : 'Renews ${plan.currentPeriodEnd!.substring(0, 10)}',
+                  style: TextStyle(
+                    color: plan.cancelAtPeriodEnd
+                        ? FacelessTheme.danger
+                        : FacelessTheme.textSecondary,
+                    fontSize: 12,
+                    fontWeight: plan.cancelAtPeriodEnd
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                ),
             ],
           ),
           const Icon(Icons.monetization_on,

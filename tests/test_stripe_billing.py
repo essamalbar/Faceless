@@ -201,3 +201,46 @@ def test_handle_webhook_uses_item_period_end_for_newer_stripe(stripe_env, mock_d
     assert saved["current_plan"] == "starter"
     assert saved["current_period_end"] is not None
     assert "2026" in saved["current_period_end"]
+
+
+def test_handle_webhook_subscription_updated_persists_cancel_flag(
+    stripe_env, mock_db, monkeypatch,
+):
+    """When the user schedules a cancel via Customer Portal, Stripe fires
+    customer.subscription.updated with cancel_at_period_end=True. We must
+    persist that flag so the UI can show 'Cancels on YYYY-MM-DD' instead
+    of 'Renews on YYYY-MM-DD'."""
+    fake_event = {
+        "type": "customer.subscription.updated",
+        "data": {"object": {
+            "id": "sub_x",
+            "metadata": {"user_id": "u1", "plan": "starter"},
+            "items": {"data": [{"current_period_end": 1781186948}]},
+            "cancel_at_period_end": True,
+        }},
+    }
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    assert mock_db["profiles"]["u1"]["cancel_at_period_end"] is True
+
+
+def test_handle_webhook_subscription_deleted_clears_cancel_flag(
+    stripe_env, mock_db, monkeypatch,
+):
+    """Once the cancel actually takes effect (end of period), the subscription
+    is deleted — we reset cancel_at_period_end to False alongside plan/free."""
+    mock_db["profiles"]["u1"] = {
+        "current_plan": "starter", "cancel_at_period_end": True,
+    }
+    fake_event = {
+        "type": "customer.subscription.deleted",
+        "data": {"object": {"metadata": {"user_id": "u1"}}},
+    }
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    assert mock_db["profiles"]["u1"]["current_plan"] == "free"
+    assert mock_db["profiles"]["u1"]["cancel_at_period_end"] is False

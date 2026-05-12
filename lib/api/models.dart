@@ -255,11 +255,18 @@ class Balance {
 class PlanInfo {
   final String plan;            // 'free' | 'starter' | 'creator' | 'pro'
   final String? currentPeriodEnd;
+  final bool cancelAtPeriodEnd;
   final int balance;
-  PlanInfo({required this.plan, required this.currentPeriodEnd, required this.balance});
+  PlanInfo({
+    required this.plan,
+    required this.currentPeriodEnd,
+    required this.balance,
+    this.cancelAtPeriodEnd = false,
+  });
   factory PlanInfo.fromJson(Map<String, dynamic> j) => PlanInfo(
         plan: j['plan'] as String,
         currentPeriodEnd: j['current_period_end'] as String?,
+        cancelAtPeriodEnd: (j['cancel_at_period_end'] as bool?) ?? false,
         balance: j['balance'] as int,
       );
 }
