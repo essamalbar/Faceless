@@ -193,6 +193,13 @@ def _on_invoice_paid(invoice) -> WebhookOutcome:
     subscription = raw_sub.to_dict() if hasattr(raw_sub, "to_dict") else dict(raw_sub)
     user_id = (subscription.get("metadata") or {}).get("user_id")
     plan = (subscription.get("metadata") or {}).get("plan")
+    # Newer Stripe API (2025+): current_period_end moved from the top-level
+    # subscription object onto the first SubscriptionItem. Read it from
+    # there with a fallback to the legacy top-level field for safety.
+    period_end_unix = (
+        subscription.get("current_period_end")
+        or _first_item_period_end(subscription)
+    )
     if not user_id or plan not in PLAN_GRANTS:
         return WebhookOutcome("invoice.payment_succeeded", False,
                               f"missing user_id or plan (plan={plan!r})")
@@ -207,7 +214,7 @@ def _on_invoice_paid(invoice) -> WebhookOutcome:
     upsert_user_profile(
         user_id,
         current_plan=plan,
-        current_period_end=_iso(subscription.get("current_period_end")),
+        current_period_end=_iso(period_end_unix),
     )
     return WebhookOutcome("invoice.payment_succeeded", True,
                           f"+{PLAN_GRANTS[plan]} for {plan}")
@@ -218,12 +225,26 @@ def _on_subscription_updated(subscription) -> WebhookOutcome:
     plan = (subscription.get("metadata") or {}).get("plan")
     if not user_id:
         return WebhookOutcome("customer.subscription.updated", False, "no user_id metadata")
+    period_end_unix = (
+        subscription.get("current_period_end")
+        or _first_item_period_end(subscription)
+    )
     upsert_user_profile(
         user_id,
         current_plan=(plan if plan in PLAN_GRANTS else "free"),
-        current_period_end=_iso(subscription.get("current_period_end")),
+        current_period_end=_iso(period_end_unix),
     )
     return WebhookOutcome("customer.subscription.updated", True, f"plan={plan}")
+
+
+def _first_item_period_end(subscription: dict) -> int | None:
+    """Newer Stripe API (2025+) puts current_period_end on the first
+    SubscriptionItem instead of the Subscription itself. Return that, or
+    None if the shape doesn't match (legacy subscriptions, edge cases)."""
+    try:
+        return subscription["items"]["data"][0].get("current_period_end")
+    except (KeyError, IndexError, TypeError):
+        return None
 
 
 def _on_subscription_deleted(subscription) -> WebhookOutcome:

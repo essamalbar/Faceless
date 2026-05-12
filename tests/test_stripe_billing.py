@@ -172,3 +172,32 @@ def test_handle_webhook_unknown_event_is_ignored(stripe_env, mock_db, monkeypatc
                        lambda **kw: {"type": "ping", "data": {"object": {}}})
     outcome = handle_webhook(b"{}", "sig")
     assert outcome.handled is False
+
+
+def test_handle_webhook_uses_item_period_end_for_newer_stripe(stripe_env, mock_db, monkeypatch):
+    """Newer Stripe API (2025+) puts current_period_end on items.data[0],
+    not on the subscription itself. Make sure we still write the right
+    period_end on upsert_user_profile."""
+    fake_event = {
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {"id": "inv_2", "subscription": "sub_x"}},
+    }
+    # Newer Stripe: no top-level current_period_end; it's on the SubscriptionItem
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.stripe.Subscription.retrieve",
+        lambda sid: {
+            "id": sid,
+            "metadata": {"user_id": "u1", "plan": "starter"},
+            "items": {"data": [{"current_period_end": 1781186948}]},
+            # No "current_period_end" at top level — that's the new API shape
+        },
+    )
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    # 2026-06-11T... — derived from 1781186948 unix ts
+    saved = mock_db["profiles"]["u1"]
+    assert saved["current_plan"] == "starter"
+    assert saved["current_period_end"] is not None
+    assert "2026" in saved["current_period_end"]
