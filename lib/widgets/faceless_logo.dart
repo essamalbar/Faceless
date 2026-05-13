@@ -4,15 +4,19 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// The Faceless brand mark — a stylized crescent moon with a small accent
-/// star, rendered in gold on a circular gradient background.
+/// The Faceless brand mark — a sparkle constellation (one large 4-point
+/// spark + two smaller satellite sparks) rendered in dark on a gold
+/// gradient disc. The 4-point sparkle (✦) is the universal symbol for
+/// "AI magic" — used by Apple Intelligence, Gemini, ChatGPT, Midjourney —
+/// and the multi-spark layout reads as "magic happening" rather than
+/// just a single decorative star.
 ///
 /// Used everywhere the brand needs to appear: AppBar leading, hero on the
 /// home screen, login screen splash, run-detail header, PDF cover (via
 /// equivalent fpdf2 drawing primitives in pipeline/pdf_export.py).
 ///
 /// `size` is the outer diameter. `withBackground=false` strips the gold
-/// disc and renders just the mark in [color], useful when the logo sits
+/// disc and renders just the marks in [color], useful when the logo sits
 /// on its own gold gradient already (e.g. monogram chips).
 class FacelessLogo extends StatelessWidget {
   final double size;
@@ -68,49 +72,41 @@ class _FacelessLogoPainter extends CustomPainter {
       canvas.drawCircle(Offset(cx, cy), r, discPaint);
     }
 
-    // CRESCENT — drawn by subtracting a smaller circle (offset right) from
-    // a slightly larger one (centered slightly left). The difference path
-    // gives a clean, even-thickness moon shape that scales to any size.
-    final moonOuterR = r * 0.55;
-    final moonInnerR = r * 0.50;
-    final moonOuterC = Offset(cx - r * 0.04, cy);
-    final moonInnerC = Offset(cx + r * 0.10, cy - r * 0.02);
-
-    final outerPath = Path()
-      ..addOval(Rect.fromCircle(center: moonOuterC, radius: moonOuterR));
-    final innerPath = Path()
-      ..addOval(Rect.fromCircle(center: moonInnerC, radius: moonInnerR));
-    final crescentPath = Path.combine(PathOperation.difference,
-                                      outerPath, innerPath);
     final markPaint = Paint()..color = markColor;
-    canvas.drawPath(crescentPath, markPaint);
 
-    // ACCENT STAR — a 4-point starburst at the upper-right corner of the
-    // crescent's opening. Drawn as two crossed diamonds for crispness at
-    // small sizes (a typical 5-point star anti-aliases badly under 16px).
-    final starC = Offset(cx + r * 0.40, cy - r * 0.45);
-    final starR = r * 0.13;
-    _drawStarBurst(canvas, starC, starR, markPaint);
+    // Sparkle constellation — one large hero sparkle slightly off-center,
+    // plus two smaller satellites at opposing corners. Coordinates are
+    // proportional to `r` so the layout is identical at every size.
+    final hero = Offset(cx - r * 0.06, cy + r * 0.02);
+    final sat1 = Offset(cx + r * 0.42, cy - r * 0.42);   // top-right
+    final sat2 = Offset(cx + r * 0.45, cy + r * 0.40);   // bottom-right
+    _drawSparkle(canvas, hero, r * 0.50, markPaint);
+    _drawSparkle(canvas, sat1, r * 0.20, markPaint);
+    _drawSparkle(canvas, sat2, r * 0.15, markPaint);
   }
 
-  void _drawStarBurst(Canvas canvas, Offset c, double r, Paint p) {
-    // Vertical+horizontal diamond combined with a diagonal one = 4-pointed
-    // sparkle. Tips pinched, body thin so it reads as a star not a flower.
-    final inner = r * 0.30;
-    final long = Path()
+  /// One 4-point sparkle — the AI-magic motif. Drawn as two crossed
+  /// pinched diamonds (vertical + horizontal) so the points stay crisp
+  /// at small sizes; a typical 5-point star anti-aliases badly under 16px.
+  /// The `pinch` factor controls how thin the rays are — lower = more
+  /// dramatic / pointier, higher = chunkier.
+  void _drawSparkle(Canvas canvas, Offset c, double r, Paint p) {
+    const pinch = 0.18;
+    final w = r * pinch;
+    final vert = Path()
       ..moveTo(c.dx, c.dy - r)
-      ..lineTo(c.dx + inner, c.dy)
+      ..lineTo(c.dx + w, c.dy)
       ..lineTo(c.dx, c.dy + r)
-      ..lineTo(c.dx - inner, c.dy)
+      ..lineTo(c.dx - w, c.dy)
       ..close();
-    final cross = Path()
+    final horz = Path()
       ..moveTo(c.dx - r, c.dy)
-      ..lineTo(c.dx, c.dy + inner)
+      ..lineTo(c.dx, c.dy + w)
       ..lineTo(c.dx + r, c.dy)
-      ..lineTo(c.dx, c.dy - inner)
+      ..lineTo(c.dx, c.dy - w)
       ..close();
-    canvas.drawPath(long, p);
-    canvas.drawPath(cross, p);
+    canvas.drawPath(vert, p);
+    canvas.drawPath(horz, p);
   }
 
   @override

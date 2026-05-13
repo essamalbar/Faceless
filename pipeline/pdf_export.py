@@ -50,6 +50,20 @@ def _shape(text: str) -> str:
     return get_display(reshaped)
 
 
+def _pdf_sparkle(pdf, cx: float, cy: float, r: float) -> None:
+    """Draw one 4-point sparkle (two crossed pinched diamonds) at (cx, cy)
+    with reach `r`. Mirror of _drawSparkle in lib/widgets/faceless_logo.dart
+    — keep the pinch factor in sync if you tweak the silhouette."""
+    pinch = 0.18
+    w = r * pinch
+    # Vertical diamond
+    pdf.polygon([(cx, cy - r), (cx + w, cy),
+                 (cx, cy + r), (cx - w, cy)], style="F")
+    # Horizontal diamond
+    pdf.polygon([(cx - r, cy), (cx, cy + w),
+                 (cx + r, cy), (cx, cy - w)], style="F")
+
+
 def _ascii_safe(text: str) -> str:
     """Strip non-latin-1 chars so fpdf2's core Helvetica doesn't crash on
     smart quotes / em-dashes / Arabic. Used for any string drawn in
@@ -86,35 +100,20 @@ def _draw_cover(pdf: _DirectorPDF, script: dict[str, Any]) -> None:
     pdf._draw_footer = False
     pdf.add_page()
 
-    # Brand mark: gold disc with a dark crescent + small star — matches
+    # Brand mark: gold disc with a sparkle constellation in dark — matches
     # the Flutter widget in lib/widgets/faceless_logo.dart so the brand
     # reads identically in the app and on paper.
     cx, cy, r = 105.0, 50.0, 11.0
     pdf.set_fill_color(*_GOLD)
     pdf.circle(x=cx, y=cy, radius=r, style="F")
 
-    # Crescent: subtractive — paint a smaller dark circle slightly inside
-    # the disc to leave a crescent of gold along the left edge. Using the
-    # cover background color (white) for the cutout keeps it clean.
-    pdf.set_fill_color(255, 255, 255)
-    pdf.circle(x=cx + r * 0.20, y=cy - r * 0.04, radius=r * 0.78, style="F")
-
-    # Re-fill the inner crescent body in dark so the mark reads as a
-    # crescent silhouette (not just a thin gold rim).
+    # Sparkle constellation — one hero + two satellites, layout pinned to
+    # match the Flutter widget exactly so the brand is the same artifact
+    # on screen and on paper.
     pdf.set_fill_color(*_DARK)
-    pdf.circle(x=cx - r * 0.08, y=cy, radius=r * 0.55, style="F")
-    pdf.set_fill_color(255, 255, 255)
-    pdf.circle(x=cx + r * 0.20, y=cy - r * 0.04, radius=r * 0.50, style="F")
-
-    # Accent star — small 4-point diamond pair at the upper-right.
-    pdf.set_fill_color(*_GOLD)
-    sx, sy, sr = cx + r * 0.40, cy - r * 0.45, r * 0.13
-    # Vertical diamond
-    pdf.polygon([(sx, sy - sr), (sx + sr * 0.35, sy),
-                 (sx, sy + sr), (sx - sr * 0.35, sy)], style="F")
-    # Horizontal diamond — fpdf2's polygon accepts a list of (x,y) tuples
-    pdf.polygon([(sx - sr, sy), (sx, sy + sr * 0.35),
-                 (sx + sr, sy), (sx, sy - sr * 0.35)], style="F")
+    _pdf_sparkle(pdf, cx - r * 0.06, cy + r * 0.02, r * 0.50)
+    _pdf_sparkle(pdf, cx + r * 0.42, cy - r * 0.42, r * 0.20)
+    _pdf_sparkle(pdf, cx + r * 0.45, cy + r * 0.40, r * 0.15)
     pdf.set_fill_color(0, 0, 0)
 
     # Title
