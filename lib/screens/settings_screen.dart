@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../api/client.dart';
+import '../api/models.dart';
 import '../api/settings.dart';
 import '../config.dart';
 import '../theme.dart';
@@ -22,6 +23,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = false;
   String? _testResult;
 
+  // Account state — best-effort, never blocks the screen render.
+  String? _email;
+  PlanInfo? _plan;
+
+  // Advanced section is hidden by default to keep the screen calm for the
+  // 99% case where the launcher already configured everything. We force it
+  // open on first launch when there's no saved URL yet.
+  late bool _advancedExpanded = widget.firstLaunch;
+
   @override
   void initState() {
     super.initState();
@@ -30,9 +40,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final url = await _settings.baseUrl();
-    if (mounted) {
-      _urlCtrl.text = url ?? '';
-      setState(() {});
+    if (!mounted) return;
+    _urlCtrl.text = url ?? '';
+    setState(() {});
+
+    // Account info — fire-and-forget.
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      _email = user?.email;
+    } catch (_) {
+      _email = null;
+    }
+    try {
+      final client = FacelessApiClient(_settings);
+      final p = await client.getPlan();
+      client.close();
+      if (mounted) setState(() => _plan = p);
+    } catch (_) {
+      // Best-effort.
     }
   }
 
@@ -97,7 +122,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (yes != true || !mounted) return;
     await _settings.clear();
     if (!mounted) return;
-    // Reload to show the dart-define default if any
     final url = await _settings.baseUrl();
     if (mounted) {
       _urlCtrl.text = url ?? '';
@@ -106,6 +130,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _signOut() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          "You'll need to sign in again to access your library and credits.",
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: FacelessTheme.danger,
+                  foregroundColor: Colors.white),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Sign out')),
+        ],
+      ),
+    );
+    if (yes != true) return;
     try {
       await Supabase.instance.client.auth.signOut();
     } catch (_) {
@@ -118,127 +163,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: FacelessTheme.bg,
       appBar: AppBar(
+        backgroundColor: FacelessTheme.bg,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: const Text('Settings'),
-        leading: widget.firstLaunch ? null : null,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (widget.firstLaunch)
-                  Card(
-                    color: Theme.of(context).colorScheme.secondaryContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'First-time setup. Paste your Cloudflare Tunnel URL '
-                        '(or Mac LAN IP if on home WiFi).',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _urlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Server URL',
-                    hintText: 'https://xyz.trycloudflare.com',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'required';
-                    if (!v.startsWith('http')) return 'must start with http:// or https://';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-                if (_testResult != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      _testResult!,
-                      style: TextStyle(
-                        color: _testResult!.startsWith('✓')
-                            ? Colors.green
-                            : Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
-                Row(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _loading ? null : _testConnection,
-                        icon: const Icon(Icons.wifi_tethering),
-                        label: const Text('Test'),
+                    _AccountCard(email: _email, plan: _plan),
+                    const SizedBox(height: 24),
+                    _SectionLabel(text: 'Subscription'),
+                    const SizedBox(height: 8),
+                    _SettingTile(
+                      icon: Icons.monetization_on_outlined,
+                      title: 'Plan & credits',
+                      subtitle: _plan == null
+                          ? 'View plans, manage your subscription'
+                          : (_plan!.plan == 'free'
+                              ? 'You are on the Free plan — subscribe to render videos'
+                              : 'Manage your ${_titleCase(_plan!.plan)} plan'),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const BillingScreen()),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _loading ? null : _save,
-                        icon: const Icon(Icons.save),
-                        label: const Text('Save'),
-                      ),
+                    const SizedBox(height: 24),
+                    _SectionLabel(text: 'Advanced'),
+                    const SizedBox(height: 8),
+                    _AdvancedCard(
+                      expanded: _advancedExpanded,
+                      onToggle: () => setState(
+                          () => _advancedExpanded = !_advancedExpanded),
+                      urlCtrl: _urlCtrl,
+                      loading: _loading,
+                      testResult: _testResult,
+                      onTest: _testConnection,
+                      onSave: _save,
+                      onReset: FacelessConfig.apiUrl.isNotEmpty
+                          ? _resetToDefaults
+                          : null,
+                      firstLaunch: widget.firstLaunch,
+                    ),
+                    const SizedBox(height: 24),
+                    _SectionLabel(text: 'About'),
+                    const SizedBox(height: 8),
+                    const _AboutCard(),
+                    const SizedBox(height: 32),
+                    _DangerButton(
+                      icon: Icons.logout,
+                      label: 'Sign out',
+                      onPressed: _loading ? null : _signOut,
                     ),
                   ],
                 ),
-                if (FacelessConfig.apiUrl.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: _loading ? null : _resetToDefaults,
-                    icon: const Icon(Icons.restart_alt,
-                        color: FacelessTheme.danger),
-                    label: const Text(
-                      'Reset to launcher defaults',
-                      style: TextStyle(color: FacelessTheme.danger),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      'Use this when the tunnel URL has changed. Clears '
-                      'the saved value; next launch will use whatever '
-                      'run-app.sh provides via --dart-define.',
-                      style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurfaceVariant
-                            .withValues(alpha: 0.7),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                const Divider(),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.monetization_on,
-                                     color: FacelessTheme.accent),
-                  title: const Text('Billing'),
-                  subtitle: const Text('Manage your subscription and credits'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const BillingScreen()),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Sign out'),
-                  onPressed: _loading ? null : _signOut,
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -246,10 +235,568 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  static String _titleCase(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
   @override
   void dispose() {
     _urlCtrl.dispose();
     super.dispose();
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Section primitives
+// ---------------------------------------------------------------------------
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel({required this.text});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(
+          color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onTap;
+  const _SettingTile({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: FacelessTheme.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: FacelessTheme.accent.withValues(alpha: 0.14),
+                ),
+                child: Icon(icon, color: FacelessTheme.accent, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: FacelessTheme.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(
+                          color: FacelessTheme.textSecondary,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: FacelessTheme.textSecondary, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Account card — top section
+// ---------------------------------------------------------------------------
+
+class _AccountCard extends StatelessWidget {
+  final String? email;
+  final PlanInfo? plan;
+  const _AccountCard({required this.email, required this.plan});
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = (email == null || email!.isEmpty)
+        ? '?'
+        : email![0].toUpperCase();
+    final planLabel = plan == null
+        ? '…'
+        : (plan!.plan == 'free' ? 'Free plan' : '${_titleCase(plan!.plan)} plan');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A2238), Color(0xFF0A0E1A)],
+        ),
+        border: Border.all(
+          color: FacelessTheme.accent.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [FacelessTheme.accent, Color(0xFFB07F1F)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: FacelessTheme.accent.withValues(alpha: 0.35),
+                  blurRadius: 18,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              initial,
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w800,
+                fontSize: 22,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  email ?? 'Not signed in',
+                  style: const TextStyle(
+                    color: FacelessTheme.textPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _ChipLabel(
+                      label: planLabel,
+                      color: plan?.plan == 'free' || plan == null
+                          ? FacelessTheme.textSecondary
+                          : FacelessTheme.accent,
+                    ),
+                    if (plan != null)
+                      _ChipLabel(
+                        label: '${plan!.balance} credits',
+                        color: FacelessTheme.accent2,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _titleCase(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+}
+
+class _ChipLabel extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _ChipLabel({required this.label, required this.color});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Advanced card — collapsible server URL config
+// ---------------------------------------------------------------------------
+
+class _AdvancedCard extends StatelessWidget {
+  final bool expanded;
+  final VoidCallback onToggle;
+  final TextEditingController urlCtrl;
+  final bool loading;
+  final String? testResult;
+  final VoidCallback onTest;
+  final VoidCallback onSave;
+  final VoidCallback? onReset;
+  final bool firstLaunch;
+
+  const _AdvancedCard({
+    required this.expanded,
+    required this.onToggle,
+    required this.urlCtrl,
+    required this.loading,
+    required this.testResult,
+    required this.onTest,
+    required this.onSave,
+    required this.onReset,
+    required this.firstLaunch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: FacelessTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: FacelessTheme.textSecondary
+                          .withValues(alpha: 0.12),
+                    ),
+                    child: const Icon(Icons.tune,
+                        color: FacelessTheme.textPrimary, size: 20),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Server connection',
+                            style: TextStyle(
+                              color: FacelessTheme.textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            )),
+                        SizedBox(height: 2),
+                        Text(
+                          'Override the API URL — for self-hosters and debugging',
+                          style: TextStyle(
+                            color: FacelessTheme.textSecondary,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.expand_more,
+                        color: FacelessTheme.textSecondary, size: 22),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 200),
+            crossFadeState: expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            firstChild: const SizedBox(width: double.infinity, height: 0),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Divider(
+                    height: 18,
+                    color: FacelessTheme.textSecondary.withValues(alpha: 0.1),
+                  ),
+                  if (firstLaunch) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: FacelessTheme.accent.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              color: FacelessTheme.accent, size: 18),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              "First-time setup. Paste the API URL printed "
+                              "by run-app.sh, then tap Test → Save.",
+                              style: TextStyle(
+                                color: FacelessTheme.textPrimary,
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  TextFormField(
+                    controller: urlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Server URL',
+                      hintText: 'https://xyz.example.com',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    keyboardType: TextInputType.url,
+                    autocorrect: false,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'required';
+                      if (!v.startsWith('http')) {
+                        return 'must start with http:// or https://';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (testResult != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      testResult!,
+                      style: TextStyle(
+                        color: testResult!.startsWith('✓')
+                            ? FacelessTheme.success
+                            : FacelessTheme.danger,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: loading ? null : onTest,
+                          icon: const Icon(Icons.wifi_tethering, size: 18),
+                          label: const Text('Test'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: loading ? null : onSave,
+                          icon: const Icon(Icons.save, size: 18),
+                          label: const Text('Save'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (onReset != null) ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: loading ? null : onReset,
+                        icon: const Icon(Icons.restart_alt,
+                            color: FacelessTheme.danger, size: 18),
+                        label: const Text(
+                          'Reset to launcher defaults',
+                          style:
+                              TextStyle(color: FacelessTheme.danger),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// About card
+// ---------------------------------------------------------------------------
+
+class _AboutCard extends StatelessWidget {
+  const _AboutCard();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: FacelessTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+        ),
+      ),
+      child: const Column(
+        children: [
+          _AboutRow(label: 'App',     value: 'Faceless'),
+          _AboutRow(label: 'Version', value: '1.0.0'),
+          _AboutRow(
+            label: 'Made for',
+            value: 'Arabic short-form storytelling',
+            last: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AboutRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool last;
+  const _AboutRow({
+    required this.label,
+    required this.value,
+    this.last = false,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                    color: FacelessTheme.textSecondary,
+                    fontSize: 12,
+                  )),
+              const Spacer(),
+              Text(value,
+                  style: const TextStyle(
+                    color: FacelessTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  )),
+            ],
+          ),
+          if (!last) ...[
+            const SizedBox(height: 8),
+            Divider(
+              height: 1,
+              color: FacelessTheme.textSecondary.withValues(alpha: 0.08),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Danger button — for sign-out
+// ---------------------------------------------------------------------------
+
+class _DangerButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  const _DangerButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, color: FacelessTheme.danger),
+      label: Text(label,
+          style: const TextStyle(
+            color: FacelessTheme.danger,
+            fontWeight: FontWeight.w600,
+          )),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(
+          color: FacelessTheme.danger.withValues(alpha: 0.5),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
   }
 }
 
