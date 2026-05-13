@@ -92,40 +92,13 @@ def test_create_run_rejects_short_premise(client, auth):
     assert r.status_code == 422
 
 
-def test_create_run_spawns_pipeline_with_pause_flag(client, auth, tmp_path: Path):
-    """The subprocess args MUST include `--pause-after-script` so we never
-    spend Veo money before the user reviews the dialogue."""
-    captured: dict = {"args": None, "run_dir": None}
-    from pipeline import api as api_mod
-
-    def fake_spawn(args, run_dir):
-        captured["args"] = args
-        captured["run_dir"] = run_dir
-        # Simulate the orchestrator writing script.json + seed.json before exit
-        run_dir.mkdir(parents=True, exist_ok=True)
-        (run_dir / "seed.json").write_text(
-            json.dumps({"theme": "folkloric", "premise": "أم سورية"}, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        (run_dir / "script.json").write_text(
-            json.dumps({
-                "title": "test",
-                "theme": "folkloric",
-                "global_setting": "x",
-                "music_mood": "dread",
-                "target_duration_s": 24,
-                "beats": [
-                    {"arabic": f"ج{i}", "english_motion": f"m{i}",
-                     "clip_duration_s": 8.0, "speaker": "mother"}
-                    for i in range(1, 4)
-                ],
-            }, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        return 12345
-
-    api_mod.set_spawn_fn(fake_spawn)
-
+def test_create_run_generates_script_inline_returns_awaiting_approval(
+    client, auth, tmp_path: Path,
+):
+    """POST /runs now generates the script SYNCHRONOUSLY (inline LLM call)
+    instead of spawning a Cloud Run Job with --pause-after-script. The
+    response should already say `awaiting_approval` and `script.json` should
+    be on disk by the time we return."""
     r = client.post("/runs",
                     json={"theme": "folkloric", "premise": "أم سورية فقيرة من الشام"},
                     headers=auth)
@@ -135,43 +108,36 @@ def test_create_run_spawns_pipeline_with_pause_flag(client, auth, tmp_path: Path
     assert body["premise"].startswith("أم سورية")
     assert body["status"] == "awaiting_approval"
 
-    args = captured["args"]
-    assert "--shorts" in args
-    assert "--pause-after-script" in args
-    assert "--theme" in args and "folkloric" in args
-    assert "--seed" in args
-    # run_dir was created under the mocked FACELESS_OUT_ROOT, scoped per-user
-    assert captured["run_dir"].parent == tmp_path / "out" / "admin"
+    # The autouse _auto_mock_inline_script_gen fixture wrote a fake script.json
+    # under the admin (service-token) user. Confirm the path layout.
+    run_dir = tmp_path / "out" / "admin" / body["id"]
+    assert (run_dir / "script.json").exists()
+    assert (run_dir / "seed.json").exists()
 
 
 TOKEN = "test-token-abc"
 
 
 def test_post_runs_proxies_to_freeform(tmp_path, client, monkeypatch):
-    """PA-3: POST /runs is now a thin proxy that spawns the freeform pipeline
-    with character_template=fruit_sunstoriz + narration_style=first_person_monologue
-    + dialect=syrian (the previous Sunstoriz defaults)."""
-    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    from pipeline.api import set_spawn_fn
-    captured: list[list[str]] = []
-
-    def stub_spawn(args, run_dir):
-        captured.append(args)
-        return 1234
-
-    set_spawn_fn(stub_spawn)
+    """PA-3: POST /runs writes Sunstoriz-style defaults into freeform_controls.json
+    (character_template=fruit_sunstoriz + narration_style=first_person_monologue
+    + dialect=syrian) before generating the script. The script writer reads
+    those controls; we verify them via the persisted JSON file."""
+    # `client` fixture already sets FACELESS_OUT_ROOT=tmp_path/out — keep that.
     resp = client.post(
         "/runs",
         json={"theme": "folkloric", "premise": "أم سورية فقدت ابنها"},
         headers={"Authorization": f"Bearer {TOKEN}"},
     )
     assert resp.status_code == 201
-    args = captured[0]
-    # Spawned the freeform path with Sunstoriz defaults
-    assert "--freeform" in args
-    assert "--ff-character-template" in args
-    idx = args.index("--ff-character-template")
-    assert args[idx + 1] == "fruit_sunstoriz"
+    body = resp.json()
+    controls = json.loads(
+        (tmp_path / "out" / "admin" / body["id"] / "freeform_controls.json")
+        .read_text(encoding="utf-8")
+    )
+    assert controls["character_template"] == "fruit_sunstoriz"
+    assert controls["narration_style"] == "first_person_monologue"
+    assert controls["dialect"] == "syrian"
 
 
 def test_parse_script_endpoint_returns_structured_beats(client, auth):
@@ -374,25 +340,21 @@ def test_create_from_script_rejects_empty_beats(client, auth):
     assert r.status_code == 422  # pydantic min_length=1
 
 
-def test_create_run_passes_max_beats(client, auth):
-    """PA-3: max_beats on CreateRunRequest now maps to --ff-num-beats
-    (the legacy --max-beats flag no longer exists)."""
-    captured: dict = {"args": None}
-    from pipeline import api as api_mod
-
-    def fake_spawn(args, run_dir):
-        captured["args"] = args
-        run_dir.mkdir(parents=True, exist_ok=True)
-        return 1
-
-    api_mod.set_spawn_fn(fake_spawn)
-    client.post("/runs",
-                json={"theme": "folkloric", "premise": "تجربة قصيرة جداً", "max_beats": 3},
-                headers=auth)
-    args = captured["args"]
-    assert "--ff-num-beats" in args
-    idx = args.index("--ff-num-beats")
-    assert args[idx + 1] == "3"
+def test_create_run_passes_max_beats(client, auth, tmp_path: Path):
+    """PA-3: max_beats on CreateRunRequest now maps to num_beats in
+    freeform_controls.json (which the inline script generator reads)."""
+    resp = client.post(
+        "/runs",
+        json={"theme": "folkloric", "premise": "تجربة قصيرة جداً", "max_beats": 3},
+        headers=auth,
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    controls = json.loads(
+        (tmp_path / "out" / "admin" / body["id"] / "freeform_controls.json")
+        .read_text(encoding="utf-8")
+    )
+    assert controls["num_beats"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -1502,17 +1464,11 @@ def test_character_sheet_reroll_rejected_from_wrong_status(tmp_path, client, aut
 # Task 12: POST /runs/freeform
 # ---------------------------------------------------------------------------
 
-def test_freeform_endpoint_spawns_subprocess_with_flags(tmp_path, client, auth, monkeypatch):
-    """POST /runs/freeform spawns run.py with the freeform flags."""
-    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    from pipeline.api import set_spawn_fn
-    captured: list[list[str]] = []
-
-    def stub_spawn(args, run_dir):
-        captured.append(args)
-        return 4242
-
-    set_spawn_fn(stub_spawn)
+def test_freeform_endpoint_persists_controls_to_disk(tmp_path, client, auth, monkeypatch):
+    """POST /runs/freeform writes freeform_controls.json with the chosen controls
+    (egyptian / anime_2d / human / twist / 8 beats × 8s). The inline script
+    generator reads those controls; the worker re-reads them at approval time."""
+    # `client` fixture already sets FACELESS_OUT_ROOT=tmp_path/out — keep that.
     payload = {
         "theme": "urban",
         "premise": "A photographer who loses memory in Cairo.",
@@ -1523,19 +1479,19 @@ def test_freeform_endpoint_spawns_subprocess_with_flags(tmp_path, client, auth, 
         "num_beats": 8,
         "per_beat_seconds": 8,
     }
-    resp = client.post(
-        "/runs/freeform", json=payload,
-        headers=auth,
-    )
+    resp = client.post("/runs/freeform", json=payload, headers=auth)
     assert resp.status_code == 201
-    args = captured[0]
-    assert "--freeform" in args
-    assert "--shorts" in args
-    assert "--pause-after-script" in args
-    assert "--ff-dialect" in args
-    assert "egyptian" in args
-    assert "--ff-art-style" in args
-    assert "anime_2d" in args
+    body = resp.json()
+    controls = json.loads(
+        (tmp_path / "out" / "admin" / body["id"] / "freeform_controls.json")
+        .read_text(encoding="utf-8")
+    )
+    assert controls["dialect"] == "egyptian"
+    assert controls["art_style"] == "anime_2d"
+    assert controls["character_template"] == "human"
+    assert controls["ending_type"] == "twist"
+    assert controls["num_beats"] == 8
+    assert controls["per_beat_seconds"] == 8
 
 
 def test_freeform_endpoint_validates_dialect(client, tmp_path, auth, monkeypatch):
@@ -1650,13 +1606,10 @@ def test_from_script_accepts_character_name(tmp_path, client):
 # ---------------------------------------------------------------------------
 
 def test_freeform_endpoint_accepts_narration_style(tmp_path, client, monkeypatch):
-    """POST /runs/freeform accepts narration_style and threads it to the subprocess."""
-    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    from pipeline.api import set_spawn_fn
-    captured: list[list[str]] = []
-    def stub_spawn(args, run_dir):
-        captured.append(args); return 4242
-    set_spawn_fn(stub_spawn)
+    """POST /runs/freeform accepts narration_style and persists it to
+    freeform_controls.json so the script generator + worker both see it."""
+    # Don't override FACELESS_OUT_ROOT — the `client` fixture already sets it
+    # to tmp_path/out. Run dir will land at tmp_path/out/admin/<id>/.
     resp = client.post(
         "/runs/freeform",
         json={
@@ -1669,19 +1622,18 @@ def test_freeform_endpoint_accepts_narration_style(tmp_path, client, monkeypatch
         headers={"Authorization": f"Bearer {TOKEN}"},
     )
     assert resp.status_code == 201
-    args = captured[0]
-    assert "--ff-narration-style" in args
-    assert "cinematic" in args
+    body = resp.json()
+    controls = json.loads(
+        (tmp_path / "out" / "admin" / body["id"] / "freeform_controls.json")
+        .read_text(encoding="utf-8")
+    )
+    assert controls["narration_style"] == "cinematic"
 
 
 def test_freeform_endpoint_default_narration_style_cinematic(tmp_path, client, monkeypatch):
     """If narration_style is omitted, the request defaults to 'cinematic'."""
-    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    from pipeline.api import set_spawn_fn
-    captured: list[list[str]] = []
-    def stub_spawn(args, run_dir):
-        captured.append(args); return 4242
-    set_spawn_fn(stub_spawn)
+    # Don't override FACELESS_OUT_ROOT — the `client` fixture already sets it
+    # to tmp_path/out. Run dir will land at tmp_path/out/admin/<id>/.
     resp = client.post(
         "/runs/freeform",
         json={
@@ -1693,9 +1645,12 @@ def test_freeform_endpoint_default_narration_style_cinematic(tmp_path, client, m
         headers={"Authorization": f"Bearer {TOKEN}"},
     )
     assert resp.status_code == 201
-    args = captured[0]
-    idx = args.index("--ff-narration-style")
-    assert args[idx + 1] == "cinematic"
+    body = resp.json()
+    controls = json.loads(
+        (tmp_path / "out" / "admin" / body["id"] / "freeform_controls.json")
+        .read_text(encoding="utf-8")
+    )
+    assert controls["narration_style"] == "cinematic"
 
 
 def test_create_freeform_run_writes_controls_file(tmp_path, client, monkeypatch):
@@ -1912,13 +1867,10 @@ def test_freeform_run_returns_402_when_user_has_no_credits(client_factory, monke
 
 
 def test_freeform_run_passes_when_balance_sufficient(client_factory, monkeypatch, tmp_path):
+    """When the user has enough credits, /runs/freeform succeeds — script.json
+    lands inline (no spawn needed for the script stage)."""
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
     monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
-    spawned: list = []
-    monkeypatch.setattr(
-        "pipeline.api._SPAWN_FN",
-        lambda args, run_dir: spawned.append(args) or 4242,
-    )
     c = client_factory(user_id="alice", role="user")
     r = c.post("/runs/freeform", json={
         "theme": "folkloric",
@@ -1926,7 +1878,10 @@ def test_freeform_run_passes_when_balance_sufficient(client_factory, monkeypatch
         "max_beats": 8,
     })
     assert r.status_code == 201
-    assert len(spawned) == 1
+    body = r.json()
+    # script.json was written inline by the autouse fixture.
+    # FACELESS_OUT_ROOT=tmp_path (no /out suffix), so the run lands at tmp_path/<user>/<id>/.
+    assert (tmp_path / "alice" / body["id"] / "script.json").exists()
 
 
 def test_freeform_run_bypasses_credit_check_for_service_token(client_factory, monkeypatch, tmp_path):

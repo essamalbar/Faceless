@@ -487,6 +487,72 @@ def _cost_estimate_usd(beats: list[dict]) -> float:
     )
 
 
+def _build_llm():
+    """Same LLM-selection logic as run.py:_build_gemini. Anthropic → Groq → Gemini.
+    Inlined here so the script-gen call doesn't require importing run.py (which
+    pulls every pipeline stage)."""
+    import os
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        from pipeline.llm_anthropic import AnthropicClient
+        return AnthropicClient()
+    if os.environ.get("GROQ_API_KEY"):
+        from pipeline.llm import GroqClient
+        return GroqClient()
+    from pipeline.llm import GeminiClient
+    return GeminiClient()
+
+
+def _generate_script_inline(
+    *,
+    run_dir: Path,
+    theme: str,
+    premise: str,
+    controls: dict,
+) -> None:
+    """Synchronously generate the Arabic script + persist seed.json + script.json.
+
+    Called by /runs and /runs/freeform instead of spawning the Cloud Run Job
+    just to write the script. Skips the ~2-min Job cold-start; the Anthropic
+    call itself takes ~25-35 sec. HTTPException(500) on LLM failure so the
+    Flutter UI surfaces it cleanly rather than leaving an empty run_dir.
+    """
+    from pipeline.types import ThemeSeed
+    from pipeline.seed import manual_seed
+    from pipeline.script_freeform import FreeformControls, generate_freeform_script
+
+    seed = manual_seed(theme, premise)
+    seed_path = run_dir / "seed.json"
+    seed_path.write_text(
+        json.dumps(seed.to_dict(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    ff_controls = FreeformControls(
+        dialect=controls["dialect"],
+        art_style=controls["art_style"],
+        character_template=controls["character_template"],
+        ending_type=controls["ending_type"],
+        num_beats=int(controls["num_beats"]),
+        per_beat_seconds=int(controls["per_beat_seconds"]),
+        narration_style=controls["narration_style"],
+    )
+
+    try:
+        llm = _build_llm()
+        script = generate_freeform_script(llm, seed, ff_controls)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Script generation failed: {e}",
+        ) from None
+
+    script_path = run_dir / "script.json"
+    script_path.write_text(
+        json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def _estimate_credits_for_request(req) -> int:
     """Estimate the credits a request will consume.
 
@@ -997,23 +1063,15 @@ def create_run(req: CreateRunRequest, user: User = Depends(require_user)):
         encoding="utf-8",
     )
 
-    args = [
-        "--shorts", "--freeform", "--pause-after-script",
-        "--theme", req.theme,
-        "--seed", req.premise,
-        "--run-dir", str(run_dir),
-        "--ff-dialect", "syrian",
-        "--ff-art-style", "pixar_3d",
-        "--ff-character-template", "fruit_sunstoriz",
-        "--ff-ending-type", "ai_choose",
-        "--ff-num-beats", str(req.max_beats or 8),
-        "--ff-per-beat-seconds", "8",
-        "--ff-narration-style", "first_person_monologue",
-    ]
-    pid = _SPAWN_FN(args, run_dir)
+    _generate_script_inline(
+        run_dir=run_dir,
+        theme=req.theme,
+        premise=req.premise,
+        controls=controls_doc,
+    )
     _write_state(
         run_dir,
-        pid=pid,
+        pid=None,
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         last_error=None,
         last_action="create_run",
@@ -1045,10 +1103,16 @@ class CreateFreeformRunRequest(BaseModel):
     dependencies=[Depends(require_user)],
 )
 def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(require_user)):
-    """Spawn a new run using the freeform script writer (no Sunstoriz lock).
-    Mirrors POST /runs but adds --freeform and --ff-* flags so the writer
-    follows the user's controls (dialect, art style, character cast, ending
-    type) rather than the locked Sunstoriz template."""
+    """Create a new run and synchronously generate its Arabic script.
+
+    Originally this spawned a Cloud Run Job with `--pause-after-script` and
+    let the worker write script.json before exiting. That meant every script
+    paid a ~2-min Job cold-start, so the user waited 2:30+ to see the script.
+    Now we generate the script INLINE in this endpoint (~30 sec — pure
+    Anthropic latency) and only spawn the Job at approval time for the paid
+    stages (Flux + Veo). Script regeneration / rerolls still flow through
+    the worker.
+    """
     _preflight_credits(req, user)
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
@@ -1071,23 +1135,15 @@ def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(requ
         encoding="utf-8",
     )
 
-    args = [
-        "--shorts", "--freeform", "--pause-after-script",
-        "--theme", req.theme,
-        "--seed", req.premise,
-        "--run-dir", str(run_dir),
-        "--ff-dialect", req.dialect,
-        "--ff-art-style", req.art_style,
-        "--ff-character-template", req.character_template,
-        "--ff-ending-type", req.ending_type,
-        "--ff-num-beats", str(req.num_beats),
-        "--ff-per-beat-seconds", str(req.per_beat_seconds),
-        "--ff-narration-style", req.narration_style,
-    ]
-    pid = _SPAWN_FN(args, run_dir)
+    _generate_script_inline(
+        run_dir=run_dir,
+        theme=req.theme,
+        premise=req.premise,
+        controls=controls_doc,
+    )
     _write_state(
         run_dir,
-        pid=pid,
+        pid=None,  # no worker spawned yet — happens at approval time
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         last_error=None,
         last_action="create_freeform_run",

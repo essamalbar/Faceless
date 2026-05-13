@@ -98,3 +98,62 @@ def client_factory():
 
     yield _make
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _auto_mock_inline_script_gen(monkeypatch):
+    """Inline script generation calls Anthropic (or Groq/Gemini) and writes
+    `seed.json` + `script.json` directly inside the /runs/{*} request, replacing
+    the older "spawn a Cloud Run Job, let it write the files, return" flow.
+
+    Tests don't want to actually call the LLM, so this autouse fixture wraps
+    `pipeline.api._generate_script_inline` with a stub that writes the same
+    files the real implementation would. Individual tests can still override
+    by monkeypatching `pipeline.api._generate_script_inline` again — pytest
+    applies overrides in registration order, so a test's `monkeypatch.setattr`
+    wins over this fixture.
+
+    Why autouse: every test that hits /runs or /runs/freeform now depends on
+    this; making it explicit per-test would mean editing 8+ tests for what
+    is fundamentally a test infrastructure migration.
+    """
+    import json as _json
+
+    def fake_inline(*, run_dir, theme, premise, controls):
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "seed.json").write_text(
+            _json.dumps(
+                {"theme": theme, "premise": premise},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        # Build a Script-shaped doc so derive_status finds beats and other
+        # API code that reads script.json doesn't crash.
+        num_beats = int(controls.get("num_beats", 8))
+        per_beat = int(controls.get("per_beat_seconds", 8))
+        (run_dir / "script.json").write_text(
+            _json.dumps(
+                {
+                    "title": f"test-{run_dir.name}",
+                    "theme": theme,
+                    "global_setting": "test setting",
+                    "music_mood": "dread",
+                    "target_duration_s": num_beats * per_beat,
+                    "beats": [
+                        {
+                            "arabic": f"بيت {i+1}",
+                            "english_motion": f"motion {i+1}",
+                            "clip_duration_s": float(per_beat),
+                            "speaker": "narrator",
+                            "character_name": "",
+                        }
+                        for i in range(num_beats)
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr("pipeline.api._generate_script_inline", fake_inline)
