@@ -12,7 +12,8 @@ import '../widgets/paywall_dialog.dart';
 ///     uses your text exactly. No LLM rewrite, no $0.05 of LLM spend.
 class NewRunScreen extends StatelessWidget {
   final FacelessApiClient client;
-  const NewRunScreen({super.key, required this.client});
+  final String? initialTheme;
+  const NewRunScreen({super.key, required this.client, this.initialTheme});
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +34,7 @@ class NewRunScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _AiGenerateTab(client: client),
+            _AiGenerateTab(client: client, initialTheme: initialTheme),
             _PasteScriptTab(client: client),
           ],
         ),
@@ -60,13 +61,14 @@ const _speakerSuggestions = [
 
 class _AiGenerateTab extends StatefulWidget {
   final FacelessApiClient client;
-  const _AiGenerateTab({required this.client});
+  final String? initialTheme;
+  const _AiGenerateTab({required this.client, this.initialTheme});
   @override
   State<_AiGenerateTab> createState() => _AiGenerateTabState();
 }
 
 class _AiGenerateTabState extends State<_AiGenerateTab> {
-  String _theme = 'folkloric';
+  late String _theme = widget.initialTheme ?? 'folkloric';
   String _dialect = 'msa';
   String _artStyle = 'cinematic_photo_real';
   String _characterTemplate = 'ai_choose';

@@ -124,9 +124,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (saved == true) _loadAndRefresh();
   }
 
-  Future<void> _openNewRun() async {
+  Future<void> _openNewRun({String? initialTheme}) async {
     final created = await Navigator.of(context).push<RunSummary?>(
-      MaterialPageRoute(builder: (_) => NewRunScreen(client: _client)),
+      MaterialPageRoute(
+        builder: (_) => NewRunScreen(
+          client: _client,
+          initialTheme: initialTheme,
+        ),
+      ),
     );
     if (created != null) {
       _refresh();
@@ -307,6 +312,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
             return CustomScrollView(
               slivers: [
+                SliverToBoxAdapter(
+                  child: _HomeContent(
+                    onCreate: _openNewRun,
+                    showHowItWorks: false,
+                  ),
+                ),
                 SliverToBoxAdapter(
                   child: _TopBar(
                     spend: _spend,
@@ -1126,174 +1137,547 @@ Widget _runImage(String runId, String? baseUrl, String? token,
 // Empty / error states
 // ---------------------------------------------------------------------------
 
+// Theme metadata — drives the home gallery + the New Run screen's chips.
+class _ThemeInfo {
+  final String id;
+  final String titleEn;
+  final String titleAr;
+  final String subtitle;
+  final IconData icon;
+  final List<Color> gradient;
+  const _ThemeInfo(this.id, this.titleEn, this.titleAr, this.subtitle,
+      this.icon, this.gradient);
+}
+
+const _allThemes = <_ThemeInfo>[
+  _ThemeInfo('folkloric', 'Folkloric', 'فلكلوري',
+      'Ancestral tales, jinn, old wells',
+      Icons.account_balance_outlined,
+      [Color(0xFFB07F1F), Color(0xFFE7B53C)]),
+  _ThemeInfo('urban', 'Urban', 'مدني',
+      'City legends, late-night streets',
+      Icons.location_city_outlined,
+      [Color(0xFF3B82F6), Color(0xFF1E40AF)]),
+  _ThemeInfo('wilderness', 'Wilderness', 'البرية',
+      'Forests, deserts, the unknown',
+      Icons.forest_outlined,
+      [Color(0xFF059669), Color(0xFF064E3B)]),
+  _ThemeInfo('memory', 'Memory', 'الذاكرة',
+      'Psychological, half-remembered',
+      Icons.psychology_outlined,
+      [Color(0xFF8B5CF6), Color(0xFF5B21B6)]),
+  _ThemeInfo('domestic', 'Domestic', 'منزلي',
+      'Home, family, the everyday turned',
+      Icons.home_outlined,
+      [Color(0xFFEA580C), Color(0xFF9A3412)]),
+  _ThemeInfo('travel', 'Travel', 'سفر',
+      'On the road, far from home',
+      Icons.travel_explore_outlined,
+      [Color(0xFF0D9488), Color(0xFF134E4A)]),
+  _ThemeInfo('tech', 'Tech', 'تقني',
+      'Screens, signals, machines',
+      Icons.memory_outlined,
+      [Color(0xFF06B6D4), Color(0xFF155E75)]),
+  _ThemeInfo('workplace', 'Workplace', 'العمل',
+      'Offices, shops, after-hours',
+      Icons.business_center_outlined,
+      [Color(0xFF64748B), Color(0xFF334155)]),
+];
+
+
 class _EmptyView extends StatelessWidget {
-  final VoidCallback onCreate;
+  final void Function({String? initialTheme}) onCreate;
   const _EmptyView({required this.onCreate});
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minHeight: MediaQuery.of(context).size.height - kToolbarHeight - 80,
+      child: _HomeContent(onCreate: onCreate, showHowItWorks: true),
+    );
+  }
+}
+
+
+/// The new content-rich Home body. Rendered above the run list (or alone
+/// when the user has no runs yet). Sections:
+///   1. Brand hero with primary CTA
+///   2. Theme gallery (8 tappable shortcuts that pre-fill New Run)
+///   3. "How it works" 3-step card (only when [showHowItWorks])
+///   4. Pricing teaser (3 plan chips → BillingScreen)
+class _HomeContent extends StatelessWidget {
+  final void Function({String? initialTheme}) onCreate;
+  final bool showHowItWorks;
+  const _HomeContent({
+    required this.onCreate,
+    required this.showHowItWorks,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Two ambient radial glows so the bg has depth
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(-0.6, -0.4),
+                  radius: 1.1,
+                  colors: [Color(0x33E7B53C), Color(0x000A0E1A)],
+                ),
+              ),
+            ),
+          ),
         ),
-        child: Stack(
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0.7, 0.6),
+                  radius: 1.0,
+                  colors: [Color(0x288B5CF6), Color(0x000A0E1A)],
+                ),
+              ),
+            ),
+          ),
+        ),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 32, 20, 48),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Hero(onCreate: () => onCreate()),
+                  const SizedBox(height: 36),
+                  _ThemeGallerySection(
+                    onPick: (themeId) => onCreate(initialTheme: themeId),
+                  ),
+                  if (showHowItWorks) ...[
+                    const SizedBox(height: 36),
+                    const _HowItWorksCard(),
+                  ],
+                  const SizedBox(height: 36),
+                  const _PricingTeaser(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Hero extends StatelessWidget {
+  final VoidCallback onCreate;
+  const _Hero({required this.onCreate});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(28, 32, 28, 32),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A2238), Color(0xFF0A0E1A)],
+        ),
+        border: Border.all(
+          color: FacelessTheme.accent.withValues(alpha: 0.20),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Logo glyph
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [FacelessTheme.accent, Color(0xFFB07F1F)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: FacelessTheme.accent.withValues(alpha: 0.35),
+                  blurRadius: 24,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.movie_filter_outlined,
+                color: Colors.black, size: 36),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Faceless',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineMedium!.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'AI-powered Arabic horror shorts',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: FacelessTheme.textSecondary,
+              fontSize: 14,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'اصنع قصصك القصيرة بالذكاء الاصطناعي',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: FacelessTheme.textSecondary,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 22),
+          SizedBox(
+            width: 280,
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text(
+                'Start creating',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Free to write · Subscribe to render',
+            style: TextStyle(
+              color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
+              fontSize: 11,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeGallerySection extends StatelessWidget {
+  final void Function(String themeId) onPick;
+  const _ThemeGallerySection({required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(
+          english: 'Choose a theme',
+          arabic: 'اختر ثيمة',
+          subtitle: 'Tap to start a new story with this style',
+        ),
+        const SizedBox(height: 14),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          childAspectRatio: 2.6,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
           children: [
-            // Ambient glows — gold top-left, violet bottom-right
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment(-0.6, -0.4),
-                      radius: 1.1,
-                      colors: [
-                        Color(0x33E7B53C),
-                        Color(0x000A0E1A),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment(0.7, 0.9),
-                      radius: 1.0,
-                      colors: [
-                        Color(0x288B5CF6),
-                        Color(0x000A0E1A),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 40, 24, 48),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Brand glyph — gold gradient circle with movie icon
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [FacelessTheme.accent, Color(0xFFB07F1F)],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: FacelessTheme.accent.withValues(alpha: 0.40),
-                              blurRadius: 32,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.movie_filter_outlined,
-                          color: Colors.black,
-                          size: 44,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Faceless',
-                        style: Theme.of(context).textTheme.headlineMedium!.copyWith(
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.5,
-                            ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'اصنع قصصك القصيرة بالذكاء الاصطناعي',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: FacelessTheme.textSecondary,
-                          fontSize: 15,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 36),
+            for (final t in _allThemes)
+              _ThemeCard(theme: t, onTap: () => onPick(t.id)),
+          ],
+        ),
+      ],
+    );
+  }
+}
 
-                      // Three steps card
-                      Container(
-                        decoration: BoxDecoration(
-                          color: FacelessTheme.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
+class _ThemeCard extends StatelessWidget {
+  final _ThemeInfo theme;
+  final VoidCallback onTap;
+  const _ThemeCard({required this.theme, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                theme.gradient[0].withValues(alpha: 0.22),
+                theme.gradient[1].withValues(alpha: 0.10),
+              ],
+            ),
+            border: Border.all(
+              color: theme.gradient[0].withValues(alpha: 0.45),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.gradient[0].withValues(alpha: 0.25),
+                ),
+                child: Icon(theme.icon,
+                    color: theme.gradient[0], size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            theme.titleEn,
+                            style: const TextStyle(
+                              color: FacelessTheme.textPrimary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          theme.titleAr,
+                          style: TextStyle(
                             color: FacelessTheme.textSecondary
-                                .withValues(alpha: 0.12),
+                                .withValues(alpha: 0.7),
+                            fontSize: 11,
                           ),
                         ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 8),
-                        child: const Column(
-                          children: [
-                            _Step(
-                              number: '1',
-                              title: 'Write a premise',
-                              subtitle: 'One sentence is enough',
-                            ),
-                            _StepDivider(),
-                            _Step(
-                              number: '2',
-                              title: 'AI writes your script',
-                              subtitle: 'Arabic, in seconds — free for everyone',
-                            ),
-                            _StepDivider(),
-                            _Step(
-                              number: '3',
-                              title: 'Subscribe to render the video',
-                              subtitle: 'Each clip uses 1 credit',
-                            ),
-                          ],
-                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      theme.subtitle,
+                      style: const TextStyle(
+                        color: FacelessTheme.textSecondary,
+                        fontSize: 11,
+                        height: 1.3,
                       ),
-                      const SizedBox(height: 28),
-
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: onCreate,
-                          icon: const Icon(Icons.auto_awesome),
-                          label: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 6),
-                            child: Text(
-                              'Create your first script',
-                              style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'Free to write · Subscribe to render',
-                        style: TextStyle(
-                          color:
-                              FacelessTheme.textSecondary.withValues(alpha: 0.7),
-                          fontSize: 12,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
-                  ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String english;
+  final String arabic;
+  final String? subtitle;
+  const _SectionTitle({
+    required this.english,
+    required this.arabic,
+    this.subtitle,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                english,
+                style: const TextStyle(
+                  color: FacelessTheme.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                arabic,
+                style: TextStyle(
+                  color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                color: FacelessTheme.textSecondary,
+                fontSize: 12,
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HowItWorksCard extends StatelessWidget {
+  const _HowItWorksCard();
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle(english: 'How it works', arabic: 'كيف تعمل'),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: FacelessTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+            ),
+          ),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: const Column(
+            children: [
+              _Step(
+                number: '1',
+                title: 'Write a premise',
+                subtitle: 'One sentence is enough',
+              ),
+              _StepDivider(),
+              _Step(
+                number: '2',
+                title: 'AI writes your script',
+                subtitle: 'Arabic, in seconds — free for everyone',
+              ),
+              _StepDivider(),
+              _Step(
+                number: '3',
+                title: 'Subscribe to render the video',
+                subtitle: 'Each clip uses 1 credit',
+              ),
+            ],
+          ),
         ),
+      ],
+    );
+  }
+}
+
+class _PricingTeaser extends StatelessWidget {
+  const _PricingTeaser();
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle(english: 'Plans', arabic: 'الخطط'),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _PlanChip(name: 'Starter', price: r'$9',  credits: 12,  highlight: false)),
+            const SizedBox(width: 10),
+            Expanded(child: _PlanChip(name: 'Creator', price: r'$29', credits: 60,  highlight: true)),
+            const SizedBox(width: 10),
+            Expanded(child: _PlanChip(name: 'Pro',     price: r'$79', credits: 200, highlight: false)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: TextButton.icon(
+            icon: const Icon(Icons.chevron_right, size: 18),
+            label: const Text('See full plans'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const BillingScreen()),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlanChip extends StatelessWidget {
+  final String name;
+  final String price;
+  final int credits;
+  final bool highlight;
+  const _PlanChip({
+    required this.name,
+    required this.price,
+    required this.credits,
+    required this.highlight,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+      decoration: BoxDecoration(
+        color: highlight
+            ? FacelessTheme.accent.withValues(alpha: 0.10)
+            : FacelessTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: highlight
+              ? FacelessTheme.accent.withValues(alpha: 0.6)
+              : FacelessTheme.textSecondary.withValues(alpha: 0.15),
+          width: highlight ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Text(name,
+              style: const TextStyle(
+                color: FacelessTheme.textPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              )),
+          const SizedBox(height: 4),
+          Text(price,
+              style: const TextStyle(
+                color: FacelessTheme.accent,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              )),
+          const SizedBox(height: 2),
+          Text('$credits credits',
+              style: const TextStyle(
+                color: FacelessTheme.textSecondary,
+                fontSize: 11,
+              )),
+        ],
       ),
     );
   }
