@@ -87,7 +87,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _runsFuture = _client.listRuns());
+    // NB: setState's callback must NOT return a Future. The arrow form
+    // `() => _runsFuture = _client.listRuns()` implicitly returns the
+    // assigned value (which IS a Future) and newer Flutter asserts on
+    // that. Use a block body so the lambda returns void.
+    setState(() {
+      _runsFuture = _client.listRuns();
+    });
     await _runsFuture;
     _fetchSpend();
   }

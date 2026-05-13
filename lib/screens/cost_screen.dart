@@ -26,7 +26,9 @@ class _CostScreenState extends State<CostScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = widget.client.getSpendSummary());
+    setState(() {
+      _future = widget.client.getSpendSummary();
+    });
     await _future;
   }
 
