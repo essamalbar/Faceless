@@ -9,6 +9,7 @@ import '../api/models.dart';
 import '../api/settings.dart';
 import '../config.dart';
 import '../theme.dart';
+import '../widgets/faceless_logo.dart';
 import 'billing_screen.dart';
 import 'cost_screen.dart';
 import 'new_run_screen.dart';
@@ -238,22 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
         scrolledUnderElevation: 0,
         title: Row(
           children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [FacelessTheme.accent, FacelessTheme.accent2],
-                ),
-                borderRadius: BorderRadius.circular(7),
-              ),
-              alignment: Alignment.center,
-              child: const Text('ف',
-                  style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16)),
-            ),
+            const FacelessLogo(size: 30),
             const SizedBox(width: 10),
             const Text('Faceless',
                 style: TextStyle(fontWeight: FontWeight.w700)),
@@ -1426,17 +1412,12 @@ class _Hero extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Logo glyph
+          // Brand mark — crescent + accent star inside a gold disc.
           Container(
             width: 72,
             height: 72,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [FacelessTheme.accent, Color(0xFFB07F1F)],
-              ),
               boxShadow: [
                 BoxShadow(
                   color: FacelessTheme.accent.withValues(alpha: 0.35),
@@ -1445,8 +1426,7 @@ class _Hero extends StatelessWidget {
                 ),
               ],
             ),
-            child: const Icon(Icons.movie_filter_outlined,
-                color: Colors.black, size: 36),
+            child: const FacelessLogo(size: 72),
           ),
           const SizedBox(height: 18),
           Text(

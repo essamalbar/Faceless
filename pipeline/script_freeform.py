@@ -170,6 +170,11 @@ Requirements:
   Reference visual continuity with neighboring beats: "continuing from prior frame",
   "same kitchen, now cut to medium close on the son", etc.
   In first_person_monologue mode, english_motion may use the frontal MCU framing.
+- arabic_motion is the SAME shot description translated into clear, natural
+  MSA Arabic (الفصحى). Used by the director's-script PDF export so the
+  document reads in Arabic end-to-end. Faithful translation of english_motion;
+  do not paraphrase or shorten — every cinematographic detail (shot size,
+  camera move, lens choice, lighting cue) must transfer.
 - The final beat must match the ending type above.
 - music_mood: pick one of drone, dread, cosmic, discovery.
 
@@ -187,7 +192,7 @@ Return JSON only, no markdown:
     "narrator": "deep masculine voice, late 40s, contemplative pacing, no visual"
   }},
   "beats": [
-    {{"arabic":"...","english_motion":"...","clip_duration_s":<float>,"speaker":"...","character_name":"اسم عربي قصير أو فارغ للراوي"}},
+    {{"arabic":"...","english_motion":"...","arabic_motion":"الترجمة العربية الكاملة لـ english_motion بدون اختصار","clip_duration_s":<float>,"speaker":"...","character_name":"اسم عربي قصير أو فارغ للراوي"}},
     ...exactly {num_beats} beats...
   ]
 }}

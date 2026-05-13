@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme.dart';
+import '../widgets/faceless_logo.dart';
 
 enum _Mode { signIn, signUp }
 
@@ -325,11 +326,6 @@ class _BrandHeader extends StatelessWidget {
           height: 64,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [FacelessTheme.accent, Color(0xFFB07F1F)],
-            ),
             boxShadow: [
               BoxShadow(
                 color: FacelessTheme.accent.withValues(alpha: 0.35),
@@ -338,8 +334,7 @@ class _BrandHeader extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.movie_filter_outlined,
-              color: Colors.black, size: 32),
+          child: const FacelessLogo(size: 64),
         ),
         const SizedBox(height: 16),
         const Text(

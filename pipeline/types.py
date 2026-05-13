@@ -44,14 +44,21 @@ class Beat:
     clip_duration_s: float = 8.0  # how long the matching Veo clip should run
     speaker: str = "narrator"
     character_name: str = ""
+    # Arabic translation of english_motion — used by the PDF export so the
+    # director's script reads in Arabic end-to-end. Optional + default
+    # empty so existing script.json files without this field still load;
+    # the LLM writer fills it in for new scripts.
+    arabic_motion: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Beat":
-        # Tolerate older schema: drop unknown keys, supply default for missing speaker/character_name.
-        allowed = {"arabic", "english_motion", "clip_duration_s", "speaker", "character_name"}
+        # Tolerate older schema: drop unknown keys, supply default for
+        # missing fields (speaker / character_name / arabic_motion).
+        allowed = {"arabic", "english_motion", "clip_duration_s",
+                   "speaker", "character_name", "arabic_motion"}
         clean = {k: v for k, v in d.items() if k in allowed}
         return cls(**clean)
 

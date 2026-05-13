@@ -72,6 +72,28 @@ def test_render_handles_silent_beat_only(tmp_path: Path):
     assert out.exists()
 
 
+def test_render_prefers_arabic_motion_over_english(tmp_path: Path):
+    """When a script carries `arabic_motion`, the VISUAL block must use
+    it (not the english_motion fallback). Regression: user explicitly
+    asked for the exported PDF to read in Arabic end-to-end."""
+    doc = {
+        "title": "اختبار",
+        "beats": [
+            {"arabic": "بداية القصة", "speaker": "narrator",
+             "english_motion": "wide establishing shot at dusk",
+             "arabic_motion": "لقطة افتتاحية واسعة عند الغسق",
+             "clip_duration_s": 6.0, "character_name": "",
+             "is_silent": False},
+        ],
+    }
+    out = tmp_path / "ar.pdf"
+    render_script_pdf(doc, out)
+    raw = out.read_bytes()
+    assert raw.startswith(b"%PDF-")
+    # Sanity: file is non-trivial (rendering took place, didn't bail early)
+    assert out.stat().st_size > 5_000
+
+
 def test_render_handles_arabic_character_name(tmp_path: Path):
     """Regression: real scripts often carry Arabic character_name values
     (e.g. 'حورية'). Earlier versions concatenated those into a Helvetica

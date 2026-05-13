@@ -86,20 +86,36 @@ def _draw_cover(pdf: _DirectorPDF, script: dict[str, Any]) -> None:
     pdf._draw_footer = False
     pdf.add_page()
 
-    # Brand glyph: gold filled circle with "ف" (Faceless mark).
-    cx, cy, r = 105, 50, 11
+    # Brand mark: gold disc with a dark crescent + small star — matches
+    # the Flutter widget in lib/widgets/faceless_logo.dart so the brand
+    # reads identically in the app and on paper.
+    cx, cy, r = 105.0, 50.0, 11.0
     pdf.set_fill_color(*_GOLD)
     pdf.circle(x=cx, y=cy, radius=r, style="F")
-    # Place the letter by centering manually — fpdf2 has no built-in
-    # vertical centering for cell text inside a circle, but it does
-    # accept absolute positioning before a cell call.
-    pdf.set_font(_FONT_NAME, size=18)
-    pdf.set_text_color(*_DARK)
-    glyph = _shape("ف")
-    glyph_w = pdf.get_string_width(glyph)
-    pdf.set_xy(cx - glyph_w / 2 - 1, cy - 6)
-    pdf.cell(glyph_w + 2, 12, glyph, align="C")
-    pdf.set_text_color(0, 0, 0)
+
+    # Crescent: subtractive — paint a smaller dark circle slightly inside
+    # the disc to leave a crescent of gold along the left edge. Using the
+    # cover background color (white) for the cutout keeps it clean.
+    pdf.set_fill_color(255, 255, 255)
+    pdf.circle(x=cx + r * 0.20, y=cy - r * 0.04, radius=r * 0.78, style="F")
+
+    # Re-fill the inner crescent body in dark so the mark reads as a
+    # crescent silhouette (not just a thin gold rim).
+    pdf.set_fill_color(*_DARK)
+    pdf.circle(x=cx - r * 0.08, y=cy, radius=r * 0.55, style="F")
+    pdf.set_fill_color(255, 255, 255)
+    pdf.circle(x=cx + r * 0.20, y=cy - r * 0.04, radius=r * 0.50, style="F")
+
+    # Accent star — small 4-point diamond pair at the upper-right.
+    pdf.set_fill_color(*_GOLD)
+    sx, sy, sr = cx + r * 0.40, cy - r * 0.45, r * 0.13
+    # Vertical diamond
+    pdf.polygon([(sx, sy - sr), (sx + sr * 0.35, sy),
+                 (sx, sy + sr), (sx - sr * 0.35, sy)], style="F")
+    # Horizontal diamond — fpdf2's polygon accepts a list of (x,y) tuples
+    pdf.polygon([(sx - sr, sy), (sx, sy + sr * 0.35),
+                 (sx + sr, sy), (sx, sy - sr * 0.35)], style="F")
+    pdf.set_fill_color(0, 0, 0)
 
     # Title
     pdf.set_y(cy + r + 14)
@@ -232,14 +248,18 @@ def _draw_beat(pdf: _DirectorPDF, index: int, beat: dict[str, Any]) -> None:
     speaker = str(beat.get("speaker") or "narrator")
     character = str(beat.get("character_name") or "").strip()
     arabic = str(beat.get("arabic") or "").strip()
-    motion = str(beat.get("english_motion") or "").strip()
+    # Prefer arabic_motion when the LLM produced it (new scripts); fall
+    # back to english_motion for legacy script.json files that pre-date
+    # the field. The PDF stays bilingual-capable either way.
+    motion_ar = str(beat.get("arabic_motion") or "").strip()
+    motion_en = str(beat.get("english_motion") or "").strip()
     is_silent = bool(beat.get("is_silent"))
     duration_s = float(beat.get("clip_duration_s") or 0)
 
     # Estimate the height this beat will use; if we'd cross the bottom
     # margin, force a new page so we never split a beat across pages.
     needed = 36
-    if motion:
+    if motion_ar or motion_en:
         needed += 14
     if arabic and not is_silent:
         needed += max(14, len(arabic) // 30 * 6)
@@ -279,16 +299,29 @@ def _draw_beat(pdf: _DirectorPDF, index: int, beat: dict[str, Any]) -> None:
     pdf.set_y(strip_y + 14)
 
     # ── VISUAL block (director's blocking)
-    if motion:
+    # Prefer arabic_motion (new scripts), fall back to english_motion
+    # (legacy scripts) so the document is still informative either way.
+    if motion_ar or motion_en:
         pdf.set_x(pdf.l_margin)
         pdf.set_font("Helvetica", style="B", size=8)
         pdf.set_text_color(*_SUBTLE)
-        pdf.cell(0, 4, "VISUAL", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", style="I", size=10)
+        # Bilingual label: المشهد / VISUAL — using two cells so we get
+        # both languages without mixing fonts on one cell.
+        pdf.cell(40, 4, "VISUAL")
+        pdf.set_font(_FONT_NAME, size=9)
+        pdf.cell(0, 4, _shape("المشهد"), align="R",
+                 new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(*_DARK)
-        pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(0, 5, _ascii_safe(motion),
-                       new_x="LMARGIN", new_y="NEXT")
+        if motion_ar:
+            pdf.set_x(pdf.l_margin)
+            pdf.set_font(_FONT_NAME, size=12)
+            pdf.multi_cell(0, 7, _shape(motion_ar), align="R",
+                           new_x="LMARGIN", new_y="NEXT")
+        else:
+            pdf.set_x(pdf.l_margin)
+            pdf.set_font("Helvetica", style="I", size=10)
+            pdf.multi_cell(0, 5, _ascii_safe(motion_en),
+                           new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
         pdf.ln(2)
 

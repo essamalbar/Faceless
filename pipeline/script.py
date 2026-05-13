@@ -281,6 +281,7 @@ def _parse_shorts_script_json(text: str, seed: ThemeSeed) -> Script:
             clip_duration_s=float(b.get("clip_duration_s", 8.0)),
             speaker=str(b.get("speaker", "")).strip().lower(),
             character_name=str(b.get("character_name", "")).strip(),
+            arabic_motion=str(b.get("arabic_motion", "")).strip(),
         )
         for b in beats_raw
     )
