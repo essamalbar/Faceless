@@ -64,13 +64,27 @@ class _LoginScreenState extends State<LoginScreen> {
           email: _email.text.trim(),
           password: _password.text,
         );
-        // Auth-state stream in main.dart will route to the home screen.
+        // The auth-state stream in main.dart switches home: to HomeScreen
+        // on its own, but if we got here via Landing → push LoginScreen,
+        // this screen is still on top of the navigation stack and would
+        // hide the new home. Pop it so the user actually lands on home.
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       } else {
         await Supabase.instance.client.auth.signUp(
           email: _email.text.trim(),
           password: _password.text,
         );
-        if (mounted) {
+        // If Supabase auto-confirms email (project setting), sign-up
+        // returns a session immediately and the auth-state stream will
+        // route to home — same pop fix as sign-in. If confirmation is
+        // required, no session yet and canPop is still safe.
+        if (mounted &&
+            Supabase.instance.client.auth.currentSession != null &&
+            Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        } else if (mounted) {
           setState(() => _info =
               'Account created. Check your email to confirm — or sign in '
               'directly if email confirmation is disabled.');
