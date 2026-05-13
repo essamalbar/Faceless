@@ -7,7 +7,11 @@ import '../widgets/faceless_logo.dart';
 enum _Mode { signIn, signUp }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// When true, opens with the "Sign up" segment selected (used by the
+  /// landing page's "Start free" CTA). Defaults to sign-in so returning
+  /// users land where they expect.
+  final bool startInSignUpMode;
+  const LoginScreen({super.key, this.startInSignUpMode = false});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -17,7 +21,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  _Mode _mode = _Mode.signIn;
+  late _Mode _mode =
+      widget.startInSignUpMode ? _Mode.signUp : _Mode.signIn;
   bool _busy = false;
   bool _showPassword = false;
   String? _error;

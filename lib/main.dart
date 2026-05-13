@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/home_screen.dart';
-import 'screens/login_screen.dart';
+import 'screens/landing_screen.dart';
 import 'theme.dart';
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
@@ -44,7 +44,9 @@ class FacelessApp extends StatelessWidget {
             builder: (context, snap) {
               final session = Supabase.instance.client.auth.currentSession;
               if (session == null) {
-                return const LoginScreen();
+                // Public marketing surface — visitors land here, choose
+                // "Start free" or "Sign in" to push into LoginScreen.
+                return const LandingScreen();
               }
               // The backend URL is provisioned via --dart-define at build
               // time (see scripts/run-app.sh). End users never need to
