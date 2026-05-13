@@ -199,6 +199,46 @@ def test_handle_webhook_subscription_updated_persists_cancel_flag(
     assert mock_db["profiles"]["u1"]["cancel_at_period_end"] is True
 
 
+def test_handle_webhook_invoice_paid_reads_parent_subscription_details(
+    stripe_env, mock_db, monkeypatch,
+):
+    """Stripe 2025+ invoice payload drops top-level `subscription` and moves
+    the id (plus metadata) into `parent.subscription_details`. Real-world
+    regression: signing up returned 200 from our webhook but no credits
+    landed because invoice.get("subscription") was None."""
+    fake_event = {
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {
+            "id": "in_new_shape",
+            # NO top-level 'subscription' field (newer API)
+            "parent": {
+                "subscription_details": {
+                    "subscription": "sub_new",
+                    "metadata": {"user_id": "u1", "plan": "starter"},
+                },
+            },
+        }},
+    }
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.stripe.Subscription.retrieve",
+        lambda sid: {
+            "id": sid,
+            # The subscription itself may STILL have metadata, but in some
+            # newer flows it lives only on the invoice parent. Force the
+            # handler to use the parent path by leaving it blank here.
+            "metadata": {},
+            "items": {"data": [{"current_period_end": 1781337199}]},
+        },
+    )
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled, outcome.note
+    last_tx = mock_db["transactions"][-1]
+    assert last_tx["amount"] == 12  # PLAN_GRANTS["starter"]
+    assert mock_db["profiles"]["u1"]["current_plan"] == "starter"
+
+
 def test_handle_webhook_subscription_deleted_clears_cancel_flag(
     stripe_env, mock_db, monkeypatch,
 ):

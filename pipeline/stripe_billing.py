@@ -186,13 +186,25 @@ def _on_checkout_completed(session) -> WebhookOutcome:
 
 
 def _on_invoice_paid(invoice) -> WebhookOutcome:
-    sub_id = invoice.get("subscription")
+    # Find the subscription id. Stripe shape changed in 2025:
+    #   legacy:   invoice.subscription = "sub_xxx"
+    #   newer:    invoice.parent.subscription_details.subscription = "sub_xxx"
+    # Try both. The legacy path is kept for any account still on a pinned
+    # older API version.
+    sub_id = invoice.get("subscription") or _invoice_subscription_id(invoice)
     if not sub_id:
         return WebhookOutcome("invoice.payment_succeeded", False, "no subscription id")
     raw_sub = stripe.Subscription.retrieve(sub_id)
     subscription = raw_sub.to_dict() if hasattr(raw_sub, "to_dict") else dict(raw_sub)
     user_id = (subscription.get("metadata") or {}).get("user_id")
     plan = (subscription.get("metadata") or {}).get("plan")
+    # Fallback: newer invoices carry plan/user_id in parent.subscription_details.metadata,
+    # so we don't always need a retrieve round-trip. Still call retrieve above so
+    # we have a guaranteed source for current_period_end / cancel flag.
+    if not user_id or plan not in PLAN_GRANTS:
+        parent_meta = _invoice_parent_metadata(invoice)
+        user_id = user_id or parent_meta.get("user_id")
+        plan = plan if plan in PLAN_GRANTS else parent_meta.get("plan")
     # Newer Stripe API (2025+): current_period_end moved from the top-level
     # subscription object onto the first SubscriptionItem. Read it from
     # there with a fallback to the legacy top-level field for safety.
@@ -247,6 +259,26 @@ def _first_item_period_end(subscription: dict) -> int | None:
         return subscription["items"]["data"][0].get("current_period_end")
     except (KeyError, IndexError, TypeError):
         return None
+
+
+def _invoice_subscription_id(invoice: dict) -> str | None:
+    """Newer Stripe API (2025+) removed `invoice.subscription` and moved the
+    subscription id into `invoice.parent.subscription_details.subscription`.
+    Return whichever is present."""
+    try:
+        return invoice["parent"]["subscription_details"]["subscription"]
+    except (KeyError, TypeError):
+        return None
+
+
+def _invoice_parent_metadata(invoice: dict) -> dict:
+    """Newer invoices echo the subscription's metadata at
+    `invoice.parent.subscription_details.metadata`. Falls back to empty dict
+    on legacy invoices that don't have the parent block."""
+    try:
+        return invoice["parent"]["subscription_details"]["metadata"] or {}
+    except (KeyError, TypeError):
+        return {}
 
 
 def _on_subscription_deleted(subscription) -> WebhookOutcome:
