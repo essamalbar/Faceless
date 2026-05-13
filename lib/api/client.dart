@@ -164,6 +164,21 @@ class FacelessApiClient {
     return Uri.parse('${_stripTrailing(base)}/runs/$runId/thumbnail?token=$token');
   }
 
+  /// PDF export of the script — free-tier feature, no credit charge.
+  /// Returns a URL with the bearer token in the query string so a plain
+  /// browser navigation (or url_launcher) can stream the PDF without
+  /// needing to attach headers.
+  Future<Uri> scriptPdfUrl(String runId) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    return Uri.parse(
+      '${_stripTrailing(base)}/runs/$runId/script.pdf?token=$token',
+    );
+  }
+
   /// First-frame JPG of a specific clip in a run. Used by the run-detail
   /// script panel so each beat shows what its rendered clip looks like.
   Future<Uri> clipThumbnailUrl(String runId, int clipIndex) async {

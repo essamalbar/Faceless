@@ -403,6 +403,41 @@ def test_get_run_returns_404_for_unknown_id(client, auth):
     assert r.status_code == 404
 
 
+def test_script_pdf_returns_bytes(client, auth, tmp_path: Path):
+    """Free-tier export: GET /runs/{id}/script.pdf streams a real PDF.
+
+    This is the differentiator for users on the Free plan — they can
+    write a script and walk away with a PDF without ever subscribing.
+    No credit charge, no plan check; just bearer auth + the run must
+    have a script.json.
+    """
+    rd = _make_run_dir(tmp_path)
+    (rd / "script.json").write_text(json.dumps({
+        "title": "بئر السواد",
+        "theme": "folkloric",
+        "global_setting": "village at dusk",
+        "music_mood": "dread",
+        "beats": [
+            {"arabic": "ليلة باردة جدًا", "speaker": "narrator",
+             "clip_duration_s": 8.0, "is_silent": False,
+             "english_motion": "wide shot", "character_name": ""},
+        ],
+    }, ensure_ascii=False))
+    r = client.get(f"/runs/{rd.name}/script.pdf", headers=auth)
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF-")
+    # The on-disk artifact is cached for future requests
+    assert (rd / "script.pdf").exists()
+
+
+def test_script_pdf_returns_409_before_script_exists(client, auth, tmp_path: Path):
+    rd = _make_run_dir(tmp_path)
+    # No script.json written
+    r = client.get(f"/runs/{rd.name}/script.pdf", headers=auth)
+    assert r.status_code == 409
+
+
 def test_get_run_rejects_path_traversal(client, auth):
     r = client.get("/runs/..%2Fetc/passwd", headers=auth)
     # FastAPI's path matching converts %2F so we may get 404 or 400; both are safe

@@ -1203,6 +1203,40 @@ def get_script(run_id: str, user: User = Depends(require_user)):
     )
 
 
+@app.get(
+    "/runs/{run_id}/script.pdf",
+    response_class=FileResponse,
+    dependencies=[Depends(require_user_header_or_query)],
+)
+def get_script_pdf(
+    run_id: str,
+    user: User = Depends(require_user_header_or_query),
+):
+    """Free-tier hook: anyone with a script can download it as a PDF — no
+    subscription, no credit charge. The video render is the paid step;
+    writing the story is always free."""
+    from pipeline.pdf_export import render_script_pdf
+
+    run_dir = _run_dir(run_id, user)
+    script_path = run_dir / "script.json"
+    if not script_path.exists():
+        raise HTTPException(409, "script not generated yet")
+    pdf_path = run_dir / "script.pdf"
+    # Regenerate every time — script edits during the awaiting_approval
+    # phase are common and stale PDFs would be confusing.
+    doc = json.loads(script_path.read_text(encoding="utf-8"))
+    render_script_pdf(doc, pdf_path)
+    title = str(doc.get("title") or run_id).strip() or run_id
+    # Browser-side filename hint; ASCII-fold so older browsers don't barf.
+    safe_name = "".join(c if c.isascii() and (c.isalnum() or c in " -_") else "_"
+                        for c in title).strip() or run_id
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"{safe_name}.pdf",
+    )
+
+
 class ApprovalAck(BaseModel):
     run_id: str
     status: RunStatus

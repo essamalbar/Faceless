@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
@@ -317,6 +318,22 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     );
   }
 
+  Future<void> _downloadScriptPdf() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final uri = await widget.client.scriptPdfUrl(widget.runId);
+      // On web, _blank pops a new tab (which then offers Save As). On
+      // mobile, this routes through the OS download handler.
+      await launchUrl(uri, webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Download failed: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _editScript() async {
     if (_script == null) return;
     final saved = await Navigator.of(context).push<bool>(
@@ -548,6 +565,9 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                   (run.isComplete ? _script!.beats.length : 0),
               onPlayClip: (i) => _openClipPlayer(i, _script!.beats[i - 1].speaker),
               onRerollClip: _busy ? null : _rerollSingleClip,
+              // Free-tier export. Always available once a script exists —
+              // no plan check, no credit charge.
+              onDownloadPdf: _downloadScriptPdf,
             ),
           ],
           if (run.isAwaitingVeoApproval) ...[
@@ -684,6 +704,7 @@ class _ScriptPanel extends StatelessWidget {
   final int clipsDoneCount;
   final ValueChanged<int>? onPlayClip;
   final ValueChanged<int>? onRerollClip;
+  final VoidCallback? onDownloadPdf;
   const _ScriptPanel({
     required this.script,
     required this.showCost,
@@ -691,6 +712,7 @@ class _ScriptPanel extends StatelessWidget {
     required this.clipsDoneCount,
     required this.onPlayClip,
     required this.onRerollClip,
+    this.onDownloadPdf,
   });
 
   @override
@@ -707,6 +729,23 @@ class _ScriptPanel extends StatelessWidget {
               _CreditPill(credits: script.beats.length),
           ],
         ),
+        if (onDownloadPdf != null) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: onDownloadPdf,
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              label: const Text('Download script (PDF)'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: FacelessTheme.accent,
+                side: BorderSide(
+                  color: FacelessTheme.accent.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         ...script.beats.asMap().entries.map((e) => _BeatTile(
               index: e.key + 1,

@@ -45,6 +45,14 @@ dependencies = [
     # in the slim Python image anyway), and reuses the container's workload
     # identity so we don't need to mount a service-account key.
     "google-cloud-run>=0.10",
+    # PDF export for the free-tier "download your script" feature. fpdf2 +
+    # arabic-reshaper + python-bidi are all pure-Python and tiny; we bundle
+    # Amiri-Regular.ttf (SIL OFL) in assets/fonts/ for proper Arabic shaping.
+    # Picked fpdf2 over weasyprint because weasyprint pulls cairo/pango as
+    # system libs, which would balloon the Cloud Run cold-start image.
+    "fpdf2>=2.7",
+    "arabic-reshaper>=3.0",
+    "python-bidi>=0.4",
 ]
 
 [dependency-groups]
