@@ -278,7 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }
             final allRuns = (snap.data ?? []).reversed.toList(); // newest first
-            if (allRuns.isEmpty) return const _EmptyView();
+            if (allRuns.isEmpty) return _EmptyView(onCreate: _openNewRun);
 
             // Apply current filter chip
             final runs = _filter == 'all'
@@ -1127,33 +1127,258 @@ Widget _runImage(String runId, String? baseUrl, String? token,
 // ---------------------------------------------------------------------------
 
 class _EmptyView extends StatelessWidget {
-  const _EmptyView();
+  final VoidCallback onCreate;
+  const _EmptyView({required this.onCreate});
+
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.movie_outlined,
-                      size: 80, color: FacelessTheme.textSecondary),
-                  const SizedBox(height: 16),
-                  Text('No episodes yet.',
-                      style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 8),
-                  const Text('Tap "New Episode" to generate your first video.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: FacelessTheme.textSecondary)),
-                ],
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: MediaQuery.of(context).size.height - kToolbarHeight - 80,
+        ),
+        child: Stack(
+          children: [
+            // Ambient glows — gold top-left, violet bottom-right
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment(-0.6, -0.4),
+                      radius: 1.1,
+                      colors: [
+                        Color(0x33E7B53C),
+                        Color(0x000A0E1A),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment(0.7, 0.9),
+                      radius: 1.0,
+                      colors: [
+                        Color(0x288B5CF6),
+                        Color(0x000A0E1A),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 40, 24, 48),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Brand glyph — gold gradient circle with movie icon
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [FacelessTheme.accent, Color(0xFFB07F1F)],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: FacelessTheme.accent.withValues(alpha: 0.40),
+                              blurRadius: 32,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.movie_filter_outlined,
+                          color: Colors.black,
+                          size: 44,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Faceless',
+                        style: Theme.of(context).textTheme.headlineMedium!.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'اصنع قصصك القصيرة بالذكاء الاصطناعي',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: FacelessTheme.textSecondary,
+                          fontSize: 15,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 36),
+
+                      // Three steps card
+                      Container(
+                        decoration: BoxDecoration(
+                          color: FacelessTheme.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: FacelessTheme.textSecondary
+                                .withValues(alpha: 0.12),
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 8),
+                        child: const Column(
+                          children: [
+                            _Step(
+                              number: '1',
+                              title: 'Write a premise',
+                              subtitle: 'One sentence is enough',
+                            ),
+                            _StepDivider(),
+                            _Step(
+                              number: '2',
+                              title: 'AI writes your script',
+                              subtitle: 'Arabic, in seconds — free for everyone',
+                            ),
+                            _StepDivider(),
+                            _Step(
+                              number: '3',
+                              title: 'Subscribe to render the video',
+                              subtitle: 'Each clip uses 1 credit',
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: onCreate,
+                          icon: const Icon(Icons.auto_awesome),
+                          label: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 6),
+                            child: Text(
+                              'Create your first script',
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Free to write · Subscribe to render',
+                        style: TextStyle(
+                          color:
+                              FacelessTheme.textSecondary.withValues(alpha: 0.7),
+                          fontSize: 12,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Step extends StatelessWidget {
+  final String number;
+  final String title;
+  final String subtitle;
+  const _Step({
+    required this.number,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: FacelessTheme.accent.withValues(alpha: 0.18),
+              border: Border.all(
+                color: FacelessTheme.accent.withValues(alpha: 0.5),
+                width: 1,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              number,
+              style: const TextStyle(
+                color: FacelessTheme.accent,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
               ),
             ),
           ),
-        ),
-      );
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: FacelessTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: FacelessTheme.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepDivider extends StatelessWidget {
+  const _StepDivider();
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16),
+      child: Divider(
+        height: 1,
+        color: FacelessTheme.textSecondary.withValues(alpha: 0.08),
+      ),
+    );
+  }
 }
 
 class _ErrorView extends StatelessWidget {
