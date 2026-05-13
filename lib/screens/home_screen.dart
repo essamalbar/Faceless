@@ -31,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _token;
   String _filter = 'all';   // all | complete | awaiting | running | failed
   SpendSummary? _spend;
+  PlanInfo? _plan;
 
   @override
   void initState() {
@@ -48,6 +49,16 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
     _fetchSpend();
+    _fetchPlan();
+  }
+
+  Future<void> _fetchPlan() async {
+    try {
+      final p = await _client.getPlan();
+      if (mounted) setState(() => _plan = p);
+    } catch (_) {
+      // best-effort; the Plans teaser falls back to recommending Creator
+    }
   }
 
   /// Bearer token for embedding in `<img>`/`<video>` URLs (browsers can't
@@ -259,14 +270,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openNewRun,
-        backgroundColor: FacelessTheme.accent,
-        foregroundColor: Colors.black,
-        icon: const Icon(Icons.add),
-        label: const Text('New Episode',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: FutureBuilder<List<RunSummary>>(
@@ -283,7 +286,12 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }
             final allRuns = (snap.data ?? []).reversed.toList(); // newest first
-            if (allRuns.isEmpty) return _EmptyView(onCreate: _openNewRun);
+            if (allRuns.isEmpty) {
+              return _EmptyView(
+                onCreate: _openNewRun,
+                currentPlan: _plan?.plan,
+              );
+            }
 
             // Apply current filter chip
             final runs = _filter == 'all'
@@ -316,6 +324,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _HomeContent(
                     onCreate: _openNewRun,
                     showHowItWorks: false,
+                    currentPlan: _plan?.plan,
                   ),
                 ),
                 SliverToBoxAdapter(
@@ -355,6 +364,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
+                  )
+                else
+                  SliverToBoxAdapter(
+                    child: _YourStoriesHeader(count: featured.length),
                   ),
                 if (featured.isNotEmpty)
                   SliverToBoxAdapter(
@@ -365,6 +378,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPlay: _playRun,
                       onTap: _openRun,
                     ),
+                  )
+                else if (runs.isNotEmpty)
+                  const SliverToBoxAdapter(
+                    child: _LibraryEmptyCard(),
                   ),
                 ...series.map(
                   (s) => SliverToBoxAdapter(
@@ -631,6 +648,109 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// "Your stories" section — section header above hero carousel + empty card
+// when the user has runs but none have a rendered video yet
+// ---------------------------------------------------------------------------
+
+class _YourStoriesHeader extends StatelessWidget {
+  final int count;
+  const _YourStoriesHeader({required this.count});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 22,
+            decoration: BoxDecoration(
+              color: FacelessTheme.accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Text('Your stories',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              )),
+          const SizedBox(width: 8),
+          Text('قصصك',
+              style: TextStyle(
+                color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
+                fontSize: 13,
+              )),
+          const Spacer(),
+          if (count > 0)
+            Text('$count',
+                style: const TextStyle(
+                    color: FacelessTheme.textSecondary, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+class _LibraryEmptyCard extends StatelessWidget {
+  const _LibraryEmptyCard();
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: FacelessTheme.surface,
+          border: Border.all(
+            color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: FacelessTheme.accent.withValues(alpha: 0.12),
+              ),
+              child: const Icon(Icons.movie_filter_outlined,
+                  color: FacelessTheme.accent, size: 28),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('No rendered videos yet',
+                      style: TextStyle(
+                        color: FacelessTheme.textPrimary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      )),
+                  SizedBox(height: 4),
+                  Text(
+                    'Approve a script and your video will show up here.',
+                    style: TextStyle(
+                      color: FacelessTheme.textSecondary,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Hero carousel — large 9:16 poster with autoplay-ish swipe
@@ -1187,13 +1307,18 @@ const _allThemes = <_ThemeInfo>[
 
 class _EmptyView extends StatelessWidget {
   final void Function({String? initialTheme}) onCreate;
-  const _EmptyView({required this.onCreate});
+  final String? currentPlan;
+  const _EmptyView({required this.onCreate, this.currentPlan});
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      child: _HomeContent(onCreate: onCreate, showHowItWorks: true),
+      child: _HomeContent(
+        onCreate: onCreate,
+        showHowItWorks: true,
+        currentPlan: currentPlan,
+      ),
     );
   }
 }
@@ -1208,9 +1333,11 @@ class _EmptyView extends StatelessWidget {
 class _HomeContent extends StatelessWidget {
   final void Function({String? initialTheme}) onCreate;
   final bool showHowItWorks;
+  final String? currentPlan;
   const _HomeContent({
     required this.onCreate,
     required this.showHowItWorks,
+    this.currentPlan,
   });
 
   @override
@@ -1262,7 +1389,7 @@ class _HomeContent extends StatelessWidget {
                     const _HowItWorksCard(),
                   ],
                   const SizedBox(height: 36),
-                  const _PricingTeaser(),
+                  _PricingTeaser(currentPlan: currentPlan),
                 ],
               ),
             ),
@@ -1597,21 +1724,58 @@ class _HowItWorksCard extends StatelessWidget {
 }
 
 class _PricingTeaser extends StatelessWidget {
-  const _PricingTeaser();
+  /// User's current plan slug from /billing/plan ('free' / 'starter' /
+  /// 'creator' / 'pro'). When null or 'free', we recommend Creator. When
+  /// the user has a paid plan, we highlight that plan as "Your plan".
+  final String? currentPlan;
+  const _PricingTeaser({this.currentPlan});
+
   @override
   Widget build(BuildContext context) {
+    final cp = currentPlan?.toLowerCase();
+    final paid = cp != null && cp != 'free';
+
+    _PlanBadge badgeFor(String slug) {
+      if (paid) {
+        return cp == slug ? _PlanBadge.current : _PlanBadge.none;
+      }
+      return slug == 'creator' ? _PlanBadge.recommended : _PlanBadge.none;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionTitle(english: 'Plans', arabic: 'الخطط'),
         const SizedBox(height: 12),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _PlanChip(name: 'Starter', price: r'$9',  credits: 12,  highlight: false)),
+            Expanded(
+              child: _PlanChip(
+                name: 'Starter',
+                price: r'$9',
+                credits: 12,
+                badge: badgeFor('starter'),
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: _PlanChip(name: 'Creator', price: r'$29', credits: 60,  highlight: true)),
+            Expanded(
+              child: _PlanChip(
+                name: 'Creator',
+                price: r'$29',
+                credits: 60,
+                badge: badgeFor('creator'),
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: _PlanChip(name: 'Pro',     price: r'$79', credits: 200, highlight: false)),
+            Expanded(
+              child: _PlanChip(
+                name: 'Pro',
+                price: r'$79',
+                credits: 200,
+                badge: badgeFor('pro'),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 10),
@@ -1629,21 +1793,24 @@ class _PricingTeaser extends StatelessWidget {
   }
 }
 
+enum _PlanBadge { none, recommended, current }
+
 class _PlanChip extends StatelessWidget {
   final String name;
   final String price;
   final int credits;
-  final bool highlight;
+  final _PlanBadge badge;
   const _PlanChip({
     required this.name,
     required this.price,
     required this.credits,
-    required this.highlight,
+    required this.badge,
   });
   @override
   Widget build(BuildContext context) {
+    final highlight = badge != _PlanBadge.none;
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 14),
       decoration: BoxDecoration(
         color: highlight
             ? FacelessTheme.accent.withValues(alpha: 0.10)
@@ -1658,6 +1825,31 @@ class _PlanChip extends StatelessWidget {
       ),
       child: Column(
         children: [
+          SizedBox(
+            height: 18,
+            child: badge == _PlanBadge.none
+                ? const SizedBox.shrink()
+                : Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: FacelessTheme.accent.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      badge == _PlanBadge.current
+                          ? 'Your plan'
+                          : 'Recommended',
+                      style: const TextStyle(
+                        color: FacelessTheme.accent,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 6),
           Text(name,
               style: const TextStyle(
                 color: FacelessTheme.textPrimary,
