@@ -79,7 +79,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     // user thinks nothing happened and starts spam-tapping.
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(const SnackBar(
-      content: Text('Approved — generating character sheet on Flux (~30 sec)…'),
+      content: Text('Approved — preparing characters (~30s)…'),
       duration: Duration(seconds: 4),
     ));
     try {
@@ -103,7 +103,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(const SnackBar(
-      content: Text('Approved — starting Veo generation…'),
+      content: Text('Approved — generating clips…'),
       duration: Duration(seconds: 4),
     ));
     try {
@@ -124,10 +124,10 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Reroll character sheet?'),
+        title: const Text('Regenerate character look?'),
         content: const Text(
-          'This deletes the current character sheet and regenerates it on Flux. '
-          'Costs another \$0.05.',
+          'This discards the current character look and generates a new one. '
+          'Your credit balance is not affected.',
         ),
         actions: [
           TextButton(
@@ -135,7 +135,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
               child: const Text('Keep')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Reroll (\$0.05)')),
+              child: const Text('Regenerate')),
         ],
       ),
     );
@@ -240,8 +240,9 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     if (selected == null || selected.isEmpty || !mounted) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
+    final k = selected.length;
     messenger.showSnackBar(SnackBar(
-      content: Text('Rerolling ${selected.length} clip(s) — ~\$${(selected.length * 0.85).toStringAsFixed(2)}'),
+      content: Text('Rerolling $k clip${k == 1 ? "" : "s"} — $k credit${k == 1 ? "" : "s"}'),
       duration: const Duration(seconds: 4),
     ));
     try {
@@ -263,14 +264,14 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
       builder: (ctx) => AlertDialog(
         title: Text(
             'Reroll clip ${clipIndex.toString().padLeft(2, "0")}?'),
-        content: const Text('This regenerates one clip on Veo. ~\$0.85.'),
+        content: const Text('This regenerates one clip and costs 1 credit.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Keep')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Reroll (\$0.85)')),
+              child: const Text('Reroll (1 credit)')),
         ],
       ),
     );
@@ -279,7 +280,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(SnackBar(
       content: Text(
-          'Rerolling clip ${clipIndex.toString().padLeft(2, "0")} — ~\$0.85'),
+          'Rerolling clip ${clipIndex.toString().padLeft(2, "0")} — 1 credit'),
       duration: const Duration(seconds: 3),
     ));
     try {
@@ -336,13 +337,30 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = _run?.title;
+    final hasTitle = t != null && t.trim().isNotEmpty;
     return Scaffold(
+      backgroundColor: FacelessTheme.bg,
       appBar: AppBar(
-        title: Text(widget.runId, style: const TextStyle(fontSize: 14)),
+        backgroundColor: FacelessTheme.bg,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        title: hasTitle
+            ? Text(
+                t,
+                textDirection: TextDirection.rtl,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              )
+            : const Text('Story', style: TextStyle(fontSize: 16)),
         actions: [
           IconButton(
               icon: const Icon(Icons.article_outlined),
-              tooltip: 'View log',
+              tooltip: 'Activity log',
               onPressed: _openLog),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
         ],
@@ -366,95 +384,133 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
         children: [
           _StatusBanner(run: run),
           const SizedBox(height: 16),
-          if (run.title != null)
-            Text(
-              run.title!,
-              style: Theme.of(context).textTheme.headlineSmall,
-              textDirection: TextDirection.rtl,
-            ),
-          if (run.premise != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              run.premise!,
-              textDirection: TextDirection.rtl,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-          const SizedBox(height: 16),
-          if (run.isComplete) ...[
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => VideoPlayerScreen(
-                          client: widget.client,
-                          runId: run.id,
-                          title: run.title,
-                        ),
+          if (run.title != null || run.premise != null) ...[
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              decoration: BoxDecoration(
+                color: FacelessTheme.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (run.title != null)
+                    Text(
+                      run.title!,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            height: 1.3,
+                          ),
+                      textDirection: TextDirection.rtl,
+                    ),
+                  if (run.premise != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      run.premise!,
+                      textDirection: TextDirection.rtl,
+                      style: const TextStyle(
+                        color: FacelessTheme.textSecondary,
+                        fontSize: 13,
+                        height: 1.5,
                       ),
                     ),
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Play Video'),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (run.isComplete) ...[
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => VideoPlayerScreen(
+                      client: widget.client,
+                      runId: run.id,
+                      title: run.title,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busy ? null : _rerollClips,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Reroll'),
-                  ),
-                ),
-              ],
+                icon: const Icon(Icons.play_arrow, size: 24),
+                label: const Text('Play video',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _busy ? null : _rerollClips,
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Reroll selected clips'),
+              ),
             ),
           ],
           if (run.isFailed) ...[
-            Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      run.lastError ?? 'Run failed.',
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.onErrorContainer,
-                          fontFamily: 'monospace',
-                          fontSize: 11),
-                    ),
-                    if (run.errorHint != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.lightbulb_outline,
-                                color: FacelessTheme.accent, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                run.errorHint!,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.4),
-                              ),
-                            ),
-                          ],
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: FacelessTheme.danger.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: FacelessTheme.danger.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.error_outline,
+                          color: FacelessTheme.danger, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Generation failed',
+                        style: TextStyle(
+                          color: FacelessTheme.danger,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
                         ),
                       ),
                     ],
+                  ),
+                  if (run.errorHint != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      run.errorHint!,
+                      style: const TextStyle(
+                        color: FacelessTheme.textPrimary,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
                   ],
-                ),
+                  if (run.lastError != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        run.lastError!,
+                        style: const TextStyle(
+                          color: FacelessTheme.textSecondary,
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -472,7 +528,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _openLog,
                     icon: const Icon(Icons.article_outlined),
-                    label: const Text('View Log'),
+                    label: const Text('Activity log'),
                   ),
                 ),
               ],
@@ -506,10 +562,9 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
             const SizedBox(height: 16),
             _ApprovalBar(
               busy: _busy,
-              // For the Veo gate, show only the Veo cost (Flux $0.05 already spent).
-              cost: run.isAwaitingVeoApproval
-                  ? ((_script?.estimatedCostUsd ?? 0) - 0.05).clamp(0.0, double.infinity)
-                  : (_script?.estimatedCostUsd ?? 0),
+              // 1 clip = 1 credit. Character generation is internal infra,
+              // doesn't burn a user credit.
+              credits: _script?.beats.length ?? 0,
               isVeoGate: run.isAwaitingVeoApproval,
               onApprove: run.isAwaitingVeoApproval ? _approveVeo : _approve,
               onEdit: _editScript,
@@ -544,42 +599,79 @@ class _StatusBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, icon, color) = switch (run.status) {
       RunStatus.complete =>
-        ('Complete — ready to watch', Icons.check_circle, Colors.green),
+        ('Ready to watch', Icons.check_circle, FacelessTheme.success),
       RunStatus.awaitingApproval => (
-          'Awaiting your approval to spend Veo \$',
+          'Script ready — approve to generate the video',
           Icons.pause_circle,
-          Colors.orange,
+          FacelessTheme.warning,
         ),
       RunStatus.awaitingVeoApproval => (
-          'Character sheet ready — review before Veo spend',
+          'Character look ready — approve to generate clips',
           Icons.image_outlined,
-          Colors.orange,
+          FacelessTheme.warning,
         ),
       RunStatus.runningPaid =>
-        ('Generating clips on Veo…', Icons.movie_filter, Colors.blue),
+        ('Generating your video…', Icons.movie_filter, FacelessTheme.info),
       RunStatus.creating =>
-        ('Writing the script…', Icons.edit_note, Colors.blue),
+        ('Writing the script…', Icons.edit_note, FacelessTheme.info),
       RunStatus.failed => (
-          'Failed — tap Resume to retry from where it stopped',
+          'Generation failed — tap Resume to retry',
           Icons.error,
-          Colors.red,
+          FacelessTheme.danger,
         ),
-      _ => (run.status, Icons.info, Colors.grey),
+      _ => (run.status, Icons.info, FacelessTheme.textSecondary),
     };
-    return Card(
-      color: color.withValues(alpha: 0.12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(label,
-                  style: TextStyle(color: color, fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                )),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CreditPill extends StatelessWidget {
+  final int credits;
+  const _CreditPill({required this.credits});
+  @override
+  Widget build(BuildContext context) {
+    final w = credits == 1 ? 'credit' : 'credits';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: FacelessTheme.accent.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: FacelessTheme.accent.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.monetization_on,
+              color: FacelessTheme.accent, size: 14),
+          const SizedBox(width: 4),
+          Text('$credits $w',
+              style: const TextStyle(
+                color: FacelessTheme.accent,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              )),
+        ],
       ),
     );
   }
@@ -612,11 +704,7 @@ class _ScriptPanel extends StatelessWidget {
             Text('Script (${script.beats.length} beats)',
                 style: Theme.of(context).textTheme.titleMedium),
             if (showCost)
-              Text('≈ \$${script.estimatedCostUsd.toStringAsFixed(2)}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      )),
+              _CreditPill(credits: script.beats.length),
           ],
         ),
         const SizedBox(height: 8),
@@ -704,7 +792,7 @@ class _BeatTile extends StatelessWidget {
                         const SizedBox(width: 4),
                         IconButton(
                           icon: const Icon(Icons.refresh, size: 18),
-                          tooltip: 'Reroll this clip (~\$0.85)',
+                          tooltip: 'Reroll this clip (1 credit)',
                           visualDensity: VisualDensity.compact,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -740,15 +828,15 @@ class _BeatTile extends StatelessWidget {
 
 class _ApprovalBar extends StatelessWidget {
   final bool busy;
-  final double cost;
-  final bool isVeoGate;     // NEW
+  final int credits;
+  final bool isVeoGate;
   final VoidCallback onApprove;
   final VoidCallback onEdit;
   final VoidCallback onCancel;
   const _ApprovalBar({
     required this.busy,
-    required this.cost,
-    this.isVeoGate = false,   // NEW with default
+    required this.credits,
+    this.isVeoGate = false,
     required this.onApprove,
     required this.onEdit,
     required this.onCancel,
@@ -759,90 +847,115 @@ class _ApprovalBar extends StatelessWidget {
     if (busy) {
       // While the approve POST is in flight, show an unmistakable loading
       // state so the user doesn't tap 5 times thinking nothing happened.
-      return Card(
-        color: FacelessTheme.accent.withValues(alpha: 0.18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          child: Row(
-            children: [
-              const SizedBox(
-                width: 22, height: 22,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor:
-                        AlwaysStoppedAnimation(FacelessTheme.accent)),
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        decoration: BoxDecoration(
+          color: FacelessTheme.accent.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 22, height: 22,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor:
+                      AlwaysStoppedAnimation(FacelessTheme.accent)),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                isVeoGate
+                    ? 'Starting video generation — clips appear shortly…'
+                    : 'Approving — preparing characters (~30s)…',
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(width: 14),
+            ),
+          ],
+        ),
+      );
+    }
+    final creditWord = credits == 1 ? 'credit' : 'credits';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: FacelessTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: FacelessTheme.warning.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bolt_outlined,
+                  color: FacelessTheme.warning, size: 20),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   isVeoGate
-                      ? 'Starting Veo generation… (clips will appear shortly)'
-                      : 'Approving — generating character sheet on Flux (~30s)…',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                      ? 'Approve to generate the video — $credits $creditWord'
+                      : 'Approve to start generation — $credits $creditWord total',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-      );
-    }
-    return Card(
-      color: FacelessTheme.surface2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.warning_amber, color: FacelessTheme.warning),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    isVeoGate
-                        ? 'Approve to start Veo generation (~\$${cost.toStringAsFixed(2)})'
-                        : 'Approve to render character sheet on Flux (~\$0.05); Veo cost (~\$${cost.toStringAsFixed(2)}) confirmed at the next step',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 28),
+            child: Text(
+              isVeoGate
+                  ? 'Once started, clips render one by one (~1 min each).'
+                  : 'Characters are prepared first; the video starts once you confirm again.',
+              style: const TextStyle(
+                color: FacelessTheme.textSecondary,
+                fontSize: 12,
+                height: 1.35,
+              ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Edit'),
-                  ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit, size: 18),
+                  label: const Text('Edit'),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onCancel,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: FacelessTheme.danger,
-                      side: BorderSide(
-                          color:
-                              FacelessTheme.danger.withValues(alpha: 0.5)),
-                    ),
-                    icon: const Icon(Icons.delete_forever),
-                    label: const Text('Discard'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onCancel,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: FacelessTheme.danger,
+                    side: BorderSide(
+                        color:
+                            FacelessTheme.danger.withValues(alpha: 0.5)),
                   ),
+                  icon: const Icon(Icons.delete_forever, size: 18),
+                  label: const Text('Discard'),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: onApprove,
-                    icon: const Icon(Icons.check_circle),
-                    label: const Text('Approve'),
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: FilledButton.icon(
+                  onPressed: onApprove,
+                  icon: const Icon(Icons.check_circle),
+                  label: const Text('Approve'),
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -857,11 +970,11 @@ class _ProgressPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final stageLabel = switch (progress.stage) {
       'script' => 'Writing the script…',
-      'character_sheet' => 'Generating character sheet on Flux…',
+      'character_sheet' => 'Preparing characters…',
       'video' =>
-        'Generating clip ${progress.clipsDone + 1} of ${progress.clipsTotal} on Veo…',
-      'captions' => 'Whisper-aligning captions…',
-      'assemble' => 'Assembling final mp4…',
+        'Generating clip ${progress.clipsDone + 1} of ${progress.clipsTotal}…',
+      'captions' => 'Aligning captions…',
+      'assemble' => 'Assembling final video…',
       _ => progress.stage,
     };
     final value = progress.fractional;
@@ -1064,55 +1177,58 @@ class _CharacterSheetPanelState extends State<_CharacterSheetPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: FacelessTheme.surface2,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('CHARACTER SHEET (FLUX)',
-                style: TextStyle(
-                    color: FacelessTheme.textSecondary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11,
-                    letterSpacing: 1.2)),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: _url == null
-                  ? const SizedBox(
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: FacelessTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('CHARACTER LOOK',
+              style: TextStyle(
+                  color: FacelessTheme.textSecondary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  letterSpacing: 1.2)),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: _url == null
+                ? const SizedBox(
+                    height: 200,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                : CachedNetworkImage(
+                    imageUrl: _url!,
+                    fit: BoxFit.contain,
+                    errorWidget: (_, _, _) => const SizedBox(
+                      height: 200,
+                      child: Center(child: Icon(Icons.broken_image)),
+                    ),
+                    placeholder: (_, _) => const SizedBox(
                       height: 200,
                       child: Center(child: CircularProgressIndicator()),
-                    )
-                  : CachedNetworkImage(
-                      imageUrl: _url!,
-                      fit: BoxFit.contain,
-                      errorWidget: (_, _, _) => const SizedBox(
-                        height: 200,
-                        child: Center(child: Icon(Icons.broken_image)),
-                      ),
-                      placeholder: (_, _) => const SizedBox(
-                        height: 200,
-                        child: Center(child: CircularProgressIndicator()),
-                      ),
                     ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: widget.onReroll,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reroll character sheet (\$0.05)'),
-            ),
-          ],
-        ),
+                  ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: widget.onReroll,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text("Don't like it? Regenerate"),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Multi-select dialog: which clips to regenerate. Each Veo Fast clip is
-/// ~$0.85, so the dialog shows live cost as the user toggles indices.
+/// Multi-select dialog: which clips to regenerate. 1 clip = 1 credit.
 class _RerollDialog extends StatefulWidget {
   final int beatCount;
   const _RerollDialog({required this.beatCount});
@@ -1125,7 +1241,8 @@ class _RerollDialogState extends State<_RerollDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final cost = _selected.length * 0.85;
+    final n = _selected.length;
+    final creditWord = n == 1 ? 'credit' : 'credits';
     return AlertDialog(
       title: const Text('Reroll which clips?'),
       content: SizedBox(
@@ -1135,8 +1252,8 @@ class _RerollDialogState extends State<_RerollDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Pick the clips that need regenerating. Each one costs ~\$0.85. '
-              'The other clips stay; the final mp4 re-stitches at the end.',
+              'Pick the clips that need regenerating. Each costs 1 credit. '
+              'The other clips stay; the final video re-stitches at the end.',
               style: TextStyle(
                   color: FacelessTheme.textSecondary, fontSize: 12),
             ),
@@ -1144,16 +1261,16 @@ class _RerollDialogState extends State<_RerollDialog> {
             Wrap(
               spacing: 6, runSpacing: 6,
               children: List.generate(widget.beatCount, (i) {
-                final n = i + 1;
-                final on = _selected.contains(n);
+                final idx = i + 1;
+                final on = _selected.contains(idx);
                 return FilterChip(
-                  label: Text(n.toString().padLeft(2, '0')),
+                  label: Text(idx.toString().padLeft(2, '0')),
                   selected: on,
                   onSelected: (v) => setState(() {
                     if (v) {
-                      _selected.add(n);
+                      _selected.add(idx);
                     } else {
-                      _selected.remove(n);
+                      _selected.remove(idx);
                     }
                   }),
                   selectedColor: FacelessTheme.accent.withValues(alpha: 0.4),
@@ -1162,9 +1279,9 @@ class _RerollDialogState extends State<_RerollDialog> {
             ),
             const SizedBox(height: 12),
             Text(
-              _selected.isEmpty
+              n == 0
                   ? 'No clips selected'
-                  : '${_selected.length} clip(s) — ~\$${cost.toStringAsFixed(2)}',
+                  : '$n clip${n == 1 ? "" : "s"} — $n $creditWord',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ],
