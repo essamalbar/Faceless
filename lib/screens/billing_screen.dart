@@ -21,11 +21,11 @@ class _BillingScreenState extends State<BillingScreen> {
   String? _error;
 
   // Subscription tiers — match the prices configured in Stripe.
-  // Top-up packs intentionally omitted for v1 (operator decision, 2026-05-11).
+  // 1 credit = 1 video clip. Pricing rework 2026-05-13.
   static const _plans = [
-    ('starter', 'Starter', r'$9 / month', '60 credits / month'),
-    ('creator', 'Creator', r'$29 / month', '250 credits / month'),
-    ('pro',     'Pro',     r'$79 / month', '800 credits / month'),
+    ('starter', 'Starter', r'$9 / month', '12 credits / month'),
+    ('creator', 'Creator', r'$29 / month', '60 credits / month'),
+    ('pro',     'Pro',     r'$79 / month', '200 credits / month'),
   ];
 
   @override

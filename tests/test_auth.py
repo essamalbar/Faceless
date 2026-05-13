@@ -141,27 +141,6 @@ def test_require_user_header_or_query_401_when_neither(monkeypatch):
     assert exc.value.status_code == 401
 
 
-def test_require_user_calls_ensure_signup_grant(monkeypatch):
-    """A successful JWT verification triggers the signup-grant hook exactly once."""
-    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
-            SUPABASE_JWT_SECRET=SECRET)
-    called: list[str] = []
-    def fake_grant(user):
-        called.append(user.id)
-    monkeypatch.setattr("pipeline.credits.ensure_signup_grant", fake_grant)
-    token = _encode(GOOD_PAYLOAD)
-    user = require_user(authorization=f"Bearer {token}")
-    assert called == [user.id]
-
-
-def test_require_user_swallows_db_errors_in_signup_grant(monkeypatch):
-    """If the DB is down, auth must still succeed (with no grant)."""
-    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
-            SUPABASE_JWT_SECRET=SECRET)
-    def fake_grant(user):
-        raise RuntimeError("supabase down")
-    monkeypatch.setattr("pipeline.credits.ensure_signup_grant", fake_grant)
-    token = _encode(GOOD_PAYLOAD)
-    # Should not raise
-    user = require_user(authorization=f"Bearer {token}")
-    assert user.id == GOOD_PAYLOAD["sub"]
+# signup_grant logic was removed 2026-05-13 (no welcome credits — users
+# get credits only via subscription). The auth hook that called
+# ensure_signup_grant() is gone, so the matching tests went with it.

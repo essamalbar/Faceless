@@ -96,39 +96,12 @@ def test_create_subscription_checkout_rejects_unknown_plan(stripe_env, mock_db):
         create_subscription_checkout(_user(), "elite", "u1", "u2")
 
 
-def test_create_topup_checkout_url(stripe_env, mock_db, monkeypatch):
-    monkeypatch.setattr("pipeline.stripe_billing.stripe.Customer.create",
-                       lambda **kw: SimpleNamespace(id="cus_x"))
-    captured = {}
-    def fake_create(**kw):
-        captured.update(kw)
-        return SimpleNamespace(url="https://checkout.stripe.com/y")
-    monkeypatch.setattr("pipeline.stripe_billing.stripe.checkout.Session.create", fake_create)
-
-    url = create_topup_checkout(_user(), "topup_100",
-                                "https://app/success", "https://app/cancel")
-    assert url == "https://checkout.stripe.com/y"
-    assert captured["mode"] == "payment"
-    assert captured["line_items"][0]["price"] == "price_t100"
-
-
-def test_handle_webhook_topup_grants_credits(stripe_env, mock_db, monkeypatch):
-    fake_event = {
-        "type": "checkout.session.completed",
-        "data": {"object": {
-            "id": "cs_abc",
-            "mode": "payment",
-            "metadata": {"user_id": "u1", "pack": "topup_30"},
-        }},
-    }
-    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
-                       lambda **kw: fake_event)
-    outcome = handle_webhook(b"{}", "sig=anything")
-    assert outcome.handled
-    assert mock_db["transactions"][-1] == {
-        "user_id": "u1", "amount": 30, "kind": "topup",
-        "reference_id": "cs_abc", "description": "Top-up pack (topup_30)",
-    }
+def test_create_topup_checkout_rejects_when_packs_disabled(stripe_env, mock_db):
+    """Top-up packs are disabled in v1 (TOPUP_PACKS is empty). Any attempt
+    to create a top-up checkout must raise — the UI doesn't surface the
+    option, so this is a defensive check for direct API callers."""
+    with pytest.raises(ValueError, match="unknown pack"):
+        create_topup_checkout(_user(), "topup_100", "u1", "u2")
 
 
 def test_handle_webhook_subscription_renewal_grants(stripe_env, mock_db, monkeypatch):
@@ -149,7 +122,7 @@ def test_handle_webhook_subscription_renewal_grants(stripe_env, mock_db, monkeyp
     outcome = handle_webhook(b"{}", "sig")
     assert outcome.handled
     last_tx = mock_db["transactions"][-1]
-    assert last_tx["amount"] == 250  # PLAN_GRANTS["creator"]
+    assert last_tx["amount"] == 60  # PLAN_GRANTS["creator"]
     assert last_tx["kind"] == "subscription_renewal"
     assert mock_db["profiles"]["u1"]["current_plan"] == "creator"
 

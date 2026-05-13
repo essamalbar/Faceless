@@ -142,7 +142,7 @@ def require_user(authorization: str | None = Header(None)) -> User:
 
     if can_verify_jwt:
         try:
-            user = verify_supabase_jwt(
+            return verify_supabase_jwt(
                 token,
                 secret=jwt_secret,
                 supabase_url=supabase_url,
@@ -152,17 +152,6 @@ def require_user(authorization: str | None = Header(None)) -> User:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Invalid token: {e}",
             ) from None
-        # Lazy-init: ensures the user has a profile + signup grant the first time
-        # they hit any authenticated endpoint. Cheap (one SELECT for repeat users).
-        # Imported lazily to avoid a cycle (credits imports auth.User).
-        from pipeline.credits import ensure_signup_grant
-        try:
-            ensure_signup_grant(user)
-        except Exception:
-            # If the DB is unreachable, don't block auth — log it and continue.
-            # The user just won't have their grant; we can backfill later.
-            pass
-        return user
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

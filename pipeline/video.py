@@ -30,35 +30,29 @@ def _charge_and_submit_clip(
     clip_index: int,
     submit_fn,
 ):
-    """Deduct credits for one clip, submit to Veo, refund on failure.
+    """Deduct 1 credit, submit the clip, refund on failure.
 
-    `beat` can be a dataclass (with `.clip_duration_s`) or a dict
-    (`['clip_duration_s']`) so the same helper works from tests + production.
-    Charge = ceil(clip_duration_s) to match Kie's billing ("9.5s billed as 10s").
+    Pricing (locked 2026-05-13): 1 credit = 1 clip regardless of duration.
+    `beat` accepted as dataclass or dict for test-friendliness.
 
-    `submit_fn(beat, *, clip_index)` is the actual Veo submission — passed in
-    so this function is independently testable without hitting Kie. Raises
-    propagate after a refund is recorded.
+    `submit_fn(beat, *, clip_index)` is the actual generation submission —
+    passed in so this function is independently testable. Raises propagate
+    after a refund is recorded.
     """
-    duration = (
-        beat.clip_duration_s if hasattr(beat, "clip_duration_s")
-        else float(beat.get("clip_duration_s", 8.0))
-    )
-    seconds = math.ceil(float(duration))
     # Resolve via the module so pytest monkeypatch.setattr("pipeline.credits.X")
     # is honored both from tests and from production callers.
     _credits.check_or_deduct(
         user,
-        amount=seconds,
+        amount=1,
         run_id=run_id,
-        reason=f"clip {clip_index + 1} ({seconds}s)",
+        reason=f"clip {clip_index + 1}",
     )
     try:
         return submit_fn(beat, clip_index=clip_index)
     except Exception:
         _credits.refund(
             user,
-            amount=seconds,
+            amount=1,
             run_id=run_id,
             reason=f"clip {clip_index + 1} failed",
         )

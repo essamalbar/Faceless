@@ -556,43 +556,51 @@ def _generate_script_inline(
 def _estimate_credits_for_request(req) -> int:
     """Estimate the credits a request will consume.
 
-    For freeform / num-beats requests we use `(max_beats or num_beats or 8) * 8`
-    since we don't have a concrete script yet (default 8s per beat).
-    For from-script requests we sum the parsed beat durations (ceiled).
-    Caller treats this as a worst-case pre-flight; actual charge happens
-    per-clip in the worker.
+    1 credit = 1 clip (one beat in the script). The actual charge happens
+    per-clip in the worker; this is a worst-case pre-flight that matches the
+    number of beats the writer will emit.
     """
-    import math
     beats = getattr(req, "beats", None)
     if beats:
-        total = 0
-        for b in beats:
-            dur = getattr(b, "clip_duration_s", None)
-            if dur is None and isinstance(b, dict):
-                dur = b.get("clip_duration_s")
-            total += math.ceil(float(dur if dur is not None else 8.0))
-        return total
-    # Freeform / Tier-3 — use the requested beat count, 8s per beat (Veo Fast default)
-    n = (
+        return len(beats)
+    return int(
         getattr(req, "max_beats", None)
         or getattr(req, "num_beats", None)
-        or 8
+        or 8,
     )
-    return int(n) * 8
+
+
+def _clips_needed_for_run(run_dir: Path) -> int:
+    """Count remaining beats that still need a clip generated. Used by the
+    approve endpoint to compute the pre-flight credit cost. Reads from
+    script.json (which is already on disk by approval time)."""
+    script_path = run_dir / "script.json"
+    if not script_path.exists():
+        return 0
+    try:
+        doc = json.loads(script_path.read_text(encoding="utf-8"))
+    except Exception:
+        return 0
+    beats = doc.get("beats") or []
+    if not beats:
+        return 0
+    clips_dir = run_dir / "clips"
+    already = 0
+    if clips_dir.exists():
+        already = sum(1 for _ in clips_dir.glob("*.mp4"))
+    return max(0, len(beats) - already)
 
 
 def _raise_402_insufficient_credits(balance: int, required: int) -> None:
     """Raise HTTPException(402) with the structured detail the Flutter paywall
-    dialog expects. Vendor-agnostic copy — same wording for the operator-pays-Kie
-    path and the upcoming end-user-pays-Stripe path."""
+    dialog expects. Vendor-agnostic copy — never mentions Veo/Flux/Kie."""
     raise HTTPException(
         status_code=status.HTTP_402_PAYMENT_REQUIRED,
         detail={
             "code": "insufficient_credits",
             "message": (
-                "You don't have enough credits for this video. "
-                "Top up your plan to continue — your script and characters "
-                "will be saved."
+                "This video needs more credits than you have. "
+                "Subscribe to continue — your script is saved and ready."
             ),
             "balance": balance,
             "required": required,
@@ -600,17 +608,19 @@ def _raise_402_insufficient_credits(balance: int, required: int) -> None:
     )
 
 
-def _preflight_credits(req, user: "User") -> None:
-    """Pre-flight credit check shared by all run-creation endpoints.
+def _preflight_approve_credits(run_dir: Path, user: "User") -> None:
+    """Credit check that runs when the user clicks Approve, NOT when they
+    generate the script. Script generation is free; the paid stages (paid
+    video clip generation + assembly) require credits.
 
-    Service tokens (CLI / admin) bypass — they don't consume credits, the
-    worker's service-token bypass handles the actual stage. For regular
-    users, raises HTTPException(402) if the estimated cost exceeds balance.
+    Service tokens (CLI / admin) bypass — they don't consume credits.
+    Raises HTTPException(402) if the script's clip count exceeds the user's
+    balance.
     """
     if user.role == "service":
         return
     from pipeline.db import get_balance
-    required = _estimate_credits_for_request(req)
+    required = _clips_needed_for_run(run_dir)
     balance = get_balance(user.id)
     if balance < required:
         _raise_402_insufficient_credits(balance, required)
@@ -973,7 +983,8 @@ def create_run_from_script(req: CreateFromScriptRequest, user: User = Depends(re
 
     The run lands in `awaiting_approval` immediately; the same Edit / Approve
     flow applies, so you can still tweak before paying for Veo."""
-    _preflight_credits(req, user)
+    # Script generation is free for all signed-in users. The paywall fires
+    # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
     for i, b in enumerate(req.beats, start=1):
@@ -1040,7 +1051,8 @@ def create_run(req: CreateRunRequest, user: User = Depends(require_user)):
     Sunstoriz-style defaults. Kept for back-compat with old API clients;
     new clients should call POST /runs/freeform directly with their
     chosen controls."""
-    _preflight_credits(req, user)
+    # Script generation is free for all signed-in users. The paywall fires
+    # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
 
@@ -1113,7 +1125,8 @@ def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(requ
     stages (Flux + Veo). Script regeneration / rerolls still flow through
     the worker.
     """
-    _preflight_credits(req, user)
+    # Script generation is free for all signed-in users. The paywall fires
+    # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
 
@@ -1209,6 +1222,9 @@ def approve_run(run_id: str, user: User = Depends(require_user)):
             409,
             f"cannot approve from status={s} (expected awaiting_approval)",
         )
+    # The paywall lives here, not on /runs/freeform. Anyone can write a
+    # script; only subscribers can render it to video. Raises HTTP 402.
+    _preflight_approve_credits(run_dir, user)
     args = ["--shorts", "--resume", str(run_dir),
             "--pause-after-character-sheet"]
     max_spend = _compute_max_spend_for_run(run_dir)
