@@ -80,11 +80,12 @@ def render_script_pdf(script: dict[str, Any], out_path: Path) -> None:
         arabic = str(beat.get("arabic") or "").strip()
         is_silent = bool(beat.get("is_silent"))
 
-        # Beat header: "01 · NARRATOR · 8s" (English, LTR)
+        # Beat header: "01 · NARRATOR · 8s" (English, LTR, Helvetica)
+        # NOTE: character_name often contains Arabic ("حورية"), which would
+        # blow up fpdf2's Helvetica (latin-1 only). Keep the header strictly
+        # ASCII and emit any character_name as its own Amiri-rendered line.
         duration_s = float(beat.get("clip_duration_s") or 0)
         header_bits = [f"{i:02d}", speaker.upper()]
-        if character:
-            header_bits.append(character)
         if duration_s > 0:
             header_bits.append(f"{duration_s:.0f}s")
         header = "  ·  ".join(header_bits)
@@ -93,6 +94,13 @@ def render_script_pdf(script: dict[str, Any], out_path: Path) -> None:
         pdf.set_text_color(80, 80, 80)
         pdf.cell(0, 6, header, new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
+
+        if character:
+            # Character name uses Amiri so Arabic/Latin both render.
+            pdf.set_font(_FONT_NAME, size=11)
+            pdf.set_text_color(120, 120, 120)
+            pdf.multi_cell(0, 6, _shape(character), align="R")
+            pdf.set_text_color(0, 0, 0)
         pdf.ln(1)
 
         # Arabic body — shaped + RTL-aligned

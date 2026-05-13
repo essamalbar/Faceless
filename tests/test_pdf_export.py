@@ -72,6 +72,27 @@ def test_render_handles_silent_beat_only(tmp_path: Path):
     assert out.exists()
 
 
+def test_render_handles_arabic_character_name(tmp_path: Path):
+    """Regression: real scripts often carry Arabic character_name values
+    (e.g. 'حورية'). Earlier versions concatenated those into a Helvetica
+    header cell and crashed in production with
+        FPDFUnicodeEncodingException: Character "س" ... outside
+        the range of characters supported by the font used: "helveticaB"
+    """
+    arabic_named = {
+        "title": "بئر السواد",
+        "beats": [
+            {"arabic": "السلام عليكم", "speaker": "character",
+             "character_name": "حورية", "clip_duration_s": 6.0,
+             "is_silent": False, "english_motion": "close up"},
+        ],
+    }
+    out = tmp_path / "arabic_name.pdf"
+    render_script_pdf(arabic_named, out)
+    assert out.exists()
+    assert out.read_bytes().startswith(b"%PDF-")
+
+
 def test_render_raises_when_font_missing(tmp_path: Path, monkeypatch):
     """Treat a missing Amiri font as a deployment bug — a clear error
     beats a fpdf2 internal stacktrace."""
