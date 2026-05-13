@@ -1814,46 +1814,58 @@ class _PlanChip extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    final highlight = badge != _PlanBadge.none;
+    // Only the user's ACTUAL current plan gets the gold border + tinted bg.
+    // A "Recommended" hint on Creator (free users) is a subtle text badge
+    // only — earlier this used the same highlight visuals and several
+    // users read it as "you are already on Creator".
+    final isCurrent = badge == _PlanBadge.current;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 12, 10, 14),
       decoration: BoxDecoration(
-        color: highlight
+        color: isCurrent
             ? FacelessTheme.accent.withValues(alpha: 0.10)
             : FacelessTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: highlight
+          color: isCurrent
               ? FacelessTheme.accent.withValues(alpha: 0.6)
               : FacelessTheme.textSecondary.withValues(alpha: 0.15),
-          width: highlight ? 1.5 : 1,
+          width: isCurrent ? 1.5 : 1,
         ),
       ),
       child: Column(
         children: [
           SizedBox(
             height: 18,
-            child: badge == _PlanBadge.none
-                ? const SizedBox.shrink()
-                : Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: FacelessTheme.accent.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      badge == _PlanBadge.current
-                          ? 'Your plan'
-                          : 'Recommended',
-                      style: const TextStyle(
-                        color: FacelessTheme.accent,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
-                      ),
+            child: switch (badge) {
+              _PlanBadge.none => const SizedBox.shrink(),
+              _PlanBadge.current => Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: FacelessTheme.accent.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'Your plan',
+                    style: TextStyle(
+                      color: FacelessTheme.accent,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
                     ),
                   ),
+                ),
+              _PlanBadge.recommended => Text(
+                  'Recommended',
+                  style: TextStyle(
+                    color: FacelessTheme.textSecondary.withValues(alpha: 0.85),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+            },
           ),
           const SizedBox(height: 6),
           Text(name,
