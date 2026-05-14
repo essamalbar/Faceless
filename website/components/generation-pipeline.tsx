@@ -21,15 +21,13 @@ import { Sparkles, Check, Film, Type, Layers } from "lucide-react";
 
 const PREMISE = "في قرية معزولة عند سفح الجبل،";
 
-// Each beat carries the Mixkit video ID that "plays" in the matching
-// ClipCard once that clip finishes rendering. Closes the loop between
-// script generation and the visual outcome: visitors see a real human
-// in motion at the end of each pipeline lane.
+// Each beat carries the photo that fades in when the matching ClipCard
+// "finishes rendering". Visual outcome at the end of each pipeline lane.
 const BEATS = [
-  { idx: "01", name: "الراوي", line: "كان البئر القديم يحرس أسرار الماضي.", vid: 9582 },
-  { idx: "02", name: "حورية",  line: "كل من نظر فيه رأى وجهه الذي لم يصل.",  vid: 1114 },
-  { idx: "03", name: "خالد",   line: "تراجع، لكن صوته ناداه من قاع الماء.",  vid: 1038 },
-  { idx: "04", name: "الراوي", line: "لم يعد إلى القرية ذلك المساء.",       vid: 1116 },
+  { idx: "01", name: "الراوي", line: "كان البئر القديم يحرس أسرار الماضي.", photo: "1462536943532-57a629f6cc60" },
+  { idx: "02", name: "حورية",  line: "كل من نظر فيه رأى وجهه الذي لم يصل.",  photo: "1542273917363-3b1817f69a2d" },
+  { idx: "03", name: "خالد",   line: "تراجع، لكن صوته ناداه من قاع الماء.",  photo: "1486312338219-ce68d2c6f44d" },
+  { idx: "04", name: "الراوي", line: "لم يعد إلى القرية ذلك المساء.",       photo: "1547036967-23d11aacaee0" },
 ];
 
 export function GenerationPipeline() {
@@ -315,7 +313,7 @@ function ClipRenderer({ stage }: { stage: number }) {
             index={i + 1}
             active={active}
             speed={speeds[i]}
-            videoId={b.vid}
+            photo={b.photo}
             name={b.name}
           />
         ))}
@@ -328,17 +326,16 @@ function ClipCard({
   index,
   active,
   speed,
-  videoId,
+  photo,
   name,
 }: {
   index: number;
   active: boolean;
   speed: number;
-  videoId: number;
+  photo: string;
   name: string;
 }) {
   const [progress, setProgress] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (!active) return;
     const start = performance.now();
@@ -353,39 +350,30 @@ function ClipCard({
   }, [active, speed]);
 
   const done = progress >= 1;
-  const videoUrl = `https://assets.mixkit.co/videos/${videoId}/${videoId}-720.mp4`;
-  // Start the video the moment the card becomes "done" — gives the
-  // visceral "AI just rendered a real clip" payoff.
-  useEffect(() => {
-    if (done) videoRef.current?.play().catch(() => {});
-  }, [done]);
+  const photoUrl = `https://images.unsplash.com/photo-${photo}?w=500&q=70&auto=format&fit=crop`;
 
   return (
     <div className="relative aspect-[9/16] rounded-xl overflow-hidden border border-white/10 bg-surface/40">
-      {/* Background — dark while pending, real human-motion clip when done */}
       <div
         className="absolute inset-0"
         style={{
           background: "linear-gradient(135deg, #1A2238, #0A0E1A)",
         }}
       />
-      {/* Real video fades in as progress completes */}
+      {/* Photo fades in as render progress completes; slow zoom on done */}
       {active && (
         <motion.div
           className="absolute inset-0"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: progress }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
+          initial={{ opacity: 0, scale: 1.15 }}
+          animate={{ opacity: progress, scale: done ? 1 : 1.15 }}
+          transition={{ duration: done ? 8 : 0.3, ease: done ? "linear" : "easeOut" }}
         >
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            muted
-            loop
-            playsInline
-            preload="auto"
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photoUrl}
+            alt={name}
+            loading="lazy"
             className="w-full h-full object-cover"
-            aria-label={name}
           />
         </motion.div>
       )}
