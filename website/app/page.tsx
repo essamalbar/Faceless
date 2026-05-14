@@ -25,6 +25,7 @@ import { ParticleField } from "@/components/particle-field";
 import { TiltCard } from "@/components/tilt-card";
 import { ScrambleText } from "@/components/scramble-text";
 import { GenerationPipeline } from "@/components/generation-pipeline";
+import { LazyVideo } from "@/components/lazy-video";
 
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ||
@@ -555,15 +556,22 @@ function ShowcaseTile({
 }
 
 // ============================================================================
-// CAST — animated character cards showing what the AI creates
+// CAST — animated character cards backed by real autoplay video loops.
+// Each `vid` is a Mixkit free-stock video ID; the CDN URL pattern is
+// https://assets.mixkit.co/videos/<id>/<id>-720.mp4. All IDs scraped
+// from Mixkit's curated silhouette/portrait/people categories, so the
+// content matches the role label (humans in cinematic motion).
 // ============================================================================
+const mixkitUrl = (id: number) =>
+  `https://assets.mixkit.co/videos/${id}/${id}-720.mp4`;
+
 const CAST = [
-  { photo: PHOTO.cast1, ar: "حورية",   en: "Hooria",   role: "PROTAGONIST",  voice: "Soft alto · contemplative" },
-  { photo: PHOTO.cast2, ar: "خالد",    en: "Khalid",   role: "WANDERER",     voice: "Warm tenor · measured" },
-  { photo: PHOTO.cast3, ar: "الراوي",  en: "Narrator", role: "VOICE-OVER",   voice: "Deep masculine · slow" },
-  { photo: PHOTO.cast4, ar: "الشيخ",   en: "The Elder", role: "MENTOR",      voice: "Aged baritone · grave" },
-  { photo: PHOTO.cast5, ar: "ليلى",    en: "Laila",    role: "SECONDARY",    voice: "Cool alto · curious" },
-  { photo: PHOTO.cast6, ar: "الغريب",  en: "Stranger", role: "ANTAGONIST",   voice: "Dry rasp · low" },
+  { vid: 1114, ar: "حورية",   en: "Hooria",    role: "PROTAGONIST", voice: "Soft alto · contemplative" },
+  { vid: 1038, ar: "خالد",    en: "Khalid",    role: "WANDERER",    voice: "Warm tenor · measured" },
+  { vid: 1116, ar: "الراوي",  en: "Narrator",  role: "VOICE-OVER",  voice: "Deep masculine · slow" },
+  { vid: 1012, ar: "الشيخ",   en: "The Elder", role: "MENTOR",      voice: "Aged baritone · grave" },
+  { vid: 1213, ar: "ليلى",    en: "Laila",     role: "SECONDARY",   voice: "Cool alto · curious" },
+  { vid: 5565, ar: "الغريب",  en: "Stranger",  role: "ANTAGONIST",  voice: "Dry rasp · low" },
 ];
 
 function Cast() {
@@ -595,22 +603,14 @@ function Cast() {
               transition={{ duration: 0.5, delay: i * 0.07 }}
             >
               <TiltCard maxTilt={10} scale={1.05} className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden border border-white/10 group hover:border-accent/50 transition-all">
-                {/* Photo with Ken Burns motion */}
-                <motion.div
-                  className="absolute inset-0"
-                  initial={{ scale: 1.05 }}
-                  whileInView={{ scale: 1.18 }}
-                  viewport={{ once: false }}
-                  transition={{ duration: 12 + i, repeat: Infinity, repeatType: "reverse" }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={unsplash(c.photo, 500, 70)}
-                    alt={c.en}
-                    loading="lazy"
-                    className="w-full h-full object-cover"
-                  />
-                </motion.div>
+                {/* Real video loop — autoplays muted on viewport entry.
+                    Lazy-loaded via IntersectionObserver in LazyVideo to
+                    keep mobile bandwidth sane (six 720p mp4s otherwise
+                    eat ~30MB on every page load). */}
+                <LazyVideo
+                  src={mixkitUrl(c.vid)}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
                 {/* AI scanlines overlay — subtle CRT/glitch feel */}
                 <div
                   className="absolute inset-0 mix-blend-overlay opacity-30 pointer-events-none"
