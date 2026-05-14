@@ -342,14 +342,17 @@ function Showreel() {
 
         <style jsx>{`
           .masonry {
-            column-count: 1;
-            column-gap: 1rem;
+            /* Default to 2 columns on mobile — 1 column made each tile
+               huge and felt empty/repetitive. With 6 clips total, 2×3
+               packs neatly into a single phone screen. */
+            column-count: 2;
+            column-gap: 0.75rem;
           }
           @media (min-width: 640px) {
-            .masonry { column-count: 2; }
+            .masonry { column-count: 2; column-gap: 1rem; }
           }
           @media (min-width: 1024px) {
-            .masonry { column-count: 3; }
+            .masonry { column-count: 3; column-gap: 1rem; }
           }
         `}</style>
       </div>
@@ -390,21 +393,21 @@ function ShowreelTile({
         {/* Soft top inner glow on hover */}
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
              style={{ background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(231,181,60,0.18), transparent 60%)" }} />
-        <div className="absolute inset-0 p-4 flex flex-col justify-end">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[9px] font-bold text-white/80 tracking-[0.18em] uppercase px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
+        <div className="absolute inset-0 p-2.5 sm:p-4 flex flex-col justify-end">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-1.5">
+            <span className="text-[8px] sm:text-[9px] font-bold text-white/80 tracking-[0.15em] sm:tracking-[0.18em] uppercase px-1.5 sm:px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
               {item.category}
             </span>
-            <span className="text-[10px] text-white/55 tracking-wider">
+            <span className="text-[9px] sm:text-[10px] text-white/55 tracking-wider">
               {item.tag}
             </span>
           </div>
-          <div className="text-base sm:text-lg font-semibold text-white font-arabic tracking-tight" dir="rtl">
+          <div className="text-sm sm:text-lg font-semibold text-white font-arabic tracking-tight leading-snug" dir="rtl">
             {item.caption}
           </div>
         </div>
-        <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <ArrowRight className="w-3.5 h-3.5 text-white" />
+        <div className="absolute top-2 right-2 sm:top-3 sm:right-3 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
         </div>
       </div>
     </motion.a>
