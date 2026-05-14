@@ -1,65 +1,62 @@
 "use client";
 
 /**
- * GhostActor — a translucent silhouette of a walking figure that drifts
- * horizontally across its parent section like an apparition. Multiple
- * instances can co-exist in the same parent at different vertical
- * offsets, speeds, and directions to create a haunted-stage feel.
+ * GhostActor — a big walking shadow figure that traverses its parent
+ * horizontally. The figure is built from grouped SVG primitives (head,
+ * torso, two arms, two legs) so individual limbs can swing on their
+ * own CSS keyframe timelines, producing a proper walk cycle instead
+ * of a sliding silhouette.
  *
- * The figure is a hand-drawn SVG (no external assets), styled with low
- * opacity and a soft blur so it reads as a ghost rather than a clean
- * icon. CSS keyframes handle the horizontal traversal so the animation
- * is GPU-only — works at 60fps even on phones.
+ * Everything is GPU-only transforms; no canvas, no JS scheduling. Runs
+ * 60fps even on mid-range phones.
  */
 export function GhostActor({
   direction = "ltr",
-  top = "50%",
-  size = 160,
-  opacity = 0.25,
-  duration = 22,
+  bottom = "0%",
+  height = 380,
+  opacity = 0.55,
+  duration = 18,
   delay = 0,
-  color = "#E7B53C",
-  bob = 8,
 }: {
-  /** Direction of drift across the parent */
+  /** Direction of travel across the parent */
   direction?: "ltr" | "rtl";
-  /** Vertical position inside the parent (CSS top value) */
-  top?: string;
-  /** Figure height in px */
-  size?: number;
-  /** Final ghost opacity (0..1) */
+  /** Distance from the parent's bottom (CSS value). Figure stands on
+      this line so the feet appear grounded. */
+  bottom?: string;
+  /** Figure height in pixels. 380 reads as roughly human-scale next to
+      the hero's H1; bump for the cinematic pass. */
+  height?: number;
+  /** Final shadow opacity */
   opacity?: number;
   /** Seconds for one full traversal */
   duration?: number;
   /** Seconds to wait before the first traversal */
   delay?: number;
-  /** Silhouette fill colour */
-  color?: string;
-  /** Vertical bob amplitude in px (small = subtle float) */
-  bob?: number;
 }) {
-  const idSuffix = `${direction}-${duration}-${delay}`;
+  const id = `g${direction}-${duration}-${delay}`.replace(/\./g, "");
   return (
     <div
-      className="ghost-actor pointer-events-none absolute"
+      className="pointer-events-none absolute z-[1]"
       style={{
-        top,
-        height: size,
-        width: size * 0.45,
+        bottom,
+        height,
+        width: height * 0.45,
         opacity,
-        animationName: `ghost-drift-${idSuffix}`,
+        animationName: `drift-${id}`,
         animationDuration: `${duration}s`,
         animationDelay: `${delay}s`,
         animationIterationCount: "infinite",
         animationTimingFunction: "linear",
-        filter: "blur(0.5px)",
+        // Drop a soft shadow under the feet so the figure looks grounded
+        filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.6))",
       }}
     >
+      {/* Inner bob — slight up-down with each step */}
       <div
         className="w-full h-full"
         style={{
-          animationName: `ghost-bob-${idSuffix}`,
-          animationDuration: "3.5s",
+          animationName: `bob-${id}`,
+          animationDuration: "0.9s",
           animationIterationCount: "infinite",
           animationTimingFunction: "ease-in-out",
         }}
@@ -67,43 +64,111 @@ export function GhostActor({
         <svg
           viewBox="0 0 100 220"
           className="w-full h-full"
-          // Mirror the figure so it appears to face the direction of travel
+          // Mirror the figure horizontally for right-to-left travel so
+          // the silhouette appears to face its direction of motion
           style={{ transform: direction === "rtl" ? "scaleX(-1)" : undefined }}
         >
-          {/* Soft outer glow so the silhouette reads as luminous mist */}
-          <defs>
-            <radialGradient id={`g-${idSuffix}`} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor={color} stopOpacity="0.6" />
-              <stop offset="60%" stopColor={color} stopOpacity="0.15" />
-              <stop offset="100%" stopColor={color} stopOpacity="0" />
-            </radialGradient>
-          </defs>
-          <ellipse cx="50" cy="110" rx="55" ry="100" fill={`url(#g-${idSuffix})`} />
-
           {/* Head */}
-          <ellipse cx="50" cy="32" rx="17" ry="20" fill={color} />
-          {/* Cloak / body — soft hourglass with flared bottom suggesting
-              robes; the shape is intentionally vague so it reads as
-              "spectral figure" not "person from clip-art" */}
+          <circle cx="50" cy="22" r="12" fill="#000" />
+          {/* Neck */}
+          <rect x="46" y="32" width="8" height="6" fill="#000" />
+
+          {/* Torso — narrower at waist for human silhouette */}
           <path
-            d="M27,55 Q24,90 25,130 Q12,170 5,215 L95,215 Q88,170 75,130 Q76,90 73,55 Q60,46 50,46 Q40,46 27,55 Z"
-            fill={color}
+            d="M36,40 Q50,38 64,40 L60,118 Q50,120 40,118 Z"
+            fill="#000"
           />
+
+          {/* Left arm — swings forward+back */}
+          <g
+            style={{
+              transformOrigin: "44px 44px",
+              animationName: `arm-l-${id}`,
+              animationDuration: "0.9s",
+              animationIterationCount: "infinite",
+              animationTimingFunction: "ease-in-out",
+            }}
+          >
+            <rect x="30" y="44" width="8" height="70" rx="4" fill="#000" />
+            {/* Hand */}
+            <circle cx="34" cy="116" r="5" fill="#000" />
+          </g>
+
+          {/* Right arm — opposite phase */}
+          <g
+            style={{
+              transformOrigin: "56px 44px",
+              animationName: `arm-r-${id}`,
+              animationDuration: "0.9s",
+              animationIterationCount: "infinite",
+              animationTimingFunction: "ease-in-out",
+            }}
+          >
+            <rect x="62" y="44" width="8" height="70" rx="4" fill="#000" />
+            <circle cx="66" cy="116" r="5" fill="#000" />
+          </g>
+
+          {/* Left leg */}
+          <g
+            style={{
+              transformOrigin: "44px 120px",
+              animationName: `leg-l-${id}`,
+              animationDuration: "0.9s",
+              animationIterationCount: "infinite",
+              animationTimingFunction: "ease-in-out",
+            }}
+          >
+            <rect x="40" y="118" width="10" height="80" rx="4" fill="#000" />
+            {/* Foot */}
+            <ellipse cx="45" cy="206" rx="9" ry="5" fill="#000" />
+          </g>
+
+          {/* Right leg — opposite phase */}
+          <g
+            style={{
+              transformOrigin: "56px 120px",
+              animationName: `leg-r-${id}`,
+              animationDuration: "0.9s",
+              animationIterationCount: "infinite",
+              animationTimingFunction: "ease-in-out",
+            }}
+          >
+            <rect x="50" y="118" width="10" height="80" rx="4" fill="#000" />
+            <ellipse cx="55" cy="206" rx="9" ry="5" fill="#000" />
+          </g>
         </svg>
       </div>
 
       <style jsx>{`
-        @keyframes ghost-drift-${idSuffix} {
+        @keyframes drift-${id} {
           0% {
-            transform: translateX(${direction === "ltr" ? "-30vw" : "calc(100vw + 30vw)"});
+            transform: translateX(${direction === "ltr" ? "-25vw" : "calc(100vw + 25vw)"});
           }
           100% {
-            transform: translateX(${direction === "ltr" ? "calc(100vw + 30vw)" : "-30vw"});
+            transform: translateX(${direction === "ltr" ? "calc(100vw + 25vw)" : "-25vw"});
           }
         }
-        @keyframes ghost-bob-${idSuffix} {
+        @keyframes bob-${id} {
           0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-${bob}px); }
+          50%      { transform: translateY(-6px); }
+        }
+        /* Limb swings — legs and arms move in opposite phase, like a
+           real walk cycle. */
+        @keyframes leg-l-${id} {
+          0%, 100% { transform: rotate(-22deg); }
+          50%      { transform: rotate(22deg); }
+        }
+        @keyframes leg-r-${id} {
+          0%, 100% { transform: rotate(22deg); }
+          50%      { transform: rotate(-22deg); }
+        }
+        @keyframes arm-l-${id} {
+          0%, 100% { transform: rotate(20deg); }
+          50%      { transform: rotate(-20deg); }
+        }
+        @keyframes arm-r-${id} {
+          0%, 100% { transform: rotate(-20deg); }
+          50%      { transform: rotate(20deg); }
         }
       `}</style>
     </div>

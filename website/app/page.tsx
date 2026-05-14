@@ -309,13 +309,11 @@ function Hero() {
         </motion.p>
       </div>
 
-      {/* Ghost actors drift across the hero like apparitions from the
-          stories the AI tells. Two L→R and two R→L at different heights,
-          speeds, opacities — staggered delays so they're never bunched. */}
-      <GhostActor direction="ltr" top="22%" size={140} opacity={0.22} duration={28} delay={0}  color="#E7B53C" />
-      <GhostActor direction="rtl" top="48%" size={180} opacity={0.18} duration={36} delay={6}  color="#8B5CF6" />
-      <GhostActor direction="ltr" top="68%" size={120} opacity={0.20} duration={22} delay={13} color="#E7B53C" />
-      <GhostActor direction="rtl" top="82%" size={160} opacity={0.16} duration={32} delay={18} color="#8B5CF6" />
+      {/* Big walking shadow actor crossing the hero — grounded at the
+          bottom so the feet stay on the floor line. Two staggered passes
+          (L→R then R→L) so there's almost always someone on screen. */}
+      <GhostActor direction="ltr" bottom="0%"  height={420} opacity={0.65} duration={20} delay={0}  />
+      <GhostActor direction="rtl" bottom="0%"  height={360} opacity={0.5}  duration={26} delay={9}  />
 
       {/* Scroll cue */}
       <motion.div
@@ -488,9 +486,8 @@ function ThemePoster({ theme }: { theme: (typeof THEMES)[number] }) {
 function Showcase() {
   return (
     <section id="showcase" className="relative py-28 px-5 sm:px-8 overflow-hidden">
-      {/* Ambient ghost drifting through the library section */}
-      <GhostActor direction="rtl" top="30%" size={130} opacity={0.18} duration={30} delay={4} color="#8B5CF6" />
-      <GhostActor direction="ltr" top="75%" size={150} opacity={0.16} duration={34} delay={12} color="#E7B53C" />
+      {/* Big walking shadow ambient through the library */}
+      <GhostActor direction="ltr" bottom="0%" height={360} opacity={0.45} duration={24} delay={5} />
       <div className="max-w-7xl mx-auto">
         <SectionEyebrow text="THE LIBRARY" />
         <SectionTitle en="Cinema-grade stories." ar="قصص بجودة سينمائية" />
@@ -815,8 +812,8 @@ function Pricing() {
 function FinalCTA() {
   return (
     <section className="relative py-32 px-5 sm:px-8 overflow-hidden">
-      <GhostActor direction="ltr" top="20%" size={150} opacity={0.20} duration={28} delay={2} color="#E7B53C" />
-      <GhostActor direction="rtl" top="65%" size={170} opacity={0.18} duration={32} delay={9} color="#8B5CF6" />
+      <GhostActor direction="ltr" bottom="0%" height={400} opacity={0.55} duration={22} delay={3} />
+      <GhostActor direction="rtl" bottom="0%" height={340} opacity={0.4}  duration={28} delay={14} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={unsplash(PHOTO.s4, 2000, 70)}
