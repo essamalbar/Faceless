@@ -269,8 +269,10 @@ function Step2Visual() {
 function Step3Visual() {
   return (
     <div className="relative aspect-[9/16] max-w-[260px] mx-auto sm:mx-0 rounded-2xl overflow-hidden border border-accent/40 shadow-xl shadow-black/40">
+      {/* Mixkit 12330 — atmospheric "ghost" clip, fresh (not reused in
+          the showreel above), reads as a finished cinematic short */}
       <LazyVideo
-        src="https://assets.mixkit.co/videos/46702/46702-720.mp4"
+        src="https://assets.mixkit.co/videos/12330/12330-720.mp4"
         className="absolute inset-0 w-full h-full"
         rootMargin="300px"
       />
