@@ -16,6 +16,7 @@ import { SparkleLogo } from "@/components/sparkle-logo";
 import { LazyVideo } from "@/components/lazy-video";
 import { PromptInput } from "@/components/prompt-input";
 import { Aurora } from "@/components/aurora";
+import { ScrollPipeline } from "@/components/scroll-pipeline";
 import { useEffect, useState } from "react";
 
 const APP_URL =
@@ -76,6 +77,7 @@ export default function Page() {
     <main className="min-h-screen bg-bg text-ink overflow-x-hidden">
       <Nav />
       <Hero />
+      <ScrollPipeline />
       <Showreel />
       <Features />
       <Templates />
