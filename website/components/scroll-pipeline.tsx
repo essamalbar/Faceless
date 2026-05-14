@@ -42,28 +42,29 @@ export function ScrollPipeline() {
       style={{ height: "300vh" }}
     >
       <div className="sticky top-0 h-screen w-full overflow-hidden flex flex-col">
-        {/* Section header — sits above the pinned visual */}
-        <div className="pt-20 sm:pt-24 pb-8 px-5 sm:px-8">
+        {/* Section header — sits above the pinned visual. Tighter on
+            mobile so the stage below has more breathing room. */}
+        <div className="pt-16 sm:pt-20 lg:pt-24 pb-4 sm:pb-8 px-5 sm:px-8 flex-shrink-0">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-2 sm:mb-3">
               <div className="w-8 h-px bg-accent" />
               <span className="text-[10px] font-bold text-accent tracking-[0.22em]">
                 HOW IT WORKS
               </span>
             </div>
-            <div className="flex items-baseline gap-3 flex-wrap mb-4">
-              <h2 className="text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.03em] leading-tight">
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <h2 className="text-2xl sm:text-4xl lg:text-6xl font-semibold tracking-[-0.03em] leading-tight">
                 Scroll to see it build.
               </h2>
               <span
-                className="text-xl sm:text-2xl text-muted/60 font-normal font-arabic"
+                className="text-base sm:text-2xl text-muted/60 font-normal font-arabic"
                 dir="rtl"
               >
                 مرر لتراها تُبنى
               </span>
             </div>
             {/* Live progress bar */}
-            <div className="h-px bg-white/[0.06] mt-6 overflow-hidden">
+            <div className="h-px bg-white/[0.06] mt-4 sm:mt-6 overflow-hidden">
               <motion.div className="h-full bg-accent" style={{ width: progressWidth }} />
             </div>
           </div>
@@ -109,7 +110,7 @@ export function ScrollPipeline() {
         </div>
 
         {/* Stage indicator dots */}
-        <div className="pb-12 flex justify-center">
+        <div className="pb-6 sm:pb-10 flex justify-center flex-shrink-0">
           <ProgressDots scrollYProgress={scrollYProgress} />
         </div>
       </div>
@@ -139,31 +140,33 @@ function Stage({
   return (
     <motion.div
       style={{ opacity }}
-      className="w-screen h-full flex-shrink-0 px-5 sm:px-8 flex items-center"
+      className="w-screen h-full flex-shrink-0 px-5 sm:px-8 flex items-center overflow-y-auto"
     >
-      <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-        {/* Left — copy */}
+      <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-10 lg:gap-16 items-center py-6">
+        {/* Left — copy. Tighter on mobile so the visual fits on the
+            same screen without overflowing the sticky pane. */}
         <div>
-          <div className={`text-[11px] font-bold text-${kickerColor} tracking-[0.22em] mb-5`}>
+          <div className={`text-[11px] font-bold text-${kickerColor} tracking-[0.22em] mb-3 sm:mb-5`}>
             {kicker}
           </div>
-          <h3 className="text-4xl sm:text-6xl font-semibold tracking-[-0.035em] leading-[1.05] mb-3">
+          <h3 className="text-2xl sm:text-4xl lg:text-6xl font-semibold tracking-[-0.035em] leading-[1.05] mb-2">
             {title}
           </h3>
-          <p className="text-lg text-muted/80 font-arabic mb-6" dir="rtl">
+          <p className="text-sm sm:text-lg text-muted/80 font-arabic mb-3 sm:mb-6" dir="rtl">
             {ar}
           </p>
-          <p className="text-base sm:text-lg text-ink/80 leading-relaxed max-w-md mb-6">
+          <p className="text-[13px] sm:text-base lg:text-lg text-ink/80 leading-relaxed max-w-md mb-4 sm:mb-6">
             {body}
           </p>
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-accent/30 bg-accent/[0.08] text-[12px] font-medium text-accent">
+          <div className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-full border border-accent/30 bg-accent/[0.08] text-[11px] sm:text-[12px] font-medium text-accent">
             <Sparkles className="w-3 h-3" />
             {detail}
           </div>
         </div>
 
-        {/* Right — visual */}
-        <div className="relative">{visual}</div>
+        {/* Right — visual. Shrunk on mobile (max-w-xs) so it fits next to
+            the text without forcing scroll inside the stage. */}
+        <div className="relative max-w-xs sm:max-w-sm lg:max-w-md mx-auto w-full">{visual}</div>
       </div>
     </motion.div>
   );

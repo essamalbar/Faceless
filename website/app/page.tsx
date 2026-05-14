@@ -73,8 +73,13 @@ const FILTERS = [
 // PAGE
 // ============================================================================
 export default function Page() {
+  // Use `overflow-x-clip` (not `overflow-x-hidden`) on <main>: `hidden`
+  // makes the element a scroll container which silently breaks
+  // `position: sticky` on any descendant — the ScrollPipeline section
+  // relies on sticky. `clip` crops the same way without establishing
+  // a scroll context.
   return (
-    <main className="min-h-screen bg-bg text-ink overflow-x-hidden">
+    <main className="min-h-screen bg-bg text-ink overflow-x-clip">
       <Nav />
       <Hero />
       <ScrollPipeline />
