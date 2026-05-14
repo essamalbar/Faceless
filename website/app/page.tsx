@@ -44,19 +44,17 @@ const THEMES = [
   { id: "travel",     en: "Travel",     ar: "سفر",    vid: 23410, blurb: "On the road, far from home" },
 ];
 
-// Showreel — Leonardo.ai-style masonry. Each tile has a category for
-// the filter pills, and a varied aspect ratio so the grid feels
-// hand-curated rather than a strict 3xN.
+// Showreel — six hand-picked clips, one per category. Was 9; the
+// section read cluttered. Six gives the masonry enough visual variety
+// without overwhelming. Final "View full library →" link offers the
+// rest for visitors who want to keep browsing.
 const SHOWREEL = [
-  { vid: 46702, caption: "وحيدًا في الليل",    tag: "90s",  category: "memory",     ratio: "tall"   as const },
   { vid: 47442, caption: "البئر المهجور",      tag: "2m",   category: "folkloric",  ratio: "tall"   as const },
+  { vid: 46702, caption: "وحيدًا في الليل",    tag: "90s",  category: "memory",     ratio: "tall"   as const },
   { vid: 9582,  caption: "ضوء بعيد",            tag: "75s",  category: "wilderness", ratio: "medium" as const },
-  { vid: 23818, caption: "صوت من الجدار",      tag: "60s",  category: "domestic",   ratio: "tall"   as const },
   { vid: 35426, caption: "ظل في الزقاق",       tag: "90s",  category: "urban",      ratio: "medium" as const },
+  { vid: 23818, caption: "صوت من الجدار",      tag: "60s",  category: "domestic",   ratio: "tall"   as const },
   { vid: 25896, caption: "الطريق الفارغ",      tag: "2m",   category: "travel",     ratio: "tall"   as const },
-  { vid: 45584, caption: "في حقل الذرة",       tag: "75s",  category: "wilderness", ratio: "medium" as const },
-  { vid: 29388, caption: "وجه في النافذة",     tag: "90s",  category: "memory",     ratio: "tall"   as const },
-  { vid: 46575, caption: "النادل الأخير",      tag: "2m",   category: "urban",      ratio: "medium" as const },
 ];
 
 const FILTERS = [
@@ -282,15 +280,28 @@ function Showreel() {
     <section id="showreel" className="relative py-20 sm:py-24 border-t border-white/[0.05] overflow-hidden">
       <Aurora intensity={0.18} />
       <div className="relative max-w-7xl mx-auto px-5 sm:px-8">
-        <SectionEyebrow text="THE LIBRARY" />
-        <SectionTitle en="Stories rendered." ar="قصص جاهزة" />
-        <p className="mt-4 text-muted max-w-2xl">
-          Every clip below was rendered from a one-line premise. Characters
-          and voices locked across beats. Click a category to filter.
-        </p>
+        <div className="flex items-end justify-between gap-6 flex-wrap mb-10">
+          <div>
+            <SectionEyebrow text="THE LIBRARY" />
+            <SectionTitle en="Stories rendered." ar="قصص جاهزة" />
+            <p className="mt-4 text-muted max-w-xl">
+              Every clip below was rendered from a one-line premise.
+              Characters and voices stay locked across beats.
+            </p>
+          </div>
+          {/* See-more link sits in the header for desktop visitors who
+              want to skip the gallery and go straight to the app. */}
+          <a
+            href={`${APP_URL}/`}
+            className="group hidden sm:inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink transition-colors"
+          >
+            View the full library
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+          </a>
+        </div>
 
-        {/* Filter pills */}
-        <div className="mt-9 flex flex-wrap gap-2">
+        {/* Filter pills — tighter and quieter than before */}
+        <div className="flex flex-wrap gap-1.5 mb-10">
           {FILTERS.map((f) => {
             const active = f.id === filter;
             return (
@@ -298,10 +309,10 @@ function Showreel() {
                 key={f.id}
                 type="button"
                 onClick={() => setFilter(f.id)}
-                className={`text-[12px] font-medium px-3.5 py-1.5 rounded-full border transition-colors ${
+                className={`text-[12px] font-medium px-3 py-1.5 rounded-full border transition-colors ${
                   active
-                    ? "bg-accent text-bg border-accent"
-                    : "bg-white/[0.03] text-muted border-white/10 hover:text-ink hover:border-white/25"
+                    ? "bg-ink text-bg border-ink"
+                    : "bg-transparent text-muted border-white/10 hover:text-ink hover:border-white/25"
                 }`}
               >
                 {f.label}
@@ -310,21 +321,28 @@ function Showreel() {
           })}
         </div>
 
-        {/* Masonry grid — CSS multi-column gives Pinterest-style variable
-            heights without any JS layout work */}
-        <div
-          className="mt-10"
-          style={{ columnGap: "1rem", columnCount: 1 }}
-        >
-          <div className="masonry">
-            {visible.map((s, i) => (
-              <ShowreelTile key={`${filter}-${s.vid}`} item={s} index={i} />
-            ))}
-          </div>
+        {/* Masonry — CSS multi-column for Pinterest-style variable height */}
+        <div className="masonry" style={{ columnGap: "1rem" }}>
+          {visible.map((s, i) => (
+            <ShowreelTile key={`${filter}-${s.vid}`} item={s} index={i} />
+          ))}
+        </div>
+
+        {/* Mobile see-more link — appears below the grid since the
+            header version is hidden on small screens */}
+        <div className="mt-10 sm:hidden">
+          <a
+            href={`${APP_URL}/`}
+            className="group inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink transition-colors"
+          >
+            View the full library
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+          </a>
         </div>
 
         <style jsx>{`
           .masonry {
+            column-count: 1;
             column-gap: 1rem;
           }
           @media (min-width: 640px) {
@@ -332,9 +350,6 @@ function Showreel() {
           }
           @media (min-width: 1024px) {
             .masonry { column-count: 3; }
-          }
-          @media (min-width: 1280px) {
-            .masonry { column-count: 4; }
           }
         `}</style>
       </div>
