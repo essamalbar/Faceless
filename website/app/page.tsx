@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { SparkleLogo } from "@/components/sparkle-logo";
 import { LazyVideo } from "@/components/lazy-video";
+import { PromptInput } from "@/components/prompt-input";
 import { useEffect, useState } from "react";
 
 const APP_URL =
@@ -40,13 +41,29 @@ const THEMES = [
   { id: "travel",     en: "Travel",     ar: "سفر",    vid: 23410, blurb: "On the road, far from home" },
 ];
 
+// Showreel — Leonardo.ai-style masonry. Each tile has a category for
+// the filter pills, and a varied aspect ratio so the grid feels
+// hand-curated rather than a strict 3xN.
 const SHOWREEL = [
-  { vid: 46702, caption: "وحيدًا في الليل",    tag: "Memory · 90s" },
-  { vid: 47442, caption: "البئر المهجور",      tag: "Folkloric · 2m" },
-  { vid: 9582,  caption: "ضوء بعيد",            tag: "Wilderness · 75s" },
-  { vid: 23818, caption: "صوت من الجدار",      tag: "Domestic · 60s" },
-  { vid: 35426, caption: "ظل في الزقاق",       tag: "Urban · 90s" },
-  { vid: 25896, caption: "الطريق الفارغ",      tag: "Travel · 2m" },
+  { vid: 46702, caption: "وحيدًا في الليل",    tag: "90s",  category: "memory",     ratio: "tall"   as const },
+  { vid: 47442, caption: "البئر المهجور",      tag: "2m",   category: "folkloric",  ratio: "tall"   as const },
+  { vid: 9582,  caption: "ضوء بعيد",            tag: "75s",  category: "wilderness", ratio: "medium" as const },
+  { vid: 23818, caption: "صوت من الجدار",      tag: "60s",  category: "domestic",   ratio: "tall"   as const },
+  { vid: 35426, caption: "ظل في الزقاق",       tag: "90s",  category: "urban",      ratio: "medium" as const },
+  { vid: 25896, caption: "الطريق الفارغ",      tag: "2m",   category: "travel",     ratio: "tall"   as const },
+  { vid: 45584, caption: "في حقل الذرة",       tag: "75s",  category: "wilderness", ratio: "medium" as const },
+  { vid: 29388, caption: "وجه في النافذة",     tag: "90s",  category: "memory",     ratio: "tall"   as const },
+  { vid: 46575, caption: "النادل الأخير",      tag: "2m",   category: "urban",      ratio: "medium" as const },
+];
+
+const FILTERS = [
+  { id: "all",        label: "All" },
+  { id: "folkloric",  label: "Folkloric" },
+  { id: "memory",     label: "Memory" },
+  { id: "wilderness", label: "Wilderness" },
+  { id: "urban",      label: "Urban" },
+  { id: "domestic",   label: "Domestic" },
+  { id: "travel",     label: "Travel" },
 ];
 
 // ============================================================================
@@ -181,25 +198,25 @@ function Hero() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.4 }}
-          className="flex flex-col sm:flex-row items-start sm:items-center gap-3"
+          className="mb-5"
         >
-          <a
-            href={`${APP_URL}/`}
-            className="group bg-accent text-bg font-semibold text-base px-7 py-3.5 rounded-lg flex items-center gap-2 hover:bg-accent/90 transition-all hover:scale-[1.02] shadow-xl shadow-accent/20"
-          >
-            <Sparkles className="w-4 h-4" />
-            Start creating free
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-          </a>
-          <a
-            href="#showreel"
-            className="group flex items-center gap-3 text-ink hover:text-ink/80 font-medium px-2 py-3.5 transition-colors"
-          >
-            <span className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 group-hover:bg-white/15 flex items-center justify-center transition-colors">
-              <Play className="w-4 h-4 fill-current ml-0.5" />
+          <PromptInput appUrl={APP_URL} />
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.55 }}
+          className="flex items-center gap-5 text-[12px] text-muted/80"
+        >
+          <a href="#showreel" className="group flex items-center gap-2 hover:text-ink transition-colors">
+            <span className="w-7 h-7 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 group-hover:bg-white/15 flex items-center justify-center transition-colors">
+              <Play className="w-3 h-3 fill-current ml-0.5" />
             </span>
             Watch the showreel
           </a>
+          <span className="text-muted/40">·</span>
+          <span>Free to write. Subscribe to render.</span>
         </motion.div>
       </div>
 
@@ -217,30 +234,72 @@ function Hero() {
 }
 
 // ============================================================================
-// SHOWREEL — Netflix-style horizontal scroll row of looping clips
+// SHOWREEL — Leonardo-style masonry gallery with filter pills above.
+// Mixed tile heights (tall = 9:16, medium = 4:5) so the grid reads as
+// curated rather than a strict spreadsheet.
 // ============================================================================
 function Showreel() {
+  const [filter, setFilter] = useState("all");
+  const visible = SHOWREEL.filter(
+    (s) => filter === "all" || s.category === filter,
+  );
   return (
     <section id="showreel" className="relative py-20 sm:py-24 border-t border-white/[0.05]">
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 mb-8 sm:mb-10">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8">
         <SectionEyebrow text="THE LIBRARY" />
         <SectionTitle en="Stories rendered." ar="قصص جاهزة" />
         <p className="mt-4 text-muted max-w-2xl">
-          A glimpse of what visitors land on. Every clip rendered from a
-          one-line premise, characters and voices locked across beats.
+          Every clip below was rendered from a one-line premise. Characters
+          and voices locked across beats. Click a category to filter.
         </p>
-      </div>
-      {/* Horizontal scroll row, edge-to-edge for that artlist feel */}
-      <div className="relative">
-        <div className="flex gap-3 sm:gap-4 overflow-x-auto px-5 sm:px-8 pb-6 snap-x snap-mandatory scrollbar-hide">
-          {SHOWREEL.map((s, i) => (
-            <ShowreelTile key={i} item={s} index={i} />
-          ))}
-          <div className="flex-shrink-0 w-1" />
+
+        {/* Filter pills */}
+        <div className="mt-9 flex flex-wrap gap-2">
+          {FILTERS.map((f) => {
+            const active = f.id === filter;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilter(f.id)}
+                className={`text-[12px] font-medium px-3.5 py-1.5 rounded-full border transition-colors ${
+                  active
+                    ? "bg-accent text-bg border-accent"
+                    : "bg-white/[0.03] text-muted border-white/10 hover:text-ink hover:border-white/25"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
         </div>
+
+        {/* Masonry grid — CSS multi-column gives Pinterest-style variable
+            heights without any JS layout work */}
+        <div
+          className="mt-10"
+          style={{ columnGap: "1rem", columnCount: 1 }}
+        >
+          <div className="masonry">
+            {visible.map((s, i) => (
+              <ShowreelTile key={`${filter}-${s.vid}`} item={s} index={i} />
+            ))}
+          </div>
+        </div>
+
         <style jsx>{`
-          .scrollbar-hide::-webkit-scrollbar { display: none; }
-          .scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
+          .masonry {
+            column-gap: 1rem;
+          }
+          @media (min-width: 640px) {
+            .masonry { column-count: 2; }
+          }
+          @media (min-width: 1024px) {
+            .masonry { column-count: 3; }
+          }
+          @media (min-width: 1280px) {
+            .masonry { column-count: 4; }
+          }
         `}</style>
       </div>
     </section>
@@ -254,26 +313,40 @@ function ShowreelTile({
   item: (typeof SHOWREEL)[number];
   index: number;
 }) {
+  // Tall = 9:16, medium = 4:5 — mixed aspect ratios are what makes the
+  // masonry read as gallery-curated rather than a rigid grid.
+  const aspect = item.ratio === "tall" ? "aspect-[9/16]" : "aspect-[4/5]";
   return (
     <motion.a
       href={`${APP_URL}/`}
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 12 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.5, delay: (index % 3) * 0.06 }}
-      className="group flex-shrink-0 snap-start relative w-[260px] sm:w-[300px] aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 hover:border-white/30 transition-all"
+      transition={{ duration: 0.45, delay: (index % 4) * 0.05 }}
+      className="group relative block mb-4 overflow-hidden rounded-2xl border border-white/10 hover:border-white/30 transition-all break-inside-avoid"
+      style={{ breakInside: "avoid" }}
     >
-      <LazyVideo
-        src={mp4(item.vid)}
-        className="absolute inset-0 w-full h-full"
-      />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-      <div className="absolute inset-0 p-4 flex flex-col justify-end">
-        <div className="text-[10px] font-medium text-white/65 tracking-[0.18em] uppercase mb-1">
-          {item.tag}
+      <div className={`${aspect} relative`}>
+        <LazyVideo
+          src={mp4(item.vid)}
+          className="absolute inset-0 w-full h-full"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+        <div className="absolute inset-0 p-4 flex flex-col justify-end">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[9px] font-bold text-white/80 tracking-[0.18em] uppercase px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
+              {item.category}
+            </span>
+            <span className="text-[10px] text-white/55 tracking-wider">
+              {item.tag}
+            </span>
+          </div>
+          <div className="text-base sm:text-lg font-semibold text-white font-arabic tracking-tight" dir="rtl">
+            {item.caption}
+          </div>
         </div>
-        <div className="text-base sm:text-lg font-semibold text-white font-arabic tracking-tight" dir="rtl">
-          {item.caption}
+        <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <ArrowRight className="w-3.5 h-3.5 text-white" />
         </div>
       </div>
     </motion.a>
