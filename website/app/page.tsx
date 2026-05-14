@@ -21,6 +21,9 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { SparkleLogo } from "@/components/sparkle-logo";
+import { ParticleField } from "@/components/particle-field";
+import { TiltCard } from "@/components/tilt-card";
+import { ScrambleText } from "@/components/scramble-text";
 
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ||
@@ -156,8 +159,22 @@ function TopNav() {
 //         giant overlay text. The visual hook the user wanted.
 // ============================================================================
 function Hero() {
+  const heroRef = useRef<HTMLDivElement>(null);
+  const spotX = useMotionValue(50);
+  const spotY = useMotionValue(50);
+  const sx = useSpring(spotX, { stiffness: 80, damping: 25 });
+  const sy = useSpring(spotY, { stiffness: 80, damping: 25 });
+
   return (
-    <section className="relative h-[100vh] min-h-[640px] overflow-hidden flex items-center">
+    <section
+      ref={heroRef}
+      onMouseMove={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        spotX.set(((e.clientX - r.left) / r.width) * 100);
+        spotY.set(((e.clientY - r.top) / r.height) * 100);
+      }}
+      className="relative h-[100vh] min-h-[640px] overflow-hidden flex items-center"
+    >
       {/* Full-bleed background photo with slow zoom (Ken Burns) */}
       <motion.div
         className="absolute inset-0"
@@ -178,6 +195,21 @@ function Hero() {
       {/* Dark gradient overlay for legibility */}
       <div className="absolute inset-0 bg-gradient-to-b from-bg/40 via-bg/70 to-bg" />
       <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/30 to-bg/80" />
+
+      {/* Particle constellation — the AI signature visual */}
+      <ParticleField className="absolute inset-0 opacity-70" density={70} />
+
+      {/* Cursor-follow spotlight — radial gold glow that tracks the mouse */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none mix-blend-screen opacity-50"
+        style={{
+          background: useTransform(
+            [sx, sy],
+            ([x, y]) =>
+              `radial-gradient(450px circle at ${x}% ${y}%, rgba(231,181,60,0.25), transparent 60%)`,
+          ),
+        }}
+      />
 
       {/* Floating gold/violet glow accents */}
       <motion.div
@@ -203,7 +235,7 @@ function Hero() {
         >
           <Sparkles className="w-3.5 h-3.5 text-accent" />
           <span className="text-[11px] font-bold text-accent tracking-[0.15em]">
-            AI-POWERED ARABIC STORYTELLING
+            <ScrambleText text="AI-POWERED ARABIC STORYTELLING" />
           </span>
         </motion.div>
 
@@ -391,7 +423,9 @@ function Templates() {
               transition={{ duration: 0.5, delay: i * 0.04 }}
               className="group block"
             >
-              <ThemePoster theme={t} />
+              <TiltCard maxTilt={8} scale={1.04}>
+                <ThemePoster theme={t} />
+              </TiltCard>
             </motion.a>
           ))}
         </div>
@@ -477,8 +511,9 @@ function ShowcaseTile({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-30px" }}
       transition={{ duration: 0.5, delay: (index % 4) * 0.06 }}
-      className={`relative ${tall ? "aspect-[9/16]" : "aspect-[3/4]"} rounded-2xl overflow-hidden group cursor-pointer border border-white/10 hover:border-accent/40 transition-all`}
+      className={`${tall ? "aspect-[9/16]" : "aspect-[3/4]"}`}
     >
+    <TiltCard maxTilt={10} scale={1.04} className={`relative w-full h-full rounded-2xl overflow-hidden group cursor-pointer border border-white/10 hover:border-accent/40 transition-all`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={unsplash(item.id, 600, 70)}
@@ -503,6 +538,7 @@ function ShowcaseTile({
           {item.caption}
         </div>
       </div>
+    </TiltCard>
     </motion.div>
   );
 }
@@ -874,7 +910,3 @@ function SectionTitle({ en, ar }: { en: string; ar: string }) {
   );
 }
 
-// Suppress the unused-import warning — useMotionValue / useSpring kept
-// in scope because the hero may reintroduce mouse-parallax in a future tweak.
-void useMotionValue;
-void useSpring;
