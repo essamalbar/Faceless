@@ -11,10 +11,26 @@ __pycache__/
 
 # Flutter build output (huge, irrelevant to backend image) — EXCEPT
 # build/web/, which is the SPA bundle the Dockerfile copies into
-# /app/static/web. The `!` lines override the `build/` exclusion.
-build/
-!build/web/
-!build/web/**
+# /app/static/web. gitignore rule: "you cannot re-include a file if
+# the parent directory is excluded." So we exclude the CONTENTS of
+# build/ pattern-by-pattern instead of the directory itself, leaving
+# build/web/ visible to Cloud Build.
+build/*.dill
+build/*.json
+build/app/
+build/ios/
+build/jni/
+build/jni_flutter/
+build/native_assets/
+build/native_hooks/
+build/reports/
+build/test_cache/
+build/unit_test_assets/
+build/flutter_assets/
+build/flutter_secure_storage/
+build/sqflite_android/
+build/video_player_android/
+build/f*/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
