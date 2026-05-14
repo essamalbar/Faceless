@@ -14,6 +14,7 @@ import {
 import { SparkleLogo } from "@/components/sparkle-logo";
 import { LazyVideo } from "@/components/lazy-video";
 import { PromptInput } from "@/components/prompt-input";
+import { Aurora } from "@/components/aurora";
 import { useEffect, useState } from "react";
 
 const APP_URL =
@@ -151,6 +152,10 @@ function Hero() {
       <div className="absolute inset-0 bg-gradient-to-b from-bg/30 via-bg/60 to-bg" />
       <div className="absolute inset-0 bg-gradient-to-r from-bg/80 via-bg/30 to-transparent" />
 
+      {/* Aurora — flowing gold/violet/blue gradient mesh drifting over
+          the hero. The Leonardo.ai signature ambient-magic layer. */}
+      <Aurora intensity={0.4} />
+
       <div className="relative max-w-7xl mx-auto px-5 sm:px-8 w-full">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -244,8 +249,9 @@ function Showreel() {
     (s) => filter === "all" || s.category === filter,
   );
   return (
-    <section id="showreel" className="relative py-20 sm:py-24 border-t border-white/[0.05]">
-      <div className="max-w-7xl mx-auto px-5 sm:px-8">
+    <section id="showreel" className="relative py-20 sm:py-24 border-t border-white/[0.05] overflow-hidden">
+      <Aurora intensity={0.18} />
+      <div className="relative max-w-7xl mx-auto px-5 sm:px-8">
         <SectionEyebrow text="THE LIBRARY" />
         <SectionTitle en="Stories rendered." ar="قصص جاهزة" />
         <p className="mt-4 text-muted max-w-2xl">
@@ -323,7 +329,7 @@ function ShowreelTile({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.45, delay: (index % 4) * 0.05 }}
-      className="group relative block mb-4 overflow-hidden rounded-2xl border border-white/10 hover:border-white/30 transition-all break-inside-avoid"
+      className="group relative block mb-4 overflow-hidden rounded-2xl border border-white/10 hover:border-accent/60 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(231,181,60,0.18)] transition-all duration-300 break-inside-avoid"
       style={{ breakInside: "avoid" }}
     >
       <div className={`${aspect} relative`}>
@@ -332,6 +338,9 @@ function ShowreelTile({
           className="absolute inset-0 w-full h-full"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+        {/* Soft top inner glow on hover */}
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+             style={{ background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(231,181,60,0.18), transparent 60%)" }} />
         <div className="absolute inset-0 p-4 flex flex-col justify-end">
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-[9px] font-bold text-white/80 tracking-[0.18em] uppercase px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
@@ -416,13 +425,15 @@ function Templates() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-40px" }}
               transition={{ duration: 0.5, delay: i * 0.04 }}
-              className="group relative aspect-[4/5] rounded-2xl overflow-hidden border border-white/10 hover:border-white/30 transition-colors"
+              className="group relative aspect-[4/5] rounded-2xl overflow-hidden border border-white/10 hover:border-accent/60 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(231,181,60,0.18)] transition-all duration-300"
             >
               <LazyVideo
                 src={mp4(t.vid)}
                 className="absolute inset-0 w-full h-full"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                   style={{ background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(231,181,60,0.18), transparent 60%)" }} />
               <div className="absolute inset-0 p-5 flex flex-col justify-end">
                 <div className="text-[10px] font-medium text-white/65 tracking-[0.18em] uppercase mb-1">
                   {t.en}
@@ -526,6 +537,7 @@ function FinalCTA() {
         <LazyVideo src={mp4(8537)} className="w-full h-full" rootMargin="0px" />
       </div>
       <div className="absolute inset-0 bg-gradient-to-b from-bg via-bg/60 to-bg" />
+      <Aurora intensity={0.35} />
       <div className="relative max-w-3xl mx-auto text-center">
         <div className="inline-flex justify-center mb-7">
           <SparkleLogo size={56} />

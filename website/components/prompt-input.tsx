@@ -67,7 +67,20 @@ export function PromptInput({ appUrl }: { appUrl: string }) {
       action={`${appUrl}/`}
       className="relative w-full max-w-2xl"
     >
-      <div className="group relative rounded-2xl border border-white/15 bg-black/40 backdrop-blur-xl shadow-2xl shadow-black/40 overflow-hidden hover:border-accent/50 focus-within:border-accent/70 transition-colors">
+      {/* Rotating conic-gradient glow ring around the input — the
+          Leonardo.ai signature "this is alive" effect. Inset just
+          enough that it shows as a thin animated outline. */}
+      <div
+        aria-hidden="true"
+        className="absolute -inset-[1.5px] rounded-2xl opacity-70 pointer-events-none"
+        style={{
+          background:
+            "conic-gradient(from 0deg, transparent 0deg, rgba(231,181,60,0.65) 60deg, rgba(139,92,246,0.55) 130deg, transparent 200deg, transparent 360deg)",
+          animation: "ring-spin 6s linear infinite",
+          filter: "blur(3px)",
+        }}
+      />
+      <div className="group relative rounded-2xl border border-white/15 bg-black/55 backdrop-blur-xl shadow-2xl shadow-black/40 overflow-hidden hover:border-accent/50 focus-within:border-accent/70 transition-colors">
         {/* Subtle inner glow on focus */}
         <div className="absolute inset-0 pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity"
              style={{
@@ -96,6 +109,11 @@ export function PromptInput({ appUrl }: { appUrl: string }) {
           </button>
         </div>
       </div>
+      <style jsx>{`
+        @keyframes ring-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </form>
   );
 }
