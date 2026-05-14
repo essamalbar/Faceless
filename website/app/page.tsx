@@ -55,6 +55,14 @@ const PHOTO = {
   s2: "1500382017468-9049fed747ef",          // desert
   s3: "1542273917363-3b1817f69a2d",          // night portrait
   s4: "1462536943532-57a629f6cc60",          // mountain night
+  // Cast — silhouetted/figure photos that fit the "Faceless" brand:
+  // mysterious characters, faces obscured by shadow or angle.
+  cast1: "1542273917363-3b1817f69a2d",       // figure in mist
+  cast2: "1486312338219-ce68d2c6f44d",       // walking away
+  cast3: "1547036967-23d11aacaee0",          // silhouette dark
+  cast4: "1518604666860-9ed391f76460",       // cloaked figure
+  cast5: "1455849318743-b2233052fcff",       // figure
+  cast6: "1502139214982-d0ad755818d8",       // mysterious
 };
 
 const THEMES = [
@@ -92,6 +100,7 @@ export default function Page() {
       <Features />
       <Templates />
       <Showcase />
+      <Cast />
       <HowItWorks />
       <GenerationPipeline />
       <ThreeDShowcase />
@@ -542,6 +551,122 @@ function ShowcaseTile({
       </div>
     </TiltCard>
     </motion.div>
+  );
+}
+
+// ============================================================================
+// CAST — animated character cards showing what the AI creates
+// ============================================================================
+const CAST = [
+  { photo: PHOTO.cast1, ar: "حورية",   en: "Hooria",   role: "PROTAGONIST",  voice: "Soft alto · contemplative" },
+  { photo: PHOTO.cast2, ar: "خالد",    en: "Khalid",   role: "WANDERER",     voice: "Warm tenor · measured" },
+  { photo: PHOTO.cast3, ar: "الراوي",  en: "Narrator", role: "VOICE-OVER",   voice: "Deep masculine · slow" },
+  { photo: PHOTO.cast4, ar: "الشيخ",   en: "The Elder", role: "MENTOR",      voice: "Aged baritone · grave" },
+  { photo: PHOTO.cast5, ar: "ليلى",    en: "Laila",    role: "SECONDARY",    voice: "Cool alto · curious" },
+  { photo: PHOTO.cast6, ar: "الغريب",  en: "Stranger", role: "ANTAGONIST",   voice: "Dry rasp · low" },
+];
+
+function Cast() {
+  return (
+    <section className="relative py-28 px-5 sm:px-8 overflow-hidden bg-surface/10">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 50% at 50% 50%, rgba(139,92,246,0.12), transparent 70%)",
+        }}
+      />
+      <div className="relative max-w-7xl mx-auto">
+        <SectionEyebrow text="THE CAST" />
+        <SectionTitle en="Characters that hold." ar="شخصيات تتذكرها" />
+        <p className="mt-4 text-muted max-w-2xl">
+          The AI doesn't just write — it casts. Names, faces, voices stay
+          consistent across every clip. The same character looks the same
+          and sounds the same from beat one to the end.
+        </p>
+
+        <div className="mt-14 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+          {CAST.map((c, i) => (
+            <motion.div
+              key={c.en}
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.5, delay: i * 0.07 }}
+            >
+              <TiltCard maxTilt={10} scale={1.05} className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden border border-white/10 group hover:border-accent/50 transition-all">
+                {/* Photo with Ken Burns motion */}
+                <motion.div
+                  className="absolute inset-0"
+                  initial={{ scale: 1.05 }}
+                  whileInView={{ scale: 1.18 }}
+                  viewport={{ once: false }}
+                  transition={{ duration: 12 + i, repeat: Infinity, repeatType: "reverse" }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={unsplash(c.photo, 500, 70)}
+                    alt={c.en}
+                    loading="lazy"
+                    className="w-full h-full object-cover"
+                  />
+                </motion.div>
+                {/* AI scanlines overlay — subtle CRT/glitch feel */}
+                <div
+                  className="absolute inset-0 mix-blend-overlay opacity-30 pointer-events-none"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(0deg, rgba(231,181,60,0.15) 0px, transparent 1px, transparent 3px)",
+                  }}
+                />
+                {/* Vignette */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent" />
+                {/* Top-right AI badge with pulse */}
+                <motion.div
+                  animate={{ opacity: [0.6, 1, 0.6] }}
+                  transition={{ duration: 2.4, repeat: Infinity }}
+                  className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/60 backdrop-blur-sm border border-accent/40"
+                >
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+                  <span className="text-[8px] font-bold text-accent tracking-[0.15em]">AI</span>
+                </motion.div>
+                {/* Bottom name + voice */}
+                <div className="absolute inset-x-0 bottom-0 p-3">
+                  <div className="text-[9px] font-bold text-accent tracking-[0.18em] mb-1">
+                    {c.role}
+                  </div>
+                  <div
+                    className="text-xl sm:text-2xl font-bold text-white mb-1 font-arabic"
+                    dir="rtl"
+                  >
+                    {c.ar}
+                  </div>
+                  <div className="text-[10px] text-white/60 tracking-wide leading-tight">
+                    {c.voice}
+                  </div>
+                </div>
+              </TiltCard>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Continuity callout */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.6 }}
+          className="mt-14 max-w-3xl mx-auto text-center"
+        >
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-accent/30 bg-accent/10">
+            <Sparkles className="w-3.5 h-3.5 text-accent" />
+            <span className="text-sm font-medium text-ink/90">
+              Same face. Same voice. Across every beat of your story.
+            </span>
+          </div>
+        </motion.div>
+      </div>
+    </section>
   );
 }
 

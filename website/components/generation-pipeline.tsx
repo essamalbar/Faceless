@@ -21,11 +21,14 @@ import { Sparkles, Check, Film, Type, Layers } from "lucide-react";
 
 const PREMISE = "في قرية معزولة عند سفح الجبل،";
 
+// Each beat carries the photo that will appear in the matching ClipCard
+// once that clip "finishes rendering" — closes the loop between script
+// generation and the visual outcome.
 const BEATS = [
-  { idx: "01", name: "الراوي", line: "كان البئر القديم يحرس أسرار الماضي." },
-  { idx: "02", name: "حورية", line: "كل من نظر فيه رأى وجهه الذي لم يصل." },
-  { idx: "03", name: "خالد", line: "تراجع، لكن صوته ناداه من قاع الماء." },
-  { idx: "04", name: "الراوي", line: "لم يعد إلى القرية ذلك المساء." },
+  { idx: "01", name: "الراوي", line: "كان البئر القديم يحرس أسرار الماضي.", photo: "1462536943532-57a629f6cc60" },
+  { idx: "02", name: "حورية",  line: "كل من نظر فيه رأى وجهه الذي لم يصل.",  photo: "1542273917363-3b1817f69a2d" },
+  { idx: "03", name: "خالد",   line: "تراجع، لكن صوته ناداه من قاع الماء.",  photo: "1486312338219-ce68d2c6f44d" },
+  { idx: "04", name: "الراوي", line: "لم يعد إلى القرية ذلك المساء.",       photo: "1547036967-23d11aacaee0" },
 ];
 
 export function GenerationPipeline() {
@@ -306,7 +309,14 @@ function ClipRenderer({ stage }: { stage: number }) {
       </div>
       <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
         {BEATS.map((b, i) => (
-          <ClipCard key={b.idx} index={i + 1} active={active} speed={speeds[i]} />
+          <ClipCard
+            key={b.idx}
+            index={i + 1}
+            active={active}
+            speed={speeds[i]}
+            photo={b.photo}
+            name={b.name}
+          />
         ))}
       </div>
     </div>
@@ -317,10 +327,14 @@ function ClipCard({
   index,
   active,
   speed,
+  photo,
+  name,
 }: {
   index: number;
   active: boolean;
   speed: number;
+  photo: string;
+  name: string;
 }) {
   const [progress, setProgress] = useState(0);
   useEffect(() => {
@@ -337,25 +351,61 @@ function ClipCard({
   }, [active, speed]);
 
   const done = progress >= 1;
+  const photoUrl = `https://images.unsplash.com/photo-${photo}?w=500&q=70&auto=format&fit=crop`;
   return (
     <div className="relative aspect-[9/16] rounded-xl overflow-hidden border border-white/10 bg-surface/40">
-      {/* Animated gradient placeholder for the clip — uses theme accents */}
-      <motion.div
+      {/* Background — dark while pending, real photo when "rendered" */}
+      <div
         className="absolute inset-0"
         style={{
-          background: done
-            ? "linear-gradient(135deg, #E7B53C, #8B5CF6)"
-            : "linear-gradient(135deg, #1A2238, #0A0E1A)",
+          background: "linear-gradient(135deg, #1A2238, #0A0E1A)",
         }}
-        animate={done ? { opacity: [0.6, 1, 0.6] } : {}}
-        transition={done ? { duration: 3, repeat: Infinity } : {}}
       />
-      {done && (
-        <div className="absolute inset-0 bg-black/30" />
+      {/* Photo fades in as progress completes, slow zoom on done */}
+      {active && (
+        <motion.div
+          className="absolute inset-0"
+          initial={{ opacity: 0, scale: 1.15 }}
+          animate={{ opacity: progress, scale: done ? 1 : 1.15 }}
+          transition={{ duration: done ? 8 : 0.3, ease: done ? "linear" : "easeOut" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photoUrl}
+            alt={name}
+            loading="lazy"
+            className="w-full h-full object-cover"
+          />
+        </motion.div>
       )}
+      {/* AI scanlines — only visible while rendering */}
+      {active && !done && (
+        <motion.div
+          className="absolute inset-0 mix-blend-overlay pointer-events-none"
+          animate={{ opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 1.2, repeat: Infinity }}
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg, rgba(231,181,60,0.3) 0px, transparent 1px, transparent 3px)",
+          }}
+        />
+      )}
+      {/* Vignette */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
       <div className="absolute inset-0 p-2 flex flex-col">
-        <div className="text-[9px] font-bold text-white/80 tracking-wider">
-          CLIP {String(index).padStart(2, "0")}
+        <div className="flex items-start justify-between">
+          <div className="text-[9px] font-bold text-white/85 tracking-wider">
+            CLIP {String(index).padStart(2, "0")}
+          </div>
+          {done && (
+            <motion.div
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-[8px] font-bold text-bg bg-accent rounded px-1 py-0.5 tracking-wider"
+            >
+              READY
+            </motion.div>
+          )}
         </div>
         <div className="mt-auto">
           {!active && (
@@ -365,26 +415,27 @@ function ClipCard({
           )}
           {active && !done && (
             <>
-              <div className="text-[9px] text-white tracking-wider mb-1">
-                {Math.round(progress * 100)}%
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[9px] text-white/80 tracking-wider">RENDER</span>
+                <span className="text-[9px] text-accent font-bold tabular-nums">
+                  {Math.round(progress * 100)}%
+                </span>
               </div>
               <div className="h-1 rounded-full bg-white/10 overflow-hidden">
                 <div
-                  className="h-full bg-accent"
+                  className="h-full bg-gradient-to-r from-accent to-accent2"
                   style={{ width: `${progress * 100}%`, transition: "width 0.1s linear" }}
                 />
               </div>
             </>
           )}
           {done && (
-            <motion.div
-              initial={{ scale: 0.7, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="inline-flex items-center gap-1 text-[9px] font-bold text-bg bg-accent rounded px-1.5 py-0.5 tracking-wider"
+            <div
+              className="text-xs text-white font-arabic"
+              dir="rtl"
             >
-              <Check className="w-2.5 h-2.5" />
-              READY
-            </motion.div>
+              {name}
+            </div>
           )}
         </div>
       </div>
