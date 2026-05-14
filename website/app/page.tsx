@@ -309,11 +309,12 @@ function Hero() {
         </motion.p>
       </div>
 
-      {/* Big walking shadow actor crossing the hero — grounded at the
-          bottom so the feet stay on the floor line. Two staggered passes
-          (L→R then R→L) so there's almost always someone on screen. */}
-      <GhostActor direction="ltr" bottom="0%"  height={420} opacity={0.65} duration={20} delay={0}  />
-      <GhostActor direction="rtl" bottom="0%"  height={360} opacity={0.5}  duration={26} delay={9}  />
+      {/* Real photographed silhouettes walking across the hero —
+          grounded at the bottom so their feet stay on the floor line.
+          Different photo per pass so it doesn't look like the same
+          person keeps reappearing. */}
+      <GhostActor photo="1486312338219-ce68d2c6f44d" direction="ltr" bottom="0%" height={520} opacity={0.72} duration={26} delay={0}  />
+      <GhostActor photo="1542273917363-3b1817f69a2d" direction="rtl" bottom="0%" height={460} opacity={0.6}  duration={32} delay={11} />
 
       {/* Scroll cue */}
       <motion.div
@@ -486,8 +487,8 @@ function ThemePoster({ theme }: { theme: (typeof THEMES)[number] }) {
 function Showcase() {
   return (
     <section id="showcase" className="relative py-28 px-5 sm:px-8 overflow-hidden">
-      {/* Big walking shadow ambient through the library */}
-      <GhostActor direction="ltr" bottom="0%" height={360} opacity={0.45} duration={24} delay={5} />
+      {/* Real photographed silhouette ambient through the library */}
+      <GhostActor photo="1547036967-23d11aacaee0" direction="ltr" bottom="0%" height={440} opacity={0.55} duration={28} delay={5} />
       <div className="max-w-7xl mx-auto">
         <SectionEyebrow text="THE LIBRARY" />
         <SectionTitle en="Cinema-grade stories." ar="قصص بجودة سينمائية" />
@@ -812,8 +813,8 @@ function Pricing() {
 function FinalCTA() {
   return (
     <section className="relative py-32 px-5 sm:px-8 overflow-hidden">
-      <GhostActor direction="ltr" bottom="0%" height={400} opacity={0.55} duration={22} delay={3} />
-      <GhostActor direction="rtl" bottom="0%" height={340} opacity={0.4}  duration={28} delay={14} />
+      <GhostActor photo="1518604666860-9ed391f76460" direction="ltr" bottom="0%" height={480} opacity={0.6} duration={26} delay={3}  />
+      <GhostActor photo="1455849318743-b2233052fcff" direction="rtl" bottom="0%" height={420} opacity={0.45} duration={32} delay={14} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={unsplash(PHOTO.s4, 2000, 70)}
