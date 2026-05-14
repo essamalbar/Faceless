@@ -25,7 +25,6 @@ import { ParticleField } from "@/components/particle-field";
 import { TiltCard } from "@/components/tilt-card";
 import { ScrambleText } from "@/components/scramble-text";
 import { GenerationPipeline } from "@/components/generation-pipeline";
-import { GhostActor } from "@/components/ghost-actor";
 
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ||
@@ -309,13 +308,6 @@ function Hero() {
         </motion.p>
       </div>
 
-      {/* Real photographed silhouettes walking across the hero —
-          grounded at the bottom so their feet stay on the floor line.
-          Different photo per pass so it doesn't look like the same
-          person keeps reappearing. */}
-      <GhostActor photo="1486312338219-ce68d2c6f44d" direction="ltr" bottom="0%" height={520} opacity={0.72} duration={26} delay={0}  />
-      <GhostActor photo="1542273917363-3b1817f69a2d" direction="rtl" bottom="0%" height={460} opacity={0.6}  duration={32} delay={11} />
-
       {/* Scroll cue */}
       <motion.div
         animate={{ y: [0, 8, 0] }}
@@ -487,8 +479,6 @@ function ThemePoster({ theme }: { theme: (typeof THEMES)[number] }) {
 function Showcase() {
   return (
     <section id="showcase" className="relative py-28 px-5 sm:px-8 overflow-hidden">
-      {/* Real photographed silhouette ambient through the library */}
-      <GhostActor photo="1547036967-23d11aacaee0" direction="ltr" bottom="0%" height={440} opacity={0.55} duration={28} delay={5} />
       <div className="max-w-7xl mx-auto">
         <SectionEyebrow text="THE LIBRARY" />
         <SectionTitle en="Cinema-grade stories." ar="قصص بجودة سينمائية" />
@@ -813,8 +803,6 @@ function Pricing() {
 function FinalCTA() {
   return (
     <section className="relative py-32 px-5 sm:px-8 overflow-hidden">
-      <GhostActor photo="1518604666860-9ed391f76460" direction="ltr" bottom="0%" height={480} opacity={0.6} duration={26} delay={3}  />
-      <GhostActor photo="1455849318743-b2233052fcff" direction="rtl" bottom="0%" height={420} opacity={0.45} duration={32} delay={14} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={unsplash(PHOTO.s4, 2000, 70)}
