@@ -1,6 +1,7 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
 import {
   Sparkles,
   Wand2,
@@ -137,26 +138,48 @@ function Nav() {
 // HERO — full-bleed atmospheric video background, big bold typography
 // ============================================================================
 function Hero() {
+  // Scroll-driven parallax: the video drifts down at half speed (depth
+  // illusion), the content drifts up + fades out as you scroll past.
+  // Leonardo's hero feels alive scrolling because foreground and
+  // background move at different rates.
+  const ref = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end start"],
+  });
+  const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
+  const contentY = useTransform(scrollYProgress, [0, 1], ["0%", "-15%"]);
+  const contentOpacity = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
+
   return (
-    <section className="relative h-[100vh] min-h-[640px] overflow-hidden flex items-center">
-      {/* Full-bleed looping video — the artlist-style hook */}
-      <div className="absolute inset-0">
+    <section
+      ref={ref}
+      className="relative h-[100vh] min-h-[640px] overflow-hidden flex items-center"
+    >
+      {/* Full-bleed looping video, parallaxed downward at half scroll
+          speed for depth */}
+      <motion.div className="absolute inset-0" style={{ y: bgY }}>
         <LazyVideo
           src={HERO_VIDEO}
           className="w-full h-full"
           rootMargin="0px"
           preload="auto"
         />
-      </div>
+      </motion.div>
       {/* Layered overlays for legibility */}
       <div className="absolute inset-0 bg-gradient-to-b from-bg/30 via-bg/60 to-bg" />
       <div className="absolute inset-0 bg-gradient-to-r from-bg/80 via-bg/30 to-transparent" />
 
-      {/* Aurora — flowing gold/violet/blue gradient mesh drifting over
-          the hero. The Leonardo.ai signature ambient-magic layer. */}
-      <Aurora intensity={0.4} />
+      {/* Aurora — flowing gradient mesh, parallaxed at a third speed
+          so it feels "deeper" than the foreground content */}
+      <motion.div className="absolute inset-0" style={{ y: useTransform(scrollYProgress, [0, 1], ["0%", "10%"]) }}>
+        <Aurora intensity={0.4} />
+      </motion.div>
 
-      <div className="relative max-w-7xl mx-auto px-5 sm:px-8 w-full">
+      <motion.div
+        style={{ y: contentY, opacity: contentOpacity }}
+        className="relative max-w-7xl mx-auto px-5 sm:px-8 w-full"
+      >
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -223,7 +246,7 @@ function Hero() {
           <span className="text-muted/40">·</span>
           <span>Free to write. Subscribe to render.</span>
         </motion.div>
-      </div>
+      </motion.div>
 
       {/* Scroll cue */}
       <motion.div
@@ -325,10 +348,14 @@ function ShowreelTile({
   return (
     <motion.a
       href={`${APP_URL}/`}
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.45, delay: (index % 4) * 0.05 }}
+      initial={{ opacity: 0, y: 36, filter: "blur(8px)", scale: 0.96 }}
+      whileInView={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
+      viewport={{ once: true, margin: "-30px" }}
+      transition={{
+        duration: 0.8,
+        delay: (index % 4) * 0.09,
+        ease: [0.16, 1, 0.3, 1],
+      }}
       className="group relative block mb-4 overflow-hidden rounded-2xl border border-white/10 hover:border-accent/60 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(231,181,60,0.18)] transition-all duration-300 break-inside-avoid"
       style={{ breakInside: "avoid" }}
     >
@@ -381,10 +408,14 @@ function Features() {
           {items.map((it, i) => (
             <motion.div
               key={it.title}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 32, filter: "blur(8px)" }}
+              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.5, delay: i * 0.06 }}
+              transition={{
+                duration: 0.7,
+                delay: i * 0.1,
+                ease: [0.16, 1, 0.3, 1],
+              }}
               className="bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:bg-white/[0.04] hover:border-white/20 transition-colors"
             >
               <div className="w-9 h-9 rounded-lg border border-white/10 flex items-center justify-center mb-5">
@@ -421,10 +452,14 @@ function Templates() {
             <motion.a
               key={t.id}
               href={`${APP_URL}/?theme=${t.id}`}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.5, delay: i * 0.04 }}
+              initial={{ opacity: 0, y: 36, filter: "blur(8px)", scale: 0.96 }}
+              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
+              viewport={{ once: true, margin: "-30px" }}
+              transition={{
+                duration: 0.8,
+                delay: i * 0.08,
+                ease: [0.16, 1, 0.3, 1],
+              }}
               className="group relative aspect-[4/5] rounded-2xl overflow-hidden border border-white/10 hover:border-accent/60 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(231,181,60,0.18)] transition-all duration-300"
             >
               <LazyVideo
@@ -480,10 +515,14 @@ function Pricing() {
           {tiers.map((t, i) => (
             <motion.div
               key={t.name}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 36, filter: "blur(8px)" }}
+              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.5, delay: i * 0.06 }}
+              transition={{
+                duration: 0.8,
+                delay: i * 0.12,
+                ease: [0.16, 1, 0.3, 1],
+              }}
               className={`relative rounded-xl p-7 border ${
                 t.recommended
                   ? "bg-accent/[0.08] border-accent/40"
@@ -602,10 +641,10 @@ function SectionEyebrow({ text }: { text: string }) {
 function SectionTitle({ en, ar }: { en: string; ar: string }) {
   return (
     <motion.h2
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-60px" }}
-      transition={{ duration: 0.5 }}
+      initial={{ opacity: 0, y: 24, filter: "blur(12px)" }}
+      whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
       className="text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.03em] leading-tight"
     >
       {en}
