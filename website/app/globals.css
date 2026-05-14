@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: #0a0e1a;
+  color: #e5e7eb;
+}
+
+/* Smooth scrolling for anchor links from the nav */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Hide the default focus ring on the gold buttons; we use a custom one */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #E7B53C;
+  outline-offset: 3px;
+  border-radius: 8px;
+}
