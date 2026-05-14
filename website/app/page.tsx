@@ -27,18 +27,53 @@ const APP_URL =
   "https://faceless-api-uplzdtffeq-uc.a.run.app";
 
 // ----------------------------------------------------------------------------
-// THEME CATALOG — templates the visitor can imagine starting from on day one.
-// Mirror of lib/screens/home_screen.dart's _allThemes.
+// IMAGE CDN — all photos come from Unsplash (CC0 cinematic photography).
+// IDs have been verified live; if a future change replaces one, run
+// `curl -I https://images.unsplash.com/photo-<id>` to confirm 200.
 // ----------------------------------------------------------------------------
+const unsplash = (id: string, w = 1600, q = 80) =>
+  `https://images.unsplash.com/photo-${id}?w=${w}&q=${q}&auto=format&fit=crop`;
+
+const PHOTO = {
+  // Hero background candidates — cinematic, moody, no faces front-and-center
+  hero: "1485827404703-89b55fcc595e",
+  // 8 themes — each picture is intentionally evocative of the theme name
+  folkloric: "1500964757637-c85e8a162699",   // mountains at dusk
+  urban: "1514924013411-cbf25faa35bb",       // city night neon
+  wilderness: "1448375240586-882707db888b",  // dark forest path
+  memory: "1517423440428-a5a00ad493e8",      // faded portrait
+  domestic: "1505691938895-1758d7feb511",    // dim interior
+  travel: "1502691876148-a84978e59af8",      // empty road dusk
+  tech: "1518770660439-4636190af475",        // server cables glow
+  workplace: "1497366216548-37526070297c",   // empty office
+  // Extras for the showcase gallery
+  s1: "1466692476868-aef1dfb1e735",          // forest fog
+  s2: "1500382017468-9049fed747ef",          // desert
+  s3: "1542273917363-3b1817f69a2d",          // night portrait
+  s4: "1462536943532-57a629f6cc60",          // mountain night
+};
+
 const THEMES = [
-  { id: "folkloric", en: "Folkloric", ar: "فلكلوري", desc: "Ancestral tales, jinn, old wells", grad: ["#B07F1F", "#E7B53C"] },
-  { id: "urban", en: "Urban", ar: "مدني", desc: "City legends, late-night streets", grad: ["#3B82F6", "#1E40AF"] },
-  { id: "wilderness", en: "Wilderness", ar: "البرية", desc: "Forests, deserts, the unknown", grad: ["#059669", "#064E3B"] },
-  { id: "memory", en: "Memory", ar: "الذاكرة", desc: "Psychological, half-remembered", grad: ["#8B5CF6", "#5B21B6"] },
-  { id: "domestic", en: "Domestic", ar: "منزلي", desc: "Home, family, the everyday turned", grad: ["#EA580C", "#9A3412"] },
-  { id: "travel", en: "Travel", ar: "سفر", desc: "On the road, far from home", grad: ["#0D9488", "#134E4A"] },
-  { id: "tech", en: "Tech", ar: "تقني", desc: "Screens, signals, machines", grad: ["#06B6D4", "#155E75"] },
-  { id: "workplace", en: "Workplace", ar: "العمل", desc: "Offices, shops, after-hours", grad: ["#64748B", "#334155"] },
+  { id: "folkloric",  en: "Folkloric",   ar: "فلكلوري", desc: "Ancestral tales, jinn, old wells",          photo: PHOTO.folkloric,  grad: ["#B07F1F", "#E7B53C"] },
+  { id: "urban",      en: "Urban",       ar: "مدني",    desc: "City legends, late-night streets",         photo: PHOTO.urban,      grad: ["#3B82F6", "#1E40AF"] },
+  { id: "wilderness", en: "Wilderness",  ar: "البرية",  desc: "Forests, deserts, the unknown",            photo: PHOTO.wilderness, grad: ["#059669", "#064E3B"] },
+  { id: "memory",     en: "Memory",      ar: "الذاكرة", desc: "Psychological, half-remembered",           photo: PHOTO.memory,     grad: ["#8B5CF6", "#5B21B6"] },
+  { id: "domestic",   en: "Domestic",    ar: "منزلي",   desc: "Home, family, the everyday turned",        photo: PHOTO.domestic,   grad: ["#EA580C", "#9A3412"] },
+  { id: "travel",     en: "Travel",      ar: "سفر",     desc: "On the road, far from home",               photo: PHOTO.travel,     grad: ["#0D9488", "#134E4A"] },
+  { id: "tech",       en: "Tech",        ar: "تقني",    desc: "Screens, signals, machines",               photo: PHOTO.tech,       grad: ["#06B6D4", "#155E75"] },
+  { id: "workplace",  en: "Workplace",   ar: "العمل",   desc: "Offices, shops, after-hours",              photo: PHOTO.workplace,  grad: ["#64748B", "#334155"] },
+];
+
+const SHOWCASE = [
+  { id: PHOTO.s1,         caption: "غابة الظلال",      tag: "Wilderness · 90s" },
+  { id: PHOTO.folkloric,  caption: "البئر القديم",     tag: "Folkloric · 2m" },
+  { id: PHOTO.urban,      caption: "شوارع منتصف الليل", tag: "Urban · 75s" },
+  { id: PHOTO.s2,         caption: "صحراء الغريب",     tag: "Wilderness · 2m" },
+  { id: PHOTO.memory,     caption: "ذكرى الجدة",       tag: "Memory · 90s" },
+  { id: PHOTO.s3,         caption: "وجه في النافذة",   tag: "Memory · 60s" },
+  { id: PHOTO.travel,     caption: "الطريق الفارغ",    tag: "Travel · 2m" },
+  { id: PHOTO.s4,         caption: "ليلة على الجبل",   tag: "Folkloric · 90s" },
+  { id: PHOTO.domestic,   caption: "الغرفة العلوية",   tag: "Domestic · 2m" },
 ];
 
 // ============================================================================
@@ -52,6 +87,7 @@ export default function Page() {
       <Marquee />
       <Features />
       <Templates />
+      <Showcase />
       <HowItWorks />
       <ThreeDShowcase />
       <Stats />
@@ -63,7 +99,7 @@ export default function Page() {
 }
 
 // ============================================================================
-// TOP NAV  — translucent, blurred, glass-effect
+// TOP NAV
 // ============================================================================
 function TopNav() {
   const [scrolled, setScrolled] = useState(false);
@@ -91,6 +127,7 @@ function TopNav() {
         <nav className="hidden md:flex items-center gap-10 ml-16 text-[13px] font-medium text-muted">
           <a href="#features" className="hover:text-ink transition-colors">Features</a>
           <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
+          <a href="#showcase" className="hover:text-ink transition-colors">Showcase</a>
           <a href="#how" className="hover:text-ink transition-colors">How it works</a>
           <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
         </nav>
@@ -115,31 +152,54 @@ function TopNav() {
 }
 
 // ============================================================================
-// HERO  — gradient mesh background, floating orbs, sparkle logo
+// HERO — full-bleed photo background with Ken-Burns zoom, gradient overlay,
+//         giant overlay text. The visual hook the user wanted.
 // ============================================================================
 function Hero() {
-  const mouseX = useMotionValue(0);
-  const mouseY = useMotionValue(0);
-  const x = useSpring(mouseX, { stiffness: 50, damping: 20 });
-  const y = useSpring(mouseY, { stiffness: 50, damping: 20 });
-
   return (
-    <section
-      className="relative pt-36 sm:pt-44 pb-24 sm:pb-32 px-5 sm:px-8 overflow-hidden min-h-[100vh] flex items-center"
-      onMouseMove={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        mouseX.set((e.clientX - rect.left - rect.width / 2) / 30);
-        mouseY.set((e.clientY - rect.top - rect.height / 2) / 30);
-      }}
-    >
-      <GradientMesh x={x} y={y} />
+    <section className="relative h-[100vh] min-h-[640px] overflow-hidden flex items-center">
+      {/* Full-bleed background photo with slow zoom (Ken Burns) */}
+      <motion.div
+        className="absolute inset-0"
+        initial={{ scale: 1.08 }}
+        animate={{ scale: 1.18 }}
+        transition={{ duration: 30, ease: "linear", repeat: Infinity, repeatType: "reverse" }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={unsplash(PHOTO.hero, 2400, 80)}
+          alt=""
+          className="w-full h-full object-cover"
+          loading="eager"
+          fetchPriority="high"
+        />
+      </motion.div>
 
-      <div className="relative max-w-5xl mx-auto text-center w-full">
+      {/* Dark gradient overlay for legibility */}
+      <div className="absolute inset-0 bg-gradient-to-b from-bg/40 via-bg/70 to-bg" />
+      <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/30 to-bg/80" />
+
+      {/* Floating gold/violet glow accents */}
+      <motion.div
+        className="absolute top-[20%] left-[10%] w-[400px] h-[400px] rounded-full blur-[120px] opacity-40 pointer-events-none"
+        style={{ background: "#E7B53C" }}
+        animate={{ y: [0, 30, 0], x: [0, 20, 0] }}
+        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute bottom-[10%] right-[10%] w-[500px] h-[500px] rounded-full blur-[120px] opacity-30 pointer-events-none"
+        style={{ background: "#8B5CF6" }}
+        animate={{ y: [0, -30, 0], x: [0, -20, 0] }}
+        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+      />
+
+      {/* Foreground content */}
+      <div className="relative max-w-7xl mx-auto px-5 sm:px-8 w-full">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="inline-flex items-center gap-2 mb-8 px-3.5 py-1.5 rounded-full border border-accent/30 bg-accent/10 backdrop-blur-sm"
+          className="inline-flex items-center gap-2 mb-7 px-3.5 py-1.5 rounded-full border border-accent/40 bg-accent/10 backdrop-blur-sm"
         >
           <Sparkles className="w-3.5 h-3.5 text-accent" />
           <span className="text-[11px] font-bold text-accent tracking-[0.15em]">
@@ -147,35 +207,15 @@ function Hero() {
           </span>
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.7, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          className="mb-8 flex justify-center"
-        >
-          <div className="relative">
-            <div
-              className="absolute inset-0 blur-3xl opacity-60"
-              style={{ background: "#E7B53C" }}
-            />
-            <motion.div
-              animate={{ rotate: [0, 360] }}
-              transition={{ duration: 80, repeat: Infinity, ease: "linear" }}
-              className="relative"
-            >
-              <SparkleLogo size={112} />
-            </motion.div>
-          </div>
-        </motion.div>
-
         <motion.h1
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="text-6xl sm:text-8xl font-extrabold tracking-[-0.04em] mb-6"
+          transition={{ duration: 0.7, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+          className="text-6xl sm:text-8xl lg:text-9xl font-extrabold tracking-[-0.04em] mb-6 max-w-5xl leading-[0.95]"
         >
-          One line in.{" "}
-          <span className="bg-gradient-to-br from-accent via-amber-300 to-accent2 bg-clip-text text-transparent">
+          One line in.
+          <br />
+          <span className="bg-gradient-to-br from-accent via-amber-200 to-accent2 bg-clip-text text-transparent">
             A film out.
           </span>
         </motion.h1>
@@ -184,16 +224,16 @@ function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
-          className="text-xl sm:text-2xl text-ink/80 mb-3 max-w-3xl mx-auto font-light"
+          className="text-xl sm:text-2xl text-ink/85 mb-2 max-w-2xl font-light leading-relaxed"
         >
-          Turn a one-sentence premise into a cinematic Arabic short — script,
-          voice, visuals, captions. Done.
+          Turn a one-sentence premise into a cinematic Arabic short. Script,
+          voice, visuals, captions. Generated in minutes.
         </motion.p>
         <motion.p
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.4 }}
-          className="text-base text-muted mb-12 font-arabic"
+          className="text-base text-muted mb-10 font-arabic"
           dir="rtl"
         >
           من جملة واحدة إلى فيلم قصير كامل بالعربية
@@ -203,22 +243,22 @@ function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.5 }}
-          className="flex flex-col sm:flex-row gap-3 justify-center items-center mb-6"
+          className="flex flex-col sm:flex-row gap-3 items-start sm:items-center"
         >
           <a
             href={`${APP_URL}/`}
-            className="group bg-accent text-bg font-bold px-8 py-4 rounded-xl text-base flex items-center gap-2 hover:bg-accent/90 transition-all hover:scale-105 shadow-2xl shadow-accent/20"
+            className="group bg-accent text-bg font-bold px-8 py-4 rounded-xl text-base flex items-center gap-2 hover:bg-accent/90 transition-all hover:scale-105 shadow-2xl shadow-accent/30"
           >
             <Sparkles className="w-4 h-4" />
             Start creating free
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </a>
           <a
-            href="#templates"
-            className="group flex items-center gap-2 text-muted hover:text-ink font-medium px-5 py-4 transition-colors"
+            href="#showcase"
+            className="group flex items-center gap-3 text-ink/90 hover:text-ink font-medium px-5 py-4 transition-colors"
           >
-            <span className="w-9 h-9 rounded-full border border-white/20 group-hover:border-accent/50 flex items-center justify-center transition-colors">
-              <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+            <span className="w-11 h-11 rounded-full border border-white/30 group-hover:border-accent/60 group-hover:bg-accent/10 flex items-center justify-center transition-all">
+              <Play className="w-4 h-4 fill-current ml-0.5" />
             </span>
             See examples
           </a>
@@ -228,72 +268,27 @@ function Hero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.7 }}
-          className="text-xs text-muted/60 tracking-[0.1em]"
+          className="text-xs text-muted/70 tracking-[0.15em] mt-10"
         >
           FREE TO WRITE  ·  SUBSCRIBE TO RENDER  ·  NO CARD REQUIRED
         </motion.p>
       </div>
+
+      {/* Scroll cue */}
+      <motion.div
+        animate={{ y: [0, 8, 0] }}
+        transition={{ duration: 2, repeat: Infinity }}
+        className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-muted/60 text-xs tracking-[0.2em]"
+      >
+        SCROLL
+        <div className="w-px h-8 bg-gradient-to-b from-muted/60 to-transparent" />
+      </motion.div>
     </section>
   );
 }
 
-// Animated multi-layer gradient mesh — the visual replacement for a hero
-// video. Three large radial blobs in motion + a faint noise overlay gives
-// the feel of a constantly-morphing AI energy field. Cheap (GPU-only
-// transforms), runs at 60fps on phones.
-function GradientMesh({
-  x,
-  y,
-}: {
-  x: ReturnType<typeof useSpring>;
-  y: ReturnType<typeof useSpring>;
-}) {
-  return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      <motion.div
-        className="absolute top-[10%] left-[15%] w-[600px] h-[600px] rounded-full blur-[120px] opacity-50"
-        style={{ background: "#E7B53C", x, y }}
-        animate={{
-          scale: [1, 1.15, 1],
-          x: [0, 60, -40, 0],
-          y: [0, -40, 30, 0],
-        }}
-        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute top-[40%] right-[10%] w-[500px] h-[500px] rounded-full blur-[120px] opacity-40"
-        style={{ background: "#8B5CF6" }}
-        animate={{
-          scale: [1, 1.2, 1],
-          x: [0, -80, 40, 0],
-          y: [0, 60, -30, 0],
-        }}
-        transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute bottom-[5%] left-[40%] w-[700px] h-[700px] rounded-full blur-[140px] opacity-30"
-        style={{ background: "#3B82F6" }}
-        animate={{
-          scale: [1, 1.1, 1],
-          x: [0, 40, -50, 0],
-          y: [0, -50, 20, 0],
-        }}
-        transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
-      />
-      {/* Grain overlay — fine noise via SVG keeps the gradient from
-          looking like plastic. Tiny inline SVG, no external request. */}
-      <div
-        className="absolute inset-0 opacity-[0.08] mix-blend-overlay pointer-events-none"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-        }}
-      />
-    </div>
-  );
-}
-
 // ============================================================================
-// MARQUEE  — infinite scroll strip below the hero, like artlist.io
+// MARQUEE
 // ============================================================================
 function Marquee() {
   const items = [
@@ -306,10 +301,9 @@ function Marquee() {
     "VOICE-LOCKED CHARACTERS",
     "MUSIC-MATCHED MOODS",
   ];
-  // Render the list twice so the loop is seamless
   const looped = [...items, ...items];
   return (
-    <section className="relative py-10 border-y border-white/5 bg-surface/30 overflow-hidden">
+    <section className="relative py-8 border-y border-white/5 bg-surface/30 overflow-hidden">
       <div className="flex whitespace-nowrap animate-marquee gap-12 will-change-transform">
         {looped.map((it, i) => (
           <span
@@ -340,7 +334,7 @@ function Marquee() {
 function Features() {
   const items = [
     { icon: Wand2, title: "AI script writer", body: "One sentence in. A full Arabic script out — dialogue, characters, shot descriptions, ready to render." },
-    { icon: Film, title: "Cinematic video", body: "Each beat becomes a clip. Characters stay consistent. Lip-synced dialogue, music, captions stitched into a final mp4." },
+    { icon: Film, title: "Cinematic video", body: "Each beat becomes a clip. Characters stay consistent. Lip-synced dialogue, music, captions, mp4." },
     { icon: Languages, title: "Authentic Arabic", body: "MSA or dialect. Voice acting in Arabic, not a Western voice trying. Made for Arab audiences." },
     { icon: FileText, title: "Free PDF export", body: "Even on the free tier: take the director's-script PDF — cover page, cast list, VISUAL + DIALOGUE blocks." },
   ];
@@ -359,7 +353,7 @@ function Features() {
               transition={{ duration: 0.5, delay: i * 0.08 }}
               className="group bg-surface/60 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-accent/40 transition-all hover:-translate-y-1 hover:bg-surface/80"
             >
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/30 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent/25 to-accent/5 border border-accent/30 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
                 <it.icon className="w-5 h-5 text-accent" />
               </div>
               <h3 className="font-bold text-lg mb-2 tracking-tight">{it.title}</h3>
@@ -373,7 +367,8 @@ function Features() {
 }
 
 // ============================================================================
-// TEMPLATES  — 8 animated theme posters
+// TEMPLATES — 8 theme cards, each backed by a real Unsplash photo with
+//             theme-colored gradient blend overlay and hover zoom.
 // ============================================================================
 function Templates() {
   return (
@@ -408,109 +403,118 @@ function Templates() {
 function ThemePoster({ theme }: { theme: (typeof THEMES)[number] }) {
   return (
     <div className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-white/10 group-hover:border-white/30 transition-all group-hover:-translate-y-1 shadow-xl">
-      {/* Animated gradient base */}
+      {/* Real Unsplash photo background — slow zoom on hover */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={unsplash(theme.photo, 800, 70)}
+        alt={theme.en}
+        loading="lazy"
+        className="absolute inset-0 w-full h-full object-cover transition-transform duration-[2500ms] group-hover:scale-110"
+      />
+      {/* Theme-colored gradient blend — keeps each poster on-brand */}
       <div
-        className="absolute inset-0"
-        style={{
-          background: `linear-gradient(135deg, ${theme.grad[0]}, ${theme.grad[1]})`,
-        }}
+        className="absolute inset-0 mix-blend-soft-light opacity-90"
+        style={{ background: `linear-gradient(135deg, ${theme.grad[0]}, ${theme.grad[1]})` }}
       />
-      {/* Slow-shifting overlay — gives the poster motion without needing a video */}
-      <motion.div
-        className="absolute inset-0 mix-blend-overlay opacity-40"
-        animate={{
-          background: [
-            `radial-gradient(at 20% 20%, ${theme.grad[1]} 0%, transparent 50%)`,
-            `radial-gradient(at 80% 60%, ${theme.grad[0]} 0%, transparent 50%)`,
-            `radial-gradient(at 30% 80%, ${theme.grad[1]} 0%, transparent 50%)`,
-            `radial-gradient(at 20% 20%, ${theme.grad[1]} 0%, transparent 50%)`,
-          ],
-        }}
-        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-      />
-      {/* Drifting sparkles */}
-      <PosterSparkles />
-      {/* Bottom-to-top vignette so text is readable */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+      {/* Bottom vignette so text stays readable */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
       {/* Title overlay */}
       <div className="absolute inset-0 p-5 flex flex-col justify-end">
         <div className="text-[10px] font-bold text-white/70 tracking-[0.2em] mb-1 uppercase">
           {theme.en}
         </div>
-        <div
-          className="text-2xl sm:text-3xl font-bold text-white mb-2 font-arabic tracking-tight"
-          dir="rtl"
-        >
+        <div className="text-2xl sm:text-3xl font-bold text-white mb-2 font-arabic tracking-tight" dir="rtl">
           {theme.ar}
         </div>
-        <p className="text-xs text-white/75 leading-snug line-clamp-2">
+        <p className="text-xs text-white/80 leading-snug line-clamp-2">
           {theme.desc}
         </p>
       </div>
-      {/* Hover arrow */}
-      <div className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all group-hover:scale-110">
+      <div className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all group-hover:scale-110">
         <ArrowRight className="w-4 h-4 text-white" />
       </div>
     </div>
   );
 }
 
-function PosterSparkles() {
-  // Four staggered drifting sparkles — pure CSS keyframes via inline style.
-  // Random-ish positions baked at build time (not runtime) so SSR stays stable.
-  const positions = [
-    { left: "15%", top: "20%", delay: "0s" },
-    { left: "80%", top: "30%", delay: "1.5s" },
-    { left: "25%", top: "70%", delay: "3s" },
-    { left: "70%", top: "85%", delay: "4.5s" },
-  ];
+// ============================================================================
+// SHOWCASE — masonry-style photo gallery; the "what you can make" visual proof
+// ============================================================================
+function Showcase() {
   return (
-    <>
-      {positions.map((p, i) => (
-        <div
-          key={i}
-          className="absolute w-1 h-1 rounded-full bg-white"
-          style={{
-            left: p.left,
-            top: p.top,
-            animation: `twinkle 6s ease-in-out ${p.delay} infinite`,
-            boxShadow: "0 0 8px rgba(255,255,255,0.8)",
-          }}
-        />
-      ))}
-      <style jsx>{`
-        @keyframes twinkle {
-          0%, 100% { opacity: 0; transform: scale(0.5); }
-          50% { opacity: 1; transform: scale(1.5); }
-        }
-      `}</style>
-    </>
+    <section id="showcase" className="relative py-28 px-5 sm:px-8 overflow-hidden">
+      <div className="max-w-7xl mx-auto">
+        <SectionEyebrow text="THE LIBRARY" />
+        <SectionTitle en="Cinema-grade stories." ar="قصص بجودة سينمائية" />
+        <p className="mt-4 text-muted max-w-2xl">
+          Each scene rendered as a vertical clip — characters consistent, voices
+          in Arabic, captions baked in. Ready to drop on TikTok, Reels, Shorts.
+        </p>
+
+        {/* Masonry-style grid — varies tile heights for visual rhythm */}
+        <div className="mt-14 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+          {SHOWCASE.map((s, i) => (
+            <ShowcaseTile key={i} item={s} index={i} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ShowcaseTile({
+  item,
+  index,
+}: {
+  item: (typeof SHOWCASE)[number];
+  index: number;
+}) {
+  // Mix of 9:16 (3) and 3:4 (1) aspect ratios to create the masonry feel
+  const tall = index % 3 !== 1;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-30px" }}
+      transition={{ duration: 0.5, delay: (index % 4) * 0.06 }}
+      className={`relative ${tall ? "aspect-[9/16]" : "aspect-[3/4]"} rounded-2xl overflow-hidden group cursor-pointer border border-white/10 hover:border-accent/40 transition-all`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={unsplash(item.id, 600, 70)}
+        alt={item.caption}
+        loading="lazy"
+        className="absolute inset-0 w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-110"
+      />
+      {/* Vignette */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+      {/* Play overlay on hover */}
+      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="w-14 h-14 rounded-full bg-accent/90 flex items-center justify-center scale-90 group-hover:scale-100 transition-transform">
+          <Play className="w-5 h-5 text-bg fill-current ml-0.5" />
+        </div>
+      </div>
+      {/* Caption */}
+      <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
+        <div className="text-[10px] font-bold text-white/70 tracking-[0.18em] mb-1 uppercase">
+          {item.tag}
+        </div>
+        <div className="text-sm sm:text-base font-bold text-white font-arabic" dir="rtl">
+          {item.caption}
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
 // ============================================================================
-// HOW IT WORKS  — 3 step animated diagram
+// HOW IT WORKS
 // ============================================================================
 function HowItWorks() {
   const steps = [
-    {
-      step: "01",
-      title: "Write a premise",
-      body: "One sentence is enough. The shorter, the better.",
-      detail: "Free · no card",
-    },
-    {
-      step: "02",
-      title: "AI writes your script",
-      body: "Beats, characters, dialogue, shot directions. Arabic. Seconds.",
-      detail: "Free · download PDF",
-    },
-    {
-      step: "03",
-      title: "Render the video",
-      body: "Each beat becomes a clip. Stitched with music and captions.",
-      detail: "1 credit per clip",
-    },
+    { step: "01", title: "Write a premise", body: "One sentence is enough. The shorter, the better.", detail: "Free · no card" },
+    { step: "02", title: "AI writes your script", body: "Beats, characters, dialogue, shot directions. Arabic. Seconds.", detail: "Free · download PDF" },
+    { step: "03", title: "Render the video", body: "Each beat becomes a clip. Stitched with music and captions.", detail: "1 credit per clip" },
   ];
   return (
     <section id="how" className="relative py-28 px-5 sm:px-8">
@@ -528,7 +532,6 @@ function HowItWorks() {
               className="relative"
             >
               <div className="relative bg-gradient-to-br from-surface to-surface/40 border border-white/10 rounded-2xl p-7 h-full hover:border-accent/30 transition-colors overflow-hidden">
-                {/* Big translucent step number behind */}
                 <div className="absolute -top-4 -right-4 text-[120px] font-black text-white/[0.04] leading-none select-none">
                   {s.step}
                 </div>
@@ -560,7 +563,7 @@ function HowItWorks() {
 }
 
 // ============================================================================
-// 3D SHOWCASE  — perspective-tilted card fan with parallax depth
+// 3D SHOWCASE — perspective-tilted card fan with parallax depth
 // ============================================================================
 function ThreeDShowcase() {
   const ref = useRef<HTMLDivElement>(null);
@@ -633,7 +636,7 @@ function ThreeDShowcase() {
 }
 
 // ============================================================================
-// STATS  — big numbers with count-up on enter
+// STATS
 // ============================================================================
 function Stats() {
   const stats = [
@@ -667,7 +670,6 @@ function Stats() {
   );
 }
 
-// Lightweight count-up that runs when the element enters the viewport.
 function CountUp({ end }: { end: number }) {
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true });
@@ -679,7 +681,6 @@ function CountUp({ end }: { end: number }) {
     let raf = 0;
     const tick = (t: number) => {
       const p = Math.min(1, (t - start) / duration);
-      // Ease-out cubic
       const eased = 1 - Math.pow(1 - p, 3);
       setValue(Math.round(end * eased));
       if (p < 1) raf = requestAnimationFrame(tick);
@@ -759,16 +760,23 @@ function Pricing() {
 }
 
 // ============================================================================
-// FINAL CTA
+// FINAL CTA — full-bleed photo + concentric rotating rings
 // ============================================================================
 function FinalCTA() {
   return (
     <section className="relative py-32 px-5 sm:px-8 overflow-hidden">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={unsplash(PHOTO.s4, 2000, 70)}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover opacity-30"
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-bg via-bg/60 to-bg" />
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(231,181,60,0.25), transparent 60%)",
+            "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(231,181,60,0.3), transparent 60%)",
         }}
       />
       <motion.div
@@ -776,23 +784,23 @@ function FinalCTA() {
         transition={{ duration: 120, repeat: Infinity, ease: "linear" }}
         className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30"
       >
-        <div className="w-[800px] h-[800px] rounded-full border border-accent/20" />
+        <div className="w-[800px] h-[800px] rounded-full border border-accent/30" />
       </motion.div>
       <motion.div
         animate={{ rotate: [0, -360] }}
         transition={{ duration: 90, repeat: Infinity, ease: "linear" }}
         className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40"
       >
-        <div className="w-[500px] h-[500px] rounded-full border border-accent/30" />
+        <div className="w-[500px] h-[500px] rounded-full border border-accent/40" />
       </motion.div>
       <div className="relative max-w-3xl mx-auto text-center">
         <div className="inline-flex justify-center mb-8">
-          <SparkleLogo size={72} />
+          <SparkleLogo size={80} />
         </div>
         <h2 className="text-5xl sm:text-7xl font-extrabold mb-6 tracking-[-0.04em]">
           Your first story
           <br />
-          <span className="bg-gradient-to-br from-accent via-amber-300 to-accent2 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-br from-accent via-amber-200 to-accent2 bg-clip-text text-transparent">
             is free.
           </span>
         </h2>
@@ -827,6 +835,7 @@ function Footer() {
         <div className="sm:ml-auto flex items-center gap-7 text-[13px] text-muted">
           <a href="#features" className="hover:text-ink transition-colors">Features</a>
           <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
+          <a href="#showcase" className="hover:text-ink transition-colors">Showcase</a>
           <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
           <a href={`${APP_URL}/`} className="hover:text-ink transition-colors">Sign in</a>
         </div>
@@ -836,7 +845,7 @@ function Footer() {
 }
 
 // ============================================================================
-// SHARED — section header bits
+// SHARED
 // ============================================================================
 function SectionEyebrow({ text }: { text: string }) {
   return (
@@ -864,3 +873,8 @@ function SectionTitle({ en, ar }: { en: string; ar: string }) {
     </div>
   );
 }
+
+// Suppress the unused-import warning — useMotionValue / useSpring kept
+// in scope because the hero may reintroduce mouse-parallax in a future tweak.
+void useMotionValue;
+void useSpring;
