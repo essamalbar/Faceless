@@ -22,15 +22,30 @@ export function ScrollPipeline() {
     target: ref,
     offset: ["start start", "end end"],
   });
-  // Horizontal track translates from 0 to -66.67% (two stages worth)
-  // so all 3 stages get an equal slice of the scroll budget.
-  const x = useTransform(scrollYProgress, [0, 1], ["0%", "-66.67%"]);
 
-  // Per-stage opacity — only the centred stage is at full opacity, the
-  // off-screen ones dim. Gives the pinned section a "now playing" feel.
-  const s1Opacity = useTransform(scrollYProgress, [0, 0.2, 0.4], [1, 1, 0.4]);
-  const s2Opacity = useTransform(scrollYProgress, [0.25, 0.5, 0.75], [0.4, 1, 0.4]);
-  const s3Opacity = useTransform(scrollYProgress, [0.6, 0.8, 1], [0.4, 1, 1]);
+  // Stage dwell windows — each stage holds at its centred position for
+  // a real chunk of scroll, with smooth transitions between them.
+  // Without these dwells, the linear mapping makes stage 3 only visible
+  // at the very last instant of the section, which felt like it was
+  // missing entirely.
+  //
+  //   progress  | stage centred | track translateX
+  //   0.0–0.15  | stage 1       | 0%
+  //   0.15–0.40 | transition    | 0% → -33.33%
+  //   0.40–0.55 | stage 2       | -33.33%
+  //   0.55–0.80 | transition    | -33.33% → -66.67%
+  //   0.80–1.00 | stage 3       | -66.67%
+  const x = useTransform(
+    scrollYProgress,
+    [0, 0.15, 0.4, 0.55, 0.8, 1],
+    ["0%", "0%", "-33.33%", "-33.33%", "-66.67%", "-66.67%"],
+  );
+
+  // Per-stage opacity matches the dwell windows: stage at 1 while
+  // centred, 0.35 when fully off-screen.
+  const s1Opacity = useTransform(scrollYProgress, [0, 0.15, 0.3], [1, 1, 0.35]);
+  const s2Opacity = useTransform(scrollYProgress, [0.25, 0.4, 0.55, 0.7], [0.35, 1, 1, 0.35]);
+  const s3Opacity = useTransform(scrollYProgress, [0.65, 0.8, 1], [0.35, 1, 1]);
 
   // Progress bar at the top of the sticky pane
   const progressWidth = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
@@ -39,7 +54,7 @@ export function ScrollPipeline() {
     <section
       ref={ref}
       className="relative bg-bg"
-      style={{ height: "300vh" }}
+      style={{ height: "400vh" }}
     >
       <div className="sticky top-0 h-screen w-full overflow-hidden flex flex-col">
         {/* Section header — sits above the pinned visual. Tighter on
@@ -177,12 +192,13 @@ function ProgressDots({
 }: {
   scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"];
 }) {
-  // Map scroll progress to active dot index. Explicitly typed as
-  // MotionValue<number> so TS doesn't infer the literal union 0|1|2.
+  // Map scroll progress to active dot index. Thresholds chosen so the
+  // dot flips at the midpoint of each transition window (matching the
+  // dwell layout in ScrollPipeline's `x` keyframes).
   const stageIdx: MotionValue<number> = useTransform(scrollYProgress, (p): number => {
-    if (p < 0.33) return 0;
-    if (p < 0.66) return 1;
-    return 2;
+    if (p < 0.275) return 0;   // dwell 1 + half of transition 1→2
+    if (p < 0.675) return 1;   // stage 2 dwell + half of transition 2→3
+    return 2;                   // stage 3 dwell
   });
   return (
     <div className="flex items-center gap-2.5">
