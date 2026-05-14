@@ -38,7 +38,8 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from pipeline.auth import User, require_user, require_user_header_or_query
@@ -1787,3 +1788,35 @@ def get_log(run_id: str, lines: int = 200, user: User = Depends(require_user)):
     text = log_path.read_text(encoding="utf-8", errors="replace")
     tail = "\n".join(text.splitlines()[-max(1, lines):])
     return Response(content=tail, media_type="text/plain")
+
+
+# ---------------------------------------------------------------------------
+# Flutter web SPA — served at /app/* from the same Cloud Run service.
+#
+# This intentionally lives at the BOTTOM of the file, after every API
+# route is registered, so that:
+#   1. The /app mount only ever catches paths under /app/...
+#   2. The "/" handler is the LAST root-level route registered, and only
+#      claims paths nothing else has claimed.
+#
+# Bundling the SPA on the same origin avoids CORS for the app and keeps
+# us on a single deploy unit. The /app/ subpath is encoded into the
+# Flutter build via --base-href /app/ in scripts/build-and-push.sh.
+# ---------------------------------------------------------------------------
+_STATIC_WEB_DIR = Path(__file__).resolve().parent.parent / "static" / "web"
+if _STATIC_WEB_DIR.exists() and (_STATIC_WEB_DIR / "index.html").exists():
+    app.mount(
+        "/app",
+        StaticFiles(directory=str(_STATIC_WEB_DIR), html=True),
+        name="spa",
+    )
+
+
+@app.get("/", include_in_schema=False)
+def _root():
+    """Visitors at the bare Cloud Run URL get bounced to the SPA when it's
+    bundled, or a tiny JSON breadcrumb when the image was built without it
+    (e.g. backend-only iteration)."""
+    if (_STATIC_WEB_DIR / "index.html").exists():
+        return RedirectResponse("/app/")
+    return {"service": "faceless-api", "ok": True}

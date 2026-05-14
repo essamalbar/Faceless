@@ -9,8 +9,12 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Flutter build output (huge, irrelevant to backend image)
+# Flutter build output (huge, irrelevant to backend image) — EXCEPT
+# build/web/, which is the SPA bundle the Dockerfile copies into
+# /app/static/web. The `!` lines override the `build/` exclusion.
 build/
+!build/web/
+!build/web/**
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
@@ -46,6 +50,9 @@ giless-macbook-pro.tail*
 docs/
 tests/
 test/
+
+# Marketing website — lives in its own Vercel deploy
+website/
 
 # Flutter platform scaffolds + plugin symlinks (only `lib/` matters, and even
 # that isn't needed for the Python backend image — but keep it cheap)

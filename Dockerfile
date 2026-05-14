@@ -52,6 +52,14 @@ COPY run.py ./
 COPY config.yaml ./
 COPY assets/ ./assets/
 
+# Flutter web bundle — produced by scripts/build-and-push.sh BEFORE
+# this `docker build` (or `gcloud builds submit`) step. Served at /app/*
+# by pipeline.api so the SPA lives on the same origin as the API.
+# If you build the image without running the Flutter build first, the
+# directory will be empty and the SPA just won't be available — the
+# API endpoints keep working either way.
+COPY build/web/ ./static/web/
+
 # Whisper model cache — mounted as a named volume so models survive restarts
 # and don't inflate the image. The pipeline respects this env var; if not set
 # it falls back to ~/.cache/whisper inside the container (also fine).
