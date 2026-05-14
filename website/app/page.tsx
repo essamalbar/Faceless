@@ -24,6 +24,7 @@ import { SparkleLogo } from "@/components/sparkle-logo";
 import { ParticleField } from "@/components/particle-field";
 import { TiltCard } from "@/components/tilt-card";
 import { ScrambleText } from "@/components/scramble-text";
+import { GenerationPipeline } from "@/components/generation-pipeline";
 
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ||
@@ -92,6 +93,7 @@ export default function Page() {
       <Templates />
       <Showcase />
       <HowItWorks />
+      <GenerationPipeline />
       <ThreeDShowcase />
       <Stats />
       <Pricing />
