@@ -27,7 +27,11 @@ test/
 # Docs
 docs/
 
-# Flutter / mobile app — not part of the backend image
+# Flutter / mobile app — most of it isn't part of the backend image,
+# but we DO need build/web/ so the API can serve the SPA at /app/*.
+# Excluding `build/` outright blocks the `!` re-include (dockerignore
+# inherits the gitignore "can't un-exclude under an excluded parent"
+# rule), so we enumerate the build/ siblings instead.
 lib/
 android/
 ios/
@@ -37,7 +41,22 @@ windows/
 web/
 pubspec.yaml
 pubspec.lock
-build/
+build/*.dill
+build/*.json
+build/app/
+build/ios/
+build/jni/
+build/jni_flutter/
+build/native_assets/
+build/native_hooks/
+build/reports/
+build/test_cache/
+build/unit_test_assets/
+build/flutter_assets/
+build/flutter_secure_storage/
+build/sqflite_android/
+build/video_player_android/
+build/f*/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
