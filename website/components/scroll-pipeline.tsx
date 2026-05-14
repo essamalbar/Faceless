@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { motion, useScroll, useTransform, type MotionValue } from "framer-motion";
+import { motion, useScroll, useSpring, useTransform, type MotionValue } from "framer-motion";
 import { Sparkles, FileText, Film } from "lucide-react";
 import { LazyVideo } from "./lazy-video";
 
@@ -23,11 +23,15 @@ export function ScrollPipeline() {
   // Track translateX with dwell windows. Smoother than a pure linear
   // map — each stage holds at centre for a real reading window, then
   // glides into the next with eased momentum.
-  const x = useTransform(
+  const xRaw = useTransform(
     scrollYProgress,
     [0, 0.18, 0.4, 0.6, 0.82, 1],
-    ["0%", "0%", "-33.33%", "-33.33%", "-66.67%", "-66.67%"],
+    [0, 0, -33.33, -33.33, -66.67, -66.67],
   );
+  // Spring the track so it follows scroll with a touch of settle/lag,
+  // like a camera glide rather than a 1:1 scrubbed value.
+  const xSpring = useSpring(xRaw, { stiffness: 80, damping: 28, restDelta: 0.005 });
+  const x = useTransform(xSpring, (v) => `${v}%`);
 
   // Cross-fade opacities — neighbour stages keep some presence during
   // transitions so the eye never sees a hard cut. Each stage sits at
@@ -39,6 +43,23 @@ export function ScrollPipeline() {
     [0.55, 1, 1, 0.55],
   );
   const s3Opacity = useTransform(scrollYProgress, [0.65, 0.82, 1], [0.55, 1, 1]);
+
+  // Text reveals — independent of the stage background. Each headline
+  // starts at 0 opacity + 20px below resting position, fades in over
+  // a tight window that BEGINS slightly AFTER its background settles
+  // into place. The "establish shot then drop the title card" rhythm.
+  const s1Text = {
+    opacity: useTransform(scrollYProgress, [0, 0.06, 0.18, 0.35], [0, 1, 1, 0]),
+    y: useTransform(scrollYProgress, [0, 0.1], [20, 0]),
+  };
+  const s2Text = {
+    opacity: useTransform(scrollYProgress, [0.32, 0.42, 0.58, 0.72], [0, 1, 1, 0]),
+    y: useTransform(scrollYProgress, [0.32, 0.44], [20, 0]),
+  };
+  const s3Text = {
+    opacity: useTransform(scrollYProgress, [0.65, 0.78, 1], [0, 1, 1]),
+    y: useTransform(scrollYProgress, [0.65, 0.8], [20, 0]),
+  };
 
   // Letterbox bars — slide in as the section pins, retract as it leaves.
   // Gives the whole sequence a cinema-screen frame around it.
@@ -113,6 +134,8 @@ export function ScrollPipeline() {
         >
           <CinematicStage
             opacity={s1Opacity}
+            textOpacity={s1Text.opacity}
+            textY={s1Text.y}
             kicker="STEP 01 · WRITE"
             title="One line is enough."
             ar="جملة واحدة تكفي"
@@ -120,6 +143,8 @@ export function ScrollPipeline() {
           />
           <CinematicStage
             opacity={s2Opacity}
+            textOpacity={s2Text.opacity}
+            textY={s2Text.y}
             kicker="STEP 02 · SCRIPT"
             title="AI writes your story."
             ar="الذكاء الاصطناعي يكتب قصتك"
@@ -127,6 +152,8 @@ export function ScrollPipeline() {
           />
           <CinematicStage
             opacity={s3Opacity}
+            textOpacity={s3Text.opacity}
+            textY={s3Text.y}
             kicker="STEP 03 · RENDER"
             title="Cinematic short, delivered."
             ar="فيلم قصير سينمائي"
@@ -138,6 +165,17 @@ export function ScrollPipeline() {
         <div className="absolute left-0 right-0 z-20 pb-[10vh] sm:pb-[12vh] bottom-0 flex justify-center pointer-events-none">
           <ProgressDots scrollYProgress={scrollYProgress} />
         </div>
+
+        {/* Film grain — fine SVG noise overlaid on the entire pinned
+            pane (z-25, above the stages, below the letterbox bars).
+            mix-blend-overlay so it textures the highlights and
+            shadows without altering the colour palette. */}
+        <div
+          className="absolute inset-0 z-25 pointer-events-none mix-blend-overlay opacity-[0.07]"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+          }}
+        />
       </div>
     </section>
   );
@@ -148,12 +186,16 @@ export function ScrollPipeline() {
 // ============================================================================
 function CinematicStage({
   opacity,
+  textOpacity,
+  textY,
   kicker,
   title,
   ar,
   visual,
 }: {
   opacity: MotionValue<number>;
+  textOpacity: MotionValue<number>;
+  textY: MotionValue<number>;
   kicker: string;
   title: string;
   ar: string;
@@ -171,8 +213,13 @@ function CinematicStage({
       <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/85 pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-transparent to-transparent pointer-events-none" />
 
-      {/* Stage text overlay — bottom-left */}
-      <div className="absolute inset-x-0 bottom-0 z-10 pb-[16vh] sm:pb-[18vh] px-5 sm:px-8">
+      {/* Stage text overlay — bottom-left. Independent scroll-driven
+          opacity + y so it appears AFTER the background establishes,
+          giving the cinematic "establish then title-card" rhythm. */}
+      <motion.div
+        style={{ opacity: textOpacity, y: textY }}
+        className="absolute inset-x-0 bottom-0 z-10 pb-[16vh] sm:pb-[18vh] px-5 sm:px-8"
+      >
         <div className="max-w-7xl mx-auto">
           <div className="text-[11px] font-bold text-accent tracking-[0.22em] mb-3">
             {kicker}
@@ -187,7 +234,7 @@ function CinematicStage({
             {ar}
           </p>
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 }
@@ -258,9 +305,9 @@ function Stage1Visual() {
             className="absolute inset-0 rounded-2xl blur-2xl opacity-50"
             style={{ background: "radial-gradient(circle at 50% 50%, rgba(231,181,60,0.5), transparent 70%)" }}
           />
-          <div className="relative rounded-2xl border border-white/20 bg-black/60 backdrop-blur-xl shadow-2xl shadow-black/60 overflow-hidden">
+          <div className="relative rounded-2xl border border-white/10 bg-black/30 backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.55)] overflow-hidden">
             <div className="px-5 pt-5 pb-3 min-h-[120px]">
-              <div className="text-[10px] text-white/50 tracking-[0.15em] mb-3">
+              <div className="text-[10px] text-white/45 tracking-[0.15em] mb-3">
                 PREMISE
               </div>
               <div className="text-xl font-arabic text-white leading-relaxed" dir="rtl">
@@ -268,8 +315,8 @@ function Stage1Visual() {
                 <span className="inline-block w-[2px] h-5 bg-accent ml-1 -mb-1 animate-pulse" />
               </div>
             </div>
-            <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-white/10">
-              <span className="text-[10px] text-white/50 px-2 flex items-center gap-1">
+            <div className="flex items-center justify-between px-3 pb-3 pt-1 border-t border-white/5">
+              <span className="text-[10px] text-white/45 px-2 flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-accent" /> One line is enough
               </span>
               <div className="bg-accent text-bg font-semibold text-[12px] px-3 py-1.5 rounded-lg">
@@ -305,10 +352,10 @@ function Stage2Visual() {
             className="absolute inset-0 rounded-2xl blur-2xl opacity-40"
             style={{ background: "radial-gradient(circle at 50% 50%, rgba(139,92,246,0.5), transparent 70%)" }}
           />
-          <div className="relative bg-black/65 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden shadow-2xl shadow-black/60">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 bg-white/[0.03]">
+          <div className="relative bg-black/35 backdrop-blur-2xl border border-white/10 rounded-2xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/5 bg-white/[0.02]">
               <FileText className="w-3.5 h-3.5 text-accent" />
-              <span className="text-[10px] font-mono text-white/60 tracking-wider">
+              <span className="text-[10px] font-mono text-white/50 tracking-wider">
                 script.json
               </span>
               <span className="ml-auto text-[10px] font-bold text-accent tracking-wider">
@@ -317,12 +364,12 @@ function Stage2Visual() {
             </div>
             <div className="p-4 space-y-2">
               {beats.map((b) => (
-                <div key={b.idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-white/[0.04] border border-white/5">
+                <div key={b.idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-white/[0.03]">
                   <div className="text-accent font-bold text-xs tracking-wider w-7 flex-shrink-0">
                     {b.idx}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[10px] text-white/50 tracking-wider mb-0.5">
+                    <div className="text-[10px] text-white/45 tracking-wider mb-0.5">
                       {b.ch}
                     </div>
                     <div className="text-sm text-white font-arabic leading-snug truncate" dir="rtl">
