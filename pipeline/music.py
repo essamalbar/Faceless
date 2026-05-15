@@ -6,6 +6,8 @@ import random
 import shutil
 from pathlib import Path
 
+from pipeline.types import is_complete_artifact
+
 
 def select_music_track(
     bundle_dir: Path,
@@ -14,7 +16,7 @@ def select_music_track(
     rng_seed: int | None = None,
 ) -> None:
     """Pick a track matching `mood` and copy it to `out_path`. Resumable."""
-    if out_path.exists():
+    if is_complete_artifact(out_path):
         return
     if not bundle_dir.exists():
         raise FileNotFoundError(f"music bundle dir not found: {bundle_dir}")

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pipeline.types import Shot
+from pipeline.types import Shot, is_complete_artifact
 
 REROLL_SEED_BUMP = 10_000
 FLUX_MODEL_ALIAS = "schnell"  # see header comment to switch to "dev"
@@ -78,7 +78,7 @@ def generate_images(
     reroll_set = set(reroll_indices or [])
     for shot in shots:
         out_path = _shot_filename(images_dir, shot.index)
-        if out_path.exists() and shot.index not in reroll_set:
+        if is_complete_artifact(out_path) and shot.index not in reroll_set:
             continue
         seed = shot.seed + (REROLL_SEED_BUMP if shot.index in reroll_set else 0)
         _render_image(

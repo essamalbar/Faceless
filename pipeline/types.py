@@ -17,6 +17,20 @@ VALID_THEMES = {
 }
 
 
+def is_complete_artifact(path: Path) -> bool:
+    """True when `path` exists and is non-empty.
+
+    Stages use this for their idempotency check so a 0-byte file left
+    behind by a previous crashed run (truncated mid-write, killed during
+    ffmpeg, etc.) is treated as "needs regeneration" — not as "already
+    done." Plain `path.exists()` is wrong because resumed runs would
+    short-circuit on the stale empty file and produce no output."""
+    try:
+        return path.exists() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
 @dataclass(frozen=True)
 class ThemeSeed:
     theme: str

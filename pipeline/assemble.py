@@ -4,7 +4,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from pipeline.types import Shot
+from pipeline.types import Shot, is_complete_artifact
 
 # Ken Burns motion patterns. zoompan filter syntax:
 # (z, x, y) — z is zoom factor, x/y are crop offsets within the source.
@@ -116,8 +116,8 @@ def assemble_video(
     fade_in_s: int,
     fade_out_s: int,
 ) -> None:
-    """Resumable: skips if out_path already exists."""
-    if out_path.exists():
+    """Resumable: skips if a non-empty out_path already exists."""
+    if is_complete_artifact(out_path):
         return
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -333,7 +333,7 @@ def assemble_shorts_video(
     the last frame is held to cover the gap so `-shortest` doesn't truncate
     the story's ending.
     """
-    if out_path.exists():
+    if is_complete_artifact(out_path):
         return
     if len(clip_paths) != len(clip_durations_s):
         raise ValueError("clip_paths and clip_durations_s must be same length")

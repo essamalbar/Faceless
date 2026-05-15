@@ -119,6 +119,25 @@ def test_assemble_skips_when_output_exists(monkeypatch, tmp_run_dir: Path):
     assert called["n"] == 0
 
 
+def test_assemble_regenerates_when_output_is_zero_bytes(monkeypatch, tmp_run_dir: Path):
+    """Regression for Run A: a 0-byte final.mp4 left by a previous crashed
+    assembly used to satisfy `out.exists()` and short-circuit the rerun.
+    `is_complete_artifact` now requires non-zero size — the stage must
+    actually invoke ffmpeg this time."""
+    called = {"n": 0}
+    monkeypatch.setattr("pipeline.assemble._run_ffmpeg", lambda args: called.update(n=called["n"] + 1))
+    out = tmp_run_dir / "final.mp4"
+    out.touch()  # zero bytes
+    assert out.exists() and out.stat().st_size == 0
+    assemble_video(
+        shots=_shots([5000]), images_dir=tmp_run_dir, narration_path=tmp_run_dir / "n.mp3",
+        music_path=tmp_run_dir / "m.mp3", out_path=out, burn_caption_ass=None,
+        output_width=1920, output_height=1080, crossfade_ms=800,
+        music_duck_db=-18, music_silence_db=-8, fade_in_s=3, fade_out_s=3,
+    )
+    assert called["n"] == 1, "ffmpeg must run when prior output is 0 bytes"
+
+
 # ============================================================================
 # Shorts assembler tests
 # ============================================================================

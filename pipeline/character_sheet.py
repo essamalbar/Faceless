@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from pipeline.kie import KieClient
+from pipeline.types import is_complete_artifact
 
 _SLEEP = time.sleep
 
@@ -32,7 +33,7 @@ def generate_character_sheet(
     script's actual content (global_setting + character_names +
     cast_guidance). Empty / None raises ValueError — there is no
     hardcoded fallback after Phase A."""
-    if out_path.exists():
+    if is_complete_artifact(out_path):
         return
     if not (lineup_prompt or "").strip():
         raise ValueError(

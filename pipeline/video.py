@@ -19,7 +19,7 @@ import requests
 from pipeline import credits as _credits
 from pipeline.auth import User as _User
 from pipeline.kie import KieClient, generate_clip, submit_and_wait_with_retry
-from pipeline.types import Beat, Script
+from pipeline.types import Beat, Script, is_complete_artifact
 
 
 def _charge_and_submit_clip(
@@ -409,7 +409,7 @@ def generate_clips(
     for i, _beat in enumerate(script.beats):
         idx = i + 1
         out_path = _clip_filename(clips_dir, idx)
-        already_done = out_path.exists() and idx not in reroll_set
+        already_done = is_complete_artifact(out_path) and idx not in reroll_set
         if not already_done:
             pending.append(idx)
 
@@ -564,7 +564,7 @@ def generate_clips_chained(
     for i, beat in enumerate(script.beats):
         idx = i + 1
         out_path = _clip_filename(clips_dir, idx)
-        if not (out_path.exists() and idx not in reroll_set):
+        if not (is_complete_artifact(out_path) and idx not in reroll_set):
             pending_durations.append(beat.clip_duration_s)
 
     projected = sum(pending_durations) * cost_per_second_usd
@@ -586,9 +586,9 @@ def generate_clips_chained(
         idx = i + 1
         out_path = _clip_filename(clips_dir, idx)
         last_frame_path = last_frames_dir / f"{idx:02d}.png"
-        if out_path.exists() and idx not in reroll_set:
+        if is_complete_artifact(out_path) and idx not in reroll_set:
             # Already done; still need to ensure last-frame is on disk for next iteration.
-            if not last_frame_path.exists():
+            if not is_complete_artifact(last_frame_path):
                 _extract_last_frame(out_path, last_frame_path)
             prev_last_frame_url = _upload_image_get_url(last_frame_path)
             continue

@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from pipeline.types import Script, Shot, WordTiming
+from pipeline.types import Script, Shot, WordTiming, is_complete_artifact
 
 STYLE_SUFFIX = (
     "dark atmospheric horror photography, dim moonlight, slight film grain, "
@@ -183,12 +183,12 @@ def generate_shots(
     out_path: Path,
     target_segment_ms: int = 2500,
 ) -> list[Shot]:
-    """Produce shots.json. Resumable (skips if file exists).
+    """Produce shots.json. Resumable (skips if file exists and is non-empty).
 
     Uses ONE batched Gemini call to translate all Arabic chunks into English
     image prompts. Avoids hitting the per-minute rate limit at ~40 shots/run.
     """
-    if out_path.exists():
+    if is_complete_artifact(out_path):
         return [Shot.from_dict(d) for d in json.loads(out_path.read_text(encoding="utf-8"))]
 
     sentence_ends = _sentence_end_indices(timings)

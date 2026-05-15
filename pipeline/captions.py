@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pipeline.types import WordTiming
+from pipeline.types import WordTiming, is_complete_artifact
 
 SENTENCE_END_CHARS = {".", "؟", "!", "…"}
 
@@ -193,14 +193,14 @@ def generate_captions(
     play_res_x: int = 1920,
     play_res_y: int = 1080,
 ) -> None:
-    """Resumable: skips if srt_path already exists. .ass written if path given.
+    """Resumable: skips if a non-empty srt_path already exists. .ass written if path given.
 
     style:
       - "default" — bottom subtitle bar, ~6-10 words/line, no per-word animation.
       - "tiktok"  — vertical karaoke, ~3 words/line, word-by-word reveal,
                     centered slightly above middle. Uses (play_res_x, play_res_y).
     """
-    if srt_path.exists():
+    if is_complete_artifact(srt_path):
         return
     if style == "tiktok":
         lines = chunk_into_tiktok_lines(timings)
