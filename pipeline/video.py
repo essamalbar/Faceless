@@ -49,13 +49,29 @@ def _charge_and_submit_clip(
     )
     try:
         return submit_fn(beat, clip_index=clip_index)
-    except Exception:
-        _credits.refund(
-            user,
-            amount=1,
-            run_id=run_id,
-            reason=f"clip {clip_index + 1} failed",
-        )
+    except Exception as submit_exc:
+        # Refund is best-effort — if THIS call also raises (DB down,
+        # Supabase 5xx, etc.) we still want the original failure to
+        # surface so the run is marked failed properly. But we leave
+        # a paper trail so admin can credit the user manually.
+        try:
+            _credits.refund(
+                user,
+                amount=1,
+                run_id=run_id,
+                reason=f"clip {clip_index + 1} failed",
+            )
+        except Exception as refund_exc:
+            import logging
+            logging.error(
+                "REFUND FAILED user=%s run=%s clip=%s submit_err=%s refund_err=%s. "
+                "Manual credit return required.",
+                getattr(user, "id", "?"),
+                run_id,
+                clip_index + 1,
+                type(submit_exc).__name__,
+                f"{type(refund_exc).__name__}: {refund_exc}",
+            )
         raise
 
 # Style suffix appended to every Veo prompt for visual consistency across clips.

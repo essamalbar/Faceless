@@ -760,19 +760,58 @@ def main_with_args(argv: list[str]) -> int:
                     dialect=args.ff_dialect,
                     art_style=args.ff_art_style,
                 )
-            if use_native_audio:
-                with log.stage("native_audio_timings"):
-                    timings = _stage_native_audio_timings(paths, script)
-            with log.stage("music"):
-                _stage_music(script, music_bundle, paths)
-            with log.stage("captions"):
-                burn_ass = _stage_shorts_captions(cfg, timings, paths)
-                # @sunstoriz style burns yellow captions by default; allow opt-out.
-                if args.no_burn_captions:
-                    burn_ass = None
-            with log.stage("assemble"):
-                _stage_shorts_assemble(cfg, script, paths, burn_ass,
-                                        native_audio=use_native_audio)
+            # Everything below charges the user no money but consumes
+            # already-charged clips. If any of these stages crashes,
+            # the user has paid for clips and won't get a video — refund
+            # them. This wraps native_audio_timings → music → captions
+            # → assemble in a single try/except so one helper call
+            # restores credits no matter where the failure lands.
+            try:
+                if use_native_audio:
+                    with log.stage("native_audio_timings"):
+                        timings = _stage_native_audio_timings(paths, script)
+                with log.stage("music"):
+                    _stage_music(script, music_bundle, paths)
+                with log.stage("captions"):
+                    burn_ass = _stage_shorts_captions(cfg, timings, paths)
+                    # @sunstoriz style burns yellow captions by default; allow opt-out.
+                    if args.no_burn_captions:
+                        burn_ass = None
+                with log.stage("assemble"):
+                    _stage_shorts_assemble(cfg, script, paths, burn_ass,
+                                            native_audio=use_native_audio)
+            except Exception as assembly_exc:
+                # Refund every credit charged for this run — clips were
+                # generated but no final video was produced. Best-effort:
+                # if the refund itself fails we still re-raise the
+                # original failure (the user is the one who needs to
+                # know what went wrong, not the refund logger).
+                try:
+                    from pipeline.auth import User as _U
+                    from pipeline.credits import refund_run_charges
+                    _refund_role = "service" if args.user_id == "admin" else "user"
+                    _refund_user = _U(id=args.user_id, email=None, role=_refund_role)
+                    refunded = refund_run_charges(
+                        _refund_user,
+                        run_id=paths.root.name,
+                        reason=(
+                            f"post-video stage failed "
+                            f"({type(assembly_exc).__name__}): clips were "
+                            f"generated but no final mp4 was produced"
+                        ),
+                    )
+                    if refunded > 0:
+                        log.error(
+                            f"REFUNDED {refunded} credits to user {args.user_id} "
+                            f"for run {paths.root.name} (assembly failed)"
+                        )
+                except Exception as refund_exc:
+                    log.error(
+                        f"REFUND FAILED for user {args.user_id} run "
+                        f"{paths.root.name}: {type(refund_exc).__name__}: "
+                        f"{refund_exc}. Manual credit return required."
+                    )
+                raise
         else:
             with log.stage("seed"):
                 seed = _stage_seed(args, gemini, log, paths, project_theme_log)

@@ -56,15 +56,22 @@ class LocalSubprocessBackend(SpawnBackend):
     def is_alive(self, *, pid, run_dir) -> bool:
         if not pid:
             return False
+        # On Linux + macOS, OS pids are signed int (pid_t), max ~2**31-1.
+        # Cloud-run-jobs backend writes a 64-bit hash of the execution
+        # name as its "pid" — that overflows os.waitpid / os.kill with
+        # an OverflowError that crashes /delete and /cancel endpoints
+        # (real production bug). Refuse anything out of int range.
+        if not isinstance(pid, int) or pid <= 0 or pid > 2**31 - 1:
+            return False
         try:
             # WNOHANG = don't block. Reaps any single zombie child we own.
             os.waitpid(pid, os.WNOHANG)
-        except (ChildProcessError, OSError):
+        except (ChildProcessError, OSError, OverflowError):
             pass
         try:
             os.kill(pid, 0)
             return True
-        except OSError:
+        except (OSError, OverflowError):
             return False
 
     def spawn(self, *, args, run_dir, runpy_path, repo_root) -> int:

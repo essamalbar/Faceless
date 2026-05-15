@@ -14,6 +14,7 @@ from pipeline.credits import (
     PLAN_GRANTS,
     check_or_deduct,
     refund,
+    refund_run_charges,
 )
 
 
@@ -35,8 +36,23 @@ def mock_db(monkeypatch):
         })
         state["balances"][user_id] = state["balances"].get(user_id, 0) + amount
 
+    def fake_list(uid, limit=50):
+        # Cheap reverse-chronological order matches the real query
+        from types import SimpleNamespace
+        rows = [
+            SimpleNamespace(
+                user_id=t["user_id"], amount=t["amount"], kind=t["kind"],
+                reference_id=t["reference_id"], description=t["description"],
+                id=str(i), created_at="2026-05-15",
+            )
+            for i, t in enumerate(state["transactions"])
+            if t["user_id"] == uid
+        ][:limit]
+        return rows
+
     monkeypatch.setattr("pipeline.credits.get_balance", fake_get_balance)
     monkeypatch.setattr("pipeline.credits.record_transaction", fake_record)
+    monkeypatch.setattr("pipeline.credits.list_transactions", fake_list)
     return state
 
 
@@ -88,4 +104,70 @@ def test_refund_inserts_positive_transaction(mock_db):
 
 def test_refund_skips_service_user(mock_db):
     refund(_user(role="service"), amount=1, run_id="r", reason="")
+    assert mock_db["transactions"] == []
+
+
+# ---------------------------------------------------------------------------
+# refund_run_charges — used when a stage AFTER clip generation fails.
+# Real-world bug: user paid for 5 clips, assembly crashed at the xfade
+# step, no final.mp4 produced, no refund issued. This helper closes that.
+# ---------------------------------------------------------------------------
+
+def test_refund_run_charges_returns_net_charged(mock_db):
+    """5 clips charged, no per-clip refunds → refund 5 credits."""
+    mock_db["balances"]["u1"] = 100
+    check_or_deduct(_user(), amount=5, run_id="run-A", reason="5 clips")
+    assert mock_db["balances"]["u1"] == 95
+
+    refunded = refund_run_charges(
+        _user(), run_id="run-A", reason="assembly failed",
+    )
+    assert refunded == 5
+    assert mock_db["balances"]["u1"] == 100  # back to start
+
+
+def test_refund_run_charges_nets_out_existing_refunds(mock_db):
+    """If clip 3 already got a Veo-timeout refund, the assembly-failure
+    refund only restores the remaining net-charged amount, never the
+    full original charge twice."""
+    mock_db["balances"]["u1"] = 100
+    check_or_deduct(_user(), amount=5, run_id="run-A", reason="5 clips")
+    refund(_user(), amount=1, run_id="run-A", reason="clip 3 timed out")
+    # User has been net-charged 4 credits at this point
+    assert mock_db["balances"]["u1"] == 96
+
+    refunded = refund_run_charges(
+        _user(), run_id="run-A", reason="assembly failed",
+    )
+    assert refunded == 4   # not 5 — clip 3 was already refunded
+    assert mock_db["balances"]["u1"] == 100
+
+
+def test_refund_run_charges_idempotent(mock_db):
+    """Calling refund_run_charges twice is safe — the second call sees
+    a zero net balance for the run and returns 0."""
+    mock_db["balances"]["u1"] = 100
+    check_or_deduct(_user(), amount=3, run_id="run-A", reason="")
+    assert refund_run_charges(_user(), run_id="run-A", reason="1st") == 3
+    assert refund_run_charges(_user(), run_id="run-A", reason="2nd") == 0
+    assert mock_db["balances"]["u1"] == 100
+
+
+def test_refund_run_charges_only_touches_named_run(mock_db):
+    """Charges against other run_ids must not be refunded."""
+    mock_db["balances"]["u1"] = 100
+    check_or_deduct(_user(), amount=4, run_id="run-A", reason="")
+    check_or_deduct(_user(), amount=2, run_id="run-B", reason="")
+
+    refunded = refund_run_charges(_user(), run_id="run-A", reason="")
+    assert refunded == 4
+    # run-B charges untouched
+    assert mock_db["balances"]["u1"] == 100 - 2
+
+
+def test_refund_run_charges_skips_service_user(mock_db):
+    refunded = refund_run_charges(
+        _user(role="service"), run_id="r", reason="",
+    )
+    assert refunded == 0
     assert mock_db["transactions"] == []

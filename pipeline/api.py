@@ -1257,6 +1257,18 @@ def approve_run(run_id: str, user: User = Depends(require_user)):
             409,
             f"cannot approve from status={s} (expected awaiting_approval)",
         )
+    # Idempotency guard: if a worker for this run is already running
+    # (double-tap on the Approve button, browser back-and-forward,
+    # mobile re-submit on flaky network), reject. Without this the
+    # second call spawns a second worker and the user gets billed for
+    # two character-sheet generations on the same script.
+    existing_pid = _read_state(run_dir).get("pid")
+    if _process_alive(existing_pid, run_dir):
+        raise HTTPException(
+            409,
+            "an approve worker is already running for this run; "
+            "wait for it to finish or call /cancel first",
+        )
     # The paywall lives here, not on /runs/freeform. Anyone can write a
     # script; only subscribers can render it to video. Raises HTTP 402.
     _preflight_approve_credits(run_dir, user)
@@ -1288,6 +1300,15 @@ def approve_veo_run(run_id: str, user: User = Depends(require_user)):
             409,
             f"cannot approve-veo from status={s} "
             f"(expected awaiting_veo_approval)",
+        )
+    # Idempotency: see approve_run for rationale. A second tap here is
+    # MUCH more expensive — it spawns Veo clip generation in parallel,
+    # so credits get deducted twice for the same beats.
+    existing_pid = _read_state(run_dir).get("pid")
+    if _process_alive(existing_pid, run_dir):
+        raise HTTPException(
+            409,
+            "a Veo render worker is already running for this run",
         )
     args = ["--shorts", "--resume", str(run_dir)]
     max_spend = _compute_max_spend_for_run(run_dir)
@@ -1449,30 +1470,46 @@ class DeleteAck(BaseModel):
     deleted: bool
 
 
-def _stop_process_and_wait(pid: int | None, *, soft_timeout_s: float = 5.0) -> bool:
+def _stop_process_and_wait(
+    pid: int | None,
+    *,
+    run_dir: Path | None = None,
+    soft_timeout_s: float = 5.0,
+) -> bool:
     """Best-effort: SIGTERM, wait up to `soft_timeout_s` for the process to
     actually exit, then SIGKILL if it's still running. Returns True if the
-    process is dead by the time we return."""
-    if not _process_alive(pid):
+    process is dead by the time we return.
+
+    `run_dir` is forwarded to _process_alive so the right spawn backend
+    is picked — on Cloud Run the "pid" is a hash of the execution name,
+    not a local OS pid, and falling back to LocalSubprocessBackend
+    overflowed os.waitpid (real production crash on /delete).
+    """
+    if not _process_alive(pid, run_dir):
         return True
+    # On a Cloud Run Jobs backend the "pid" is a hash, not a kernel
+    # pid — we can't signal it. The backend handles cancellation via
+    # its own API in delete_run / cancel_run paths.
+    if not isinstance(pid, int) or pid <= 0 or pid > 2**31 - 1:
+        return False
     import time
     try:
         os.kill(pid, signal.SIGTERM)  # type: ignore[arg-type]
-    except OSError:
-        return not _process_alive(pid)
+    except (OSError, OverflowError):
+        return not _process_alive(pid, run_dir)
     deadline = time.monotonic() + soft_timeout_s
     while time.monotonic() < deadline:
         time.sleep(0.05)
-        if not _process_alive(pid):
+        if not _process_alive(pid, run_dir):
             return True
     # Still alive — escalate to SIGKILL
     try:
         os.kill(pid, signal.SIGKILL)  # type: ignore[arg-type]
-    except OSError:
+    except (OSError, OverflowError):
         pass
     # Give the kernel a moment to reap
     time.sleep(0.3)
-    return not _process_alive(pid)
+    return not _process_alive(pid, run_dir)
 
 
 class CleanupAck(BaseModel):
@@ -1587,7 +1624,7 @@ def delete_run(run_id: str, user: User = Depends(require_user)):
     state = _read_state(run_dir)
     pid = state.get("pid")
     if _process_alive(pid, run_dir):
-        if not _stop_process_and_wait(pid):
+        if not _stop_process_and_wait(pid, run_dir=run_dir):
             raise HTTPException(
                 500,
                 f"could not stop pipeline subprocess (pid={pid}) — "
@@ -1674,14 +1711,46 @@ def reroll_clips(run_id: str, req: RerollRequest, user: User = Depends(require_u
 def cancel_run(run_id: str, user: User = Depends(require_user)):
     """Stop a running pipeline subprocess. Waits for the process to actually
     exit (SIGTERM → wait → SIGKILL fallback) before returning, so a
-    follow-up resume/reroll never races with a half-dead process."""
+    follow-up resume/reroll never races with a half-dead process.
+
+    Refunds any net credits the user has been charged for this run.
+    Cancelling mid-render previously left the user with the bill for
+    any clips that completed before SIGTERM but no finished video.
+    """
+    from pipeline.credits import refund_run_charges
+
     run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     pid = state.get("pid")
+
+    # Always attempt the refund — even if the process is already dead
+    # (cancel-after-failed-state). It's a no-op when the user has
+    # zero net charges for this run.
+    refunded = 0
+    try:
+        refunded = refund_run_charges(
+            user,
+            run_id=run_id,
+            reason="run cancelled by user before completion",
+        )
+    except Exception:
+        # Don't fail the cancel because the refund failed. The kill
+        # path is the user-facing action; log + move on.
+        import logging
+        logging.exception("refund_run_charges failed during cancel")
+
     if not _process_alive(pid, run_dir):
         return CancelAck(run_id=run_id, killed_pid=None)
-    _stop_process_and_wait(pid)
-    _write_state(run_dir, last_error="cancelled by user", last_action="cancel")
+    _stop_process_and_wait(pid, run_dir=run_dir)
+    _write_state(
+        run_dir,
+        last_error=(
+            f"cancelled by user (refunded {refunded} credits)"
+            if refunded
+            else "cancelled by user"
+        ),
+        last_action="cancel",
+    )
     return CancelAck(run_id=run_id, killed_pid=pid)
 
 

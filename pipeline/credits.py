@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pipeline.auth import User
 from pipeline.db import (
     get_balance,
+    list_transactions,
     record_transaction,
 )
 
@@ -88,3 +89,43 @@ def refund(
         reference_id=run_id,
         description=reason,
     )
+
+
+def refund_run_charges(
+    user: User,
+    *,
+    run_id: str,
+    reason: str,
+) -> int:
+    """Refund every credit the user has net-paid for `run_id` so far.
+
+    Used when a stage AFTER clip generation fails (assembly, captions,
+    music, faststart, etc.) — the user has been charged per-clip but
+    will never see a finished video. This restores the credits.
+
+    Computes net = sum of all transactions for (user_id, run_id) and,
+    if the net is negative, inserts a single positive transaction to
+    bring it back to zero. So per-clip refunds that already happened
+    (Veo timeout, etc.) are accounted for: we never over-refund.
+
+    Returns the amount refunded (0 if there was nothing net-charged).
+    No-op for service tokens.
+    """
+    if _is_service(user):
+        return 0
+    # Read all ledger entries tied to this run for this user. The list
+    # query in pipeline.db is per-user already; we just filter by
+    # reference_id in memory since the table is tiny.
+    txs = list_transactions(user.id, limit=500)
+    net = sum(t.amount for t in txs if t.reference_id == run_id)
+    if net >= 0:
+        return 0  # nothing to refund, or already refunded
+    refund_amount = -net
+    record_transaction(
+        user_id=user.id,
+        amount=refund_amount,
+        kind="run_refund",
+        reference_id=run_id,
+        description=reason,
+    )
+    return refund_amount
