@@ -152,8 +152,15 @@ def assemble_video(
         "-preset", "medium",
         "-crf", "20",
         "-pix_fmt", "yuv420p",
+        "-profile:v", "high",
+        "-level", "4.0",
         "-c:a", "aac",
         "-b:a", "192k",
+        # +faststart moves the moov atom to the START of the mp4. Without
+        # this, browsers (Chrome especially) report "demuxer could not
+        # open" because they can't find the metadata before the media
+        # bytes finish streaming. Real production bug from a mobile user.
+        "-movflags", "+faststart",
         "-shortest",
         str(out_path),
     ]
@@ -366,8 +373,15 @@ def assemble_shorts_video(
         "-preset", "medium",
         "-crf", "20",
         "-pix_fmt", "yuv420p",
+        "-profile:v", "high",
+        "-level", "4.0",
         "-c:a", "aac",
         "-b:a", "192k",
+        # +faststart moves the moov atom to the START of the mp4. Without
+        # this, browsers (Chrome especially) report "demuxer could not
+        # open" because they can't find the metadata before the media
+        # bytes finish streaming. Real production bug from a mobile user.
+        "-movflags", "+faststart",
         "-shortest",
         str(out_path),
     ]
