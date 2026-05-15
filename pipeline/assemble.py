@@ -60,22 +60,15 @@ def build_filter_graph(
             f"zoompan=z='{z}':x='{x}':y='{y}':d={d_frames}:s={output_w}x{output_h}:fps=30,"
             f"setpts=PTS-STARTPTS,format=yuv420p[v{i}]"
         )
-    # Crossfade chain: v0 + v1 → vab; vab + v2 → vabc; ...
-    crossfade_s = crossfade_ms / 1000.0
+    # Concat shots into a single stream — was an xfade chain, replaced
+    # for reliability. See the matching note in build_shorts_filter_graph
+    # below for why xfade is brittle and concat just works.
     if len(shots) == 1:
         last_label = "v0"
     else:
-        cumulative = (shots[0].end_ms - shots[0].start_ms) / 1000.0
-        last_label = "v0"
-        for i in range(1, len(shots)):
-            new_label = f"vx{i}"
-            offset = max(cumulative - crossfade_s, 0.0)
-            parts.append(
-                f"[{last_label}][v{i}]xfade=transition=fade:"
-                f"duration={crossfade_s}:offset={offset:.3f}[{new_label}]"
-            )
-            cumulative += (shots[i].end_ms - shots[i].start_ms) / 1000.0 - crossfade_s
-            last_label = new_label
+        inputs = "".join(f"[v{i}]" for i in range(len(shots)))
+        parts.append(f"{inputs}concat=n={len(shots)}:v=1:a=0[vcat]")
+        last_label = "vcat"
 
     # Optional subtitle burn-in.
     # FFmpeg 8.x rejects subtitles='...' quote-wrapping; use the explicit
@@ -208,26 +201,27 @@ def build_shorts_filter_graph(
             f"setsar=1,setpts=PTS-STARTPTS[v{i}]"
         )
 
-    # 2. Crossfade chain.
+    # 2. Concat the per-clip streams. Was an xfade chain — visually
+    #    prettier but fragile: any tiny mismatch in clip pacing (sub-
+    #    frame duration drift from Veo, frame-rate jitter, audio
+    #    desync) would crash the filter with "Failed to configure
+    #    output pad on Parsed_xfade_N" and the whole assembly step
+    #    aborted. concat is unconditional: as long as the input
+    #    streams have matching dimensions / pixel format / SAR /
+    #    timebase (which we just normalised in step 1), it never
+    #    fails. Hard cuts between clips are acceptable; failed
+    #    renders are not.
     if n == 1:
         last_v = "v0"
     else:
-        cumulative = clip_durations_s[0]
-        last_v = "v0"
-        for i in range(1, n):
-            new_label = f"vx{i}"
-            offset = max(cumulative - crossfade_s, 0.0)
-            parts.append(
-                f"[{last_v}][v{i}]xfade=transition=fade:"
-                f"duration={crossfade_s}:offset={offset:.3f}[{new_label}]"
-            )
-            cumulative += clip_durations_s[i] - crossfade_s
-            last_v = new_label
+        inputs = "".join(f"[v{i}]" for i in range(n))
+        parts.append(f"{inputs}concat=n={n}:v=1:a=0[vcat]")
+        last_v = "vcat"
 
     # 3. Pad the video tail with the last frame if the narration runs longer
     #    than the cumulative clip timeline. Without this, `-shortest` truncates
     #    the audio at the video's natural end and the story's ending is lost.
-    video_duration_s = sum(clip_durations_s) - max(n - 1, 0) * crossfade_s
+    video_duration_s = sum(clip_durations_s)
     if narration_duration_s is not None and narration_duration_s > video_duration_s + 0.05:
         gap_s = narration_duration_s - video_duration_s
         parts.append(

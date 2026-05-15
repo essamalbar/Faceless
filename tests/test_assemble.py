@@ -42,14 +42,20 @@ def test_filter_graph_has_one_zoompan_per_shot():
     assert graph.count("zoompan=") == 2
 
 
-def test_filter_graph_includes_xfade_between_shots():
+def test_filter_graph_concats_shots():
+    """Previously this was an xfade chain (one fade transition per
+    shot boundary), but xfade routinely failed at assembly time with
+    "Failed to configure output pad" on perfectly-valid inputs. Now
+    we just concat — same number of inputs flow into one concat
+    node and out as [vcat]."""
     graph = build_filter_graph(
         shots=_shots([5000, 4000, 3000]),
         output_w=1920, output_h=1080, crossfade_ms=800,
         burn_caption_ass=None,
     )
-    # 3 shots → 2 xfade nodes
-    assert graph.count("xfade=") == 2
+    # 3 shots → exactly one concat=n=3 node, no xfades
+    assert graph.count("concat=n=3:v=1:a=0") == 1
+    assert "xfade" not in graph
 
 
 def test_filter_graph_includes_subtitles_when_burn_in_set():
@@ -125,8 +131,11 @@ def test_shorts_filter_graph_one_scale_per_clip():
         burn_caption_ass=None,
     )
     assert g.count("scale=1080:1920") == 4
-    # 4 clips → 3 xfade chains
-    assert g.count("xfade=") == 3
+    # 4 clips → one concat=n=4 node (was 3 xfades; xfade was replaced
+    # with concat because it crashed on real Veo outputs with the
+    # opaque "Failed to configure output pad" error)
+    assert g.count("concat=n=4:v=1:a=0") == 1
+    assert "xfade" not in g
 
 
 def test_shorts_filter_graph_includes_caption_burn():
@@ -159,7 +168,8 @@ def test_shorts_filter_graph_pads_last_frame_when_narration_longer():
     """When narration runs past the video, hold the last frame so -shortest
     trims to narration length instead of cutting the audio off early."""
     from pipeline.assemble import build_shorts_filter_graph
-    # 4 clips × 8s − 3 × 0.35s xfade = 30.95s of video, narration = 60s.
+    # 4 clips × 8s = 32s of video (concat, no xfade overlap),
+    # narration = 60s, so the tail-pad gap should be 28.0s
     g = build_shorts_filter_graph(
         clip_durations_s=[8.0, 8.0, 8.0, 8.0],
         output_w=1080, output_h=1920, crossfade_ms=350,
@@ -167,8 +177,7 @@ def test_shorts_filter_graph_pads_last_frame_when_narration_longer():
         narration_duration_s=60.0,
     )
     assert "tpad=stop_mode=clone" in g
-    # Gap ≈ 60 − 30.95 = 29.05s
-    assert "stop_duration=29.0" in g or "stop_duration=29.1" in g
+    assert "stop_duration=28.0" in g
 
 
 def test_shorts_filter_graph_native_audio_uses_clip_audio_only():
