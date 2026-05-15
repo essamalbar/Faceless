@@ -1692,10 +1692,15 @@ def get_video(run_id: str, user: User = Depends(require_user_header_or_query)):
     p = run_dir / "final.mp4"
     if not p.exists():
         raise HTTPException(404, "final.mp4 not produced yet")
+    # no-store so that the Repair-playback flow actually surfaces the
+    # newly re-muxed bytes. Without it, Chrome was caching the broken
+    # pre-faststart file and serving it back to the <video> element
+    # even after the API replaced the bytes on disk.
     return FileResponse(
         path=str(p),
         media_type="video/mp4",
         filename=f"{run_id}.mp4",
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -1711,31 +1716,70 @@ class RepairAck(BaseModel):
     dependencies=[Depends(require_user)],
 )
 def repair_video(run_id: str, user: User = Depends(require_user)):
-    """One-shot fixer for old runs whose final.mp4 was assembled before
-    pipeline/assemble.py added `-movflags +faststart`. Browsers reject
-    those files ("FFmpeg demuxer open context failed") because the moov
-    atom sits at the end of the file. This endpoint re-muxes the
-    existing mp4 in place — same bytes, just relocated metadata. No
-    re-encode, no Veo spend, takes a second or two on a typical short.
+    """Fix old runs whose final.mp4 won't play in browsers ("FFmpeg
+    demuxer open context failed").
+
+    Two passes — cheap one first, full re-encode if it still smells
+    broken:
+
+      1. `ffmpeg -c copy -movflags +faststart` — moves the moov atom
+         to the start of the file. Fixes the common case (moov-at-end
+         pre-faststart-fix), takes ~1 sec, no Veo spend, no quality loss.
+
+      2. If step 1 produces a suspiciously small file (< 50 KB or
+         smaller than the input), fall back to a full H.264 + AAC
+         re-encode with explicit yuv420p / profile high / level 4.0.
+         Slower but produces a known-good file regardless of the
+         input codec's quirks.
     """
+    import subprocess
     from pipeline.mp4_faststart import rewrite_with_faststart
 
     run_dir = _run_dir(run_id, user)
     final = run_dir / "final.mp4"
     if not final.exists():
         raise HTTPException(404, "no final.mp4 to repair")
+    original_size = final.stat().st_size
+
+    # Pass 1: cheap re-mux
     try:
         rewrite_with_faststart(final)
     except Exception as e:
         raise HTTPException(500, f"faststart re-mux failed: {e}") from None
-    # Bust the thumbnail cache too — if the previous thumbnail was
-    # extracted from the broken mp4 it may be stale or 0-byte.
+
+    note = "final.mp4 re-muxed with +faststart"
+
+    # Pass 2: if the re-mux output looks truncated (which happens when
+    # the input has a corrupt moov ffmpeg silently bails on), fall back
+    # to a real transcode.
+    new_size = final.stat().st_size
+    if new_size < 50_000 or new_size < original_size * 0.5:
+        tmp = final.with_name("final.repaired.mp4")
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                    "-i", str(final),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-pix_fmt", "yuv420p",
+                    "-profile:v", "high", "-level", "4.0",
+                    "-c:a", "aac", "-b:a", "160k",
+                    "-movflags", "+faststart",
+                    str(tmp),
+                ],
+                check=True,
+            )
+            tmp.replace(final)
+            note = "final.mp4 fully re-encoded to H.264 + AAC + faststart"
+        except subprocess.CalledProcessError as e:
+            tmp.unlink(missing_ok=True)
+            raise HTTPException(
+                500, f"full re-encode also failed: {e}"
+            ) from None
+
+    # Bust the thumbnail cache — extracted from the broken mp4, may be stale
     (run_dir / "thumbnail.jpg").unlink(missing_ok=True)
-    return RepairAck(
-        run_id=run_id,
-        repaired=True,
-        note="final.mp4 re-muxed with +faststart; reload the page to play",
-    )
+    return RepairAck(run_id=run_id, repaired=True, note=note)
 
 
 @app.get("/runs/{run_id}/thumbnail",

@@ -888,12 +888,14 @@ def test_repair_video_404_when_no_final_mp4(client, auth, tmp_path: Path):
 
 def test_repair_video_invokes_faststart_remux(client, auth, tmp_path: Path, monkeypatch):
     """The endpoint should call pipeline.mp4_faststart.rewrite_with_faststart
-    on the existing final.mp4 and report success. We mock the re-muxer
-    so the test doesn't actually shell out to ffmpeg."""
+    on the existing final.mp4 and report success. Mocks ffmpeg so the
+    test doesn't actually shell out; mocked re-mux is a no-op so the
+    file stays the same size — must therefore be large enough to skip
+    the fallback re-encode branch (input > 50KB and re-mux >= 50% input)."""
     rd = _make_run_dir(tmp_path)
     final = rd / "final.mp4"
-    final.write_bytes(b"\x00\x00\x00\x18ftypmp42 old moov at end")
-    # Leftover thumbnail from the broken file — endpoint should nuke it
+    # 100 KB of fake bytes so the pass-1 size check is satisfied
+    final.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"x" * 100_000)
     (rd / "thumbnail.jpg").write_bytes(b"stale-jpg")
 
     called: list[Path] = []
@@ -906,8 +908,45 @@ def test_repair_video_invokes_faststart_remux(client, auth, tmp_path: Path, monk
     body = r.json()
     assert body["repaired"] is True
     assert called == [final]
+    assert "faststart" in body["note"]
     # Thumbnail cache busted
     assert not (rd / "thumbnail.jpg").exists()
+
+
+def test_repair_video_falls_back_to_full_reencode_when_remux_truncates(
+    client, auth, tmp_path: Path, monkeypatch,
+):
+    """When the cheap `-c copy` re-mux produces a suspiciously small
+    output (< 50 KB or < 50% of input), the endpoint must fall through
+    to a full transcode. Mocks both ffmpeg invocations to keep the
+    test fast + offline."""
+    import subprocess as sp
+    rd = _make_run_dir(tmp_path)
+    final = rd / "final.mp4"
+    final.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"x" * 200_000)  # 200KB input
+
+    # Mock pass 1 — pretend the cheap re-mux truncated the file
+    def fake_rewrite(path):
+        path.write_bytes(b"trunc")  # 5 bytes — well under 50 KB
+    monkeypatch.setattr("pipeline.mp4_faststart.rewrite_with_faststart", fake_rewrite)
+
+    # Mock pass 2 — pretend ffmpeg full re-encode succeeded and wrote a real file
+    called_subprocess: list[list[str]] = []
+    def fake_run(cmd, check=True, **kw):
+        called_subprocess.append(cmd)
+        # Simulate ffmpeg producing the repaired output
+        tmp_out = Path(cmd[-1])
+        tmp_out.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"y" * 150_000)
+        return sp.CompletedProcess(cmd, 0)
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    r = client.post(f"/runs/{rd.name}/repair-video", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["repaired"] is True
+    assert "re-encoded" in body["note"]
+    # The fallback ffmpeg command MUST have been called once with libx264
+    assert any("libx264" in c for c in called_subprocess[0])
 
 
 def test_get_video_accepts_query_token_for_browser_video_element(
