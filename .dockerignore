@@ -78,8 +78,10 @@ analysis_options.yaml
 # Node (if any)
 node_modules/
 
-# Generated music (large binaries — mounted or re-created outside container)
-assets/music/*.mp3
+# Music bundle MUST ship inside the image — pipeline.music.select_music_track
+# reads from /app/assets/music at render time and fails the assembly step
+# with "file not found" if these are missing. Total payload is ~24 MB across
+# four mood tracks, acceptable cost. Do NOT re-add an exclusion here.
 
 # Claude Code session state
 .claude/

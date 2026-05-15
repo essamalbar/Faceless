@@ -51,10 +51,27 @@ class FacelessApiClient {
   /// Returns the bearer token to send. Prefers the Supabase access token; falls
   /// back to a settings-baked token only when Supabase isn't initialized (e.g.
   /// dev mode without --dart-define values, or legacy local-only deployments).
+  ///
+  /// Refreshes the session synchronously if the cached access token has
+  /// expired — otherwise users who leave the tab open overnight come back
+  /// to 401s on every authed request, even though the refresh token is
+  /// still valid.
   Future<String?> _resolveToken() async {
     try {
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session != null) return session.accessToken;
+      final auth = Supabase.instance.client.auth;
+      var session = auth.currentSession;
+      if (session == null) return _settings.tokenForLegacyMode();
+      if (session.isExpired) {
+        try {
+          final res = await auth.refreshSession();
+          session = res.session ?? session;
+        } catch (_) {
+          // Refresh failed (refresh token also expired, or network down).
+          // Let the request go out with the stale token; the 401 will
+          // bubble up to the UI as "Sign in again" rather than a hang.
+        }
+      }
+      return session.accessToken;
     } catch (_) {
       // Supabase not initialized — fall through to settings.
     }

@@ -466,6 +466,7 @@ def _stage_video_chained(
     args, cfg: Config, script: Script, paths: RunPaths,
     *, character_template: str | None = None,
     dialect: str | None = None,
+    art_style: str | None = None,
 ) -> None:
     """Tier-3 video stage: REFERENCE_2_VIDEO with character sheet + chained last frames.
 
@@ -518,6 +519,7 @@ def _stage_video_chained(
         character_template=character_template,
         dialect=dialect,
         character_descriptions=script.character_descriptions or None,
+        art_style=art_style,
         user=user,
         run_id=run_id,
     )
@@ -756,6 +758,7 @@ def main_with_args(argv: list[str]) -> int:
                     args, cfg, script, paths,
                     character_template=args.ff_character_template,
                     dialect=args.ff_dialect,
+                    art_style=args.ff_art_style,
                 )
             if use_native_audio:
                 with log.stage("native_audio_timings"):

@@ -133,6 +133,41 @@ _DIALECT_AUDIO_LOCK: dict[str, str] = {
 }
 
 
+# Style-lock preambles prepended at the START of every Veo prompt so the
+# visual style is enforced PER CLIP, not just hoped for via the LLM's
+# global_setting text. Without this, runs with art_style=cinematic_photo_real
+# would occasionally produce cartoon/illustration clips in the middle of an
+# otherwise photoreal set (real user-reported regression).
+_STYLE_LOCKS: dict[str, str] = {
+    "cinematic_photo_real": (
+        "STYLE LOCK: live-action cinematic photo-real footage, real human actors, "
+        "realistic skin, hair, fabric, lighting, depth of field. "
+        "Absolutely NOT animation, NOT cartoon, NOT illustration, NOT 3D-rendered, "
+        "NOT anime. Treat as documentary-grade footage."
+    ),
+    "pixar_3d": (
+        "STYLE LOCK: Pixar-style 3D animation, glossy CGI characters, stylized "
+        "lighting, polished render. NOT live-action, NOT photoreal, NOT anime."
+    ),
+    "anime_2d": (
+        "STYLE LOCK: 2D anime cel-shaded animation, hand-drawn line art, flat "
+        "colour fills with cel highlights. NOT live-action, NOT 3D, NOT photoreal."
+    ),
+    "claymation": (
+        "STYLE LOCK: claymation stop-motion, visible clay texture and seams, "
+        "tactile handmade lighting. NOT live-action, NOT photoreal, NOT CGI."
+    ),
+    "hand_drawn": (
+        "STYLE LOCK: hand-drawn 2D animation, visible brush/pencil strokes, "
+        "painterly textures. NOT live-action, NOT 3D, NOT photoreal."
+    ),
+    "ghibli": (
+        "STYLE LOCK: Studio Ghibli watercolour anime, soft pastel palette, "
+        "hand-painted backgrounds, expressive 2D characters. NOT live-action, NOT 3D."
+    ),
+}
+
+
 def build_veo_prompt(
     beat: Beat,
     global_setting: str,
@@ -141,6 +176,7 @@ def build_veo_prompt(
     cast_negation: str = "",
     dialect: str | None = None,
     character_descriptions: dict[str, str] | None = None,
+    art_style: str | None = None,
 ) -> str:
     """Compose the final Veo prompt for one beat.
 
@@ -205,8 +241,12 @@ def build_veo_prompt(
             f"MUST match the supplied character lineup): {lines}. "
         )
 
+    # Style lock prepended FIRST — Veo weights early tokens highest, so
+    # this is the single strongest place to pin the visual style.
+    style_lock = _STYLE_LOCKS.get(art_style or "", "")
+    style_prefix = f"{style_lock} " if style_lock else ""
     head = f"{cast_negation} " if cast_negation else ""
-    base = f"{head}{desc_preamble}{global_setting}, {beat.english_motion}"
+    base = f"{style_prefix}{head}{desc_preamble}{global_setting}, {beat.english_motion}"
 
     if with_dialogue:
         if beat.arabic:
@@ -334,6 +374,7 @@ def generate_clips(
     character_template: str | None = None,
     dialect: str | None = None,
     character_descriptions: dict[str, str] | None = None,
+    art_style: str | None = None,
 ) -> None:
     """Render each beat to clips_dir/NN.mp4. Resumable + reroll-aware.
 
@@ -383,6 +424,7 @@ def generate_clips(
             cast_negation=cast_negation,
             dialect=dialect,
             character_descriptions=character_descriptions,
+            art_style=art_style,
         )
         generate_clip(
             client=client,
@@ -484,6 +526,7 @@ def generate_clips_chained(
     character_template: str | None = None,
     dialect: str | None = None,
     character_descriptions: dict[str, str] | None = None,
+    art_style: str | None = None,
     user: "_User | None" = None,
     run_id: str = "",
 ) -> None:
@@ -540,6 +583,7 @@ def generate_clips_chained(
             cast_negation=cast_negation,
             dialect=dialect,
             character_descriptions=character_descriptions,
+            art_style=art_style,
         )
         image_urls = [sheet_url]
         if prev_last_frame_url:
