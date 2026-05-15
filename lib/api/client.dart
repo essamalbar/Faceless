@@ -93,7 +93,45 @@ class FacelessApiClient {
     return Uri.parse('$cleaned$path');
   }
 
+  /// Sign-out side-effect when the server says our token is dead. The auth
+  /// state stream in main.dart watches `onAuthStateChange` and swaps the
+  /// home widget back to LandingScreen automatically — we just have to
+  /// burn the session here. Guarded by a flag so a burst of parallel
+  /// failing requests doesn't pile up sign-out calls.
+  static bool _signingOut = false;
+  Future<void> _handleAuthFailure() async {
+    if (_signingOut) return;
+    _signingOut = true;
+    try {
+      await Supabase.instance.client.auth.signOut();
+    } catch (_) {
+      // Supabase not initialized (legacy dart-define mode) — nothing to sign
+      // out of. The thrown exception will still bubble up to the UI.
+    } finally {
+      _signingOut = false;
+    }
+  }
+
+  /// Status guard for endpoints that return raw bodies (logs, video, etc).
+  /// Use instead of an open-coded `if (r.statusCode >= 400) throw` so the
+  /// 401 sign-out side-effect fires consistently.
+  void _checkOk(http.Response r) {
+    if (r.statusCode == 401) {
+      _handleAuthFailure();
+      throw FacelessApiException('Session expired — please sign in again',
+          status: 401);
+    }
+    if (r.statusCode >= 400) {
+      throw FacelessApiException(r.body, status: r.statusCode);
+    }
+  }
+
   T _parse<T>(http.Response r, T Function(dynamic) decode) {
+    if (r.statusCode == 401) {
+      _handleAuthFailure();
+      throw FacelessApiException('Session expired — please sign in again',
+          status: 401);
+    }
     // Special case: 402 with a structured insufficient_credits detail.
     // Surface as a typed exception so the UI can route to the paywall.
     if (r.statusCode == 402) {
@@ -157,9 +195,7 @@ class FacelessApiClient {
   Future<String> getLog(String runId, {int lines = 200}) async {
     final r = await _http.get(await _uri('/runs/$runId/log?lines=$lines'),
         headers: await _headers());
-    if (r.statusCode >= 400) {
-      throw FacelessApiException(r.body, status: r.statusCode);
-    }
+    _checkOk(r);
     return utf8.decode(r.bodyBytes);
   }
 
@@ -359,9 +395,7 @@ class FacelessApiClient {
   Future<void> cancelRun(String runId) async {
     final r = await _http.post(await _uri('/runs/$runId/cancel'),
         headers: await _headers());
-    if (r.statusCode >= 400) {
-      throw FacelessApiException(r.body, status: r.statusCode);
-    }
+    _checkOk(r);
   }
 
   /// Re-mux an existing final.mp4 with `+faststart` for browser playback.
@@ -370,9 +404,7 @@ class FacelessApiClient {
   Future<void> repairVideo(String runId) async {
     final r = await _http.post(await _uri('/runs/$runId/repair-video'),
         headers: await _headers());
-    if (r.statusCode >= 400) {
-      throw FacelessApiException(r.body, status: r.statusCode);
-    }
+    _checkOk(r);
   }
 
   /// Replace beats in script.json — only allowed when status=awaiting_approval.
@@ -425,9 +457,7 @@ class FacelessApiClient {
   Future<void> deleteRun(String runId) async {
     final r = await _http.delete(await _uri('/runs/$runId'),
         headers: await _headers());
-    if (r.statusCode >= 400) {
-      throw FacelessApiException(r.body, status: r.statusCode);
-    }
+    _checkOk(r);
   }
 
   // ---------- billing ----------
