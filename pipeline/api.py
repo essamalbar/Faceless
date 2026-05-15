@@ -547,6 +547,21 @@ def _generate_script_inline(
             detail=f"Script generation failed: {e}",
         ) from None
 
+    # Cross-clip coherence pass — rewrites english_motion on any beat that
+    # would cause Veo to swap roles or jump locations. Runs BEFORE the user
+    # reviews the script, so what they approve is what gets rendered.
+    # Failures (Anthropic outage, etc) fall back silently to the raw script.
+    from pipeline.coherence_pass import apply_coherence_pass
+    marker = run_dir / "coherence_pass_v1.applied"
+    if not marker.exists():
+        try:
+            script = apply_coherence_pass(script, llm)
+            marker.write_text("v1", encoding="utf-8")
+        except Exception:
+            # Never block run creation on coherence-pass failure — the user
+            # can still approve and render with the raw script.
+            pass
+
     script_path = run_dir / "script.json"
     script_path.write_text(
         json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
