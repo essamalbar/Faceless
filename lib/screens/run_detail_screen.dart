@@ -584,6 +584,40 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                 ),
               ],
             ),
+            // If a final.mp4 was produced even though the run failed
+            // downstream (e.g. the +faststart re-mux step), offer the
+            // user a Play + Repair playback row so they can recover
+            // the video without re-rendering.
+            if (run.hasVideo) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => VideoPlayerScreen(
+                            client: widget.client,
+                            runId: run.id,
+                            title: run.title,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.play_arrow, size: 18),
+                      label: const Text('Play video'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : _repairVideo,
+                      icon: const Icon(Icons.build_outlined, size: 18),
+                      label: const Text('Repair playback'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
           if (run.isRunning && run.progress != null) ...[
             const SizedBox(height: 12),
