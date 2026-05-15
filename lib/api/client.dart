@@ -59,12 +59,18 @@ class FacelessApiClient {
   Future<String?> _resolveToken() async {
     try {
       final auth = Supabase.instance.client.auth;
-      var session = auth.currentSession;
-      if (session == null) return _settings.tokenForLegacyMode();
+      final initial = auth.currentSession;
+      if (initial == null) return _settings.tokenForLegacyMode();
+      // Promote to a non-nullable local — Dart's flow analysis loses
+      // the null-narrowing across the reassignment below, and dart2js
+      // hard-fails on `session.accessToken` if the declared type is
+      // still `Session?`.
+      var session = initial;
       if (session.isExpired) {
         try {
           final res = await auth.refreshSession();
-          session = res.session ?? session;
+          final refreshed = res.session;
+          if (refreshed != null) session = refreshed;
         } catch (_) {
           // Refresh failed (refresh token also expired, or network down).
           // Let the request go out with the stale token; the 401 will
