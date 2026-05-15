@@ -184,6 +184,60 @@ _STYLE_LOCKS: dict[str, str] = {
 }
 
 
+def _build_continuity_header(
+    clip_index: int,
+    total_clips: int,
+    prev_beat: Beat | None,
+    global_setting: str,
+    character_descriptions: dict[str, str] | None,
+) -> str:
+    """Return a cross-clip continuity preamble for clip `clip_index` of `total_clips`.
+
+    Veo generates each clip in isolation, so without an explicit handoff
+    every clip is free to re-cast roles and switch settings. The header
+    pins three things across clips: which characters persist, the
+    setting, and what just happened in the previous clip.
+
+    Returns the empty string when continuity context wasn't provided
+    (clip_index/total_clips None) — keeps the function backwards-compat
+    with any caller that doesn't pass the new kwargs.
+    """
+    if clip_index is None or total_clips is None or clip_index < 1:
+        return ""
+    descs = character_descriptions or {}
+    char_lines = [f"  - {name}: {desc}" for name, desc in descs.items() if name]
+    char_block = "\n".join(char_lines) if char_lines else "  (no named characters)"
+    setting_line = f"SETTING: {global_setting}" if global_setting else ""
+
+    if clip_index == 1 or prev_beat is None:
+        body = (
+            f"CLIP CONTINUITY HEADER: This is the OPENING SHOT "
+            f"(clip 1 of {total_clips}) of a single continuous narrative. "
+            f"Every subsequent clip must show the SAME characters and SAME "
+            f"location unless explicitly stated.\n"
+            f"CHARACTERS that will persist throughout this video:\n{char_block}\n"
+            f"{setting_line}\n"
+        )
+    else:
+        prev_action = (prev_beat.english_motion or "").strip()
+        prev_speaker = (prev_beat.character_name or prev_beat.speaker or "").strip()
+        prev_handoff = (
+            f"In clip {clip_index - 1} of {total_clips}, {prev_speaker or 'a character'} "
+            f"was the active subject. That clip ended with: {prev_action}"
+        ) if prev_action else ""
+        body = (
+            f"CLIP CONTINUITY HEADER: This is clip {clip_index} of {total_clips} "
+            f"in a single continuous narrative. SAME LOCATION, SAME CHARACTERS "
+            f"as the previous clip — DO NOT swap roles, DO NOT recast, DO NOT "
+            f"change setting.\n"
+            f"CHARACTERS in this video (same identities every clip):\n{char_block}\n"
+            f"{setting_line}\n"
+            f"PREVIOUS CLIP RECAP: {prev_handoff}\n"
+            f"This clip continues directly from that moment.\n"
+        )
+    return body.rstrip() + " "
+
+
 def build_veo_prompt(
     beat: Beat,
     global_setting: str,
@@ -193,6 +247,9 @@ def build_veo_prompt(
     dialect: str | None = None,
     character_descriptions: dict[str, str] | None = None,
     art_style: str | None = None,
+    clip_index: int | None = None,
+    total_clips: int | None = None,
+    prev_beat: "Beat | None" = None,
 ) -> str:
     """Compose the final Veo prompt for one beat.
 
@@ -262,7 +319,13 @@ def build_veo_prompt(
     style_lock = _STYLE_LOCKS.get(art_style or "", "")
     style_prefix = f"{style_lock} " if style_lock else ""
     head = f"{cast_negation} " if cast_negation else ""
-    base = f"{style_prefix}{head}{desc_preamble}{global_setting}, {beat.english_motion}"
+    # Continuity header sits right after style lock so Veo reads it before
+    # interpreting the per-clip action. Empty string when no context passed.
+    continuity = _build_continuity_header(
+        clip_index, total_clips, prev_beat,
+        global_setting, character_descriptions,
+    )
+    base = f"{style_prefix}{continuity}{head}{desc_preamble}{global_setting}, {beat.english_motion}"
 
     if with_dialogue:
         if beat.arabic:
@@ -441,6 +504,9 @@ def generate_clips(
             dialect=dialect,
             character_descriptions=character_descriptions,
             art_style=art_style,
+            clip_index=idx,
+            total_clips=len(script.beats),
+            prev_beat=script.beats[i - 1] if i > 0 else None,
         )
         generate_clip(
             client=client,
@@ -600,6 +666,9 @@ def generate_clips_chained(
             dialect=dialect,
             character_descriptions=character_descriptions,
             art_style=art_style,
+            clip_index=idx,
+            total_clips=len(script.beats),
+            prev_beat=script.beats[i - 1] if i > 0 else None,
         )
         image_urls = [sheet_url]
         if prev_last_frame_url:

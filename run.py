@@ -720,6 +720,38 @@ def main_with_args(argv: list[str]) -> int:
                         _json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
                         encoding="utf-8",
                     )
+            with log.stage("coherence_pass"):
+                # Cross-clip continuity sweep — rewrites english_motion for any
+                # beat that breaks role/location/causality with its neighbors.
+                # Idempotent: the sidecar marker prevents re-running on resume,
+                # so user-approved scripts are never mutated after approval.
+                marker = paths.root / "coherence_pass_v1.applied"
+                if not marker.exists():
+                    try:
+                        from pipeline.coherence_pass import apply_coherence_pass
+                        before = tuple(b.english_motion for b in script.beats)
+                        script = apply_coherence_pass(script, gemini)
+                        after = tuple(b.english_motion for b in script.beats)
+                        n_rewritten = sum(1 for a, b in zip(before, after) if a != b)
+                        if n_rewritten > 0:
+                            import json as _json
+                            paths.script_json.write_text(
+                                _json.dumps(script.to_dict(), ensure_ascii=False, indent=2),
+                                encoding="utf-8",
+                            )
+                            log.info(
+                                f"coherence_pass: rewrote {n_rewritten}/"
+                                f"{len(before)} beats"
+                            )
+                        else:
+                            log.info(
+                                f"coherence_pass: 0 rewrites "
+                                f"({len(before)} beats already coherent)"
+                            )
+                        marker.write_text("v1", encoding="utf-8")
+                    except Exception as _ce:
+                        # Never block the render on coherence pass failure.
+                        log.info(f"coherence_pass: skipped ({type(_ce).__name__})")
             if args.pause_after_script:
                 # Approval gate for the mobile-app workflow. Script is on disk;
                 # bail out before any paid stage so a human reviewer can decide.

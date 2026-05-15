@@ -896,3 +896,89 @@ def test_dialogue_audio_lock_unchanged_without_descriptions():
     p = build_veo_prompt(b, "g", with_dialogue=True, character_descriptions={})
     # No "voice profile" preamble inside the audio block
     assert "voice profile for this character" not in p.lower()
+
+
+# ---------------------------------------------------------------------------
+# Continuity header — addresses the cross-clip role-swap problem ("man takes
+# money in clip 1, becomes homeowner in clip 2"). Each clip's prompt now
+# includes an explicit recap of the previous clip + a SAME LOCATION /
+# SAME CHARACTERS instruction.
+# ---------------------------------------------------------------------------
+
+def test_continuity_header_absent_without_context_kwargs():
+    """Backwards-compat: omit clip_index/total_clips → no continuity preamble."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(arabic="x", english_motion="enter house", clip_duration_s=8.0)
+    p = build_veo_prompt(b, "village at night")
+    assert "CLIP CONTINUITY HEADER" not in p
+
+
+def test_continuity_header_for_clip_1_is_opening_shot():
+    """Clip 1 gets an OPENING SHOT label (no PREVIOUS CLIP RECAP — there's
+    no previous clip to reference)."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    b = Beat(arabic="x", english_motion="enter house", clip_duration_s=8.0)
+    p = build_veo_prompt(
+        b, "village at night",
+        clip_index=1, total_clips=5, prev_beat=None,
+        character_descriptions={"ibrahim": "tall, dark coat"},
+    )
+    assert "OPENING SHOT" in p
+    assert "clip 1 of 5" in p
+    assert "PREVIOUS CLIP RECAP" not in p
+    # Character roster present
+    assert "ibrahim" in p
+    assert "tall, dark coat" in p
+
+
+def test_continuity_header_for_clip_n_includes_previous_action():
+    """Clip 2+ must surface the previous beat's english_motion so Veo
+    knows what to continue from — this is the main fix for cross-clip
+    role swaps."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    prev = Beat(
+        arabic="taking money", english_motion="ibrahim quietly takes coins from drawer",
+        clip_duration_s=8.0, speaker="thief", character_name="ibrahim",
+    )
+    cur = Beat(arabic="who's there?", english_motion="the owner enters",
+               clip_duration_s=8.0, speaker="owner", character_name="fatima")
+    p = build_veo_prompt(
+        cur, "abandoned home, night",
+        clip_index=2, total_clips=3, prev_beat=prev,
+        character_descriptions={"ibrahim": "tall man, dark coat", "fatima": "older woman"},
+    )
+    assert "clip 2 of 3" in p
+    # Cross-clip recap surfaces the previous action verbatim
+    assert "PREVIOUS CLIP RECAP" in p
+    assert "quietly takes coins from drawer" in p
+    # Explicit anti-recast instruction
+    assert "SAME LOCATION" in p
+    assert "SAME CHARACTERS" in p
+    # Both characters in the roster — fixes "ibrahim becomes fatima" drift
+    assert "ibrahim" in p
+    assert "fatima" in p
+
+
+def test_continuity_header_handles_missing_prev_action():
+    """If prev_beat has no english_motion, the recap line is suppressed
+    rather than producing a half-formed sentence."""
+    from pipeline.video import build_veo_prompt
+    from pipeline.types import Beat
+    prev = Beat(arabic="hi", english_motion="", clip_duration_s=8.0)
+    cur = Beat(arabic="x", english_motion="y", clip_duration_s=8.0)
+    p = build_veo_prompt(
+        cur, "g",
+        clip_index=2, total_clips=2, prev_beat=prev,
+    )
+    # Header still present, but recap line is empty
+    assert "clip 2 of 2" in p
+    assert "PREVIOUS CLIP RECAP:" in p
+    # No "ended with:" payload — the line should be empty after the colon
+    recap_idx = p.index("PREVIOUS CLIP RECAP:")
+    nl = p.find("\n", recap_idx)
+    line = p[recap_idx:nl if nl != -1 else len(p)]
+    # The line shouldn't include a stale "ended with" tag
+    assert "ended with" not in line.lower()
