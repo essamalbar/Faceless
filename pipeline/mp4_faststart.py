@@ -39,6 +39,18 @@ def rewrite_with_faststart(path: Path) -> None:
         if result.returncode != 0 or not tmp.exists() or tmp.stat().st_size == 0:
             tmp.unlink(missing_ok=True)
             return
+        # When ffmpeg can only partially read a corrupt mp4 it produces
+        # a tiny-but-non-zero output (a few hundred bytes of moov
+        # header with no media). Refuse to overwrite the original
+        # unless the re-muxed file is plausibly the full asset. Pre-
+        # production cost: one extra stat call. Failure cost: the
+        # original was overwritten with garbage and the user could
+        # not recover even by re-running ffmpeg with smarter flags.
+        in_size = path.stat().st_size
+        out_size = tmp.stat().st_size
+        if in_size > 0 and out_size < max(50_000, in_size * 0.5):
+            tmp.unlink(missing_ok=True)
+            return
         # Atomic replace on POSIX
         shutil.move(str(tmp), str(path))
     except (FileNotFoundError, OSError):

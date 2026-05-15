@@ -1739,19 +1739,34 @@ def repair_video(run_id: str, user: User = Depends(require_user)):
     final = run_dir / "final.mp4"
     if not final.exists():
         raise HTTPException(404, "no final.mp4 to repair")
+
+    # First, probe whether ffmpeg can even read the input. If the moov
+    # atom is missing the file is unrecoverable by any normal means —
+    # tell the caller to re-render instead of silently spinning ffmpeg.
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_streams", str(final)],
+        capture_output=True,
+    )
+    if probe.returncode != 0:
+        raise HTTPException(
+            422,  # 422 = the request is well-formed but the resource can't be processed
+            "final.mp4 is corrupted beyond automatic repair (moov atom "
+            "missing or stream metadata unreadable). Re-render the run "
+            "to produce a fresh file.",
+        )
+
     original_size = final.stat().st_size
 
-    # Pass 1: cheap re-mux
-    try:
-        rewrite_with_faststart(final)
-    except Exception as e:
-        raise HTTPException(500, f"faststart re-mux failed: {e}") from None
-
+    # Pass 1: cheap +faststart re-mux (rewrite_with_faststart is now
+    # safe — it refuses to overwrite the original if the output is
+    # suspiciously small).
+    rewrite_with_faststart(final)
     note = "final.mp4 re-muxed with +faststart"
 
-    # Pass 2: if the re-mux output looks truncated (which happens when
-    # the input has a corrupt moov ffmpeg silently bails on), fall back
-    # to a real transcode.
+    # Pass 2: if re-mux made the file smaller than half its original
+    # size, the input had something more wrong with it than a wandering
+    # moov atom — fall through to a full transcode for a known-good
+    # output regardless of input quirks.
     new_size = final.stat().st_size
     if new_size < 50_000 or new_size < original_size * 0.5:
         tmp = final.with_name("final.repaired.mp4")
@@ -1771,13 +1786,15 @@ def repair_video(run_id: str, user: User = Depends(require_user)):
             )
             tmp.replace(final)
             note = "final.mp4 fully re-encoded to H.264 + AAC + faststart"
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             tmp.unlink(missing_ok=True)
             raise HTTPException(
-                500, f"full re-encode also failed: {e}"
+                422,
+                "final.mp4 readable but won't transcode cleanly. "
+                "Re-render the run to produce a fresh file.",
             ) from None
 
-    # Bust the thumbnail cache — extracted from the broken mp4, may be stale
+    # Bust the thumbnail cache — may be stale.
     (run_dir / "thumbnail.jpg").unlink(missing_ok=True)
     return RepairAck(run_id=run_id, repaired=True, note=note)
 
