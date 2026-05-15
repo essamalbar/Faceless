@@ -1699,6 +1699,45 @@ def get_video(run_id: str, user: User = Depends(require_user_header_or_query)):
     )
 
 
+class RepairAck(BaseModel):
+    run_id: str
+    repaired: bool
+    note: str
+
+
+@app.post(
+    "/runs/{run_id}/repair-video",
+    response_model=RepairAck,
+    dependencies=[Depends(require_user)],
+)
+def repair_video(run_id: str, user: User = Depends(require_user)):
+    """One-shot fixer for old runs whose final.mp4 was assembled before
+    pipeline/assemble.py added `-movflags +faststart`. Browsers reject
+    those files ("FFmpeg demuxer open context failed") because the moov
+    atom sits at the end of the file. This endpoint re-muxes the
+    existing mp4 in place — same bytes, just relocated metadata. No
+    re-encode, no Veo spend, takes a second or two on a typical short.
+    """
+    from pipeline.mp4_faststart import rewrite_with_faststart
+
+    run_dir = _run_dir(run_id, user)
+    final = run_dir / "final.mp4"
+    if not final.exists():
+        raise HTTPException(404, "no final.mp4 to repair")
+    try:
+        rewrite_with_faststart(final)
+    except Exception as e:
+        raise HTTPException(500, f"faststart re-mux failed: {e}") from None
+    # Bust the thumbnail cache too — if the previous thumbnail was
+    # extracted from the broken mp4 it may be stale or 0-byte.
+    (run_dir / "thumbnail.jpg").unlink(missing_ok=True)
+    return RepairAck(
+        run_id=run_id,
+        repaired=True,
+        note="final.mp4 re-muxed with +faststart; reload the page to play",
+    )
+
+
 @app.get("/runs/{run_id}/thumbnail",
          dependencies=[Depends(require_user_header_or_query)])
 def get_thumbnail(run_id: str, user: User = Depends(require_user_header_or_query)):

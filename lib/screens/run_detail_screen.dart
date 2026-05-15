@@ -156,6 +156,30 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     }
   }
 
+  Future<void> _repairVideo() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Repairing video — re-muxing for browser playback…'),
+      duration: Duration(seconds: 2),
+    ));
+    try {
+      await widget.client.repairVideo(widget.runId);
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Repaired. Tap Play again.'),
+        duration: Duration(seconds: 3),
+      ));
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Repair failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _resume() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -462,10 +486,20 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _busy ? null : _rerollClips,
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Reroll selected clips'),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    onPressed: _busy ? null : _repairVideo,
+                    icon: const Icon(Icons.build_outlined, size: 16),
+                    label: const Text('Repair playback'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _busy ? null : _rerollClips,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Reroll selected clips'),
+                  ),
+                ],
               ),
             ),
           ],

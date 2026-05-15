@@ -880,6 +880,36 @@ def test_get_video_streams_final_mp4(client, auth, tmp_path: Path):
     assert r.content.startswith(b"\x00\x00\x00\x18ftypmp42")
 
 
+def test_repair_video_404_when_no_final_mp4(client, auth, tmp_path: Path):
+    rd = _make_run_dir(tmp_path)
+    r = client.post(f"/runs/{rd.name}/repair-video", headers=auth)
+    assert r.status_code == 404
+
+
+def test_repair_video_invokes_faststart_remux(client, auth, tmp_path: Path, monkeypatch):
+    """The endpoint should call pipeline.mp4_faststart.rewrite_with_faststart
+    on the existing final.mp4 and report success. We mock the re-muxer
+    so the test doesn't actually shell out to ffmpeg."""
+    rd = _make_run_dir(tmp_path)
+    final = rd / "final.mp4"
+    final.write_bytes(b"\x00\x00\x00\x18ftypmp42 old moov at end")
+    # Leftover thumbnail from the broken file — endpoint should nuke it
+    (rd / "thumbnail.jpg").write_bytes(b"stale-jpg")
+
+    called: list[Path] = []
+    def fake_rewrite(path):
+        called.append(path)
+    monkeypatch.setattr("pipeline.mp4_faststart.rewrite_with_faststart", fake_rewrite)
+
+    r = client.post(f"/runs/{rd.name}/repair-video", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["repaired"] is True
+    assert called == [final]
+    # Thumbnail cache busted
+    assert not (rd / "thumbnail.jpg").exists()
+
+
 def test_get_video_accepts_query_token_for_browser_video_element(
     client, api_token, tmp_path: Path,
 ):

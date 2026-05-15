@@ -364,6 +364,17 @@ class FacelessApiClient {
     }
   }
 
+  /// Re-mux an existing final.mp4 with `+faststart` for browser playback.
+  /// Use when an older run shows "demuxer could not open" in the player —
+  /// no Veo spend, no re-encode, takes a second or two server-side.
+  Future<void> repairVideo(String runId) async {
+    final r = await _http.post(await _uri('/runs/$runId/repair-video'),
+        headers: await _headers());
+    if (r.statusCode >= 400) {
+      throw FacelessApiException(r.body, status: r.statusCode);
+    }
+  }
+
   /// Replace beats in script.json — only allowed when status=awaiting_approval.
   Future<ScriptResponse> editScript(
     String runId, {
