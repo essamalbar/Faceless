@@ -100,10 +100,12 @@ except `/healthz`):
 | GET | `/runs/{id}/script` | Arabic script + cost estimate |
 | POST | `/runs/{id}/approve` | green-light Veo spend |
 | POST | `/runs/{id}/resume` | retry after a transient failure |
-| POST | `/runs/{id}/cancel` | kill the running subprocess |
+| POST | `/runs/{id}/cancel` | kill running subprocess + refund |
+| POST | `/runs/{id}/test-assemble` | $0 smoke test — runs music/captions/assemble with `--skip-video` placeholder clips |
 | GET | `/runs/{id}/video` | stream final.mp4 |
 | GET | `/runs/{id}/thumbnail` | poster image |
 | GET | `/runs/{id}/log?lines=N` | tail subprocess log |
+| POST | `/admin/credit-back` | service-token only — credit a user's ledger after a failed render |
 
 ## Common commands (Flutter app — Phase 2 frontend)
 

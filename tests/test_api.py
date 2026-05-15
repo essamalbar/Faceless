@@ -752,6 +752,78 @@ def test_resume_spawns_subprocess(client, auth, tmp_path: Path):
     assert "--resume" in captured["args"]
 
 
+# ---------------------------------------------------------------------------
+# POST /runs/{id}/test-assemble — free smoke test
+# ---------------------------------------------------------------------------
+
+def test_test_assemble_requires_script(client, auth, tmp_path: Path):
+    """No script.json on disk → 409. We never bootstrap a script here."""
+    rd = _make_run_dir(tmp_path)
+    r = client.post(f"/runs/{rd.name}/test-assemble", headers=auth)
+    assert r.status_code == 409
+    assert "script" in r.json()["detail"].lower()
+
+
+def test_test_assemble_spawns_with_skip_video(client, auth, tmp_path: Path):
+    """Spawns run.py with --shorts --resume <run_dir> --skip-video so
+    the assembly stack runs end-to-end without burning Veo credits."""
+    rd = _make_run_dir(tmp_path)
+    (rd / "script.json").write_text("{}")
+    captured: dict = {"args": None, "run_dir": None}
+    from pipeline import api as api_mod
+    api_mod.set_spawn_fn(
+        lambda args, run_dir: captured.update(args=args, run_dir=run_dir) or 1,
+    )
+
+    r = client.post(f"/runs/{rd.name}/test-assemble", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["started"] is True
+    assert body["run_id"] == rd.name
+    # The free smoke test must pass --skip-video so no Veo cost is incurred,
+    # and --resume so it operates on the existing run dir.
+    assert "--shorts" in captured["args"]
+    assert "--skip-video" in captured["args"]
+    assert "--resume" in captured["args"]
+    assert str(rd) in captured["args"]
+
+
+def test_test_assemble_wipes_prior_clips(client, auth, tmp_path: Path):
+    """Stale clips from a prior real render must be removed before the
+    placeholder pass — otherwise the resumer skips clip regeneration and
+    we don't actually exercise the placeholder branch."""
+    rd = _make_run_dir(tmp_path)
+    (rd / "script.json").write_text("{}")
+    clips = rd / "clips"
+    clips.mkdir()
+    (clips / "01.mp4").write_bytes(b"old")
+    (clips / "02.mp4").write_bytes(b"old")
+    from pipeline import api as api_mod
+    api_mod.set_spawn_fn(lambda args, run_dir: 1)
+
+    r = client.post(f"/runs/{rd.name}/test-assemble", headers=auth)
+    assert r.status_code == 200
+    assert not (clips / "01.mp4").exists()
+    assert not (clips / "02.mp4").exists()
+
+
+def test_test_assemble_rejects_when_worker_already_running(
+    client, auth, tmp_path: Path, monkeypatch,
+):
+    """If a pipeline worker is already mid-run, kicking off another one
+    on the same run dir is a footgun. Refuse with 409."""
+    rd = _make_run_dir(tmp_path)
+    (rd / "script.json").write_text("{}")
+    # Seed api_state.json with a pid + force _process_alive to say yes
+    from pipeline import api as api_mod
+    api_mod._write_state(rd, pid=4242, last_error=None, last_action="approve")
+    monkeypatch.setattr(api_mod, "_process_alive", lambda pid, run_dir=None: pid == 4242)
+
+    r = client.post(f"/runs/{rd.name}/test-assemble", headers=auth)
+    assert r.status_code == 409
+    assert "already running" in r.json()["detail"].lower()
+
+
 def _seed_with_clips(rd: Path, n: int = 5, has_clips: bool = True) -> None:
     rd.mkdir(parents=True, exist_ok=True)
     (rd / "script.json").write_text(json.dumps({
@@ -2066,6 +2138,69 @@ def test_portal_returns_url(client_factory, monkeypatch):
     r = c.post("/billing/portal", json={"return_url": "https://app/home"})
     assert r.status_code == 200
     assert "portal" in r.json()["url"]
+
+
+def test_admin_credit_back_rejects_normal_user(client_factory, monkeypatch):
+    """A regular signed-in user must not be able to hit /admin/credit-back
+    — otherwise anyone could top up their own account."""
+    alice = client_factory(user_id="alice", role="user")
+    r = alice.post(
+        "/admin/credit-back",
+        json={"user_id": "alice", "amount": 100, "reason": "fraud"},
+    )
+    assert r.status_code == 403, r.text
+
+
+def test_admin_credit_back_writes_transaction_and_returns_balance(
+    client_factory, monkeypatch,
+):
+    """Service token can credit a user; ledger entry + new balance returned."""
+    state = {"balance": 5, "txs": []}
+
+    def fake_record(*, user_id, amount, kind, reference_id=None, description=None):
+        state["txs"].append({
+            "user_id": user_id, "amount": amount, "kind": kind,
+            "reference_id": reference_id, "description": description,
+        })
+        state["balance"] += amount
+
+    monkeypatch.setattr("pipeline.db.record_transaction", fake_record)
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: state["balance"])
+
+    admin = client_factory(user_id="admin", role="service")
+    r = admin.post(
+        "/admin/credit-back",
+        json={"user_id": "essam", "amount": 50, "reason": "lost to old xfade bug"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["user_id"] == "essam"
+    assert body["amount"] == 50
+    assert body["new_balance"] == 55
+    # Ledger entry recorded with the right kind
+    tx = state["txs"][-1]
+    assert tx["kind"] == "admin_credit"
+    assert tx["amount"] == 50
+    assert tx["description"] == "lost to old xfade bug"
+
+
+def test_admin_credit_back_rejects_zero_or_negative_amount(client_factory):
+    admin = client_factory(user_id="admin", role="service")
+    for amount in [0, -10]:
+        r = admin.post(
+            "/admin/credit-back",
+            json={"user_id": "essam", "amount": amount, "reason": "x"},
+        )
+        assert r.status_code == 400, f"amount={amount}"
+
+
+def test_admin_credit_back_requires_reason(client_factory):
+    admin = client_factory(user_id="admin", role="service")
+    r = admin.post(
+        "/admin/credit-back",
+        json={"user_id": "essam", "amount": 10, "reason": "   "},
+    )
+    assert r.status_code == 400
 
 
 def test_billing_endpoints_reject_service_tokens(client_factory):

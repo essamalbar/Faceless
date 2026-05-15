@@ -1549,6 +1549,128 @@ def cleanup_failed_runs(user: User = Depends(require_user)):
     return CleanupAck(deleted_run_ids=deleted)
 
 
+# ---------------------------------------------------------------------------
+# /runs/{id}/test-assemble — free smoke test using black-frame
+# placeholder clips. Runs the same assemble + captions + faststart
+# pipeline as a real render so any breakage downstream of Veo gets
+# caught WITHOUT spending money on Kie. Required gating before any
+# new paid render after a deploy.
+# ---------------------------------------------------------------------------
+
+class TestAssembleAck(BaseModel):
+    run_id: str
+    status: RunStatus
+    started: bool
+
+
+@app.post(
+    "/runs/{run_id}/test-assemble",
+    response_model=TestAssembleAck,
+    dependencies=[Depends(require_user)],
+)
+def test_assemble_run(run_id: str, user: User = Depends(require_user)):
+    """Spawn run.py with --skip-video on the existing run. Generates
+    black-frame placeholder mp4s for each beat, then runs the full
+    music + captions + assemble + faststart stack. Verifies the
+    pipeline end-to-end without burning Veo credits.
+
+    Caveats:
+      - Requires a script.json (run must be at awaiting_approval or
+        later); we don't bootstrap a new script for you.
+      - Skips the character-sheet stage (`--skip-video` short-circuits
+        that branch in run.py:739).
+      - Overwrites the existing clips/*.mp4 with black frames if a
+        previous real render exists. Run this on a throwaway run if
+        you care about preserving past output.
+    """
+    run_dir = _run_dir(run_id, user)
+    script_path = run_dir / "script.json"
+    if not script_path.exists():
+        raise HTTPException(
+            409,
+            "no script.json — generate a script first before running "
+            "the assembly smoke test",
+        )
+    existing_pid = _read_state(run_dir).get("pid")
+    if _process_alive(existing_pid, run_dir):
+        raise HTTPException(
+            409,
+            "a worker is already running for this run; wait for it "
+            "to finish before kicking off the assembly smoke test",
+        )
+    # Wipe any prior clips so the placeholder regenerator can start clean
+    clips_dir = run_dir / "clips"
+    if clips_dir.exists():
+        for f in clips_dir.glob("*.mp4"):
+            f.unlink(missing_ok=True)
+    args = ["--shorts", "--resume", str(run_dir), "--skip-video"]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid, last_error=None, last_action="test_assemble")
+    return TestAssembleAck(
+        run_id=run_id,
+        status=derive_status(run_dir),
+        started=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# /admin/credit-back — service-token-only restore for users whose
+# renders failed and burned credits. The audit found four bugs that
+# could leave a user net-charged with no video to show for it:
+# assembly-stage crashes, mid-run cancels, refund failures inside
+# _charge_and_submit_clip, and the legacy non-chained code path. The
+# refund_run_charges helper now handles those automatically — this
+# endpoint is the manual escape hatch for credits lost BEFORE those
+# fixes deployed (e.g. Essam's pre-fix $100 of dead renders).
+# ---------------------------------------------------------------------------
+
+class CreditBackRequest(BaseModel):
+    user_id: str
+    amount: int
+    reason: str
+
+
+class CreditBackAck(BaseModel):
+    user_id: str
+    amount: int
+    new_balance: int
+
+
+@app.post(
+    "/admin/credit-back",
+    response_model=CreditBackAck,
+    dependencies=[Depends(require_user)],
+)
+def admin_credit_back(
+    req: CreditBackRequest,
+    user: User = Depends(require_user),
+):
+    """Insert a positive credit transaction for a user. Service token
+    only — fails 403 for normal users so a malicious caller with a
+    Supabase JWT can't credit their own account."""
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    if req.amount <= 0:
+        raise HTTPException(400, "amount must be positive")
+    if not req.reason.strip():
+        raise HTTPException(400, "reason is required for the ledger entry")
+
+    from pipeline.db import get_balance, record_transaction
+    record_transaction(
+        user_id=req.user_id,
+        amount=req.amount,
+        kind="admin_credit",
+        reference_id=None,
+        description=req.reason,
+    )
+    new_balance = get_balance(req.user_id)
+    return CreditBackAck(
+        user_id=req.user_id,
+        amount=req.amount,
+        new_balance=new_balance,
+    )
+
+
 class SpendSummary(BaseModel):
     total_usd: float
     by_run: list[dict]  # [{"run_id": "...", "title": "...", "usd": 8.05}, ...]
