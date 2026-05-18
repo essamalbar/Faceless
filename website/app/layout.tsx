@@ -24,8 +24,11 @@ import type { Metadata } from "next";
 //      for App Router. No client-side hydration needed (it's plain JSON).
 // ---------------------------------------------------------------------------
 
+// Production URL — Vercel auto-deploy from main lives at the *.vercel.app
+// preview domain. Override via NEXT_PUBLIC_SITE_URL once a custom domain
+// (e.g. faceless.binghatti.com) is mapped in Vercel.
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://faceless.binghatti.com";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-kappa.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -91,12 +94,14 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  // Domain ownership verification — Google Search Console gives you a
-  // token at https://search.google.com/search-console after you add the
-  // property. Drop it into NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION in the
-  // website deploy env and redeploy. Empty = no verification tag rendered.
+  // Domain ownership verification. Token is intentionally a public
+  // value — Google publishes it in our HTML by design, so hardcoding
+  // is fine. Env var override exists for future re-issuance without a
+  // redeploy.
   verification: {
-    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
+    google:
+      process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION ||
+      "dDBMtUULMhsbyUW7DJxCx43ffaHo_unJxIf91VQmHhE",
   },
   category: "technology",
 };
