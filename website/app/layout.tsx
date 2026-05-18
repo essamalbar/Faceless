@@ -61,28 +61,24 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
+    // OG image auto-detected from app/opengraph-image.tsx — Next.js
+    // serves the rendered PNG at /opengraph-image with the right
+    // dimensions + alt text from that file's exports. Don't list
+    // it here or we'll override the auto-detection.
     type: "website",
     url: SITE_URL,
     siteName: "Faceless",
     title: "Faceless — AI Arabic horror shorts",
     description:
       "One sentence → full Arabic horror short. Script free, render-on-demand. 6 dialects. Refund on failure. اكتب جملة، احصل على فيلم قصير كامل.",
-    images: [
-      {
-        url: "/og.jpg",
-        width: 1200,
-        height: 630,
-        alt: "Faceless — AI Arabic horror video generator",
-      },
-    ],
     locale: "ar_SA",
   },
   twitter: {
+    // Same — twitter card pulls from app/opengraph-image.tsx automatically.
     card: "summary_large_image",
     title: "Faceless — AI Arabic horror shorts",
     description:
       "Write one sentence → get a full Arabic horror short. Free preview, refund on failure.",
-    images: ["/og.jpg"],
   },
   robots: {
     index: true,
@@ -94,6 +90,13 @@ export const metadata: Metadata = {
       "max-image-preview": "large",
       "max-snippet": -1,
     },
+  },
+  // Domain ownership verification — Google Search Console gives you a
+  // token at https://search.google.com/search-console after you add the
+  // property. Drop it into NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION in the
+  // website deploy env and redeploy. Empty = no verification tag rendered.
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
   },
   category: "technology",
 };
