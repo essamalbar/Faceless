@@ -5,7 +5,7 @@
 
 import type { MetadataRoute } from "next";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-kappa.vercel.app";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-shorts.vercel.app";
 
 const themes = ["folkloric", "memory", "wilderness", "urban", "domestic", "travel"];
 const dialects = ["msa", "syrian", "egyptian", "khaliji", "maghrebi", "iraqi"];

@@ -28,7 +28,7 @@ import type { Metadata } from "next";
 // preview domain. Override via NEXT_PUBLIC_SITE_URL once a custom domain
 // (e.g. faceless.binghatti.com) is mapped in Vercel.
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-kappa.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-shorts.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
