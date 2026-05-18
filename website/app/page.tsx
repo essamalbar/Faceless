@@ -11,6 +11,10 @@ import {
   ArrowRight,
   CheckCircle2,
   Play,
+  ShieldCheck,
+  Eye,
+  RotateCcw,
+  Users,
 } from "lucide-react";
 import { SparkleLogo } from "@/components/sparkle-logo";
 import { LazyVideo } from "@/components/lazy-video";
@@ -82,6 +86,7 @@ export default function Page() {
       <Hero />
       <ScrollPipeline />
       <Showreel />
+      <WhyFaceless />
       <Features />
       <Templates />
       <Pricing />
@@ -118,9 +123,9 @@ function Nav() {
           </span>
         </a>
         <nav className="hidden md:flex items-center gap-7 ml-12 text-[13px] text-muted">
-          <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
+          <a href="#why" className="hover:text-ink transition-colors">Why Faceless</a>
           <a href="#showreel" className="hover:text-ink transition-colors">Showreel</a>
-          <a href="#features" className="hover:text-ink transition-colors">Features</a>
+          <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
           <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
         </nav>
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -214,8 +219,9 @@ function Hero() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="text-lg sm:text-xl text-ink/85 max-w-2xl mb-3 leading-relaxed"
         >
-          Faceless writes the script, casts the characters, voices them in
-          Arabic, and renders the video. You write the first sentence.
+          Faceless writes the Arabic script, casts the characters, voices them
+          in your dialect, and renders the video. Preview the script for free,
+          render only when you're ready. Refund if anything fails.
         </motion.p>
         <motion.p
           initial={{ opacity: 0, y: 16 }}
@@ -224,7 +230,7 @@ function Hero() {
           className="text-base text-muted/80 max-w-xl mb-10 font-arabic"
           dir="rtl"
         >
-          من جملة واحدة إلى فيلم قصير كامل بالعربية
+          من جملة واحدة إلى فيلم قصير عربي كامل — اقرأ السيناريو مجاناً قبل أن تدفع
         </motion.p>
 
         <motion.div
@@ -415,14 +421,102 @@ function ShowreelTile({
 }
 
 // ============================================================================
-// FEATURES
+// WHY FACELESS — the four differentiators competitors don't have. These
+// are the load-bearing reasons to subscribe. Each card is a feature the
+// user gets exclusively here, with the contrast against alternatives
+// (Sora, Veo direct, Runway, Kling) implied not stated.
+// ============================================================================
+function WhyFaceless() {
+  const items = [
+    {
+      icon: Eye,
+      title: "Free script preview",
+      ar: "اقرأ القصة قبل أن تدفع",
+      body: "Write a one-line premise. We write the full Arabic script — for free. You only pay if you decide to render the video.",
+      badge: "No surprise bills",
+    },
+    {
+      icon: RotateCcw,
+      title: "Per-clip reroll",
+      ar: "أعد توليد لقطة واحدة",
+      body: "One clip looks wrong? Reroll just that clip. Pay for one, not all five. Most tools force a full restart.",
+      badge: "Pay for what works",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Refund on failure",
+      ar: "استرداد تلقائي",
+      body: "If a render fails partway, every credit charged is automatically returned. You never pay for video you didn't receive.",
+      badge: "Money-back guarantee",
+    },
+    {
+      icon: Users,
+      title: "Locked characters across clips",
+      ar: "نفس الشخصية في كل لقطة",
+      body: "Same face, same voice, same outfit — clip after clip. Built on a reference image so identity persists where generic models drift.",
+      badge: "Consistent cast",
+    },
+  ];
+  return (
+    <section id="why" className="relative py-24 px-5 sm:px-8 border-t border-white/[0.05]">
+      <div className="max-w-7xl mx-auto">
+        <SectionEyebrow text="WHY FACELESS" />
+        <SectionTitle en="Built for Arabic creators." ar="مصنوع لصُنّاع المحتوى العربي" />
+        <p className="mt-4 text-muted max-w-2xl">
+          What the big AI video tools won't give you: cost transparency,
+          recovery from failure, and Arabic as a first-class citizen.
+        </p>
+        <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {items.map((it, i) => (
+            <motion.div
+              key={it.title}
+              initial={{ opacity: 0, y: 32, filter: "blur(8px)" }}
+              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{
+                duration: 0.7,
+                delay: i * 0.08,
+                ease: [0.16, 1, 0.3, 1],
+              }}
+              className="relative bg-gradient-to-br from-accent/[0.05] to-transparent border border-accent/20 rounded-2xl p-7 hover:border-accent/40 transition-colors"
+            >
+              <span className="absolute top-5 right-5 text-[10px] font-bold text-accent tracking-[0.15em] uppercase px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20">
+                {it.badge}
+              </span>
+              <div className="w-11 h-11 rounded-xl bg-accent/10 border border-accent/25 flex items-center justify-center mb-5">
+                <it.icon className="w-5 h-5 text-accent" />
+              </div>
+              <h3 className="text-xl font-semibold mb-1 tracking-tight">
+                {it.title}
+              </h3>
+              <div
+                className="text-[13px] text-muted/80 mb-3 font-arabic"
+                dir="rtl"
+              >
+                {it.ar}
+              </div>
+              <p className="text-[14px] text-ink/85 leading-relaxed">
+                {it.body}
+              </p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
+// FEATURES — the broader set (script writer, cinematic render, dialects,
+// PDF). WhyFaceless above carries the differentiation argument; this
+// section just enumerates what you actually get.
 // ============================================================================
 function Features() {
   const items = [
     { icon: Wand2,     title: "AI script writer",   body: "One sentence becomes a full Arabic script. Dialogue, characters, shot directions." },
     { icon: Film,      title: "Cinematic video",    body: "Each beat becomes a clip. Stitched with music and captions. 9:16, ready to share." },
-    { icon: Languages, title: "Authentic Arabic",   body: "MSA or dialect, your choice. Real Arabic voice acting — not a translation." },
-    { icon: FileText,  title: "Free script PDF",    body: "Export the director's script even without a subscription. Cover, cast, beats." },
+    { icon: Languages, title: "6 Arabic dialects",  body: "MSA, Syrian, Egyptian, Khaliji, Maghrebi, Iraqi. Real dialect voice — not translation." },
+    { icon: FileText,  title: "Free script PDF",    body: "Export the director's script even without rendering. Cover, cast, beats — yours to keep." },
   ];
   return (
     <section id="features" className="relative py-24 px-5 sm:px-8">
@@ -524,9 +618,39 @@ function Templates() {
 // ============================================================================
 function Pricing() {
   const tiers = [
-    { name: "Starter", price: "$9",  credits: 12,  blurb: "For trying ideas",  perks: ["12 video clips / month", "All templates", "Free script PDF"] },
-    { name: "Creator", price: "$29", credits: 60,  blurb: "For weekly drops",  recommended: true, perks: ["60 video clips / month", "Priority rendering", "All templates", "Free script PDF"] },
-    { name: "Pro",     price: "$79", credits: 200, blurb: "For daily output",  perks: ["200 video clips / month", "Priority rendering", "All templates", "Free script PDF"] },
+    {
+      name: "Starter", price: "$9", credits: 12, blurb: "For trying ideas",
+      perks: [
+        "12 video clips / month",
+        "Free unlimited script previews",
+        "Per-clip reroll (no full restart)",
+        "Refund on failed renders",
+        "All 6 dialects + templates",
+      ],
+    },
+    {
+      name: "Creator", price: "$29", credits: 60, blurb: "For weekly drops",
+      recommended: true,
+      perks: [
+        "60 video clips / month",
+        "Priority rendering queue",
+        "Free unlimited script previews",
+        "Per-clip reroll (no full restart)",
+        "Refund on failed renders",
+        "All 6 dialects + templates",
+      ],
+    },
+    {
+      name: "Pro", price: "$79", credits: 200, blurb: "For daily output",
+      perks: [
+        "200 video clips / month",
+        "Priority rendering queue",
+        "Free unlimited script previews",
+        "Per-clip reroll (no full restart)",
+        "Refund on failed renders",
+        "All 6 dialects + templates",
+      ],
+    },
   ];
   return (
     <section id="pricing" className="relative py-24 px-5 sm:px-8 border-t border-white/[0.05]">
@@ -535,6 +659,7 @@ function Pricing() {
         <SectionTitle en="Subscribe once. Render every month." ar="اشترك مرة. ارند كل شهر" />
         <p className="mt-4 text-muted max-w-2xl">
           1 credit = 1 video clip. Pause or change tier any time.
+          <span className="text-ink/85"> Every plan includes free unlimited script previews and automatic refund if a render fails — you only pay for video that actually delivers.</span>
         </p>
         <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-3">
           {tiers.map((t, i) => (
