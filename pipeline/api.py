@@ -65,12 +65,43 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_ROOT = REPO_ROOT / "out"
 RUNPY = REPO_ROOT / "run.py"
 
-# Veo Fast pricing — single source of truth for cost calculations across
-# the API. Hoisted from inline magic numbers per code-review feedback.
-COST_PER_SECOND_USD = 0.10        # Kie.ai's published Veo 3 Fast rate
-FLUX_COST_PER_RUN_USD = 0.05      # Single Flux character sheet per run
-BUDGET_BUFFER_RATIO = 1.30        # ~30 % cushion for retries / Kie billing 9.5s when we asked for 9
-BUDGET_BUFFER_FLAT_USD = 0.50     # Plus a small flat cushion for the Flux sheet
+# Per-model Kie.ai pricing as of May 2026. Keep this in lockstep with the
+# config.yaml `kie.model` selection — the budget guard reads the model
+# field from script.json (or the loaded config) and looks up the rate
+# here so the user-facing dollar figure on the approve gate is accurate
+# regardless of which model the project is set to.
+_COST_BY_MODEL: dict[str, float] = {
+    # Veo family (legacy /api/v1/veo/generate)
+    "veo3":       0.40,
+    "veo3_fast":  0.10,
+    "veo3_lite":  0.05,
+    # Kling family (unified /api/v1/jobs/createTask)
+    "kling/v2-1-standard":         0.025,
+    "kling/v2-1-pro":              0.05,
+    "kling/v2-1-master":           0.16,
+    "kling/v2-1-master-image-to-video": 0.16,
+    "kling-2.6/image-to-video":    0.056,
+    "kling-2.6/text-to-video":     0.056,
+}
+DEFAULT_COST_PER_SECOND_USD = 0.10  # fallback for unmapped models — defensive
+FLUX_COST_PER_RUN_USD = 0.05        # Single Flux character sheet per run
+BUDGET_BUFFER_RATIO = 1.30          # ~30 % cushion for retries / Kie billing 9.5s when we asked for 9
+BUDGET_BUFFER_FLAT_USD = 0.50       # Plus a small flat cushion for the Flux sheet
+
+
+def _cost_per_second_for_model(model: str) -> float:
+    """Look up the per-second USD rate for a Kie.ai model id.
+
+    Falls back to DEFAULT_COST_PER_SECOND_USD for any model not in
+    _COST_BY_MODEL (defensive — a misconfigured model name shouldn't
+    underbill the budget guard and let the user accidentally overspend).
+    """
+    return _COST_BY_MODEL.get(model, DEFAULT_COST_PER_SECOND_USD)
+
+
+# Back-compat alias for the legacy hardcoded value. Existing callers that
+# import COST_PER_SECOND_USD keep working; new code uses the lookup.
+COST_PER_SECOND_USD = DEFAULT_COST_PER_SECOND_USD
 
 
 # ---------------------------------------------------------------------------
@@ -114,13 +145,18 @@ def _write_state(run_dir: Path, **kwargs) -> None:
 
 
 def _compute_max_spend_for_run(run_dir: Path) -> float | None:
-    """Sum the script's projected Veo cost so we can pass --max-spend to the
-    subprocess. The user already saw the estimate in the UI and approved —
-    we shouldn't then trip the in-config cap and silently refuse.
+    """Sum the script's projected video-model cost so we can pass
+    --max-spend to the subprocess. The user already saw the estimate in
+    the UI and approved — we shouldn't then trip the in-config cap and
+    silently refuse.
 
     Adds a buffer (`BUDGET_BUFFER_RATIO` × `BUDGET_BUFFER_FLAT_USD`) so
     retries and Kie's tendency to bill 9.5 s when we requested 9 s don't
-    push us over."""
+    push us over.
+
+    Model-aware: reads kie.model from config.yaml so switching from
+    veo3_fast → kling/v2-1-pro auto-updates the budget without manual edit.
+    """
     script_path = run_dir / "script.json"
     if not script_path.exists():
         return None
@@ -134,11 +170,23 @@ def _compute_max_spend_for_run(run_dir: Path) -> float | None:
     )
     if total_seconds <= 0:
         return None
+    rate = _cost_per_second_for_model(_active_video_model())
     return round(
-        total_seconds * COST_PER_SECOND_USD * BUDGET_BUFFER_RATIO
-        + BUDGET_BUFFER_FLAT_USD,
+        total_seconds * rate * BUDGET_BUFFER_RATIO + BUDGET_BUFFER_FLAT_USD,
         2,
     )
+
+
+def _active_video_model() -> str:
+    """Read kie.model from config.yaml so cost calculations follow the
+    deployed setting. Defensive: returns 'veo3_fast' on any load failure
+    (matches the legacy hardcoded behavior so we never overbill)."""
+    try:
+        from pipeline.config import load_config
+        cfg = load_config()
+        return getattr(cfg.kie, "model", "veo3_fast")
+    except Exception:
+        return "veo3_fast"
 
 
 _ERROR_LINE_RE = re.compile(r"\bERROR\b", re.IGNORECASE)
@@ -481,11 +529,15 @@ def _run_dir(run_id: str, user: "User") -> Path:
 
 
 def _cost_estimate_usd(beats: list[dict]) -> float:
-    """Per-beat × seconds × Veo rate + one Flux character sheet."""
-    veo_seconds = sum(float(b.get("clip_duration_s", 8.0)) for b in beats)
-    return round(
-        veo_seconds * COST_PER_SECOND_USD + FLUX_COST_PER_RUN_USD, 2,
-    )
+    """Per-beat × seconds × active-model rate + one Flux character sheet.
+
+    Reads the active video model from config.yaml so the dollar figure on
+    /runs/{id}/script (which the Flutter approval gate displays) tracks the
+    deployed model. Switching from Veo to Kling drops this by ~50–75%.
+    """
+    total_seconds = sum(float(b.get("clip_duration_s", 8.0)) for b in beats)
+    rate = _cost_per_second_for_model(_active_video_model())
+    return round(total_seconds * rate + FLUX_COST_PER_RUN_USD, 2)
 
 
 def _build_llm():

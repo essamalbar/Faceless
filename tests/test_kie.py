@@ -188,3 +188,184 @@ def test_submit_reference_video_job_sends_image_urls(monkeypatch):
         "https://cdn/character_sheet.png",
         "https://cdn/last_frame_clip_2.png",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Kling (unified /api/v1/jobs/* endpoints) — different body shape, different
+# polling endpoint, different result location than the legacy Veo path.
+# These tests pin both v2-1 (singular image_url) and v2-6 (image_urls array)
+# variants since the input field name differs.
+# ---------------------------------------------------------------------------
+
+def test_is_unified_model_classifies_correctly():
+    from pipeline.kie import is_unified_model
+    assert is_unified_model("kling/v2-1-standard")
+    assert is_unified_model("kling/v2-1-pro")
+    assert is_unified_model("kling-2.6/image-to-video")
+    assert is_unified_model("kling-3.0/video")
+    # Veo + Flux stay on legacy path
+    assert not is_unified_model("veo3_fast")
+    assert not is_unified_model("veo3")
+    assert not is_unified_model("flux-kontext-pro")
+
+
+def test_submit_unified_v2_1_uses_singular_image_url(monkeypatch):
+    """Kling 2.1 family expects input.image_url (string), not array."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        KieClient, "_post_json",
+        lambda self, p, b: captured.update(path=p, body=b) or
+        {"code": 200, "data": {"taskId": "kling_2_1_task"}},
+    )
+    c = _client()
+    task_id = c.submit_unified_image_to_video(
+        prompt="a thief walks into an old house at night",
+        image_url="https://cdn/character_sheet.png",
+        model="kling/v2-1-standard",
+        duration_s=5,
+        negative_prompt="blur, distort",
+        cfg_scale=0.7,
+    )
+    assert task_id == "kling_2_1_task"
+    assert captured["path"] == "/api/v1/jobs/createTask"
+    assert captured["body"]["model"] == "kling/v2-1-standard"
+    inp = captured["body"]["input"]
+    # Singular image_url, not array
+    assert inp["image_url"] == "https://cdn/character_sheet.png"
+    assert "image_urls" not in inp
+    # Duration MUST be a string ('5' or '10') — Kling rejects integers
+    assert inp["duration"] == "5"
+    assert inp["negative_prompt"] == "blur, distort"
+    assert inp["cfg_scale"] == 0.7
+
+
+def test_submit_unified_v2_6_uses_array_image_urls(monkeypatch):
+    """Kling 2.6 family expects input.image_urls (array, max 1)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        KieClient, "_post_json",
+        lambda self, p, b: captured.update(path=p, body=b) or
+        {"code": 200, "data": {"taskId": "kling_2_6_task"}},
+    )
+    c = _client()
+    task_id = c.submit_unified_image_to_video(
+        prompt="opening scene",
+        image_url="https://cdn/character_sheet.png",
+        model="kling-2.6/image-to-video",
+        duration_s=10,
+    )
+    assert task_id == "kling_2_6_task"
+    inp = captured["body"]["input"]
+    # Array form, with the single character_sheet inside
+    assert inp["image_urls"] == ["https://cdn/character_sheet.png"]
+    assert "image_url" not in inp
+    assert inp["duration"] == "10"
+    # 2.6 default sound=False (we use ElevenLabs for narration; sound=True
+    # doubles the Kling cost).
+    assert inp["sound"] is False
+
+
+def test_submit_unified_refuses_non_unified_model():
+    """Belt-and-suspenders — passing a Veo model id to the Kling path
+    raises, instead of silently sending a bad request body."""
+    with pytest.raises(KieError, match="non-unified"):
+        _client().submit_unified_image_to_video(
+            prompt="x", image_url="u", model="veo3_fast",
+        )
+
+
+def test_wait_unified_parses_resultJson_string(monkeypatch):
+    """recordInfo returns resultJson as a STRING (not parsed JSON). The
+    wait helper must json.loads it before reading resultUrls."""
+    monkeypatch.setattr(
+        KieClient, "_get_json",
+        lambda self, path: {
+            "data": {
+                "state": "success",
+                "resultJson": '{"resultUrls": ["https://cdn/clip.mp4"]}',
+            },
+        },
+    )
+    monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
+    url = _client().wait_for_unified_video("kling_task_x", poll_interval_s=0)
+    assert url == "https://cdn/clip.mp4"
+
+
+def test_wait_unified_polls_until_success(monkeypatch):
+    """state cycles pending → success."""
+    states = iter([
+        {"data": {"state": "pending"}},
+        {"data": {"state": "pending"}},
+        {"data": {"state": "success",
+                  "resultJson": '{"resultUrls": ["https://cdn/k.mp4"]}'}},
+    ])
+    monkeypatch.setattr(KieClient, "_get_json",
+                        lambda self, p: next(states))
+    monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
+    assert _client().wait_for_unified_video("t-1", poll_interval_s=0) \
+        == "https://cdn/k.mp4"
+
+
+def test_wait_unified_raises_on_fail(monkeypatch):
+    monkeypatch.setattr(
+        KieClient, "_get_json",
+        lambda self, path: {
+            "data": {"state": "fail", "failCode": 422, "failMsg": "content policy"},
+        },
+    )
+    monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
+    with pytest.raises(KieError, match="failed"):
+        _client().wait_for_unified_video("kling_bad")
+
+
+def test_wait_unified_classifies_transient_failures(monkeypatch):
+    """'try again later' / 'rate limit' messages route to TransientKieError
+    so callers can retry with backoff instead of bubbling a permanent error."""
+    from pipeline.kie import TransientKieError
+    monkeypatch.setattr(
+        KieClient, "_get_json",
+        lambda self, path: {
+            "data": {"state": "fail", "failCode": 503,
+                     "failMsg": "Service temporarily unavailable, try again later"},
+        },
+    )
+    monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
+    with pytest.raises(TransientKieError):
+        _client().wait_for_unified_video("k-transient")
+
+
+def test_generate_unified_clip_end_to_end(monkeypatch, tmp_path: Path):
+    """Full Kling round-trip via the public helper."""
+    from pipeline.kie import generate_unified_clip
+    # Submit + poll
+    monkeypatch.setattr(
+        KieClient, "_post_json",
+        lambda self, p, b: {"code": 200, "data": {"taskId": "k_e2e"}},
+    )
+    monkeypatch.setattr(
+        KieClient, "_get_json",
+        lambda self, p: {
+            "data": {"state": "success",
+                     "resultJson": '{"resultUrls": ["https://cdn/k_e2e.mp4"]}'},
+        },
+    )
+    monkeypatch.setattr(kie_mod, "_SLEEP", lambda _s: None)
+
+    download_calls: list = []
+    def fake_download(self, url, out_path):
+        download_calls.append((url, out_path))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    monkeypatch.setattr(KieClient, "_download", fake_download)
+
+    out = tmp_path / "clips" / "01.mp4"
+    generate_unified_clip(
+        client=_client(),
+        prompt="opening shot",
+        image_url="https://cdn/sheet.png",
+        model="kling/v2-1-standard",
+        duration_s=5,
+        out_path=out,
+    )
+    assert out.exists()
+    assert download_calls[0][0] == "https://cdn/k_e2e.mp4"

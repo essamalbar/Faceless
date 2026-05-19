@@ -54,15 +54,35 @@ captions:
   font_size: 60
 
 kie:
-  model: veo3_fast               # Fast: $0.10/sec; bump to veo3 ($0.40/sec) for cinematic quality
+  # Video provider selection. Routes through pipeline/kie.py:
+  #   veo3_fast / veo3 / veo3_lite        → /api/v1/veo/generate (legacy path)
+  #   kling/v2-1-standard                 → /api/v1/jobs/createTask (unified path)
+  #   kling/v2-1-pro                      → same, higher quality
+  #   kling-2.6/image-to-video            → same, newer model
+  # Pricing (Kie.ai listed rates, May 2026):
+  #   veo3_fast              $0.10/sec  (current Veo Fast tier)
+  #   veo3                   $0.40/sec  (cinematic Veo)
+  #   kling/v2-1-standard    $0.025/sec ($0.125 / 5s)  ← 4x cheaper than Veo Fast
+  #   kling/v2-1-pro         $0.05/sec  ($0.25 / 5s)
+  #   kling-2.6 (no audio)   $0.056/sec ($0.28 / 5s)
+  model: veo3_fast               # Default — legacy Veo path, works without
+                                 # ElevenLabs (native_audio=true). Switch to
+                                 # kling/v2-1-pro (or kling/v2-1-standard for
+                                 # 4x cheaper) AND set native_audio=false +
+                                 # export ELEVENLABS_API_KEY to use Kling.
   num_clips: 5                   # MIN beats — writer picks 5..15 based on story length
   clip_duration_s: 8
   aspect_ratio: "9:16"
-  cost_per_second_usd: 0.10      # Veo 3 Fast pricing
+  cost_per_second_usd: 0.10      # Veo 3 Fast pricing. Cost calculations auto-
+                                 # adjust per model via _COST_BY_MODEL in
+                                 # pipeline/api.py — this field is now unused
+                                 # for the budget guard, kept for back-compat.
   max_spend_usd: 13.00           # 15 clips × 8s × $0.10 = $12 max; small buffer
   poll_interval_s: 5
-  poll_timeout_s: 300
+  poll_timeout_s: 300            # Veo timeout; Kling auto-bumps to 600s internally
   flux_model: flux-kontext-pro   # Kie.ai model identifier — also: flux-kontext-max
   flux_cost_per_image_usd: 0.05
   native_audio: true             # Veo speaks each beat's dialogue with native lip sync.
-                                 # Skips ElevenLabs. Set false to use the old text-to-speech path.
+                                 # Set false (and switch to a Kling model) to use the
+                                 # ElevenLabs TTS path. Kling has no native audio so
+                                 # mixing model=kling-* with native_audio=true is a bug.

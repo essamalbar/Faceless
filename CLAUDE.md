@@ -35,6 +35,25 @@ export KIE_DOWNLOAD_PROXY=https://your-worker.workers.dev
 export KIE_DOWNLOAD_PROXY_SECRET=<shared secret>
 ```
 
+## Video provider selection
+
+`config.yaml > kie.model` picks the video generator. Costs are auto-mapped
+per model in `pipeline/api.py:_COST_BY_MODEL` — the approve-gate dollar
+figure and the budget guard both follow the active model:
+
+| Model id                       | Rate     | Notes |
+|--------------------------------|----------|-------|
+| `veo3_fast` (default)          | $0.10/s  | Veo Fast with native lip-synced Arabic audio. `native_audio: true` required. |
+| `veo3`                         | $0.40/s  | Cinematic Veo. 4× cost of Fast. |
+| `kling/v2-1-standard`          | $0.025/s | 4× cheaper than Veo Fast. No native audio — set `native_audio: false` AND keep ELEVENLABS_API_KEY in env. |
+| `kling/v2-1-pro`               | $0.05/s  | Same caveats as Standard. 1080p output. |
+| `kling-2.6/image-to-video`     | $0.056/s | Newer family. Optional native audio (extra cost). |
+
+Switching from Veo → Kling: edit `config.yaml`, set `model:` to the
+chosen kling id AND `native_audio: false`. The pipeline auto-routes to
+the right endpoint (`/api/v1/veo/generate` vs `/api/v1/jobs/createTask`)
+based on the model id prefix; no other changes needed.
+
 Image uploads (for Veo image-to-video chaining) use 0x0.st by default — anonymous,
 no API key needed. Override `pipeline.video._upload_image_get_url` if you'd
 rather use Cloudflare R2 / imgbb / your own bucket.

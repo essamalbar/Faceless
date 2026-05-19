@@ -2203,6 +2203,47 @@ def test_admin_credit_back_requires_reason(client_factory):
     assert r.status_code == 400
 
 
+# ---------------------------------------------------------------------------
+# Per-model cost mapping. Switching kie.model in config.yaml must auto-
+# update both the budget-guard --max-spend and the user-facing dollar
+# figure on /runs/{id}/script. The mapping lives in _COST_BY_MODEL and is
+# looked up via _cost_per_second_for_model — these tests pin the rates
+# we quote on the landing page.
+# ---------------------------------------------------------------------------
+
+def test_cost_per_second_for_known_veo_and_kling_models():
+    from pipeline.api import _cost_per_second_for_model
+    # Veo family
+    assert _cost_per_second_for_model("veo3_fast") == 0.10
+    assert _cost_per_second_for_model("veo3") == 0.40
+    # Kling family — these are the rates quoted to users in the landing
+    # page WhyFaceless section, so changing them is a UX-visible event.
+    assert _cost_per_second_for_model("kling/v2-1-standard") == 0.025
+    assert _cost_per_second_for_model("kling/v2-1-pro") == 0.05
+    assert _cost_per_second_for_model("kling-2.6/image-to-video") == 0.056
+
+
+def test_cost_per_second_falls_back_to_default_for_unknown_model():
+    """Defensive: a typo in config.yaml shouldn't bill users at $0/sec."""
+    from pipeline.api import _cost_per_second_for_model, DEFAULT_COST_PER_SECOND_USD
+    assert _cost_per_second_for_model("nonexistent-model") == DEFAULT_COST_PER_SECOND_USD
+
+
+def test_cost_estimate_usd_uses_active_model_rate(monkeypatch):
+    """User-visible cost figure on /script must reflect the active model.
+    Mocks the model lookup to confirm the rate is per-model, not a constant."""
+    from pipeline import api as api_mod
+    monkeypatch.setattr(api_mod, "_active_video_model",
+                        lambda: "kling/v2-1-standard")
+    # 5 clips × 8s @ $0.025/s = $1.00 + $0.05 Flux = $1.05
+    beats = [{"clip_duration_s": 8.0} for _ in range(5)]
+    assert api_mod._cost_estimate_usd(beats) == 1.05
+
+    # Same script on veo3_fast: 5 × 8 × $0.10 + $0.05 = $4.05 → 4x more
+    monkeypatch.setattr(api_mod, "_active_video_model", lambda: "veo3_fast")
+    assert api_mod._cost_estimate_usd(beats) == 4.05
+
+
 def test_billing_endpoints_reject_service_tokens(client_factory):
     c = client_factory(user_id="admin", role="service")
     for path, body in [

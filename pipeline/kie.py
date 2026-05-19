@@ -36,9 +36,33 @@ FLUX_JOB_PATH_TPL = os.environ.get(
 )
 JOB_PATH_TPL = os.environ.get("KIE_JOB_PATH_TPL", "/api/v1/veo/record-info?taskId={job_id}")
 
+# Unified jobs endpoint — used by Kling, Runway, Hailuo, Seedance, and every
+# model added after Kie's API consolidation. Different request shape from
+# the legacy Veo endpoint above (nested `input` object instead of flat body)
+# and different polling endpoint with `state: success|fail` instead of
+# successFlag integers. Keep both paths until the Veo legacy endpoint gets
+# retired upstream.
+JOBS_CREATETASK_PATH = os.environ.get(
+    "KIE_JOBS_CREATETASK_PATH", "/api/v1/jobs/createTask",
+)
+JOBS_RECORDINFO_PATH_TPL = os.environ.get(
+    "KIE_JOBS_RECORDINFO_PATH_TPL", "/api/v1/jobs/recordInfo?taskId={task_id}",
+)
+
 # successFlag values Kie.ai returns; override via env if upstream changes.
 SUCCESS_FLAG = int(os.environ.get("KIE_SUCCESS_FLAG", "1"))
 FAILED_FLAGS = {2, 3}
+
+# Model id prefixes that route through the unified /jobs endpoint. Anything
+# matching is sent to submit_unified_image_to_video. Anything else uses the
+# legacy Veo path. Keep this list ordered most-specific first.
+_KLING_MODEL_PREFIXES = ("kling/", "kling-")
+_UNIFIED_MODEL_PREFIXES = _KLING_MODEL_PREFIXES
+
+
+def is_unified_model(model: str) -> bool:
+    """True for models routed through /api/v1/jobs/createTask (Kling et al)."""
+    return any(model.startswith(p) for p in _UNIFIED_MODEL_PREFIXES)
 
 # Internal — replaceable in tests
 _SLEEP = time.sleep
@@ -170,6 +194,113 @@ class KieClient:
                 raise KieError(f"flux task {job_id} successFlag={flag_int}: {resp}")
             _SLEEP(poll_interval_s)
         raise KieError(f"flux task {job_id} did not complete within {timeout_s}s")
+
+    def submit_unified_image_to_video(
+        self,
+        *,
+        prompt: str,
+        image_url: str,
+        model: str,
+        duration_s: int = 5,
+        negative_prompt: str | None = None,
+        cfg_scale: float | None = None,
+        sound: bool = False,
+    ) -> str:
+        """Submit an image-to-video job via the unified /jobs/createTask endpoint.
+
+        Used for Kling (and any future model hosted under this endpoint).
+        Field shape inside `input` differs by model family:
+          - kling/v2-1-*       → input.image_url (singular string), optional
+                                 negative_prompt + cfg_scale
+          - kling-2.6/*        → input.image_urls (array, max 1 item), optional
+                                 sound boolean (audio adds 2x to cost)
+        Duration is passed as a string ('5' or '10') — Kling rejects integers.
+        """
+        if not is_unified_model(model):
+            raise KieError(
+                f"submit_unified_image_to_video called with non-unified model "
+                f"{model!r} — use submit_video_job for Veo"
+            )
+        input_block: dict = {
+            "prompt": prompt,
+            "duration": str(int(duration_s)),
+        }
+        if model.startswith("kling-2.6/") or model.startswith("kling-2.5") \
+                or model.startswith("kling-3"):
+            # Newer families use array + optional sound. Sound on costs 2x;
+            # default off because narration is handled by ElevenLabs.
+            input_block["image_urls"] = [image_url]
+            input_block["sound"] = sound
+        else:
+            # 2.1 family — singular image_url field, plus cfg_scale + negative_prompt
+            input_block["image_url"] = image_url
+            if negative_prompt:
+                input_block["negative_prompt"] = negative_prompt
+            if cfg_scale is not None:
+                input_block["cfg_scale"] = cfg_scale
+        body = {"model": model, "input": input_block}
+        resp = self._post_json(JOBS_CREATETASK_PATH, body)
+        data = resp.get("data") or {}
+        task_id = data.get("taskId") or resp.get("taskId")
+        if not task_id:
+            raise KieError(f"unified submit response missing taskId: {resp}")
+        return str(task_id)
+
+    def wait_for_unified_video(
+        self, task_id: str, poll_interval_s: int = 5, timeout_s: int = 600,
+    ) -> str:
+        """Poll /jobs/recordInfo until state=='success'; return first resultUrl.
+
+        Used for Kling and other models that route through the unified
+        /jobs/createTask endpoint. Response shape:
+          {data: {state: 'success'|'fail', resultJson: '<json-string>',
+                  failCode, failMsg}}
+        resultJson is a STRING that needs JSON-parsing — Kie did not normalize
+        this for us.
+        """
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            resp = self._get_json(JOBS_RECORDINFO_PATH_TPL.format(task_id=task_id))
+            data = resp.get("data") or {}
+            state = (data.get("state") or "").lower()
+            if state == "success":
+                raw = data.get("resultJson")
+                if isinstance(raw, str):
+                    try:
+                        parsed = json.loads(raw)
+                    except json.JSONDecodeError as e:
+                        raise KieError(
+                            f"task {task_id} success but resultJson not "
+                            f"valid JSON: {e}; raw={raw[:200]!r}"
+                        )
+                else:
+                    parsed = raw or {}
+                urls = parsed.get("resultUrls") or []
+                if not urls:
+                    raise KieError(
+                        f"task {task_id} succeeded but no resultUrls: {resp}"
+                    )
+                return str(urls[0])
+            if state == "fail":
+                fail_msg = (data.get("failMsg") or "").lower()
+                transient_markers = (
+                    "temporarily unavailable",
+                    "try again later",
+                    "high traffic",
+                    "rate limit",
+                    "rate-limit",
+                    "too many requests",
+                    "service unavailable",
+                )
+                err_class = TransientKieError if any(
+                    m in fail_msg for m in transient_markers
+                ) else KieError
+                raise err_class(
+                    f"task {task_id} failed: failCode={data.get('failCode')} "
+                    f"failMsg={data.get('failMsg')!r}"
+                )
+            _SLEEP(poll_interval_s)
+        raise KieError(f"task {task_id} did not complete within {timeout_s}s")
 
     def poll_job(self, job_id: str) -> dict:
         """Single GET on the record-info endpoint. Returns parsed JSON."""
@@ -373,5 +504,75 @@ def generate_clip(
     client.download(url, out_path)
     # Move moov atom to the front so HTML5 players can stream progressively
     # instead of waiting for the full file. Silent no-op on failure.
+    from pipeline.mp4_faststart import rewrite_with_faststart
+    rewrite_with_faststart(out_path)
+
+
+def generate_unified_clip(
+    client: KieClient,
+    *,
+    prompt: str,
+    image_url: str,
+    model: str,
+    duration_s: int,
+    out_path: Path,
+    negative_prompt: str | None = None,
+    cfg_scale: float | None = None,
+    sound: bool = False,
+    poll_interval_s: int = 5,
+    timeout_s: int = 600,
+) -> None:
+    """End-to-end Kling-family image-to-video: submit → poll → download.
+
+    `image_url` is REQUIRED — Kling has no text-only mode in our pipeline.
+    The character_sheet upload from pipeline/video.py is the canonical
+    source so identity is locked the same way across every clip.
+
+    timeout_s defaults higher than Veo (600 vs 300) because Kling queues
+    can take longer on the cheaper tiers — observed 4-6 min for Standard.
+    """
+    if not is_unified_model(model):
+        raise KieError(
+            f"generate_unified_clip called with non-unified model {model!r}"
+        )
+    submit_kwargs = {
+        "prompt": prompt,
+        "image_url": image_url,
+        "model": model,
+        "duration_s": duration_s,
+    }
+    if negative_prompt:
+        submit_kwargs["negative_prompt"] = negative_prompt
+    if cfg_scale is not None:
+        submit_kwargs["cfg_scale"] = cfg_scale
+    if sound:
+        submit_kwargs["sound"] = sound
+
+    # Per-call retry on TransientKieError. Mirror Veo's retry policy
+    # (4 attempts, exponential backoff 30/60/120/240s).
+    backoffs_s = (30, 60, 120, 240)
+    last_err: TransientKieError | None = None
+    for attempt in range(4):
+        try:
+            task_id = client.submit_unified_image_to_video(**submit_kwargs)
+            url = client.wait_for_unified_video(
+                task_id, poll_interval_s=poll_interval_s, timeout_s=timeout_s,
+            )
+            break
+        except TransientKieError as e:
+            last_err = e
+            if attempt + 1 >= 4:
+                raise
+            wait = backoffs_s[min(attempt, len(backoffs_s) - 1)]
+            print(
+                f"[kie] transient unified-submit failure {attempt+1}/4: "
+                f"{e}; retrying in {wait}s"
+            )
+            _SLEEP(wait)
+    else:
+        assert last_err is not None
+        raise last_err
+
+    client.download(url, out_path)
     from pipeline.mp4_faststart import rewrite_with_faststart
     rewrite_with_faststart(out_path)

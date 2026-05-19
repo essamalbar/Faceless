@@ -18,7 +18,13 @@ import requests
 
 from pipeline import credits as _credits
 from pipeline.auth import User as _User
-from pipeline.kie import KieClient, generate_clip, submit_and_wait_with_retry
+from pipeline.kie import (
+    KieClient,
+    generate_clip,
+    generate_unified_clip,
+    is_unified_model,
+    submit_and_wait_with_retry,
+)
 from pipeline.types import Beat, Script, is_complete_artifact
 
 
@@ -674,8 +680,49 @@ def generate_clips_chained(
         if prev_last_frame_url:
             image_urls.append(prev_last_frame_url)
 
-        if user is not None:
-            def _do_submit(b, *, clip_index):
+        # Dispatch based on model family:
+        #   Veo (veo3, veo3_fast, veo3_lite) → /api/v1/veo/generate, supports
+        #       multi-image references (character_sheet + last_frame chaining)
+        #   Kling 2.1 / 2.6 → /api/v1/jobs/createTask, single image only
+        #       (character_sheet — chaining last_frame would drift identity)
+        is_unified = is_unified_model(model)
+        if is_unified:
+            def _do_submit_unified(b, *, clip_index):
+                # Kling timeout is per-clip (larger than Veo's because the
+                # cheaper Standard tier queues for 4-6 min).
+                from pipeline.kie import submit_and_wait_with_retry as _legacy_swr  # noqa
+                from pipeline.kie import (
+                    TransientKieError as _T,
+                )
+                backoffs = (30, 60, 120, 240)
+                last_err = None
+                for attempt in range(4):
+                    try:
+                        task_id = client.submit_unified_image_to_video(
+                            prompt=prompt,
+                            image_url=sheet_url,
+                            model=model,
+                            duration_s=int(b.clip_duration_s),
+                        )
+                        return client.wait_for_unified_video(
+                            task_id,
+                            poll_interval_s=poll_interval_s,
+                            # Kling needs ~2× Veo's poll window; use the
+                            # larger of the two so callers can keep
+                            # poll_timeout_s configured for Veo.
+                            timeout_s=max(poll_timeout_s, 600),
+                        )
+                    except _T as e:
+                        last_err = e
+                        if attempt + 1 >= 4:
+                            raise
+                        import time as _t
+                        _t.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                assert last_err is not None
+                raise last_err
+            submit_fn_to_use = _do_submit_unified
+        else:
+            def _do_submit_veo(b, *, clip_index):
                 return submit_and_wait_with_retry(
                     client,
                     submit_kwargs={
@@ -689,32 +736,26 @@ def generate_clips_chained(
                     poll_interval_s=poll_interval_s,
                     timeout_s=poll_timeout_s,
                 )
+            submit_fn_to_use = _do_submit_veo
+
+        if user is not None:
             url = _charge_and_submit_clip(
                 user=user, run_id=run_id, beat=beat, clip_index=i,
-                submit_fn=_do_submit,
+                submit_fn=submit_fn_to_use,
             )
         else:
             # Legacy path — no credit accounting (used by CLI without --user-id
             # when run.py doesn't pass user= to keep backwards compat).
-            url = submit_and_wait_with_retry(
-                client,
-                submit_kwargs={
-                    "prompt": prompt,
-                    "model": model,
-                    "aspect_ratio": aspect_ratio,
-                    "generation_type": "REFERENCE_2_VIDEO",
-                    "image_urls": image_urls,
-                    "duration_s": beat.clip_duration_s,
-                },
-                poll_interval_s=poll_interval_s,
-                timeout_s=poll_timeout_s,
-            )
+            url = submit_fn_to_use(beat, clip_index=i)
         client.download(url, out_path)
         # Move moov atom to the front so HTML5 players can stream progressively
         # instead of waiting for the full file. Silent no-op on failure.
         from pipeline.mp4_faststart import rewrite_with_faststart
         rewrite_with_faststart(out_path)
         _extract_last_frame(out_path, last_frame_path)
+        # Last-frame chaining only matters for Veo (multi-image input). Kling
+        # takes one image so we keep sending the locked character_sheet for
+        # identity persistence — which is exactly the failure mode Veo had.
         prev_last_frame_url = _upload_image_get_url(last_frame_path)
 
         spend_entries.append({
