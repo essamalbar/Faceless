@@ -221,9 +221,14 @@ class KieClient:
                 f"submit_unified_image_to_video called with non-unified model "
                 f"{model!r} — use submit_video_job for Veo"
             )
+        # Kling only accepts duration_s ∈ {5, 10}. Beat durations from the
+        # script writer (e.g. 7s, 8s, 9.5s) get snapped to the nearest
+        # legal value, rounding UP at the midpoint so dialogue isn't cut
+        # short. 1-7 → 5; 8+ → 10.
+        snapped = 5 if int(duration_s) <= 7 else 10
         input_block: dict = {
             "prompt": prompt,
-            "duration": str(int(duration_s)),
+            "duration": str(snapped),
         }
         if model.startswith("kling-2.6/") or model.startswith("kling-2.5") \
                 or model.startswith("kling-3"):
