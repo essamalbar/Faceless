@@ -180,10 +180,20 @@ def _compute_max_spend_for_run(run_dir: Path) -> float | None:
 def _active_video_model() -> str:
     """Read kie.model from config.yaml so cost calculations follow the
     deployed setting. Defensive: returns 'veo3_fast' on any load failure
-    (matches the legacy hardcoded behavior so we never overbill)."""
+    (matches the legacy hardcoded behavior so we never overbill).
+
+    load_config requires an explicit path — we pass the repo's
+    config.yaml since the API runs from REPO_ROOT in both local dev
+    and the Cloud Run image. Override via FACELESS_CONFIG env var when
+    a different config is shipped (used by tests + Cloud Run Job).
+    """
     try:
         from pipeline.config import load_config
-        cfg = load_config()
+        cfg_path_str = os.environ.get(
+            "FACELESS_CONFIG",
+            str(REPO_ROOT / "config.yaml"),
+        )
+        cfg = load_config(Path(cfg_path_str))
         return getattr(cfg.kie, "model", "veo3_fast")
     except Exception:
         return "veo3_fast"

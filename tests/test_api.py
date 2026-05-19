@@ -513,8 +513,12 @@ def test_get_script_returns_beats_with_cost_estimate(client, auth, tmp_path: Pat
     assert body["title"] == "العقد"
     assert len(body["beats"]) == 3
     assert body["beats"][1]["speaker"] == "son"
-    # cost estimate: (8+9+7) × $0.10 + $0.05 Flux = $2.45
-    assert body["estimated_cost_usd"] == 2.45
+    # Cost estimate follows the active video model from config.yaml.
+    # Default in committed config = kling/v2-1-pro ($0.05/s) so:
+    #   (8+9+7) × $0.05 + $0.05 Flux = $1.25
+    # The 4 cost-mapping tests below pin the per-model rates explicitly;
+    # this assertion just confirms the wiring picks up the deployed default.
+    assert body["estimated_cost_usd"] == 1.25
 
 
 # ---------------------------------------------------------------------------
