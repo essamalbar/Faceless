@@ -239,10 +239,11 @@ def test_submit_unified_v2_1_uses_singular_image_url(monkeypatch):
     assert inp["cfg_scale"] == 0.7
 
 
-def test_submit_unified_snaps_8s_beat_to_10s_kling_value():
-    """The script writer outputs 7-9s beats but Kling only accepts '5' or '10'.
-    The client must snap to the nearest legal value (rounding up so dialogue
-    isn't truncated)."""
+def test_submit_unified_snaps_beat_duration_aggressively_up():
+    """The script writer outputs 5-10s beats but Kling only accepts '5' or
+    '10'. Snap rule favors '10' for anything ≥6s to avoid truncating
+    dialogue. Regression for 2026-05-19-095639 where beat 2 was 7s and
+    Kling delivered 5s — losing 2s of intended visual content."""
     from pipeline.kie import KieClient
     captured: dict = {}
     import pipeline.kie as _kie
@@ -253,30 +254,22 @@ def test_submit_unified_snaps_8s_beat_to_10s_kling_value():
     _kie.KieClient._post_json = fake_post
     try:
         c = KieClient(api_key="k")
-        # 8s beat → '10' (round up)
-        c.submit_unified_image_to_video(
-            prompt="x", image_url="u",
-            model="kling/v2-1-pro", duration_s=8,
-        )
-        assert captured["body"]["input"]["duration"] == "10"
-        # 5s beat → '5'
-        c.submit_unified_image_to_video(
-            prompt="x", image_url="u",
-            model="kling/v2-1-pro", duration_s=5,
-        )
-        assert captured["body"]["input"]["duration"] == "5"
-        # 7s beat → '5' (boundary — anything <=7 snaps down)
-        c.submit_unified_image_to_video(
-            prompt="x", image_url="u",
-            model="kling/v2-1-pro", duration_s=7,
-        )
-        assert captured["body"]["input"]["duration"] == "5"
-        # 9s beat → '10'
-        c.submit_unified_image_to_video(
-            prompt="x", image_url="u",
-            model="kling/v2-1-pro", duration_s=9,
-        )
-        assert captured["body"]["input"]["duration"] == "10"
+        for duration_s, expected in [
+            (4, "5"),   # short atmospheric beat
+            (5, "5"),   # exactly 5
+            (6, "10"),  # was '5' before fix — snap UP to preserve content
+            (7, "10"),  # was '5' before fix — main bug repro
+            (8, "10"),
+            (9, "10"),
+            (10, "10"),
+        ]:
+            c.submit_unified_image_to_video(
+                prompt="x", image_url="u",
+                model="kling/v2-1-pro", duration_s=duration_s,
+            )
+            assert captured["body"]["input"]["duration"] == expected, \
+                f"duration_s={duration_s} should snap to {expected}, " \
+                f"got {captured['body']['input']['duration']}"
     finally:
         _kie.KieClient._post_json = orig
 

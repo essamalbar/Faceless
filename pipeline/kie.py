@@ -222,10 +222,13 @@ class KieClient:
                 f"{model!r} — use submit_video_job for Veo"
             )
         # Kling only accepts duration_s ∈ {5, 10}. Beat durations from the
-        # script writer (e.g. 7s, 8s, 9.5s) get snapped to the nearest
-        # legal value, rounding UP at the midpoint so dialogue isn't cut
-        # short. 1-7 → 5; 8+ → 10.
-        snapped = 5 if int(duration_s) <= 7 else 10
+        # script writer are 5-10s; we snap aggressively UPWARD because
+        # cutting a 7s beat to 5s truncates 2s of intended visual
+        # content. Anything ≥6 → 10; only short atmospheric beats (≤5s)
+        # stay at 5. Was 1-7 → 5; 8+ → 10 (lost content on 6s and 7s
+        # beats — verified on 2026-05-19-095639 where beat 2 was 7s and
+        # rendered at 5s).
+        snapped = 5 if int(duration_s) <= 5 else 10
         input_block: dict = {
             "prompt": prompt,
             "duration": str(snapped),

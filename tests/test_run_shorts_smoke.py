@@ -237,6 +237,52 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
 # ---------------------------------------------------------------------------
 
 
+def test_stage_character_sheet_uses_9_16_aspect_for_kling_model(tmp_path, monkeypatch):
+    """Kling 2.1 inherits the reference image's aspect ratio. A 1:1
+    character_sheet → 1:1 (square) clips. Verified on the failed Kling
+    test run 2026-05-19-095639 where every Kling output was 1440×1440.
+
+    _stage_character_sheet must request 9:16 from Flux when kie.model is
+    a Kling id, and 1:1 otherwise (Veo handles aspect_ratio downstream
+    itself so its sheets stay square)."""
+    captured: dict = {}
+    def fake_sheet(client, *, out_path, lineup_prompt=None, aspect_ratio="1:1", **kw):
+        captured["aspect_ratio"] = aspect_ratio
+        out_path.write_bytes(b"fake-png")
+    monkeypatch.setattr(
+        "pipeline.character_sheet.generate_character_sheet", fake_sheet)
+
+    from pipeline.types import RunPaths, Script, Beat
+    from pipeline.config import load_config
+    from dataclasses import replace
+    paths = RunPaths(root=tmp_path / "run")
+    paths.root.mkdir()
+    script = Script(
+        title="t", theme="folkloric", global_setting="g",
+        music_mood="dread",
+        beats=(Beat(arabic="x", english_motion="y", clip_duration_s=8.0,
+                    speaker="m", character_name="x"),),
+        story_combined="x", target_duration_s=8.0,
+    )
+    cfg = load_config(REPO_ROOT / "config.yaml")
+    import run
+
+    # Kling model → 9:16 (the bug fix)
+    kling_cfg = replace(cfg, kie=replace(cfg.kie, model="kling/v2-1-pro"))
+    run._stage_character_sheet(
+        client=object(), cfg=kling_cfg, paths=paths, script=script,
+    )
+    assert captured["aspect_ratio"] == "9:16"
+
+    # Clean up + re-run with Veo → 1:1 (unchanged behavior)
+    paths.character_sheet_png.unlink()
+    veo_cfg = replace(cfg, kie=replace(cfg.kie, model="veo3_fast"))
+    run._stage_character_sheet(
+        client=object(), cfg=veo_cfg, paths=paths, script=script,
+    )
+    assert captured["aspect_ratio"] == "1:1"
+
+
 def test_stage_character_sheet_never_passes_none_lineup_prompt(tmp_path, monkeypatch):
     """PA-2: even in legacy/sunstoriz mode the function builds a lineup_prompt
     from the script's actual content rather than passing None and falling

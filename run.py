@@ -369,11 +369,20 @@ def _stage_character_sheet(
         f"{script.global_setting.strip() or 'cinematic 3D animation, vertical 9:16'}. "
         "Design-sheet aesthetic, high detail. NO text, NO watermark, NO logo."
     )
+    # Match the character_sheet aspect ratio to the downstream video model:
+    #   Veo accepts any reference and renders to its own configured aspect_ratio.
+    #   Kling 2.1 INHERITS the reference image's aspect ratio — a 1:1 sheet
+    #   produces 1:1 square clips (verified on the 2026-05-19-095639 test run,
+    #   where every output came back 1440x1440). Use 9:16 when shipping to Kling
+    #   so clips arrive vertical and don't need an ffmpeg crop in post.
+    from pipeline.kie import is_unified_model
+    sheet_aspect = "9:16" if is_unified_model(cfg.kie.model) else "1:1"
     pipeline.character_sheet.generate_character_sheet(
         client=client,
         out_path=paths.character_sheet_png,
         lineup_prompt=lineup_prompt,
         model=cfg.kie.flux_model,
+        aspect_ratio=sheet_aspect,
         poll_interval_s=cfg.kie.poll_interval_s,
         poll_timeout_s=cfg.kie.poll_timeout_s,
     )
