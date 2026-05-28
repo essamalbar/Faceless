@@ -2481,9 +2481,10 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     cfg = load_config(cfg_path)
     amount = cfg.song.credits_per_song if cfg.song else 1
 
-    balance = _credits.get_balance(user.id)
-    if balance < amount:
-        _raise_402_insufficient_credits(balance, amount)
+    if user.role != "service":
+        balance = _credits.get_balance(user.id)
+        if balance < amount:
+            _raise_402_insufficient_credits(balance, amount)
 
     new_balance = _credits.check_or_deduct(
         user, amount=amount, run_id=run_id, reason="song-spend",

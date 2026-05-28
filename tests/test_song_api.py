@@ -301,14 +301,30 @@ def test_approve_song_402_when_balance_insufficient(app, monkeypatch):
     fastapi_app, token = app
     client = TestClient(fastapi_app)
     from pipeline import credits
-    monkeypatch.setattr(credits, "get_balance", lambda uid: 0)
+    from pipeline.auth import User, require_user
+
+    # Step 1: create the song as the service user (default fixture
+    # auth) so the create-side balance check passes regardless.
     create = client.post(
         "/songs", json={"theme": "x"},
         headers={"Authorization": f"Bearer {token}"},
     )
     run_id = create.json()["run_id"]
-    r = client.post(
-        f"/songs/{run_id}/approve",
-        headers={"Authorization": f"Bearer {token}"},
+
+    # Step 2: override require_user to a non-service identity with
+    # zero balance, then attempt approve. We keep id="admin" so
+    # _user_runs_root resolves to the same path the song was created
+    # under, but flip role to "user" so the service-bypass guard
+    # doesn't skip the balance check.
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 0)
+    fastapi_app.dependency_overrides[require_user] = lambda: User(
+        id="admin", email="t@example.com", role="user",
     )
-    assert r.status_code == 402
+    try:
+        r = client.post(
+            f"/songs/{run_id}/approve",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 402
+    finally:
+        fastapi_app.dependency_overrides.pop(require_user, None)
