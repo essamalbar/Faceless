@@ -83,6 +83,16 @@ class KieConfig:
 
 
 @dataclass(frozen=True)
+class SongConfig:
+    """AI-song-mode config — Suno + Flux cover + credit pricing."""
+    suno_model: str                # Suno model id; V5_5 latest, V4_5 fallback
+    suno_cost_usd: float           # per-song flat cost on Kie.ai
+    cover_flux_model: str          # Kie.ai Flux model id for covers
+    cover_cost_usd: float          # per-image flux cost
+    credits_per_song: int          # user-facing price for one song run
+
+
+@dataclass(frozen=True)
 class Config:
     voice: VoiceConfig
     script: ScriptConfig
@@ -90,6 +100,7 @@ class Config:
     assemble: AssembleConfig
     captions: CaptionsConfig
     kie: KieConfig
+    song: SongConfig | None = None
 
 
 def load_config(path: Path) -> Config:
@@ -104,4 +115,5 @@ def load_config(path: Path) -> Config:
         assemble=AssembleConfig(**raw["assemble"]),
         captions=CaptionsConfig(**raw["captions"]),
         kie=KieConfig(**raw["kie"]),
+        song=SongConfig(**raw["song"]) if "song" in raw else None,
     )

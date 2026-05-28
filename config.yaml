@@ -90,3 +90,16 @@ kie:
                                  # generates Arabic narration and we mix it
                                  # into clips during assembly. Set true ONLY
                                  # when switching back to a Veo model.
+
+song:
+  # Suno model id. V5_5 is latest (max 8 min, 5000-char prompt, 1000-char style).
+  # V4_5 acceptable fallback. V3_5 not acceptable per spec quality bar.
+  suno_model: V5_5
+  # Per-song flat cost on Kie.ai (USD). Verify against current Kie.ai pricing.
+  suno_cost_usd: 0.05
+  # Kie.ai Flux model id for covers. flux-kontext-max = highest quality.
+  cover_flux_model: flux-kontext-max
+  cover_cost_usd: 0.03
+  # User-facing price. 1 credit = $0.10 per B3 ledger. Raw cost ~$0.08 ⇒
+  # 1 credit covers it + retry-failure margin.
+  credits_per_song: 1
