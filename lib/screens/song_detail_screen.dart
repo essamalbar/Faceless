@@ -1,20 +1,544 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../api/client.dart';
+import '../api/models.dart';
+import '../theme.dart';
 
-/// Stub — replaced by Task 17's full implementation.
-class SongDetailScreen extends StatelessWidget {
+class SongDetailScreen extends StatefulWidget {
   final FacelessApiClient client;
   final String runId;
   const SongDetailScreen(
       {super.key, required this.client, required this.runId});
 
   @override
+  State<SongDetailScreen> createState() => _SongDetailScreenState();
+}
+
+class _SongDetailScreenState extends State<SongDetailScreen> {
+  SongSummary? _summary;
+  bool _polling = true;
+  bool _swapping = false;
+
+  // Inline video player state
+  VideoPlayerController? _videoController;
+  bool _videoLoading = false;
+  String? _videoError;
+  bool _showControls = true;
+
+  static const _terminalStatuses = {'complete', 'failed', 'canceled'};
+
+  static const _stageLabels = <String, String>{
+    'awaiting_approval': 'Waiting for approval',
+    'generating_song': 'Generating song (Suno ~30 s)…',
+    'generating_cover': 'Generating cover (~15 s)…',
+    'assembling': 'Assembling video…',
+    'complete': 'Done',
+    'failed': 'Failed',
+    'canceled': 'Canceled',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _poll();
+  }
+
+  // ─── polling ────────────────────────────────────────────────────────────────
+
+  Future<void> _poll() async {
+    while (mounted && _polling) {
+      try {
+        final s = await widget.client.getSong(widget.runId);
+        if (!mounted) return;
+        setState(() => _summary = s);
+        if (_terminalStatuses.contains(s.status)) {
+          setState(() => _polling = false);
+          return;
+        }
+      } catch (_) {
+        // tolerate transient errors during polling
+      }
+      await Future.delayed(const Duration(seconds: 3));
+    }
+  }
+
+  // ─── take swap ──────────────────────────────────────────────────────────────
+
+  Future<void> _swap(int take) async {
+    setState(() => _swapping = true);
+    try {
+      await widget.client.swapTake(widget.runId, take);
+      final s = await widget.client.getSong(widget.runId);
+      if (!mounted) return;
+      setState(() => _summary = s);
+      // Reload the video player so it picks up the new take's clip
+      await _initVideo();
+    } on FacelessApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Swap failed: ${e.message}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Swap failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _swapping = false);
+    }
+  }
+
+  // ─── retry ──────────────────────────────────────────────────────────────────
+
+  Future<void> _retry() async {
+    final last = _summary?.lastError ?? '';
+    final lower = last.toLowerCase();
+    final mentionsSuno =
+        lower.contains('suno') || lower.contains('song');
+    if (mentionsSuno) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Retry will re-charge'),
+          content: const Text(
+            'The song generation failed. Retrying will spawn a new Suno '
+            'job and deduct credits again. Continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    try {
+      await widget.client.resumeSong(widget.runId);
+      if (!mounted) return;
+      setState(() => _polling = true);
+      _poll();
+    } on FacelessApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Retry failed: ${e.message}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Retry failed: $e')),
+      );
+    }
+  }
+
+  // ─── inline video player ────────────────────────────────────────────────────
+
+  Future<void> _initVideo() async {
+    setState(() {
+      _videoLoading = true;
+      _videoError = null;
+    });
+    // Dispose any previous controller before creating a new one
+    final old = _videoController;
+    _videoController = null;
+    old?.removeListener(_onVideoTick);
+    await old?.dispose();
+
+    try {
+      final url = await widget.client.songVideoUrl(widget.runId);
+      final c = VideoPlayerController.networkUrl(url);
+      await c.initialize();
+      c.setLooping(false);
+      c.addListener(_onVideoTick);
+      if (!mounted) {
+        await c.dispose();
+        return;
+      }
+      setState(() {
+        _videoController = c;
+        _videoLoading = false;
+      });
+      c.play();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _videoLoading = false;
+        _videoError = e.toString();
+      });
+    }
+  }
+
+  void _onVideoTick() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  // ─── cover thumbnail ────────────────────────────────────────────────────────
+
+  bool get _showCover {
+    final s = _summary;
+    if (s == null) return false;
+    return s.hasVideo ||
+        s.status == 'generating_cover' ||
+        s.status == 'assembling' ||
+        s.status == 'complete';
+  }
+
+  // ─── build ──────────────────────────────────────────────────────────────────
+
+  @override
   Widget build(BuildContext context) {
+    final s = _summary;
+    if (s == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Song')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Song')),
-      body: const Center(
-          child: Text('Detail screen — implemented in Task 17')),
+      appBar: AppBar(
+        title: Text(
+          s.title ?? 'Song',
+          textDirection: TextDirection.rtl,
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildCoverOrPlaceholder(context, s),
+          const SizedBox(height: 16),
+          _buildStatusCard(context, s),
+          if (s.status == 'complete') ...[
+            const SizedBox(height: 16),
+            _buildVideoSection(context),
+            const SizedBox(height: 16),
+            if (s.chosenTake != null) _buildTakeSwapCard(context, s),
+          ],
+          if (s.status == 'failed') ...[
+            const SizedBox(height: 16),
+            _buildErrorCard(context, s),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              onPressed: _retry,
+            ),
+          ],
+        ],
+      ),
     );
+  }
+
+  // ─── cover ──────────────────────────────────────────────────────────────────
+
+  Widget _buildCoverOrPlaceholder(BuildContext context, SongSummary s) {
+    if (_showCover) {
+      return FutureBuilder<Uri>(
+        future: widget.client.songCoverUrl(widget.runId),
+        builder: (ctx, snap) {
+          if (!snap.hasData) {
+            return _placeholderCover(context);
+          }
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              snap.data!.toString(),
+              fit: BoxFit.cover,
+              height: 320,
+              width: double.infinity,
+              errorBuilder: (ctx2, err, stack) => _placeholderCover(ctx2),
+            ),
+          );
+        },
+      );
+    }
+    return _placeholderCover(context);
+  }
+
+  Widget _placeholderCover(BuildContext context) {
+    return Container(
+      height: 320,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Center(child: Icon(Icons.music_note, size: 64)),
+    );
+  }
+
+  // ─── status card ────────────────────────────────────────────────────────────
+
+  Widget _buildStatusCard(BuildContext context, SongSummary s) {
+    final isTerminal = _terminalStatuses.contains(s.status);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            if (!isTerminal)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (s.status == 'complete')
+              const Icon(Icons.check_circle, color: Colors.green)
+            else
+              Icon(Icons.error,
+                  color: Theme.of(context).colorScheme.error),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _stageLabels[s.status] ?? s.status,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── inline video ───────────────────────────────────────────────────────────
+
+  Widget _buildVideoSection(BuildContext context) {
+    final c = _videoController;
+
+    if (c == null && !_videoLoading && _videoError == null) {
+      // Not started yet — show a play button to load on demand
+      return FilledButton.icon(
+        icon: const Icon(Icons.play_arrow),
+        label: const Text('Play video'),
+        onPressed: _initVideo,
+      );
+    }
+
+    if (_videoLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_videoError != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Could not load video: $_videoError',
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.error)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+            onPressed: _initVideo,
+          ),
+        ],
+      );
+    }
+
+    if (c == null) return const SizedBox.shrink();
+
+    final pos = c.value.position;
+    final dur = c.value.duration;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: GestureDetector(
+        onTap: () => setState(() => _showControls = !_showControls),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            AspectRatio(
+              aspectRatio: c.value.aspectRatio,
+              child: VideoPlayer(c),
+            ),
+            if (_showControls) ...[
+              AnimatedOpacity(
+                opacity: 1.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  color: Colors.black26,
+                  child: Center(
+                    child: IconButton(
+                      iconSize: 72,
+                      icon: Icon(
+                        c.value.isPlaying
+                            ? Icons.pause_circle_filled
+                            : Icons.play_circle_filled,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => setState(() {
+                        c.value.isPlaying ? c.pause() : c.play();
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black87],
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SliderTheme(
+                        data: SliderThemeData(
+                          trackHeight: 3,
+                          thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 6),
+                          overlayShape: const RoundSliderOverlayShape(
+                              overlayRadius: 12),
+                          activeTrackColor: FacelessTheme.accent,
+                          inactiveTrackColor: Colors.white24,
+                          thumbColor: FacelessTheme.accent,
+                        ),
+                        child: Slider(
+                          min: 0,
+                          max: dur.inMilliseconds
+                              .clamp(1, double.infinity)
+                              .toDouble(),
+                          value: pos.inMilliseconds
+                              .clamp(0, dur.inMilliseconds)
+                              .toDouble(),
+                          onChanged: (v) => c.seekTo(
+                              Duration(milliseconds: v.toInt())),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text(_fmt(pos),
+                              style: const TextStyle(color: Colors.white)),
+                          IconButton(
+                            icon: const Icon(Icons.replay_10,
+                                color: Colors.white),
+                            onPressed: () => c.seekTo(
+                                pos - const Duration(seconds: 10)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.forward_10,
+                                color: Colors.white),
+                            onPressed: () => c.seekTo(
+                                pos + const Duration(seconds: 10)),
+                          ),
+                          const Spacer(),
+                          Text(_fmt(dur),
+                              style: const TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── take swap ──────────────────────────────────────────────────────────────
+
+  Widget _buildTakeSwapCard(BuildContext context, SongSummary s) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Active take',
+                style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed:
+                        _swapping || s.chosenTake == 1 ? null : () => _swap(1),
+                    child: Text(s.chosenTake == 1 ? 'Take 1 ✓' : 'Use Take 1'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed:
+                        _swapping || s.chosenTake == 2 ? null : () => _swap(2),
+                    child: Text(s.chosenTake == 2 ? 'Take 2 ✓' : 'Use Take 2'),
+                  ),
+                ),
+              ],
+            ),
+            if (_swapping)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── error card ─────────────────────────────────────────────────────────────
+
+  Widget _buildErrorCard(BuildContext context, SongSummary s) {
+    return Card(
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Error',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              s.lastError ?? 'Unknown error',
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onErrorContainer),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── lifecycle ──────────────────────────────────────────────────────────────
+
+  @override
+  void dispose() {
+    _polling = false;
+    _videoController?.removeListener(_onVideoTick);
+    _videoController?.dispose();
+    super.dispose();
   }
 }
