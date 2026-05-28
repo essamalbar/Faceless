@@ -2499,6 +2499,108 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
 
 
 # ---------------------------------------------------------------------------
+# Song mode — take-swap, streaming, log tail, resume
+# ---------------------------------------------------------------------------
+
+
+class SwapTakeRequest(BaseModel):
+    take: int  # 1 or 2
+
+
+@app.post("/songs/{run_id}/swap-take")
+def swap_take(
+    run_id: str,
+    req: SwapTakeRequest,
+    user: User = Depends(require_user),
+):
+    import shutil
+    from pipeline import song_assemble
+    if req.take not in (1, 2):
+        raise HTTPException(422, "take must be 1 or 2")
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    take_path = run_dir / "takes" / f"take_{req.take}.mp3"
+    if not take_path.exists():
+        raise HTTPException(404, f"take_{req.take}.mp3 not found")
+    song_mp3 = run_dir / "song.mp3"
+    if song_mp3.exists():
+        song_mp3.unlink()
+    shutil.copy(take_path, song_mp3)
+    song_assemble.assemble_song_video(
+        cover_path=run_dir / "cover.png",
+        song_mp3=song_mp3,
+        out_mp4=run_dir / "final.mp4",
+    )
+    _write_state(run_dir, chosen_take=req.take)
+    return {"ok": True, "chosen_take": req.take}
+
+
+@app.get("/songs/{run_id}/audio")
+def get_song_audio(
+    run_id: str,
+    take: int | None = None,
+    user: User = Depends(require_user),
+):
+    run_dir = _resolve_song_dir(run_id, user)
+    if take is not None:
+        path = run_dir / "takes" / f"take_{take}.mp3"
+    else:
+        path = run_dir / "song.mp3"
+    if not path.exists():
+        raise HTTPException(404, "audio not found")
+    return FileResponse(path, media_type="audio/mpeg")
+
+
+@app.get("/songs/{run_id}/cover")
+def get_song_cover(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    path = run_dir / "cover.png"
+    if not path.exists():
+        raise HTTPException(404, "cover not yet generated")
+    return FileResponse(path, media_type="image/png")
+
+
+@app.get("/songs/{run_id}/video")
+def get_song_video(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    path = run_dir / "final.mp4"
+    if not path.exists():
+        raise HTTPException(404, "final.mp4 not yet assembled")
+    return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/songs/{run_id}/log")
+def get_song_log(
+    run_id: str,
+    lines: int = 200,
+    user: User = Depends(require_user),
+):
+    run_dir = _resolve_song_dir(run_id, user)
+    path = run_dir / "run.log"
+    if not path.exists():
+        return {"log": ""}
+    text = path.read_text(errors="replace")
+    tail = "\n".join(text.splitlines()[-lines:])
+    return {"log": tail}
+
+
+@app.post("/songs/{run_id}/resume")
+def resume_song(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "failed":
+        raise HTTPException(409, f"song is in state {state.get('status')!r}, cannot resume")
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, status="generating_song", pid=pid, last_error=None)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # Flutter web SPA — served at /app/* from the same Cloud Run service.
 #
 # This intentionally lives at the BOTTOM of the file, after every API

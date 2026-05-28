@@ -297,6 +297,78 @@ def test_approve_song_idempotent_after_first_call(app, monkeypatch):
     assert deduction_count["n"] == 1
 
 
+def test_swap_take_reruns_assembly(app, tmp_path: Path, monkeypatch):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+
+    run_dir = _find_run_dir(run_id)
+    (run_dir / "takes").mkdir(exist_ok=True)
+    (run_dir / "takes" / "take_1.mp3").write_bytes(b"\x00" * 100)
+    (run_dir / "takes" / "take_2.mp3").write_bytes(b"\x00" * 100)
+    (run_dir / "song.mp3").write_bytes(b"\x00" * 100)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    state["chosen_take"] = 1
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    from pipeline import song_assemble
+    monkeypatch.setattr(
+        song_assemble, "assemble_song_video",
+        lambda *, cover_path, song_mp3, out_mp4: out_mp4.write_bytes(b"FAKE"),
+    )
+
+    r = client.post(
+        f"/songs/{run_id}/swap-take",
+        json={"take": 2},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    new_state = json.loads((run_dir / "api_state.json").read_text())
+    assert new_state["chosen_take"] == 2
+
+
+def test_get_audio_serves_chosen_take(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    (run_dir / "song.mp3").write_bytes(b"\xff\xfb" + b"\x00" * 100)
+    r = client.get(
+        f"/songs/{run_id}/audio",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert r.content.startswith(b"\xff\xfb")
+
+
+def test_get_audio_serves_alternate_take_via_query(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    (run_dir / "takes").mkdir(exist_ok=True)
+    (run_dir / "takes" / "take_2.mp3").write_bytes(b"TAKE2")
+    r = client.get(
+        f"/songs/{run_id}/audio?take=2",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert r.content == b"TAKE2"
+
+
 def test_approve_song_402_when_balance_insufficient(app, monkeypatch):
     fastapi_app, token = app
     client = TestClient(fastapi_app)
