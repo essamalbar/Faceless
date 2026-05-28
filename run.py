@@ -914,12 +914,24 @@ def _run_song_post_approve(args) -> int:
 
     script_path = run_dir / "song.json"
     state_path = run_dir / "api_state.json"
-    cfg = load_config(_Path("config.yaml"))
+    # Use REPO_ROOT/config.yaml as the default (matches api.py's pattern).
+    # Relative "config.yaml" breaks on Cloud Run Jobs where the worker's
+    # CWD isn't REPO_ROOT.
+    import os as _os
+    cfg_path_str = _os.environ.get(
+        "FACELESS_CONFIG",
+        str(REPO_ROOT / "config.yaml"),
+    )
+    cfg = load_config(_Path(cfg_path_str))
 
     def write_state(**patch):
+        """Atomic state write — temp+rename so the API side can't read a
+        torn JSON file mid-update."""
         state = json.loads(state_path.read_text()) if state_path.exists() else {}
         state.update(patch)
-        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+        tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+        tmp.replace(state_path)
 
     try:
         script = json.loads(script_path.read_text())

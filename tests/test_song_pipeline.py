@@ -61,50 +61,16 @@ def wired_app(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(song_cover, "generate_cover_image", fake_cover)
 
     # In-process spawn: run main_with_args directly so the test executes
-    # the real pipeline plumbing.
-    #
-    # Design note: approve_song() calls _write_state(status="generating_song")
-    # AFTER _SPAWN_FN returns. In production the subprocess runs asynchronously
-    # so that write just records the PID while the worker is still running.
-    # In the in-process test the pipeline has already written status="complete"
-    # before _SPAWN_FN returns, but approve_song then overwrites it with
-    # "generating_song". We restore the pipeline's completed state in a
-    # post-spawn hook so the GET /songs/{id} assertion can see "complete".
+    # the real pipeline plumbing. approve_song now writes
+    # status="generating_song" BEFORE calling _SPAWN_FN and only writes
+    # `pid` afterwards (without clobbering the worker's status), so no
+    # patching of _write_state is required.
     import run as run_mod
 
     def in_process_spawn(args, run_dir):
         rc = run_mod.main_with_args(args)
         if rc != 0:
             raise RuntimeError(f"pipeline failed rc={rc}")
-        # Restore the "complete" status that the pipeline wrote before
-        # approve_song's post-_SPAWN_FN _write_state call overwrites it.
-        # We patch the state right here — approve_song will merge in pid
-        # and status="generating_song" on top of whatever is on disk, so we
-        # need to ensure "complete" survives AFTER approve_song's write.
-        # The trick: temporarily monkeypatch _write_state in api_mod so
-        # the *next* call (the one approve_song issues after we return)
-        # does NOT overwrite status when final.mp4 already exists.
-        state_path = Path(run_dir) / "api_state.json"
-        if state_path.exists():
-            completed_state = json.loads(state_path.read_text())
-        else:
-            completed_state = {}
-
-        original_write_state = api_mod._write_state
-
-        def patched_write_state(rd, **kwargs):
-            # If the pipeline already produced final.mp4 for this run_dir,
-            # preserve the "complete" status regardless of what approve_song
-            # tries to write.
-            if Path(rd) == Path(run_dir) and (Path(rd) / "final.mp4").exists():
-                kwargs.pop("status", None)
-                kwargs.pop("pid", None)
-            original_write_state(rd, **kwargs)
-            # Restore single-use: put the real _write_state back immediately
-            # so subsequent writes (e.g. swap-take, cancel) work normally.
-            api_mod._write_state = original_write_state
-
-        api_mod._write_state = patched_write_state
         return 99999
 
     api_mod.set_spawn_fn(in_process_spawn)

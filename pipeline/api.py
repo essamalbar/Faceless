@@ -133,13 +133,19 @@ def _read_state(run_dir: Path) -> dict:
 
 
 def _write_state(run_dir: Path, **kwargs) -> None:
+    """Read-modify-write of api_state.json, with an atomic rename so a
+    concurrent reader (the API serving GET /songs/{id}/status while the
+    worker is writing) never sees a half-written file."""
     state = _read_state(run_dir)
     state.update(kwargs)
     state["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    _state_path(run_dir).write_text(
+    path = _state_path(run_dir)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
         json.dumps(state, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    tmp.replace(path)
 
 
 
@@ -2477,7 +2483,7 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
         return {"run_id": run_id, "balance_after": _credits.get_balance(user.id),
                 "status": state.get("status")}
 
-    cfg_path = Path(os.environ.get("FACELESS_CONFIG", "config.yaml"))
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
     amount = cfg.song.credits_per_song if cfg.song else 1
 
@@ -2490,12 +2496,29 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
         user, amount=amount, run_id=run_id, reason="song-spend",
     )
 
-    # Spawn the post-approve subprocess
+    # Race avoidance: set status BEFORE spawning so the subprocess can't
+    # write its own progress (e.g. "generating_cover") before we get a
+    # chance to write "generating_song". The subprocess's first action
+    # is also write_state(status="generating_song") which is idempotent
+    # with this write. After spawning, only record the pid via a
+    # read-modify-write that preserves whatever status the worker has
+    # already written.
+    _write_state(run_dir, status="generating_song")
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
-    _write_state(run_dir, status="generating_song", pid=pid)
+    # Re-read so we don't clobber a worker-side status update that ran
+    # synchronously between _SPAWN_FN returning and us getting here
+    # (only happens with the in-process spawn used in integration tests).
+    current = _read_state(run_dir)
+    if current.get("status") in (None, "generating_song"):
+        _write_state(run_dir, pid=pid)
+    else:
+        # Worker already advanced past generating_song. Record pid without
+        # touching status.
+        _write_state(run_dir, pid=pid)
 
-    return {"run_id": run_id, "balance_after": new_balance, "status": "generating_song"}
+    return {"run_id": run_id, "balance_after": new_balance,
+            "status": current.get("status") or "generating_song"}
 
 
 # ---------------------------------------------------------------------------
