@@ -370,6 +370,35 @@ class CreateRunRequest(BaseModel):
                                   description="Cap script to ≤ N beats (test runs)")
 
 
+class CreateSongRequest(BaseModel):
+    theme: str
+    custom_lyrics: str | None = None
+    style_hint: str | None = None
+    language: str = "ar"
+
+
+class SongScriptResponse(BaseModel):
+    title: str
+    lyrics: str
+    style_prompt: str
+    cover_prompt: str
+    language: str
+    cost_credits: int
+    cost_usd: float
+
+
+class SongRunSummary(BaseModel):
+    id: str
+    status: str
+    kind: str  # always "song"
+    title: str | None
+    theme: str | None
+    created_at: str
+    has_video: bool
+    chosen_take: int | None = None
+    last_error: str | None = None
+
+
 class RunProgress(BaseModel):
     """Live progress info for the UI's progress bar."""
     stage: str  # "script", "character_sheet", "video", "captions", "assemble"
@@ -563,6 +592,11 @@ def _build_llm():
         return GroqClient()
     from pipeline.llm import GeminiClient
     return GeminiClient()
+
+
+def _build_song_llm():
+    """Same router as _build_llm — Anthropic > Groq > Gemini."""
+    return _build_llm()
 
 
 def _generate_script_inline(
@@ -2156,6 +2190,73 @@ def get_log(run_id: str, lines: int = 200, user: User = Depends(require_user)):
     text = log_path.read_text(encoding="utf-8", errors="replace")
     tail = "\n".join(text.splitlines()[-max(1, lines):])
     return Response(content=tail, media_type="text/plain")
+
+
+# ---------------------------------------------------------------------------
+# Song mode endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/songs", status_code=201)
+def create_song(
+    req: CreateSongRequest,
+    user: User = Depends(require_user),
+):
+    """Writer pass: generate lyrics + style + cover prompt inline.
+    No spend; returns awaiting_approval immediately."""
+    from pipeline.song_lyrics import generate_song_script
+    from pipeline.config import load_config
+    from pipeline.db import get_balance
+
+    cfg = load_config(Path(os.environ.get(
+        "FACELESS_CONFIG",
+        str(REPO_ROOT / "config.yaml"),
+    )))
+    credits_required = cfg.song.credits_per_song if cfg.song else 1
+
+    if user.role != "service" and get_balance(user.id) < credits_required:
+        _raise_402_insufficient_credits(get_balance(user.id), credits_required)
+
+    run_id = _make_run_id()
+    run_dir = _user_runs_root(user) / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    _write_state(
+        run_dir,
+        kind="song",
+        status="writing_lyrics",
+        user_id=user.id,
+        theme=req.theme,
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
+
+    try:
+        llm = _build_song_llm()
+        script = generate_song_script(
+            llm=llm,
+            theme=req.theme,
+            custom_lyrics=req.custom_lyrics,
+            style_hint=req.style_hint,
+            language=req.language,
+        )
+    except Exception as e:
+        _write_state(run_dir, status="failed", last_error=f"lyrics LLM failed: {e}")
+        raise HTTPException(500, f"lyrics generation failed: {e}")
+
+    (run_dir / "song.json").write_text(
+        json.dumps({
+            "title": script.title,
+            "lyrics": script.lyrics,
+            "style_prompt": script.style_prompt,
+            "cover_prompt": script.cover_prompt,
+            "language": script.language,
+        }, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (run_dir / "lyrics.txt").write_text(script.lyrics, encoding="utf-8")
+    _write_state(run_dir, status="awaiting_approval", title=script.title)
+
+    return {"run_id": run_id, "status": "awaiting_approval"}
 
 
 # ---------------------------------------------------------------------------
