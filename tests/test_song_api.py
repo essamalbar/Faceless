@@ -236,3 +236,79 @@ def test_cancel_pre_approval_sets_canceled_status(app):
     assert r.status_code == 200
     r2 = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
     assert r2.json()["status"] == "canceled"
+
+
+def test_approve_song_deducts_credits_and_spawns(app, monkeypatch):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod
+    spawn_calls = []
+    def fake_spawn(args, run_dir):
+        spawn_calls.append((args, run_dir))
+        return 12345
+    api_mod.set_spawn_fn(fake_spawn)
+
+    from pipeline import credits
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+    monkeypatch.setattr(
+        credits, "check_or_deduct",
+        lambda user, amount, run_id, reason: 100 - amount,
+    )
+
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    r = client.post(
+        f"/songs/{run_id}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["run_id"] == run_id
+    assert body["balance_after"] == 99
+
+    assert len(spawn_calls) == 1
+    args, _ = spawn_calls[0]
+    assert "--mode" in args
+    assert args[args.index("--mode") + 1] == "song"
+    assert "--resume" in args
+
+
+def test_approve_song_idempotent_after_first_call(app, monkeypatch):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import credits
+    deduction_count = {"n": 0}
+    def counted_deduct(user, amount, run_id, reason):
+        deduction_count["n"] += 1
+        return 100 - amount
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+    monkeypatch.setattr(credits, "check_or_deduct", counted_deduct)
+
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    client.post(f"/songs/{run_id}/approve", headers={"Authorization": f"Bearer {token}"})
+    client.post(f"/songs/{run_id}/approve", headers={"Authorization": f"Bearer {token}"})
+    assert deduction_count["n"] == 1
+
+
+def test_approve_song_402_when_balance_insufficient(app, monkeypatch):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import credits
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 0)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    r = client.post(
+        f"/songs/{run_id}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 402

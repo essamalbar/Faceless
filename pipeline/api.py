@@ -2462,6 +2462,41 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
     return {"ok": True}
 
 
+@app.post("/songs/{run_id}/approve")
+def approve_song(run_id: str, user: User = Depends(require_user)):
+    import pipeline.credits as _credits
+    from pipeline.config import load_config
+
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+
+    # Idempotency: second call after the spawn already happened
+    if state.get("status") != "awaiting_approval":
+        return {"run_id": run_id, "balance_after": _credits.get_balance(user.id),
+                "status": state.get("status")}
+
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", "config.yaml"))
+    cfg = load_config(cfg_path)
+    amount = cfg.song.credits_per_song if cfg.song else 1
+
+    balance = _credits.get_balance(user.id)
+    if balance < amount:
+        _raise_402_insufficient_credits(balance, amount)
+
+    new_balance = _credits.check_or_deduct(
+        user, amount=amount, run_id=run_id, reason="song-spend",
+    )
+
+    # Spawn the post-approve subprocess
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, status="generating_song", pid=pid)
+
+    return {"run_id": run_id, "balance_after": new_balance, "status": "generating_song"}
+
+
 # ---------------------------------------------------------------------------
 # Flutter web SPA — served at /app/* from the same Cloud Run service.
 #
