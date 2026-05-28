@@ -10,6 +10,18 @@ Add a second creation mode to the Faceless platform: AI-generated songs delivere
 
 The horror pipeline stays untouched. Song mode is a sibling, not a refactor.
 
+### Quality bar (load-bearing)
+
+**A first-time listener must not realize the song is AI-generated.** This bar drives several non-obvious technical choices below; they aren't optional polish.
+
+The reference artifact (`ai song.mp4`) was audited and used as a calibration target:
+
+- Audio: AAC 130 kbps, 44.1 kHz stereo, **already mastered to -13.9 LUFS / -2.3 dBTP** (streaming standard). Our pipeline must **not** re-encode or "normalize" Suno's output — that only degrades it.
+- Cover: high-detail album-art quality (consistent with Flux **dev** at high step count, not Flux schnell).
+- Song length: ~4:44 — Suno's natural full-length, not truncated.
+
+Every section of this design is consistent with that bar. Sections where someone might be tempted to "simplify and lose quality" are flagged with **Quality gate** notes.
+
 ## Non-goals
 
 - Multi-scene music videos (cutting between AI clips synced to beats) — deferred; YAGNI until people are using static-cover mode and asking for more.
@@ -26,10 +38,10 @@ Song mode reuses the existing run lifecycle (subprocess-per-run, `state.json`, `
 
 | Module | Responsibility |
 |---|---|
-| `pipeline/song.py` | Kie.ai Suno client. Submits to `/api/v1/jobs/createTask` with `model="suno-v4"` (or settled-on Suno model id), polls `/api/v1/jobs/recordInfo`, downloads the MP3. Mirrors `pipeline/kie.py` shape. |
-| `pipeline/song_lyrics.py` | Wraps `pipeline/llm.py` to produce `{title, lyrics, style_prompt, cover_prompt}` from a theme. Honors user-supplied lyrics (passthrough). Language-aware (default Arabic). |
-| `pipeline/song_cover.py` | Wraps `pipeline/images.py` (Flux at 1080×1080) and burns the title text on the cover via Pillow + bundled fonts (Amiri for Arabic, Inter for Latin). |
-| `pipeline/song_assemble.py` | ffmpeg recipe: cover.png + song.mp3 → MP4 with slow Ken-Burns zoom and AAC 192k. |
+| `pipeline/song.py` | Kie.ai Suno client. Submits to `/api/v1/jobs/createTask` with **`model="suno-v4-5"`** (latest at design time; bump to whatever's newest at implementation), polls `/api/v1/jobs/recordInfo`, downloads BOTH takes. Uses Suno's **custom mode** — passes lyrics + style hint explicitly rather than letting Suno pick. Mirrors `pipeline/kie.py` shape. |
+| `pipeline/song_lyrics.py` | Wraps `pipeline/llm.py` to produce `{title, lyrics, style_prompt, cover_prompt}` from a theme. Honors user-supplied lyrics (passthrough). Lyrics output uses **Suno section tags** (`[Verse 1]`, `[Pre-Chorus]`, `[Chorus]`, `[Bridge]`, `[Outro]`). Style prompt is **specific by contract**: BPM, instrumentation, vocal tone, era, key, mood — not "Arabic ballad." Language-aware (default Arabic). |
+| `pipeline/song_cover.py` | Wraps `pipeline/images.py` (**Flux dev at 28 steps**, 1080×1080) and burns the title text on the cover via Pillow + bundled fonts (Amiri for Arabic, Inter for Latin). |
+| `pipeline/song_assemble.py` | ffmpeg recipe: cover.png + song.mp3 → MP4 with slow Ken-Burns zoom. **Audio is stream-copied (`-c:a copy`), not re-encoded** — preserves Suno's mastered output bit-for-bit. |
 
 ### Run lifecycle
 
@@ -50,21 +62,87 @@ new song run (POST /songs)
 
 ```
 out/<run-id>/
-  state.json          ← status, kind, failure_stage, pid, ...
+  state.json          ← status, kind, failure_stage, pid, chosen_take, ...
   song.json           ← {title, lyrics, style_prompt, cover_prompt, language}
   lyrics.txt          ← convenience copy of lyrics for download
   cover_raw.png       ← Flux output before title overlay
   cover.png           ← final cover with title burned in (1080×1080)
-  song.mp3            ← Suno output
+  takes/
+    take_1.mp3        ← Suno take 1 (Suno always returns two)
+    take_2.mp3        ← Suno take 2
+  song.mp3            ← symlink/copy of the chosen take (default: longer one)
   final.mp4           ← 1080×1080 MP4, ffmpeg-assembled
   run.log             ← subprocess stdout/stderr
   _debug/
     suno_response.json  ← full Kie.ai response, triage only
 ```
 
+**Quality gate — both takes:** Suno's two takes are not equivalent. One is often noticeably better (less abrupt outro, less voice cracking, better mix balance). MVP behavior: auto-pick the longer take (Suno truncates one ~20% of the time) and expose a "swap take" affordance on the detail screen for the user to flip between them without re-rendering anything. Backend re-runs only ffmpeg when the user swaps — free, fast.
+
 ### Mode flag wiring
 
 `run.py` gets a `--mode {horror,song}` flag. Default stays `horror` so existing scripts keep working. Song mode also takes `--writer-only` (lyrics pass, then exit) and `--post-approve` (song + cover + assemble), parallel to the horror `--pause-after-script` pattern.
+
+### Lyrics-LLM contract (quality gate)
+
+This is the **single biggest quality lever on the Suno side.** Suno's output quality is overwhelmingly determined by the lyrics + style hint it receives. The LLM in `song_lyrics.py` is constrained by contract — not just "write a song" — to emit Suno-readable structure.
+
+**Lyrics shape (required):**
+
+```
+[Verse 1]
+<4–6 lines>
+
+[Pre-Chorus]
+<2–4 lines>
+
+[Chorus]
+<4 lines, hooky, repeats later>
+
+[Verse 2]
+<4–6 lines>
+
+[Chorus]
+<same chorus repeated>
+
+[Bridge]
+<2–4 lines, contrasting>
+
+[Chorus]
+<same chorus, possibly modified>
+
+[Outro]
+<1–2 lines or empty>
+```
+
+The bracketed tags are load-bearing — Suno reads them as section markers and structures the arrangement accordingly. A song submitted as a flat block of lines comes back formless and obviously-AI. This shape is what makes the reference convincing.
+
+**Style hint shape (required):**
+
+Not "Arabic ballad." A real Suno-quality style hint is a structured comma-separated descriptor covering all of:
+
+- **Genre + sub-genre:** "Arabic pop ballad," "Khaleeji nasheed," "Lebanese indie."
+- **Tempo:** "slow tempo, 72 BPM" — explicit BPM matters.
+- **Instrumentation:** "oud + cinematic strings + light percussion + subtle piano."
+- **Vocal:** "male vocal with subtle vibrato" or "female vocal, breathy, intimate."
+- **Era / production style:** "modern 2020s production, warm analog mix, light reverb."
+- **Mood + key:** "melancholic, minor key" or "hopeful, major key with bittersweet undertone."
+
+The LLM is prompted to emit this from the user's theme even when the user gave no style hint. If the user *did* provide a style hint, it's merged into the prompt rather than replaced — user intent wins on conflicts.
+
+**`song.json` schema (final):**
+
+```json
+{
+  "title": "تحت حراسة القمر",
+  "lyrics": "[Verse 1]\n...\n[Chorus]\n...",
+  "style_prompt": "Arabic pop ballad, slow tempo 72 BPM, oud + cinematic strings + light percussion, male vocal with subtle vibrato, modern 2020s production warm analog mix, melancholic minor key",
+  "cover_prompt": "young Arab man in profile under a full moon over a calm sea, lanterns and candles, deep navy night sky, soft moonlight, romantic melancholy, fine art photography",
+  "language": "ar"
+}
+```
+
+The Suno API receives `lyrics` and `style_prompt` verbatim (custom mode). Suno picks the melody, mix, and arrangement from those constraints.
 
 ## HTTP API
 
@@ -82,7 +160,9 @@ All endpoints require `Authorization: Bearer $FACELESS_API_TOKEN` (existing sing
 | POST | `/songs/{id}/edit` | Pre-approval only. Body any of `{lyrics, style_hint, cover_prompt}`. Lyrics ≤ 4000 chars, hints ≤ 500 chars (422 otherwise). |
 | POST | `/songs/{id}/resume` | Retry after a transient failure. Stage-aware: re-runs only the failed stage onward. |
 | POST | `/songs/{id}/cancel` | Kill subprocess + (if pre-approval) no charge. Post-approval cancellation does not refund Suno spend (matches existing memory: "money lost = real Kie spend"). |
-| GET | `/songs/{id}/audio` | Stream `song.mp3`. |
+| GET | `/songs/{id}/audio` | Stream the chosen take's `song.mp3`. |
+| GET | `/songs/{id}/audio?take=2` | Stream the *other* take's MP3 for preview without re-assembling. |
+| POST | `/songs/{id}/swap-take` | Body: `{take: 1\|2}`. Re-runs ffmpeg with the other take. Free (no API spend). |
 | GET | `/songs/{id}/cover` | Stream `cover.png`. |
 | GET | `/songs/{id}/video` | Stream `final.mp4`. |
 | GET | `/songs/{id}/log?lines=N` | Tail `run.log`. Identical to `/runs/{id}/log`. |
@@ -193,6 +273,7 @@ The money-saving screen.
 - Header: title + cover thumbnail (gray placeholder before cover exists).
 - Progress strip: "Generating song… (Suno ~30s)" → "Generating cover…" → "Assembling video…" → done. Polls `GET /songs/{id}`.
 - On done: inline `<video>` player (uses `/songs/{id}/video`), download buttons for MP4 + MP3.
+- **Take A / Take B toggle** at the bottom of the player — small audio-only A/B preview using `GET /songs/{id}/audio?take=1|2`, "Use this take" button calls `/swap-take`. Re-assembly takes ~5–10s with a small spinner. Default-selected take is the longer of the two; the toggle lets the user override.
 - On error: red banner with last-log tail + Retry button (`/resume`). Pre-resume modal for the Suno re-charge case.
 
 ### Screen 4 — Runs list (modified)
@@ -209,8 +290,10 @@ Existing list grows a `kind` badge per row. Song rows show the square cover thum
 
 ### Cover generation
 
-- Flux Kontext at **1080×1080**, 4 steps (matches existing `pipeline/images.py` config).
-- Prompt builder composes: `{cover_prompt}, album cover, cinematic, moody lighting, depth of field, no text, no watermark, square composition, leave space at top-right for title text`. The "leave space" hint matters because the title gets burned in next.
+**Quality gate — Flux variant and steps:** The existing horror pipeline runs Flux schnell at 4 steps because cover art is *one of dozens* of frames and the per-image budget is tiny. For song mode the cover is *the only visual the viewer sees for 4+ minutes* — it has to look like a real album cover, not a placeholder. So song mode runs **Flux dev at 28 steps** (override of the existing `flux:` config block, configured per-mode in `config.yaml` under a new `song.flux:` section). Cost goes from ~$0.003 → ~$0.03 per cover, still negligible against the Suno spend, and the difference between schnell and dev at album-art quality is night-and-day.
+
+- Resolution: 1080×1080 (square — Suno's expected cover format and 1:1-native for Instagram/Shorts).
+- Prompt builder composes: `{cover_prompt}, professional album cover art, art direction by Hipgnosis, cinematic lighting, shallow depth of field, high detail, no text, no watermark, square composition, leave space at top-right for title text`. The "leave space" hint matters because the title gets burned in next. The "Hipgnosis" reference (the studio behind Pink Floyd / Led Zeppelin covers) pushes Flux toward real-album aesthetics instead of generic stock-photo.
 - One Flux call per run. Re-rolling cover quality is via cover-prompt LLM regen, not via Flux retries.
 
 ### Title-text overlay (Pillow, not ffmpeg)
@@ -242,16 +325,23 @@ ffmpeg -loop 1 -i cover.png -i song.mp3 \
   -filter_complex "[0:v]scale=2160:2160,zoompan=z='1+{zoom_step}*on':d={total_frames}:s=1080x1080:fps={fps}[v]" \
   -map "[v]" -map 1:a \
   -c:v libx264 -preset slow -crf 18 \
-  -c:a aac -b:a 192k \
+  -c:a copy \
   -pix_fmt yuv420p -shortest \
+  -movflags +faststart \
   final.mp4
 ```
 
+- **Quality gate — audio is stream-copied, not re-encoded.** Suno's output is already AAC at 130 kbps mastered to ~-14 LUFS / -2 dBTP (streaming standard, verified against the reference). Re-encoding to "higher" AAC would be a *quality loss*, not a gain — there's no PCM master to encode from, and AAC-to-AAC transcoding adds artifacts. `-c:a copy` preserves Suno's mastering bit-for-bit.
+- **Quality gate — no `loudnorm` or `dynaudnorm` filter.** Tempting because they sound like "make it louder/cleaner," but they re-encode the audio and Suno's loudness is already correct. Skip.
 - Upscale-then-zoompan avoids the famous zoompan blur (zoompan resamples; pre-upscaling buys headroom).
 - Zoom: 1.0× → ~1.13× over the song's full duration. Per-frame rate computed at assemble time so songs of any length zoom at the same overall arc.
 - 25fps, 1080×1080 (3× the reference's 360×360).
-- AAC 192k beats the reference's 130k.
+- `-movflags +faststart` so the MP4 streams immediately in the Flutter `<video>` player (moov atom at the front).
 - `-shortest` so video ends with audio.
+
+### Take-swap re-assemble
+
+When the user taps "swap take" in the detail screen, `song_assemble.py` is re-run with the other take pointed at as `song.mp3`. Cover and ffmpeg-zoompan are deterministic so the new `final.mp4` is identical except for the audio track. Operation is free (no API spend), takes ~5–10s on the existing CRF 18 preset.
 
 ### YAGNI cuts on visuals
 
@@ -326,6 +416,8 @@ No new mocking infrastructure — existing `monkeypatch` + `set_spawn_fn` patter
 
 These don't change the design but need confirming in the plan:
 
-1. Exact Kie.ai model id for Suno (verify against current Kie.ai docs).
-2. Exact Suno-on-Kie cost per song — adjust the `_estimate_credits_for_request` value once confirmed.
-3. Whether Kie.ai's Suno endpoint accepts the `make_instrumental` flag (defer instrumental-only mode unless trivially exposed).
+1. **Exact Kie.ai model id for Suno V4.5** — verify against current Kie.ai docs at implementation; the design pins V4.5 or newer (V4 is acceptable fallback; V3.5 is **not** — it's the bad-old-AI sound and would miss the quality bar).
+2. **Exact Suno-on-Kie cost per song** — adjust the `_estimate_credits_for_request` value once confirmed.
+3. **Whether Kie.ai exposes Suno's custom-mode parameters** (lyrics, style hint, title separately) on `/api/v1/jobs/createTask`. The design assumes yes — that's how Suno's own API works. If Kie wrappers it into one prompt field, the quality bar can still be hit by formatting the combined prompt carefully, but the wrapper shape needs verifying first.
+4. Whether Kie.ai's Suno endpoint accepts the `make_instrumental` flag (defer instrumental-only mode unless trivially exposed).
+5. Flux dev configuration confirmation — the existing `pipeline/images.py` uses Kie.ai's Flux Kontext endpoint; verify it accepts step count overrides (`steps: 28`) on a per-call basis without breaking the horror pipeline's `steps: 4` default. Likely yes; this is a single-field override.
