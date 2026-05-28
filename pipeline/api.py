@@ -540,13 +540,15 @@ def _user_runs_root(user: "User") -> Path:
     return _out_root() / user.id
 
 
-def _make_run_id() -> str:
+def _make_run_id(root: Path | None = None) -> str:
+    if root is None:
+        root = _out_root()
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
-    base = _out_root() / ts
+    base = root / ts
     suffix = 0
     while base.exists():
         suffix += 1
-        base = _out_root() / f"{ts}-{suffix}"
+        base = root / f"{ts}-{suffix}"
     return base.name
 
 
@@ -2217,8 +2219,10 @@ def create_song(
     if user.role != "service" and get_balance(user.id) < credits_required:
         _raise_402_insufficient_credits(get_balance(user.id), credits_required)
 
-    run_id = _make_run_id()
-    run_dir = _user_runs_root(user) / run_id
+    user_root = _user_runs_root(user)
+    user_root.mkdir(parents=True, exist_ok=True)
+    run_id = _make_run_id(root=user_root)
+    run_dir = user_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     _write_state(
@@ -2257,6 +2261,80 @@ def create_song(
     _write_state(run_dir, status="awaiting_approval", title=script.title)
 
     return {"run_id": run_id, "status": "awaiting_approval"}
+
+
+def _resolve_song_dir(run_id: str, user: "User") -> Path:
+    """Locate the run dir; 404 if missing or owned by someone else."""
+    run_dir = _run_dir(run_id, user)
+    if not run_dir.exists():
+        raise HTTPException(404, "run not found")
+    return run_dir
+
+
+@app.get("/songs/{run_id}", response_model=SongRunSummary)
+def get_song(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    return SongRunSummary(
+        id=run_id,
+        status=state.get("status", "unknown"),
+        kind="song",
+        title=state.get("title"),
+        theme=state.get("theme"),
+        created_at=state.get("created_at", ""),
+        has_video=(run_dir / "final.mp4").exists(),
+        chosen_take=state.get("chosen_take"),
+        last_error=state.get("last_error"),
+    )
+
+
+@app.get("/songs/{run_id}/script", response_model=SongScriptResponse)
+def get_song_script(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    script_path = run_dir / "song.json"
+    if not script_path.exists():
+        raise HTTPException(404, "song.json not yet written")
+    script = json.loads(script_path.read_text())
+    from pipeline.config import load_config
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+    return SongScriptResponse(
+        title=script["title"],
+        lyrics=script["lyrics"],
+        style_prompt=script["style_prompt"],
+        cover_prompt=script["cover_prompt"],
+        language=script["language"],
+        cost_credits=cfg.song.credits_per_song if cfg.song else 1,
+        cost_usd=(cfg.song.suno_cost_usd + cfg.song.cover_cost_usd) if cfg.song else 0.08,
+    )
+
+
+@app.get("/songs", response_model=list[SongRunSummary])
+def list_songs(user: User = Depends(require_user)):
+    out = []
+    user_root = _user_runs_root(user)
+    if not user_root.exists():
+        return out
+    for d in sorted(user_root.iterdir(), key=lambda p: p.name, reverse=True):
+        if not d.is_dir():
+            continue
+        state = _read_state(d)
+        if state.get("kind") != "song":
+            continue
+        out.append(SongRunSummary(
+            id=d.name,
+            status=state.get("status", "unknown"),
+            kind="song",
+            title=state.get("title"),
+            theme=state.get("theme"),
+            created_at=state.get("created_at", ""),
+            has_video=(d / "final.mp4").exists(),
+            chosen_take=state.get("chosen_take"),
+            last_error=state.get("last_error"),
+        ))
+    return out
 
 
 # ---------------------------------------------------------------------------

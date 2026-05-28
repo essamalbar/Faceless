@@ -91,3 +91,65 @@ def test_post_songs_honors_custom_lyrics_passthrough(app):
     run_dir = _find_run_dir(run_id)
     song_json = json.loads((run_dir / "song.json").read_text())
     assert song_json["lyrics"] == custom
+
+
+def test_get_song_returns_summary(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    r = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == run_id
+    assert body["kind"] == "song"
+    assert body["status"] == "awaiting_approval"
+    assert body["title"] == "Test Song"
+
+
+def test_get_song_404_for_unknown_id(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    r = client.get("/songs/nope", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 404
+
+
+def test_get_song_script_returns_full_payload(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x", "language": "ar"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    r = client.get(
+        f"/songs/{run_id}/script",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["title"] == "Test Song"
+    assert "[Chorus]" in body["lyrics"]
+    assert body["style_prompt"]
+    assert body["cover_prompt"]
+    assert body["language"] == "ar"
+    assert body["cost_credits"] >= 1
+    assert body["cost_usd"] > 0
+
+
+def test_list_songs_returns_only_song_runs(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    for _ in range(2):
+        client.post(
+            "/songs", json={"theme": "x"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    r = client.get("/songs", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 2
+    assert all(s["kind"] == "song" for s in body)
