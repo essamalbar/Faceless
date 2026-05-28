@@ -133,13 +133,19 @@ def _read_state(run_dir: Path) -> dict:
 
 
 def _write_state(run_dir: Path, **kwargs) -> None:
+    """Read-modify-write of api_state.json, with an atomic rename so a
+    concurrent reader (the API serving GET /songs/{id}/status while the
+    worker is writing) never sees a half-written file."""
     state = _read_state(run_dir)
     state.update(kwargs)
     state["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    _state_path(run_dir).write_text(
+    path = _state_path(run_dir)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
         json.dumps(state, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    tmp.replace(path)
 
 
 
@@ -370,6 +376,35 @@ class CreateRunRequest(BaseModel):
                                   description="Cap script to ≤ N beats (test runs)")
 
 
+class CreateSongRequest(BaseModel):
+    theme: str
+    custom_lyrics: str | None = None
+    style_hint: str | None = None
+    language: str = "ar"
+
+
+class SongScriptResponse(BaseModel):
+    title: str
+    lyrics: str
+    style_prompt: str
+    cover_prompt: str
+    language: str
+    cost_credits: int
+    cost_usd: float
+
+
+class SongRunSummary(BaseModel):
+    id: str
+    status: str
+    kind: str  # always "song"
+    title: str | None
+    theme: str | None
+    created_at: str
+    has_video: bool
+    chosen_take: int | None = None
+    last_error: str | None = None
+
+
 class RunProgress(BaseModel):
     """Live progress info for the UI's progress bar."""
     stage: str  # "script", "character_sheet", "video", "captions", "assemble"
@@ -511,13 +546,15 @@ def _user_runs_root(user: "User") -> Path:
     return _out_root() / user.id
 
 
-def _make_run_id() -> str:
+def _make_run_id(root: Path | None = None) -> str:
+    if root is None:
+        root = _out_root()
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
-    base = _out_root() / ts
+    base = root / ts
     suffix = 0
     while base.exists():
         suffix += 1
-        base = _out_root() / f"{ts}-{suffix}"
+        base = root / f"{ts}-{suffix}"
     return base.name
 
 
@@ -563,6 +600,11 @@ def _build_llm():
         return GroqClient()
     from pipeline.llm import GeminiClient
     return GeminiClient()
+
+
+def _build_song_llm():
+    """Same router as _build_llm — Anthropic > Groq > Gemini."""
+    return _build_llm()
 
 
 def _generate_script_inline(
@@ -2156,6 +2198,429 @@ def get_log(run_id: str, lines: int = 200, user: User = Depends(require_user)):
     text = log_path.read_text(encoding="utf-8", errors="replace")
     tail = "\n".join(text.splitlines()[-max(1, lines):])
     return Response(content=tail, media_type="text/plain")
+
+
+# ---------------------------------------------------------------------------
+# Song mode endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/songs", status_code=201)
+def create_song(
+    req: CreateSongRequest,
+    user: User = Depends(require_user),
+):
+    """Writer pass: generate lyrics + style + cover prompt inline.
+    No spend; returns awaiting_approval immediately."""
+    from pipeline.song_lyrics import generate_song_script
+    from pipeline.config import load_config
+    from pipeline.db import get_balance
+
+    cfg = load_config(Path(os.environ.get(
+        "FACELESS_CONFIG",
+        str(REPO_ROOT / "config.yaml"),
+    )))
+    credits_required = cfg.song.credits_per_song if cfg.song else 1
+
+    if user.role != "service" and get_balance(user.id) < credits_required:
+        _raise_402_insufficient_credits(get_balance(user.id), credits_required)
+
+    user_root = _user_runs_root(user)
+    user_root.mkdir(parents=True, exist_ok=True)
+    run_id = _make_run_id(root=user_root)
+    run_dir = user_root / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    _write_state(
+        run_dir,
+        kind="song",
+        status="writing_lyrics",
+        user_id=user.id,
+        theme=req.theme,
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
+
+    try:
+        llm = _build_song_llm()
+        script = generate_song_script(
+            llm=llm,
+            theme=req.theme,
+            custom_lyrics=req.custom_lyrics,
+            style_hint=req.style_hint,
+            language=req.language,
+        )
+    except Exception as e:
+        _write_state(run_dir, status="failed", last_error=f"lyrics LLM failed: {e}")
+        raise HTTPException(500, f"lyrics generation failed: {e}")
+
+    (run_dir / "song.json").write_text(
+        json.dumps({
+            "title": script.title,
+            "lyrics": script.lyrics,
+            "style_prompt": script.style_prompt,
+            "cover_prompt": script.cover_prompt,
+            "language": script.language,
+        }, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (run_dir / "lyrics.txt").write_text(script.lyrics, encoding="utf-8")
+    _write_state(run_dir, status="awaiting_approval", title=script.title)
+
+    return {"run_id": run_id, "status": "awaiting_approval"}
+
+
+def _resolve_song_dir(run_id: str, user: "User") -> Path:
+    """Locate the run dir; 404 if missing or owned by someone else."""
+    run_dir = _run_dir(run_id, user)
+    if not run_dir.exists():
+        raise HTTPException(404, "run not found")
+    return run_dir
+
+
+@app.get("/songs/{run_id}", response_model=SongRunSummary)
+def get_song(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    return SongRunSummary(
+        id=run_id,
+        status=state.get("status", "unknown"),
+        kind="song",
+        title=state.get("title"),
+        theme=state.get("theme"),
+        created_at=state.get("created_at", ""),
+        has_video=(run_dir / "final.mp4").exists(),
+        chosen_take=state.get("chosen_take"),
+        last_error=state.get("last_error"),
+    )
+
+
+@app.get("/songs/{run_id}/script", response_model=SongScriptResponse)
+def get_song_script(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    script_path = run_dir / "song.json"
+    if not script_path.exists():
+        raise HTTPException(404, "song.json not yet written")
+    script = json.loads(script_path.read_text())
+    from pipeline.config import load_config
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+    return SongScriptResponse(
+        title=script["title"],
+        lyrics=script["lyrics"],
+        style_prompt=script["style_prompt"],
+        cover_prompt=script["cover_prompt"],
+        language=script["language"],
+        cost_credits=cfg.song.credits_per_song if cfg.song else 1,
+        cost_usd=(cfg.song.suno_cost_usd + cfg.song.cover_cost_usd) if cfg.song else 0.08,
+    )
+
+
+@app.get("/songs", response_model=list[SongRunSummary])
+def list_songs(user: User = Depends(require_user)):
+    out = []
+    user_root = _user_runs_root(user)
+    if not user_root.exists():
+        return out
+    for d in sorted(user_root.iterdir(), key=lambda p: p.name, reverse=True):
+        if not d.is_dir():
+            continue
+        state = _read_state(d)
+        if state.get("kind") != "song":
+            continue
+        out.append(SongRunSummary(
+            id=d.name,
+            status=state.get("status", "unknown"),
+            kind="song",
+            title=state.get("title"),
+            theme=state.get("theme"),
+            created_at=state.get("created_at", ""),
+            has_video=(d / "final.mp4").exists(),
+            chosen_take=state.get("chosen_take"),
+            last_error=state.get("last_error"),
+        ))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Song mode mutations — state-guarded (awaiting_approval only)
+# ---------------------------------------------------------------------------
+
+
+class EditSongRequest(BaseModel):
+    lyrics: str | None = None
+    style_prompt: str | None = None
+    cover_prompt: str | None = None
+
+
+def _require_song_awaiting_approval(run_dir: Path) -> dict:
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "awaiting_approval":
+        raise HTTPException(
+            409,
+            f"song is in state {state.get('status')!r}, edits not allowed",
+        )
+    return state
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    """Write JSON atomically via temp + rename."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    tmp.replace(path)
+
+
+@app.post("/songs/{run_id}/regenerate-lyrics")
+def regenerate_song_lyrics(run_id: str, user: User = Depends(require_user)):
+    from pipeline.song_lyrics import generate_song_script
+    run_dir = _resolve_song_dir(run_id, user)
+    _require_song_awaiting_approval(run_dir)
+    script_path = run_dir / "song.json"
+    current = json.loads(script_path.read_text())
+    llm = _build_song_llm()
+    new_script = generate_song_script(
+        llm=llm,
+        theme=_read_state(run_dir).get("theme", ""),
+        custom_lyrics=None,
+        style_hint=current.get("style_prompt"),  # preserve style direction
+        language=current["language"],
+    )
+    new_data = {
+        "title": new_script.title,
+        "lyrics": new_script.lyrics,
+        "style_prompt": new_script.style_prompt,
+        "cover_prompt": current["cover_prompt"],  # keep cover prompt
+        "language": new_script.language,
+    }
+    _atomic_write_json(script_path, new_data)
+    (run_dir / "lyrics.txt").write_text(new_script.lyrics, encoding="utf-8")
+    _write_state(run_dir, title=new_script.title)
+    return {"ok": True}
+
+
+@app.post("/songs/{run_id}/regenerate-cover-prompt")
+def regenerate_song_cover_prompt(run_id: str, user: User = Depends(require_user)):
+    from pipeline.song_lyrics import generate_song_script
+    run_dir = _resolve_song_dir(run_id, user)
+    _require_song_awaiting_approval(run_dir)
+    script_path = run_dir / "song.json"
+    current = json.loads(script_path.read_text())
+    llm = _build_song_llm()
+    new_script = generate_song_script(
+        llm=llm,
+        theme=_read_state(run_dir).get("theme", ""),
+        custom_lyrics=current["lyrics"],  # keep lyrics
+        style_hint=current["style_prompt"],
+        language=current["language"],
+    )
+    current["cover_prompt"] = new_script.cover_prompt
+    _atomic_write_json(script_path, current)
+    return {"ok": True}
+
+
+@app.post("/songs/{run_id}/edit")
+def edit_song(
+    run_id: str,
+    req: EditSongRequest,
+    user: User = Depends(require_user),
+):
+    run_dir = _resolve_song_dir(run_id, user)
+    _require_song_awaiting_approval(run_dir)
+    if req.lyrics is not None and len(req.lyrics) > 4000:
+        raise HTTPException(422, "lyrics exceeds 4000 chars")
+    if req.style_prompt is not None and len(req.style_prompt) > 500:
+        raise HTTPException(422, "style_prompt exceeds 500 chars")
+    if req.cover_prompt is not None and len(req.cover_prompt) > 500:
+        raise HTTPException(422, "cover_prompt exceeds 500 chars")
+    script_path = run_dir / "song.json"
+    current = json.loads(script_path.read_text())
+    for field in ("lyrics", "style_prompt", "cover_prompt"):
+        v = getattr(req, field)
+        if v is not None:
+            current[field] = v
+    _atomic_write_json(script_path, current)
+    if req.lyrics is not None:
+        (run_dir / "lyrics.txt").write_text(req.lyrics, encoding="utf-8")
+    return {"ok": True}
+
+
+@app.post("/songs/{run_id}/cancel")
+def cancel_song(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") == "complete":
+        raise HTTPException(409, "song already complete")
+    pid = state.get("pid")
+    if pid and _process_alive(pid, run_dir):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    _write_state(run_dir, status="canceled")
+    return {"ok": True}
+
+
+@app.post("/songs/{run_id}/approve")
+def approve_song(run_id: str, user: User = Depends(require_user)):
+    import pipeline.credits as _credits
+    from pipeline.config import load_config
+
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+
+    # Idempotency: second call after the spawn already happened
+    if state.get("status") != "awaiting_approval":
+        return {"run_id": run_id, "balance_after": _credits.get_balance(user.id),
+                "status": state.get("status")}
+
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+    amount = cfg.song.credits_per_song if cfg.song else 1
+
+    if user.role != "service":
+        balance = _credits.get_balance(user.id)
+        if balance < amount:
+            _raise_402_insufficient_credits(balance, amount)
+
+    new_balance = _credits.check_or_deduct(
+        user, amount=amount, run_id=run_id, reason="song-spend",
+    )
+
+    # Race avoidance: set status BEFORE spawning so the subprocess can't
+    # write its own progress (e.g. "generating_cover") before we get a
+    # chance to write "generating_song". The subprocess's first action
+    # is also write_state(status="generating_song") which is idempotent
+    # with this write. After spawning, only record the pid via a
+    # read-modify-write that preserves whatever status the worker has
+    # already written.
+    _write_state(run_dir, status="generating_song")
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    # Re-read so we don't clobber a worker-side status update that ran
+    # synchronously between _SPAWN_FN returning and us getting here
+    # (only happens with the in-process spawn used in integration tests).
+    current = _read_state(run_dir)
+    if current.get("status") in (None, "generating_song"):
+        _write_state(run_dir, pid=pid)
+    else:
+        # Worker already advanced past generating_song. Record pid without
+        # touching status.
+        _write_state(run_dir, pid=pid)
+
+    return {"run_id": run_id, "balance_after": new_balance,
+            "status": current.get("status") or "generating_song"}
+
+
+# ---------------------------------------------------------------------------
+# Song mode — take-swap, streaming, log tail, resume
+# ---------------------------------------------------------------------------
+
+
+class SwapTakeRequest(BaseModel):
+    take: int  # 1 or 2
+
+
+@app.post("/songs/{run_id}/swap-take")
+def swap_take(
+    run_id: str,
+    req: SwapTakeRequest,
+    user: User = Depends(require_user),
+):
+    import shutil
+    from pipeline import song_assemble
+    if req.take not in (1, 2):
+        raise HTTPException(422, "take must be 1 or 2")
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    take_path = run_dir / "takes" / f"take_{req.take}.mp3"
+    if not take_path.exists():
+        raise HTTPException(404, f"take_{req.take}.mp3 not found")
+    song_mp3 = run_dir / "song.mp3"
+    if song_mp3.exists():
+        song_mp3.unlink()
+    shutil.copy(take_path, song_mp3)
+    song_assemble.assemble_song_video(
+        cover_path=run_dir / "cover.png",
+        song_mp3=song_mp3,
+        out_mp4=run_dir / "final.mp4",
+    )
+    _write_state(run_dir, chosen_take=req.take)
+    return {"ok": True, "chosen_take": req.take}
+
+
+@app.get("/songs/{run_id}/audio")
+def get_song_audio(
+    run_id: str,
+    take: int | None = None,
+    user: User = Depends(require_user),
+):
+    run_dir = _resolve_song_dir(run_id, user)
+    if take is not None:
+        path = run_dir / "takes" / f"take_{take}.mp3"
+    else:
+        path = run_dir / "song.mp3"
+    if not path.exists():
+        raise HTTPException(404, "audio not found")
+    return FileResponse(path, media_type="audio/mpeg")
+
+
+@app.get("/songs/{run_id}/cover")
+def get_song_cover(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    path = run_dir / "cover.png"
+    if not path.exists():
+        raise HTTPException(404, "cover not yet generated")
+    return FileResponse(path, media_type="image/png")
+
+
+@app.get("/songs/{run_id}/video")
+def get_song_video(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    path = run_dir / "final.mp4"
+    if not path.exists():
+        raise HTTPException(404, "final.mp4 not yet assembled")
+    return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/songs/{run_id}/log")
+def get_song_log(
+    run_id: str,
+    lines: int = 200,
+    user: User = Depends(require_user),
+):
+    run_dir = _resolve_song_dir(run_id, user)
+    path = run_dir / "run.log"
+    if not path.exists():
+        return {"log": ""}
+    text = path.read_text(errors="replace")
+    tail = "\n".join(text.splitlines()[-lines:])
+    return {"log": tail}
+
+
+@app.post("/songs/{run_id}/resume")
+def resume_song(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "failed":
+        raise HTTPException(409, f"song is in state {state.get('status')!r}, cannot resume")
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, status="generating_song", pid=pid, last_error=None)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

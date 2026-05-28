@@ -517,5 +517,133 @@ class FacelessApiClient {
     return _parse(r, (j) => (j as Map)['url'] as String);
   }
 
+  // ---------- songs ----------
+
+  Future<String> createSong({
+    required String theme,
+    String? customLyrics,
+    String? styleHint,
+    String language = 'ar',
+  }) async {
+    final body = <String, dynamic>{
+      'theme': theme,
+      if (customLyrics != null && customLyrics.isNotEmpty) 'custom_lyrics': customLyrics,
+      if (styleHint != null && styleHint.isNotEmpty) 'style_hint': styleHint,
+      'language': language,
+    };
+    final r = await _http.post(
+      await _uri('/songs'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
+  }
+
+  Future<List<SongSummary>> listSongs() async {
+    final r = await _http.get(await _uri('/songs'), headers: await _headers());
+    return _parse(r, (j) => (j as List)
+        .map((x) => SongSummary.fromJson(x as Map<String, dynamic>))
+        .toList());
+  }
+
+  Future<SongSummary> getSong(String id) async {
+    final r = await _http.get(await _uri('/songs/$id'), headers: await _headers());
+    return _parse(r, (j) => SongSummary.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<SongScript> getSongScript(String id) async {
+    final r = await _http.get(await _uri('/songs/$id/script'), headers: await _headers());
+    return _parse(r, (j) => SongScript.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<void> approveSong(String id) async {
+    final r = await _http.post(await _uri('/songs/$id/approve'), headers: await _headers());
+    _checkOk(r);
+  }
+
+  Future<void> regenerateSongLyrics(String id) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/regenerate-lyrics'),
+      headers: await _headers(),
+    );
+    _checkOk(r);
+  }
+
+  Future<void> regenerateSongCoverPrompt(String id) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/regenerate-cover-prompt'),
+      headers: await _headers(),
+    );
+    _checkOk(r);
+  }
+
+  Future<void> editSong(
+    String id, {
+    String? lyrics,
+    String? stylePrompt,
+    String? coverPrompt,
+  }) async {
+    final body = <String, dynamic>{
+      if (lyrics != null) 'lyrics': lyrics,
+      if (stylePrompt != null) 'style_prompt': stylePrompt,
+      if (coverPrompt != null) 'cover_prompt': coverPrompt,
+    };
+    final r = await _http.post(
+      await _uri('/songs/$id/edit'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    _checkOk(r);
+  }
+
+  Future<void> swapTake(String id, int take) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/swap-take'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'take': take}),
+    );
+    _checkOk(r);
+  }
+
+  Future<void> cancelSong(String id) async {
+    final r = await _http.post(await _uri('/songs/$id/cancel'), headers: await _headers());
+    _checkOk(r);
+  }
+
+  Future<void> resumeSong(String id) async {
+    final r = await _http.post(await _uri('/songs/$id/resume'), headers: await _headers());
+    _checkOk(r);
+  }
+
+  /// Video URL with the bearer token in the query string — same browser-
+  /// header-restriction workaround as `videoUrl(runId)` above.
+  Future<Uri> songVideoUrl(String id) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    return Uri.parse('${_stripTrailing(base)}/songs/$id/video?token=$token');
+  }
+
+  Future<Uri> songCoverUrl(String id) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    return Uri.parse('${_stripTrailing(base)}/songs/$id/cover?token=$token');
+  }
+
+  Future<Uri> songAudioUrl(String id, {int? take}) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    final takeParam = take != null ? '&take=$take' : '';
+    return Uri.parse('${_stripTrailing(base)}/songs/$id/audio?token=$token$takeParam');
+  }
+
   void close() => _http.close();
 }

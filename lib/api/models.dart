@@ -295,3 +295,68 @@ class CreditTx {
         createdAt: j['created_at'] as String,
       );
 }
+
+// ---------- song models ----------
+
+class SongSummary {
+  final String id;
+  final String status;
+  final String? title;
+  final String? theme;
+  final String createdAt;
+  final bool hasVideo;
+  final int? chosenTake;
+  final String? lastError;
+
+  SongSummary({
+    required this.id,
+    required this.status,
+    required this.title,
+    required this.theme,
+    required this.createdAt,
+    required this.hasVideo,
+    required this.chosenTake,
+    required this.lastError,
+  });
+
+  factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
+        id: j['id'] as String,
+        status: j['status'] as String,
+        title: j['title'] as String?,
+        theme: j['theme'] as String?,
+        createdAt: (j['created_at'] as String?) ?? '',
+        hasVideo: (j['has_video'] as bool?) ?? false,
+        chosenTake: j['chosen_take'] as int?,
+        lastError: j['last_error'] as String?,
+      );
+}
+
+class SongScript {
+  final String title;
+  final String lyrics;
+  final String stylePrompt;
+  final String coverPrompt;
+  final String language;
+  final int costCredits;
+  final double costUsd;
+
+  SongScript({
+    required this.title,
+    required this.lyrics,
+    required this.stylePrompt,
+    required this.coverPrompt,
+    required this.language,
+    required this.costCredits,
+    required this.costUsd,
+  });
+
+  factory SongScript.fromJson(Map<String, dynamic> j) => SongScript(
+        title: j['title'] as String,
+        lyrics: j['lyrics'] as String,
+        stylePrompt: j['style_prompt'] as String,
+        coverPrompt: j['cover_prompt'] as String,
+        language: j['language'] as String,
+        costCredits: j['cost_credits'] as int,
+        costUsd: (j['cost_usd'] as num).toDouble(),
+      );
+}
