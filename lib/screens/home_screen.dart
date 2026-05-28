@@ -14,7 +14,10 @@ import 'billing_screen.dart';
 import 'cost_screen.dart';
 import 'new_run_screen.dart';
 import 'run_detail_screen.dart';
+import 'new_song_screen.dart';
 import 'settings_screen.dart';
+import 'song_approve_screen.dart';
+import 'song_detail_screen.dart';
 import 'video_player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -33,6 +36,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _filter = 'all';   // all | complete | awaiting | running | failed
   SpendSummary? _spend;
   PlanInfo? _plan;
+  String _mode = 'horror';  // horror | song
+  Future<List<SongSummary>>? _songsFuture;
 
   @override
   void initState() {
@@ -47,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       setState(() {
         _runsFuture = _client.listRuns();
+        _songsFuture = _client.listSongs();
       });
     }
     _fetchSpend();
@@ -94,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // that. Use a block body so the lambda returns void.
     setState(() {
       _runsFuture = _client.listRuns();
+      _songsFuture = _client.listSongs();
     });
     await _runsFuture;
     _fetchSpend();
@@ -143,6 +150,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openNewRun({String? initialTheme}) async {
+    if (_mode == 'song') {
+      await _openNewSong();
+      return;
+    }
     final created = await Navigator.of(context).push<RunSummary?>(
       MaterialPageRoute(
         builder: (_) => NewRunScreen(
@@ -161,6 +172,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _openNewSong() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NewSongScreen(client: _client),
+      ),
+    );
+    // Refresh song list when we return (the new song was created).
+    if (mounted) {
+      setState(() {
+        _songsFuture = _client.listSongs();
+      });
     }
   }
 
@@ -262,9 +287,36 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: FutureBuilder<List<RunSummary>>(
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                    value: 'horror',
+                    label: Text('Horror'),
+                    icon: Icon(Icons.movie)),
+                ButtonSegment(
+                    value: 'song',
+                    label: Text('Song'),
+                    icon: Icon(Icons.music_note)),
+              ],
+              selected: {_mode},
+              onSelectionChanged: (s) => setState(() {
+                _mode = s.first;
+                if (_mode == 'song' && _songsFuture == null) {
+                  _songsFuture = _client.listSongs();
+                }
+              }),
+            ),
+          ),
+          Expanded(
+            child: _mode == 'song'
+                ? _buildSongsList()
+                : RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: FutureBuilder<List<RunSummary>>(
           future: _runsFuture,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
@@ -403,6 +455,94 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           },
         ),
+      ),
+        ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSongsList() {
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: FutureBuilder<List<SongSummary>>(
+        future: _songsFuture,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError) {
+            return _ErrorView(
+              error: snap.error.toString(),
+              onSettings: _openSettings,
+              onRetry: _refresh,
+            );
+          }
+          final songs = snap.data ?? [];
+          if (songs.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.music_note,
+                        size: 64, color: FacelessTheme.textSecondary),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No songs yet.\nTap + to create your first song.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: FacelessTheme.textSecondary),
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: _openNewSong,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New Song'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          return ListView.builder(
+            itemCount: songs.length,
+            itemBuilder: (context, i) => ListTile(
+              leading: songs[i].hasVideo
+                  ? FutureBuilder<Uri>(
+                      future: _client.songCoverUrl(songs[i].id),
+                      builder: (ctx, snap) => snap.hasData
+                          ? Image.network(
+                              snap.data!.toString(),
+                              width: 56,
+                              height: 56,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, e, stack) =>
+                                  const Icon(Icons.music_note, size: 32),
+                            )
+                          : const Icon(Icons.music_note, size: 32),
+                    )
+                  : const Icon(Icons.music_note, size: 32),
+              title: Text(
+                  songs[i].title ?? songs[i].theme ?? '(untitled)'),
+              subtitle: Text(songs[i].status),
+              onTap: () {
+                final s = songs[i];
+                if (s.status == 'awaiting_approval') {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        SongApproveScreen(client: _client, runId: s.id),
+                  ));
+                } else {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        SongDetailScreen(client: _client, runId: s.id),
+                  ));
+                }
+              },
+            ),
+          );
+        },
       ),
     );
   }
