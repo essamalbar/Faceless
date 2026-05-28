@@ -605,6 +605,12 @@ def main_with_args(argv: list[str]) -> int:
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--out-root", default=str(DEFAULT_OUT_ROOT))
     p.add_argument("--music-bundle", default=str(DEFAULT_MUSIC_BUNDLE))
+    # Pipeline mode selector -----------------------------------------------
+    p.add_argument(
+        "--mode", choices=["horror", "song"], default="horror",
+        help="Pipeline mode. 'song' runs the AI song pipeline after a user "
+             "approval (Suno → Flux cover → ffmpeg assemble).",
+    )
     # Shorts mode (Kie.ai) ------------------------------------------------
     p.add_argument("--shorts", action="store_true",
                    help="Use Shorts/TikTok pipeline (Kie.ai Veo, vertical 9:16, ~30s)")
@@ -688,6 +694,9 @@ def main_with_args(argv: list[str]) -> int:
     log = RunLog(run_dir)
 
     try:
+        if args.mode == "song":
+            return _run_song_post_approve(args)
+
         gemini = _build_gemini()
         log.info(f"run dir: {run_dir}  mode={'shorts' if args.shorts else 'long-form'}")
 
@@ -877,6 +886,100 @@ def main_with_args(argv: list[str]) -> int:
         return 1
     finally:
         log.close()
+
+
+def _run_song_post_approve(args) -> int:
+    """Song-mode post-approve stage: Suno → cover → assemble.
+
+    Reads song.json (written by POST /songs inline) from --resume dir.
+    Writes api_state.json transitions: generating_song → generating_cover
+    → assembling → complete (or failed).
+    """
+    import json
+    import shutil
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    from pipeline import song, song_cover, song_assemble
+    from pipeline.config import load_config
+    from pipeline.kie import KieClient
+
+    if not args.resume:
+        print("--mode song requires --resume <run-dir>", file=_sys.stderr)
+        return 2
+    run_dir = _Path(args.resume)
+    if not run_dir.is_dir():
+        print(f"run dir not found: {run_dir}", file=_sys.stderr)
+        return 2
+
+    script_path = run_dir / "song.json"
+    state_path = run_dir / "api_state.json"
+    cfg = load_config(_Path("config.yaml"))
+
+    def write_state(**patch):
+        state = json.loads(state_path.read_text()) if state_path.exists() else {}
+        state.update(patch)
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+
+    try:
+        script = json.loads(script_path.read_text())
+        client = KieClient()
+
+        # --- Stage 1: Suno song ---
+        write_state(status="generating_song")
+        task_id = song.submit_song_job(
+            client,
+            lyrics=script["lyrics"],
+            style_prompt=script["style_prompt"],
+            title=script["title"],
+            model=cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID,
+        )
+        takes = song.wait_for_song(client, task_id)
+        takes_dir = run_dir / "takes"
+        takes_dir.mkdir(exist_ok=True)
+        for i, take in enumerate(takes, start=1):
+            song.download_take(client, take.url, takes_dir / f"take_{i}.mp3")
+
+        # Pick the longer take (Suno truncates one ~20% of the time)
+        if len(takes) >= 2:
+            chosen = 1 if takes[0].duration_s >= takes[1].duration_s else 2
+        else:
+            chosen = 1
+        chosen_path = takes_dir / f"take_{chosen}.mp3"
+        song_mp3 = run_dir / "song.mp3"
+        if song_mp3.exists() or song_mp3.is_symlink():
+            song_mp3.unlink()
+        shutil.copy(chosen_path, song_mp3)
+        write_state(chosen_take=chosen)
+
+        # --- Stage 2: cover ---
+        write_state(status="generating_cover")
+        raw_cover = song_cover.generate_cover_image(
+            client=client,
+            cover_prompt=script["cover_prompt"],
+            out_dir=run_dir,
+        )
+        song_cover.apply_title_overlay(
+            raw_path=raw_cover,
+            title=script["title"],
+            language=script.get("language", "ar"),
+            out_path=run_dir / "cover.png",
+        )
+
+        # --- Stage 3: assemble ---
+        write_state(status="assembling")
+        song_assemble.assemble_song_video(
+            cover_path=run_dir / "cover.png",
+            song_mp3=song_mp3,
+            out_mp4=run_dir / "final.mp4",
+        )
+
+        write_state(status="complete")
+        return 0
+    except Exception as e:
+        write_state(status="failed", last_error=f"{type(e).__name__}: {e}")
+        print(f"[song-post-approve] failed: {e}", file=_sys.stderr)
+        return 1
 
 
 def main() -> int:
