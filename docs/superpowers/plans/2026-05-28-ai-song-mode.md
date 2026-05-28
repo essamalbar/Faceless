@@ -69,23 +69,98 @@
 
 ---
 
-## Task 0: Verify Kie.ai Suno API shape
+## Task 0: Kie.ai Suno API contract (verified 2026-05-28)
 
-**This task is research only — no code or commit.** It pins three values used across every later task.
+**Already done by the plan author against `docs.kie.ai/suno-api/generate-music` and `docs.kie.ai/suno-api/get-music-details`.** The values below are authoritative — use them directly in Task 2.
 
-- [ ] **Step 1: Open Kie.ai's Suno API docs**
+### Endpoints
 
-Visit `https://docs.kie.ai/suno-api` (or whichever URL Kie's docs are at — search `site:docs.kie.ai suno`). If the link 404s, log into the Kie.ai dashboard and find the "Playground" or "API Reference" for Suno.
+- **Submit:** `POST https://api.kie.ai/api/v1/generate`
+- **Poll:** `GET https://api.kie.ai/api/v1/generate/record-info?taskId={taskId}`
 
-- [ ] **Step 2: Pin three values**
+These are **not** the unified `/api/v1/jobs/createTask` paths used by Kling. Suno has its own dedicated endpoints. Do not reuse the Kling polling code in `pipeline/kie.py:wait_for_unified_video` — it parses a different response shape.
 
-Write these in `pipeline/song.py` constants in Task 2:
+### Model id
 
-1. **Model id** — must be Suno V4.5 or newer. Likely `"suno-v4-5"` or `"suno-v4.5"` (verify exact spelling). If only V4 is available, use that; **V3.5 is not acceptable** (quality gate per spec).
-2. **Endpoint path** — almost certainly `/api/v1/jobs/createTask` (the unified endpoint also used by Kling). Verify.
-3. **Request body shape** — Suno needs `lyrics`, `style`, `title`, and likely a `customMode: true` flag. Note the exact field names because Kie wraps Suno's native API.
+- **`V5_5`** — newest at design time. Quality bar met.
+- **`V4_5`** — acceptable fallback if `V5_5` is unavailable.
+- **`V4`** — acceptable last-resort fallback (lower vocal quality, max 4 min).
+- **Never use V3.5** — quality gate per spec.
 
-- [ ] **Step 3: Record the answers** by editing the constants in Task 2's spec when you reach it. If the API shape differs materially from the assumptions in this plan, **stop and surface the differences** before continuing — the plan was written against `pipeline/kie.py:198-256`'s shape.
+Model ids are uppercase with underscores. `"v5_5"` lowercase will be rejected.
+
+### Submit request body (flat — NOT wrapped in `input`)
+
+```json
+{
+  "prompt": "[Verse 1]\n...lyrics with section tags...\n[Chorus]\n...",
+  "customMode": true,
+  "instrumental": false,
+  "model": "V5_5",
+  "callBackUrl": "https://example.com/noop",
+  "style": "Arabic pop ballad, slow tempo 72 BPM, oud + strings, ...",
+  "title": "تحت حراسة القمر"
+}
+```
+
+Field gotchas:
+
+- **`prompt` carries the lyrics** in custom mode. Not a separate `lyrics` field.
+- **`customMode: true`** activates lyrics+style+title control. Without it the API uses simple mode and rewrites the prompt.
+- **`instrumental: false`** is required since we want vocals.
+- **`callBackUrl` is required by the schema** but we poll instead. Pass any well-formed URL (e.g. `"https://api.example.com/noop"`); Kie will attempt to POST to it on completion and silently fail. Polling still works.
+- **Char limits by model:** V5/V5_5 allow 5000-char prompt + 1000-char style; V4_5 allows 3000-char prompt + 200-char style. The lyrics LLM contract in Task 3 stays well under these.
+
+### Submit response
+
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": { "taskId": "5c79****be8e" }
+}
+```
+
+Extract `data.taskId`.
+
+### Poll response (success)
+
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "status": "SUCCESS",
+    "response": {
+      "sunoData": [
+        {
+          "id": "e231****-****-****-****-****8cadc7dc",
+          "audioUrl": "https://example.cn/****.mp3",
+          "streamAudioUrl": "https://example.cn/****",
+          "imageUrl": "https://example.cn/****.jpeg"
+        },
+        { "id": "...", "audioUrl": "...", "streamAudioUrl": "...", "imageUrl": "..." }
+      ]
+    }
+  }
+}
+```
+
+- **Takes**: `data.response.sunoData` is an array. Suno typically returns **two takes**. Use both.
+- **Audio URL**: `sunoData[i].audioUrl` (NOT `streamAudioUrl` — that's an HLS preview, not the full MP3).
+
+### Poll response (in progress)
+
+`data.status` is one of `PENDING`, `TEXT_SUCCESS`, `FIRST_SUCCESS` (this last one means take 1 is ready but take 2 still rendering — wait for `SUCCESS`).
+
+### Poll response (failure)
+
+`data.status` is one of:
+
+- `CREATE_TASK_FAILED` — submit accepted but worker failed to start. Treat as transient (retry).
+- `GENERATE_AUDIO_FAILED` — generation actually failed. Permanent (surface to user, don't auto-retry).
+- `CALLBACK_EXCEPTION` — callback URL failed but the audio may still be in `sunoData`. Treat as success if `sunoData` has tracks.
+- `SENSITIVE_WORD_ERROR` — lyrics tripped content moderation. Permanent (suggest the user re-roll).
 
 ---
 
@@ -162,7 +237,7 @@ git commit -m "feat(song): add font + audio + cover fixtures for song mode"
 - Create: `pipeline/song.py`
 - Create: `tests/test_song.py`
 
-Suno on Kie.ai returns **two takes per submission**. The client must surface both.
+Suno on Kie.ai returns **two takes per submission**. The client must surface both. See **Task 0** above for the verified API contract (endpoint, body shape, status enum, response shape) — Task 2 wires that contract into code.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -171,7 +246,6 @@ Create `tests/test_song.py`:
 ```python
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -191,7 +265,7 @@ def _stub_client(post_resp=None, get_resps=None):
 
 
 def test_submit_song_job_returns_task_id():
-    c = _stub_client(post_resp={"data": {"taskId": "fake-123"}})
+    c = _stub_client(post_resp={"code": 200, "data": {"taskId": "fake-123"}})
     task_id = song.submit_song_job(
         c,
         lyrics="[Verse 1]\nhello\n[Chorus]\nworld",
@@ -200,62 +274,107 @@ def test_submit_song_job_returns_task_id():
     )
     assert task_id == "fake-123"
     # Inspect the body it sent
-    args, kwargs = c._post_json.call_args
+    args, _ = c._post_json.call_args
     path, body = args[0], args[1]
-    assert path == "/api/v1/jobs/createTask"
+    assert path == song.SUNO_GENERATE_PATH
     assert body["model"] == song.SUNO_MODEL_ID
-    assert body["input"]["lyrics"] == "[Verse 1]\nhello\n[Chorus]\nworld"
-    assert body["input"]["style"] == "Arabic pop ballad, 72 BPM"
-    assert body["input"]["title"] == "Test"
-    assert body["input"]["customMode"] is True
+    # prompt carries the lyrics in custom mode (NOT a separate lyrics field)
+    assert body["prompt"] == "[Verse 1]\nhello\n[Chorus]\nworld"
+    assert body["style"] == "Arabic pop ballad, 72 BPM"
+    assert body["title"] == "Test"
+    assert body["customMode"] is True
+    assert body["instrumental"] is False
+    # callBackUrl is required by Kie's schema even though we poll
+    assert isinstance(body.get("callBackUrl"), str) and len(body["callBackUrl"]) > 0
 
 
 def test_wait_for_song_returns_both_take_urls():
     success_resp = {
+        "code": 200,
         "data": {
-            "state": "success",
-            "resultJson": json.dumps({
-                "tracks": [
-                    {"audioUrl": "https://kie.ai/take1.mp3", "duration": 180},
-                    {"audioUrl": "https://kie.ai/take2.mp3", "duration": 165},
+            "status": "SUCCESS",
+            "response": {
+                "sunoData": [
+                    {"id": "uuid-1", "audioUrl": "https://kie.ai/take1.mp3",
+                     "streamAudioUrl": "https://kie.ai/stream1", "imageUrl": "x.jpg"},
+                    {"id": "uuid-2", "audioUrl": "https://kie.ai/take2.mp3",
+                     "streamAudioUrl": "https://kie.ai/stream2", "imageUrl": "y.jpg"},
                 ]
-            }),
-        }
+            },
+        },
     }
     c = _stub_client(get_resps=[success_resp])
     takes = song.wait_for_song(c, "fake-123", poll_interval_s=0)
     assert len(takes) == 2
     assert takes[0].url == "https://kie.ai/take1.mp3"
-    assert takes[0].duration_s == 180
     assert takes[1].url == "https://kie.ai/take2.mp3"
-    assert takes[1].duration_s == 165
 
 
 def test_wait_for_song_polls_until_success():
-    pending = {"data": {"state": "queued"}}
+    pending = {"data": {"status": "PENDING"}}
+    text_ready = {"data": {"status": "TEXT_SUCCESS"}}
+    first_ready = {"data": {"status": "FIRST_SUCCESS"}}
     success = {
         "data": {
-            "state": "success",
-            "resultJson": json.dumps({
-                "tracks": [{"audioUrl": "u1", "duration": 10}, {"audioUrl": "u2", "duration": 12}]
-            }),
+            "status": "SUCCESS",
+            "response": {
+                "sunoData": [
+                    {"id": "u1", "audioUrl": "u1.mp3"},
+                    {"id": "u2", "audioUrl": "u2.mp3"},
+                ]
+            },
         }
     }
-    c = _stub_client(get_resps=[pending, pending, success])
+    c = _stub_client(get_resps=[pending, text_ready, first_ready, success])
     takes = song.wait_for_song(c, "fake-123", poll_interval_s=0)
-    assert c._get_json.call_count == 3
+    assert c._get_json.call_count == 4
     assert len(takes) == 2
 
 
-def test_wait_for_song_raises_on_failure():
-    fail_resp = {"data": {"state": "fail", "failCode": 500, "failMsg": "moderation block"}}
+def test_wait_for_song_raises_on_permanent_failure():
+    fail_resp = {"data": {"status": "GENERATE_AUDIO_FAILED",
+                          "errorMessage": "audio generation failed"}}
     c = _stub_client(get_resps=[fail_resp])
-    with pytest.raises(song.SongGenerationError, match="moderation block"):
+    with pytest.raises(song.SongGenerationError):
         song.wait_for_song(c, "fake-123", poll_interval_s=0)
 
 
+def test_wait_for_song_raises_on_sensitive_word_error():
+    fail_resp = {"data": {"status": "SENSITIVE_WORD_ERROR"}}
+    c = _stub_client(get_resps=[fail_resp])
+    with pytest.raises(song.SongGenerationError, match="SENSITIVE"):
+        song.wait_for_song(c, "fake-123", poll_interval_s=0)
+
+
+def test_wait_for_song_treats_create_task_failed_as_transient():
+    from pipeline.kie import TransientKieError
+    fail_resp = {"data": {"status": "CREATE_TASK_FAILED"}}
+    c = _stub_client(get_resps=[fail_resp])
+    with pytest.raises(TransientKieError):
+        song.wait_for_song(c, "fake-123", poll_interval_s=0)
+
+
+def test_wait_for_song_callback_exception_with_data_is_success():
+    """CALLBACK_EXCEPTION means the webhook ping failed but audio may
+    still be in sunoData — treat as success in that case."""
+    resp = {
+        "data": {
+            "status": "CALLBACK_EXCEPTION",
+            "response": {
+                "sunoData": [
+                    {"id": "u1", "audioUrl": "u1.mp3"},
+                    {"id": "u2", "audioUrl": "u2.mp3"},
+                ]
+            },
+        }
+    }
+    c = _stub_client(get_resps=[resp])
+    takes = song.wait_for_song(c, "fake-123", poll_interval_s=0)
+    assert len(takes) == 2
+
+
 def test_wait_for_song_timeout():
-    pending = {"data": {"state": "queued"}}
+    pending = {"data": {"status": "PENDING"}}
     c = _stub_client(get_resps=[pending] * 20)
     with pytest.raises(song.SongGenerationTimeout):
         song.wait_for_song(c, "fake-123", poll_interval_s=0, timeout_s=0.01)
@@ -288,38 +407,58 @@ Create `pipeline/song.py`:
 ```python
 """Kie.ai Suno client.
 
-Suno generates songs from custom lyrics + a structured style hint. Each
-submission returns TWO takes (Suno always emits a pair); both are
-downloaded so the user can pick.
+Suno generates songs from custom lyrics + a structured style hint.
+Each submission returns 1+ takes (typically two); both are downloaded
+so the user can pick.
 
-Pattern mirrors pipeline/kie.py's unified-jobs flow (Kling/Suno/Hailuo
-all share /api/v1/jobs/createTask). Differences:
-  - request body has `input.lyrics`, `input.style`, `input.title`,
-    `input.customMode: true`
-  - resultJson contains a `tracks: [{audioUrl, duration}, ...]` array
-    (two entries), not a single resultUrls list
+Suno has its own dedicated endpoints on Kie.ai — NOT the unified
+/api/v1/jobs/createTask used by Kling. See docs at
+https://docs.kie.ai/suno-api/generate-music and the Task 0 section
+of the implementation plan for the verified contract.
 
-Suno model id is pinned in SUNO_MODEL_ID below; Task 0 verifies this
-against Kie.ai's docs. If you arrive here without doing Task 0, do it.
+Quality gate (do not regress): submit_song_job MUST set
+customMode=true and pass the lyrics in the `prompt` field. Without
+customMode, Suno rewrites your prompt and quality drops.
 """
 from __future__ import annotations
 
-import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from pipeline.kie import (
-    JOBS_CREATETASK_PATH,
-    JOBS_RECORDINFO_PATH_TPL,
     KieClient,
     KieError,
     TransientKieError,
 )
 
-SUNO_MODEL_ID = "suno-v4-5"  # set in Task 0
+# Endpoints (Suno-specific, NOT the unified /jobs paths)
+SUNO_GENERATE_PATH = os.environ.get("KIE_SUNO_GENERATE_PATH", "/api/v1/generate")
+SUNO_RECORD_INFO_PATH_TPL = os.environ.get(
+    "KIE_SUNO_RECORD_INFO_PATH_TPL", "/api/v1/generate/record-info?taskId={task_id}"
+)
+
+# Model id — see Task 0 in the plan. V5_5 is the latest at design time.
+SUNO_MODEL_ID = os.environ.get("KIE_SUNO_MODEL", "V5_5")
+
+# Kie's schema requires callBackUrl even though we poll. Pass a benign
+# URL — the webhook ping will fail silently and `data.status` may end up
+# as CALLBACK_EXCEPTION, which wait_for_song treats as success when
+# sunoData is populated.
+DEFAULT_CALLBACK_URL = os.environ.get(
+    "KIE_SUNO_CALLBACK_URL", "https://api.example.com/noop"
+)
 
 _SLEEP = time.sleep
+
+# Status enum from Kie.ai's Suno polling endpoint
+_IN_PROGRESS_STATUSES = {"PENDING", "TEXT_SUCCESS", "FIRST_SUCCESS"}
+_SUCCESS_STATUSES = {"SUCCESS"}
+_PERMANENT_FAILURE_STATUSES = {"GENERATE_AUDIO_FAILED", "SENSITIVE_WORD_ERROR"}
+_TRANSIENT_FAILURE_STATUSES = {"CREATE_TASK_FAILED"}
+# CALLBACK_EXCEPTION is handled specially — success if sunoData present,
+# transient otherwise.
 
 
 class SongGenerationError(KieError):
@@ -333,7 +472,7 @@ class SongGenerationTimeout(KieError):
 @dataclass(frozen=True)
 class SongTake:
     url: str
-    duration_s: float
+    duration_s: float = 0.0  # Suno's polling response doesn't include duration
 
 
 def submit_song_job(
@@ -343,6 +482,7 @@ def submit_song_job(
     style_prompt: str,
     title: str,
     model: str = SUNO_MODEL_ID,
+    callback_url: str = DEFAULT_CALLBACK_URL,
 ) -> str:
     """Submit a Suno custom-mode job; return the taskId.
 
@@ -351,20 +491,30 @@ def submit_song_job(
     vocal + era + key + mood). See pipeline/song_lyrics.py for both.
     """
     body = {
+        "prompt": lyrics,         # NOTE: 'prompt' carries lyrics in custom mode
+        "customMode": True,        # required — without it Suno rewrites
+        "instrumental": False,     # we want vocals
         "model": model,
-        "input": {
-            "customMode": True,
-            "lyrics": lyrics,
-            "style": style_prompt,
-            "title": title,
-        },
+        "callBackUrl": callback_url,
+        "style": style_prompt,
+        "title": title,
     }
-    resp = client._post_json(JOBS_CREATETASK_PATH, body)
+    resp = client._post_json(SUNO_GENERATE_PATH, body)
     data = resp.get("data") or {}
     task_id = data.get("taskId") or resp.get("taskId")
     if not task_id:
         raise KieError(f"suno submit response missing taskId: {resp}")
     return str(task_id)
+
+
+def _parse_takes(suno_data: list[dict]) -> list[SongTake]:
+    takes: list[SongTake] = []
+    for entry in suno_data:
+        url = entry.get("audioUrl")
+        if not url:
+            continue
+        takes.append(SongTake(url=str(url)))
+    return takes
 
 
 def wait_for_song(
@@ -374,41 +524,47 @@ def wait_for_song(
     poll_interval_s: float = 5,
     timeout_s: float = 600,
 ) -> list[SongTake]:
-    """Poll /jobs/recordInfo until state=='success'; return both takes."""
+    """Poll until status==SUCCESS; return all takes."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        resp = client._get_json(JOBS_RECORDINFO_PATH_TPL.format(task_id=task_id))
+        resp = client._get_json(SUNO_RECORD_INFO_PATH_TPL.format(task_id=task_id))
         data = resp.get("data") or {}
-        state = (data.get("state") or "").lower()
-        if state == "success":
-            raw = data.get("resultJson")
-            if isinstance(raw, str):
-                parsed = json.loads(raw)
-            else:
-                parsed = raw or {}
-            tracks = parsed.get("tracks") or []
-            if not tracks:
+        status = (data.get("status") or "").upper()
+
+        if status in _SUCCESS_STATUSES:
+            suno_data = (data.get("response") or {}).get("sunoData") or []
+            takes = _parse_takes(suno_data)
+            if not takes:
                 raise SongGenerationError(
-                    f"suno task {task_id} success but no tracks: {resp}"
+                    f"suno task {task_id} SUCCESS but no audio URLs: {resp}"
                 )
-            return [
-                SongTake(url=str(t["audioUrl"]), duration_s=float(t.get("duration", 0)))
-                for t in tracks
-            ]
-        if state == "fail":
-            fail_msg = data.get("failMsg") or ""
-            transient_markers = (
-                "temporarily unavailable", "try again later", "high traffic",
-                "rate limit", "too many requests", "service unavailable",
+            return takes
+
+        if status == "CALLBACK_EXCEPTION":
+            # Webhook failed but the audio might still be ready.
+            suno_data = (data.get("response") or {}).get("sunoData") or []
+            takes = _parse_takes(suno_data)
+            if takes:
+                return takes
+            # No audio + callback exception → treat as transient.
+            raise TransientKieError(
+                f"suno task {task_id} CALLBACK_EXCEPTION with no audio yet"
             )
-            err_class = (
-                TransientKieError if any(m in fail_msg.lower() for m in transient_markers)
-                else SongGenerationError
+
+        if status in _PERMANENT_FAILURE_STATUSES:
+            err_msg = data.get("errorMessage") or status
+            raise SongGenerationError(
+                f"suno task {task_id} {status}: {err_msg}"
             )
-            raise err_class(
-                f"suno task {task_id} failed: code={data.get('failCode')} msg={fail_msg!r}"
+
+        if status in _TRANSIENT_FAILURE_STATUSES:
+            raise TransientKieError(
+                f"suno task {task_id} {status} — retry recommended"
             )
+
+        # in-progress (PENDING / TEXT_SUCCESS / FIRST_SUCCESS) or unknown — poll
         _SLEEP(poll_interval_s)
+
     raise SongGenerationTimeout(
         f"suno task {task_id} did not complete within {timeout_s}s"
     )
