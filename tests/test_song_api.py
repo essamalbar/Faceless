@@ -153,3 +153,86 @@ def test_list_songs_returns_only_song_runs(app):
     body = r.json()
     assert len(body) == 2
     assert all(s["kind"] == "song" for s in body)
+
+
+def test_regenerate_lyrics_only_pre_approval(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    # Allowed in awaiting_approval
+    r = client.post(
+        f"/songs/{run_id}/regenerate-lyrics",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    # Simulate post-approval by writing state directly
+    run_dir = _find_run_dir(run_id)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "generating_song"
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+    # Now regen must 409
+    r = client.post(
+        f"/songs/{run_id}/regenerate-lyrics",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409
+
+
+def test_edit_validates_lyrics_length(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    big = "x" * 4001
+    r = client.post(
+        f"/songs/{run_id}/edit",
+        json={"lyrics": big},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422
+
+
+def test_edit_patches_fields(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    new_lyrics = "[Verse 1]\nedited\n[Chorus]\nnew hook"
+    r = client.post(
+        f"/songs/{run_id}/edit",
+        json={"lyrics": new_lyrics},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    r2 = client.get(
+        f"/songs/{run_id}/script",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r2.json()["lyrics"] == new_lyrics
+
+
+def test_cancel_pre_approval_sets_canceled_status(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    r = client.post(
+        f"/songs/{run_id}/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    r2 = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r2.json()["status"] == "canceled"

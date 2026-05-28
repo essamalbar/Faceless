@@ -2338,6 +2338,131 @@ def list_songs(user: User = Depends(require_user)):
 
 
 # ---------------------------------------------------------------------------
+# Song mode mutations — state-guarded (awaiting_approval only)
+# ---------------------------------------------------------------------------
+
+
+class EditSongRequest(BaseModel):
+    lyrics: str | None = None
+    style_prompt: str | None = None
+    cover_prompt: str | None = None
+
+
+def _require_song_awaiting_approval(run_dir: Path) -> dict:
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "awaiting_approval":
+        raise HTTPException(
+            409,
+            f"song is in state {state.get('status')!r}, edits not allowed",
+        )
+    return state
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    """Write JSON atomically via temp + rename."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    tmp.replace(path)
+
+
+@app.post("/songs/{run_id}/regenerate-lyrics")
+def regenerate_song_lyrics(run_id: str, user: User = Depends(require_user)):
+    from pipeline.song_lyrics import generate_song_script
+    run_dir = _resolve_song_dir(run_id, user)
+    _require_song_awaiting_approval(run_dir)
+    script_path = run_dir / "song.json"
+    current = json.loads(script_path.read_text())
+    llm = _build_song_llm()
+    new_script = generate_song_script(
+        llm=llm,
+        theme=_read_state(run_dir).get("theme", ""),
+        custom_lyrics=None,
+        style_hint=current.get("style_prompt"),  # preserve style direction
+        language=current["language"],
+    )
+    new_data = {
+        "title": new_script.title,
+        "lyrics": new_script.lyrics,
+        "style_prompt": new_script.style_prompt,
+        "cover_prompt": current["cover_prompt"],  # keep cover prompt
+        "language": new_script.language,
+    }
+    _atomic_write_json(script_path, new_data)
+    (run_dir / "lyrics.txt").write_text(new_script.lyrics, encoding="utf-8")
+    _write_state(run_dir, title=new_script.title)
+    return {"ok": True}
+
+
+@app.post("/songs/{run_id}/regenerate-cover-prompt")
+def regenerate_song_cover_prompt(run_id: str, user: User = Depends(require_user)):
+    from pipeline.song_lyrics import generate_song_script
+    run_dir = _resolve_song_dir(run_id, user)
+    _require_song_awaiting_approval(run_dir)
+    script_path = run_dir / "song.json"
+    current = json.loads(script_path.read_text())
+    llm = _build_song_llm()
+    new_script = generate_song_script(
+        llm=llm,
+        theme=_read_state(run_dir).get("theme", ""),
+        custom_lyrics=current["lyrics"],  # keep lyrics
+        style_hint=current["style_prompt"],
+        language=current["language"],
+    )
+    current["cover_prompt"] = new_script.cover_prompt
+    _atomic_write_json(script_path, current)
+    return {"ok": True}
+
+
+@app.post("/songs/{run_id}/edit")
+def edit_song(
+    run_id: str,
+    req: EditSongRequest,
+    user: User = Depends(require_user),
+):
+    run_dir = _resolve_song_dir(run_id, user)
+    _require_song_awaiting_approval(run_dir)
+    if req.lyrics is not None and len(req.lyrics) > 4000:
+        raise HTTPException(422, "lyrics exceeds 4000 chars")
+    if req.style_prompt is not None and len(req.style_prompt) > 500:
+        raise HTTPException(422, "style_prompt exceeds 500 chars")
+    if req.cover_prompt is not None and len(req.cover_prompt) > 500:
+        raise HTTPException(422, "cover_prompt exceeds 500 chars")
+    script_path = run_dir / "song.json"
+    current = json.loads(script_path.read_text())
+    for field in ("lyrics", "style_prompt", "cover_prompt"):
+        v = getattr(req, field)
+        if v is not None:
+            current[field] = v
+    _atomic_write_json(script_path, current)
+    if req.lyrics is not None:
+        (run_dir / "lyrics.txt").write_text(req.lyrics, encoding="utf-8")
+    return {"ok": True}
+
+
+@app.post("/songs/{run_id}/cancel")
+def cancel_song(run_id: str, user: User = Depends(require_user)):
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") == "complete":
+        raise HTTPException(409, "song already complete")
+    pid = state.get("pid")
+    if pid and _process_alive(pid, run_dir):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    _write_state(run_dir, status="canceled")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # Flutter web SPA — served at /app/* from the same Cloud Run service.
 #
 # This intentionally lives at the BOTTOM of the file, after every API
