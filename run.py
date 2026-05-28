@@ -936,54 +936,71 @@ def _run_song_post_approve(args) -> int:
     try:
         script = json.loads(script_path.read_text())
         client = KieClient()
+        takes_dir = run_dir / "takes"
+        song_mp3 = run_dir / "song.mp3"
+        raw_cover_path = run_dir / "cover_raw.png"
+        final_cover_path = run_dir / "cover.png"
+        final_mp4 = run_dir / "final.mp4"
 
         # --- Stage 1: Suno song ---
-        write_state(status="generating_song")
-        task_id = song.submit_song_job(
-            client,
-            lyrics=script["lyrics"],
-            style_prompt=script["style_prompt"],
-            title=script["title"],
-            model=cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID,
-        )
-        takes = song.wait_for_song(client, task_id)
-        takes_dir = run_dir / "takes"
-        takes_dir.mkdir(exist_ok=True)
-        for i, take in enumerate(takes, start=1):
-            song.download_take(client, take.url, takes_dir / f"take_{i}.mp3")
-
-        # Pick the longer take (Suno truncates one ~20% of the time)
-        if len(takes) >= 2:
-            chosen = 1 if takes[0].duration_s >= takes[1].duration_s else 2
+        # Skip if BOTH takes are already on disk from a prior partial run.
+        # This is the spec's deferred "stage-aware /resume" — it lets the
+        # user retry a Flux/assemble failure without re-spending on Suno
+        # (the expensive stage).
+        existing_takes = sorted(takes_dir.glob("take_*.mp3")) if takes_dir.exists() else []
+        if len(existing_takes) >= 2 and song_mp3.exists():
+            print(f"[song-post-approve] skipping Suno — {len(existing_takes)} takes already on disk")
+            write_state(status="generating_song")  # status moment so UI shows progress
         else:
-            chosen = 1
-        chosen_path = takes_dir / f"take_{chosen}.mp3"
-        song_mp3 = run_dir / "song.mp3"
-        if song_mp3.exists() or song_mp3.is_symlink():
-            song_mp3.unlink()
-        shutil.copy(chosen_path, song_mp3)
-        write_state(chosen_take=chosen)
+            write_state(status="generating_song")
+            task_id = song.submit_song_job(
+                client,
+                lyrics=script["lyrics"],
+                style_prompt=script["style_prompt"],
+                title=script["title"],
+                model=cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID,
+            )
+            takes = song.wait_for_song(client, task_id)
+            takes_dir.mkdir(exist_ok=True)
+            for i, take in enumerate(takes, start=1):
+                song.download_take(client, take.url, takes_dir / f"take_{i}.mp3")
+
+            # Pick the longer take (Suno truncates one ~20% of the time)
+            if len(takes) >= 2:
+                chosen = 1 if takes[0].duration_s >= takes[1].duration_s else 2
+            else:
+                chosen = 1
+            chosen_path = takes_dir / f"take_{chosen}.mp3"
+            if song_mp3.exists() or song_mp3.is_symlink():
+                song_mp3.unlink()
+            shutil.copy(chosen_path, song_mp3)
+            write_state(chosen_take=chosen)
 
         # --- Stage 2: cover ---
+        # Skip the Flux call if cover_raw.png is already on disk; just
+        # re-do the title overlay (which is free and deterministic).
         write_state(status="generating_cover")
-        raw_cover = song_cover.generate_cover_image(
-            client=client,
-            cover_prompt=script["cover_prompt"],
-            out_dir=run_dir,
-        )
+        if raw_cover_path.exists():
+            print(f"[song-post-approve] skipping Flux — cover_raw.png already on disk")
+        else:
+            raw_cover_path = song_cover.generate_cover_image(
+                client=client,
+                cover_prompt=script["cover_prompt"],
+                out_dir=run_dir,
+            )
         song_cover.apply_title_overlay(
-            raw_path=raw_cover,
+            raw_path=raw_cover_path,
             title=script["title"],
             language=script.get("language", "ar"),
-            out_path=run_dir / "cover.png",
+            out_path=final_cover_path,
         )
 
         # --- Stage 3: assemble ---
         write_state(status="assembling")
         song_assemble.assemble_song_video(
-            cover_path=run_dir / "cover.png",
+            cover_path=final_cover_path,
             song_mp3=song_mp3,
-            out_mp4=run_dir / "final.mp4",
+            out_mp4=final_mp4,
         )
 
         write_state(status="complete")
