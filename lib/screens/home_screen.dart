@@ -505,42 +505,59 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           }
+          // itemCount = songs + 1 header row that holds the "New song"
+          // button. Without this row the user is stuck after their first
+          // run (the empty-state CTA disappears once songs.isNotEmpty).
           return ListView.builder(
-            itemCount: songs.length,
-            itemBuilder: (context, i) => ListTile(
-              leading: songs[i].hasVideo
-                  ? FutureBuilder<Uri>(
-                      future: _client.songCoverUrl(songs[i].id),
-                      builder: (ctx, snap) => snap.hasData
-                          ? Image.network(
-                              snap.data!.toString(),
-                              width: 56,
-                              height: 56,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, e, stack) =>
-                                  const Icon(Icons.music_note, size: 32),
-                            )
-                          : const Icon(Icons.music_note, size: 32),
-                    )
-                  : const Icon(Icons.music_note, size: 32),
-              title: Text(
-                  songs[i].title ?? songs[i].theme ?? '(untitled)'),
-              subtitle: Text(songs[i].status),
-              onTap: () {
-                final s = songs[i];
-                if (s.status == 'awaiting_approval') {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        SongApproveScreen(client: _client, runId: s.id),
-                  ));
-                } else {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        SongDetailScreen(client: _client, runId: s.id),
-                  ));
-                }
-              },
-            ),
+            itemCount: songs.length + 1,
+            itemBuilder: (context, i) {
+              if (i == 0) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _openNewSong,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New song'),
+                    ),
+                  ),
+                );
+              }
+              final s = songs[i - 1];
+              return ListTile(
+                leading: s.hasVideo
+                    ? FutureBuilder<Uri>(
+                        future: _client.songCoverUrl(s.id),
+                        builder: (ctx, snap) => snap.hasData
+                            ? Image.network(
+                                snap.data!.toString(),
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, e, stack) =>
+                                    const Icon(Icons.music_note, size: 32),
+                              )
+                            : const Icon(Icons.music_note, size: 32),
+                      )
+                    : const Icon(Icons.music_note, size: 32),
+                title: Text(s.title ?? s.theme ?? '(untitled)'),
+                subtitle: Text(s.status),
+                onTap: () {
+                  if (s.status == 'awaiting_approval') {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
+                          SongApproveScreen(client: _client, runId: s.id),
+                    ));
+                  } else {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
+                          SongDetailScreen(client: _client, runId: s.id),
+                    ));
+                  }
+                },
+              );
+            },
           );
         },
       ),
