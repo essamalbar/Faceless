@@ -1072,15 +1072,31 @@ def generate_cover_image(
     return out_path
 
 
+def _load_font(font_path: Path, size: int) -> ImageFont.FreeTypeFont:
+    """Open a font at `size`. Handles variable fonts by setting Bold
+    weight (wght=700) when supported — `assets/fonts/Inter-Bold.ttf`
+    is actually the Inter variable font containing all weights, so
+    without this it would render as Regular."""
+    font = ImageFont.truetype(str(font_path), size=size)
+    # `set_variation_by_axes` exists only for variable fonts; for static
+    # fonts (Amiri-Regular) it raises OSError. Try-fail is the canonical
+    # way to detect variable-font support per Pillow's docs.
+    try:
+        font.set_variation_by_axes([700])  # wght=700 ⇒ Bold
+    except (OSError, AttributeError):
+        pass
+    return font
+
+
 def _fit_font(font_path: Path, title: str, max_width: int) -> ImageFont.FreeTypeFont:
     """Pick the largest font size that fits the title in max_width."""
     for size in range(_FONT_SIZE_MAX, _FONT_SIZE_MIN - 1, -2):
-        font = ImageFont.truetype(str(font_path), size=size)
+        font = _load_font(font_path, size)
         bbox = font.getbbox(title)
         text_w = bbox[2] - bbox[0]
         if text_w <= max_width:
             return font
-    return ImageFont.truetype(str(font_path), size=_FONT_SIZE_MIN)
+    return _load_font(font_path, _FONT_SIZE_MIN)
 
 
 def apply_title_overlay(
@@ -1223,12 +1239,16 @@ def test_assemble_output_is_1080x1080_at_25fps(tmp_path: Path):
 
 
 def test_assemble_audio_is_stream_copied_not_reencoded(tmp_path: Path):
-    """Quality gate: -c:a copy means the output AAC bitstream is
-    identical to the input AAC bitstream — no re-encoding artifacts.
-    The clearest signal is that the audio codec name and the
-    sample_rate match the input exactly, and the codec_tag_string is
-    'mp4a'. (We don't bit-compare because the MP4 muxer adds frame
-    headers, but the audio payload is byte-identical.)"""
+    """Quality gate: -c:a copy means the output bitstream is identical
+    to the input bitstream — no re-encoding artifacts. We assert the
+    codec name in the output matches the codec name in the input.
+
+    Suno returns MP3 files (Kie.ai's audioUrl ends in .mp3), so the
+    output MP4 contains an MP3 audio stream after stream-copy. The
+    fixture is MP3 to match. If we ever switch to a service that
+    returns AAC, the fixture and this assertion both need to update.
+    The point of this test is that the codec NEVER CHANGES across
+    the assemble step — not that it's any specific codec."""
     out = tmp_path / "final.mp4"
     song_assemble.assemble_song_video(
         cover_path=FIXTURE_COVER, song_mp3=FIXTURE_SONG, out_mp4=out,
@@ -1237,7 +1257,8 @@ def test_assemble_audio_is_stream_copied_not_reencoded(tmp_path: Path):
     audio = next(s for s in info["streams"] if s["codec_type"] == "audio")
     in_info = _ffprobe(FIXTURE_SONG)
     in_audio = next(s for s in in_info["streams"] if s["codec_type"] == "audio")
-    assert audio["codec_name"] == in_audio["codec_name"] == "aac"
+    # Stream-copy ⇒ codec unchanged
+    assert audio["codec_name"] == in_audio["codec_name"]
     assert audio["sample_rate"] == in_audio["sample_rate"]
 
 
