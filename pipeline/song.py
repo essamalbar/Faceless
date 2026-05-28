@@ -83,12 +83,25 @@ def submit_song_job(
 
 
 def _parse_takes(suno_data: list[dict]) -> list[SongTake]:
+    """Extract SongTake list from a sunoData array.
+
+    Each entry MUST have an audioUrl. duration is optional — Kie.ai's
+    documented schema doesn't list it, but undocumented fields are
+    sometimes present. If missing, duration_s stays 0.0 and callers
+    that need duration (e.g. take-picking in run.py) must measure it
+    from the downloaded MP3 via ffprobe.
+    """
     takes: list[SongTake] = []
     for entry in suno_data:
         url = entry.get("audioUrl")
         if not url:
             continue
-        takes.append(SongTake(url=str(url)))
+        duration = entry.get("duration") or entry.get("durationSec") or 0
+        try:
+            duration_s = float(duration)
+        except (TypeError, ValueError):
+            duration_s = 0.0
+        takes.append(SongTake(url=str(url), duration_s=duration_s))
     return takes
 
 
@@ -145,6 +158,16 @@ def wait_for_song(
         if status in _TRANSIENT_FAILURE_STATUSES:
             raise TransientKieError(
                 f"suno task {task_id} {status} — retry recommended"
+            )
+
+        # Known in-progress statuses keep polling. Anything else (an
+        # undocumented status Kie.ai may add later) is treated as
+        # transient with a warning rather than silently looping until
+        # timeout — a new failure mode should surface fast.
+        if status and status not in _IN_PROGRESS_STATUSES:
+            raise TransientKieError(
+                f"suno task {task_id} unrecognised status {status!r} "
+                f"— treating as transient; check Kie.ai docs for new enums"
             )
 
         _SLEEP(poll_interval_s)

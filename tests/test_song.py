@@ -129,6 +129,29 @@ def test_wait_for_song_timeout():
         song.wait_for_song(c, "fake-123", poll_interval_s=0, timeout_s=0.01)
 
 
+def test_wait_for_song_raises_on_unknown_status():
+    """A status Kie.ai adds later (not in our known sets) should
+    surface as a transient error rather than silently polling
+    until timeout."""
+    from pipeline.kie import TransientKieError
+    fail_resp = {"data": {"status": "MODERATION_PENDING_REVIEW"}}
+    c = _stub_client(get_resps=[fail_resp])
+    with pytest.raises(TransientKieError, match="unrecognised status"):
+        song.wait_for_song(c, "fake-123", poll_interval_s=0)
+
+
+def test_parse_takes_reads_duration_when_present():
+    """If Kie returns a duration field (undocumented but observed),
+    parse it into SongTake.duration_s."""
+    suno_data = [
+        {"id": "u1", "audioUrl": "u1.mp3", "duration": 184.5},
+        {"id": "u2", "audioUrl": "u2.mp3"},  # no duration
+    ]
+    takes = song._parse_takes(suno_data)
+    assert takes[0].duration_s == 184.5
+    assert takes[1].duration_s == 0.0
+
+
 def test_download_take_writes_file(tmp_path: Path):
     c = _stub_client()
     fake_bytes = b"ID3" + b"\x00" * 100
