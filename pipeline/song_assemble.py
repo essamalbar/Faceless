@@ -47,11 +47,19 @@ def assemble_song_video(*, cover_path: Path, song_mp3: Path, out_mp4: Path) -> N
         "-i", str(song_mp3),
         "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "1:a",
-        "-c:v", "libx264", "-preset", "slow", "-crf", "18",
+        # preset=veryfast: a still cover with slow zoompan has zero
+        # motion-compensation benefit from slower presets. On Cloud Run's
+        # 2 vCPU, `slow` was taking 15-40 min per song; `veryfast` does
+        # the same in 1-2 min with imperceptible visual difference for
+        # this kind of content.
+        # crf=20 (was 18) trades a tiny visual loss for smaller files +
+        # faster encode — still very high quality.
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "copy",
         "-pix_fmt", "yuv420p",
         "-shortest",
         "-movflags", "+faststart",
+        "-threads", "0",  # use all available vCPUs
         str(out_mp4),
     ]
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
