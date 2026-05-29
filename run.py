@@ -977,9 +977,13 @@ def _run_song_post_approve(args) -> int:
             else:
                 chosen = 1
             chosen_path = takes_dir / f"take_{chosen}.mp3"
-            if song_mp3.exists() or song_mp3.is_symlink():
-                song_mp3.unlink()
-            shutil.copy(chosen_path, song_mp3)
+            # GCS Fuse (Cloud Run mount) refuses unlink with EPERM, but
+            # accepts truncate-on-write. Copy via binary write rather
+            # than shutil.copy(.., unlink-first) so the same code path
+            # works on local disk AND on the production GCS Fuse mount.
+            with chosen_path.open("rb") as src, song_mp3.open("wb") as dst:
+                while chunk := src.read(1 << 20):
+                    dst.write(chunk)
             write_state(chosen_take=chosen)
 
         # --- Stage 2: cover ---

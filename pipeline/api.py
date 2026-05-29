@@ -2558,9 +2558,10 @@ def swap_take(
     if not take_path.exists():
         raise HTTPException(404, f"take_{req.take}.mp3 not found")
     song_mp3 = run_dir / "song.mp3"
-    if song_mp3.exists():
-        song_mp3.unlink()
-    shutil.copy(take_path, song_mp3)
+    # GCS Fuse refuses unlink; truncate-on-write is fine.
+    with take_path.open("rb") as src, song_mp3.open("wb") as dst:
+        while chunk := src.read(1 << 20):
+            dst.write(chunk)
     song_assemble.assemble_song_video(
         cover_path=run_dir / "cover.png",
         song_mp3=song_mp3,
