@@ -66,20 +66,20 @@ def test_assemble_output_is_1080x1080_at_25fps(tmp_path: Path):
     assert fps in ("25/1", "25")
 
 
-def test_assemble_audio_is_stream_copied_not_reencoded(tmp_path: Path):
-    """Quality gate: -c:a copy means the output bitstream is identical
-    to the input bitstream — no re-encoding artifacts. Codec must NOT
-    change across the assemble step."""
+def test_assemble_audio_is_aac_for_browser_compat(tmp_path: Path):
+    """Browsers (Chrome, Safari, Firefox) reject MP3 audio in MP4
+    container with MEDIA_ERR_SRC_NOT_SUPPORTED. Audio MUST be AAC
+    in the output. Suno's source is MP3 (the fixture mirrors this);
+    we transcode at 192k which is high-quality and broswer-compatible."""
     out = tmp_path / "final.mp4"
     song_assemble.assemble_song_video(
         cover_path=FIXTURE_COVER, song_mp3=FIXTURE_SONG, out_mp4=out,
     )
     info = _ffprobe(out)
     audio = next(s for s in info["streams"] if s["codec_type"] == "audio")
-    in_info = _ffprobe(FIXTURE_SONG)
-    in_audio = next(s for s in in_info["streams"] if s["codec_type"] == "audio")
-    assert audio["codec_name"] == in_audio["codec_name"]
-    assert audio["sample_rate"] == in_audio["sample_rate"]
+    assert audio["codec_name"] == "aac", (
+        f"expected AAC for MP4 browser compat, got {audio['codec_name']}"
+    )
 
 
 def test_assemble_video_has_faststart_moov_at_front(tmp_path: Path):

@@ -50,12 +50,15 @@ def assemble_song_video(*, cover_path: Path, song_mp3: Path, out_mp4: Path) -> N
         # preset=veryfast: a still cover with slow zoompan has zero
         # motion-compensation benefit from slower presets. On Cloud Run's
         # 2 vCPU, `slow` was taking 15-40 min per song; `veryfast` does
-        # the same in 1-2 min with imperceptible visual difference for
-        # this kind of content.
-        # crf=20 (was 18) trades a tiny visual loss for smaller files +
-        # faster encode — still very high quality.
+        # the same in 1-2 min with imperceptible visual difference.
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-        "-c:a", "copy",
+        # Audio MUST be AAC inside an MP4 container — browsers (Chrome,
+        # Safari, Firefox) reject MP3 audio in MP4 with
+        # MEDIA_ERR_SRC_NOT_SUPPORTED. Suno's output is MP3, so we
+        # transcode here. The earlier `-c:a copy` design was wrong;
+        # it produced files that wouldn't play in the Flutter video
+        # player. At 192k AAC the loss from MP3→AAC is imperceptible.
+        "-c:a", "aac", "-b:a", "192k",
         "-pix_fmt", "yuv420p",
         "-shortest",
         "-movflags", "+faststart",
