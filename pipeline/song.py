@@ -64,7 +64,21 @@ def submit_song_job(
     title: str,
     model: str = SUNO_MODEL_ID,
     callback_url: str = DEFAULT_CALLBACK_URL,
+    vocal_gender: str | None = None,
+    persona_id: str | None = None,
+    negative_tags: str | None = None,
 ) -> str:
+    """Submit a Suno custom-mode job; return taskId.
+
+    Optional voice-control parameters (Kie.ai Suno API):
+      vocal_gender:  'm' or 'f' — increases probability of chosen gender,
+                     doesn't guarantee. Custom-mode only.
+      persona_id:    ID of a Persona created via /api/v1/persona/generate.
+                     Locks the singer's voice across generations. Custom-mode
+                     + V5/V5.5 only. This is the closest thing to voice
+                     cloning Suno offers.
+      negative_tags: comma-separated tags to exclude (e.g. "female vocal").
+    """
     body = {
         "prompt": lyrics,
         "customMode": True,
@@ -74,6 +88,12 @@ def submit_song_job(
         "style": style_prompt,
         "title": title,
     }
+    if vocal_gender in ("m", "f"):
+        body["vocalGender"] = vocal_gender
+    if persona_id:
+        body["personaId"] = persona_id
+    if negative_tags:
+        body["negativeTags"] = negative_tags
     resp = client._post_json(SUNO_GENERATE_PATH, body)
     data = resp.get("data") or {}
     task_id = data.get("taskId") or resp.get("taskId")

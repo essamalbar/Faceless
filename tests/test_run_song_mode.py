@@ -31,7 +31,10 @@ def test_song_post_approve_produces_final_mp4(tmp_path: Path, monkeypatch):
         "kind": "song", "status": "generating_song",
     }))
 
-    def fake_submit(client, *, lyrics, style_prompt, title, model=song.SUNO_MODEL_ID):
+    def fake_submit(client, *, lyrics, style_prompt, title,
+                    model=song.SUNO_MODEL_ID, **_extra):
+        # **_extra absorbs the optional voice-control kwargs
+        # (vocal_gender, persona_id, negative_tags) added after Task 2.
         return "fake-task"
     def fake_wait(client, task_id, *, poll_interval_s=5, timeout_s=600):
         return [

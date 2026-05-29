@@ -953,12 +953,18 @@ def _run_song_post_approve(args) -> int:
             write_state(status="generating_song")  # status moment so UI shows progress
         else:
             write_state(status="generating_song")
+            # Voice-control params from song.json (set by POST /songs):
+            #   vocal_gender: 'm' / 'f' — increases probability of gender
+            #   persona_id:   pins specific singer voice across runs
+            # See pipeline/song.py submit_song_job docstring.
             task_id = song.submit_song_job(
                 client,
                 lyrics=script["lyrics"],
                 style_prompt=script["style_prompt"],
                 title=script["title"],
                 model=cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID,
+                vocal_gender=script.get("vocal_gender"),
+                persona_id=script.get("persona_id"),
             )
             takes = song.wait_for_song(client, task_id)
             takes_dir.mkdir(exist_ok=True)

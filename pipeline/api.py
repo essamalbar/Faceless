@@ -381,6 +381,11 @@ class CreateSongRequest(BaseModel):
     custom_lyrics: str | None = None
     style_hint: str | None = None
     language: str = "ar"
+    # Voice-control (optional). Defaults to "m" (male) to match the
+    # reference quality target — the production user has been re-rolling
+    # to get male voices manually. See pipeline/song.py submit_song_job.
+    vocal_gender: str | None = "m"  # 'm' | 'f' | None
+    persona_id: str | None = None   # for pinned-voice future use
 
 
 class SongScriptResponse(BaseModel):
@@ -2260,6 +2265,11 @@ def create_song(
             "style_prompt": script.style_prompt,
             "cover_prompt": script.cover_prompt,
             "language": script.language,
+            # Voice-control fields persist into the worker's Suno call.
+            # vocal_gender defaults to 'm' on the API side, but pass
+            # through whatever the request specified.
+            "vocal_gender": req.vocal_gender,
+            "persona_id": req.persona_id,
         }, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
