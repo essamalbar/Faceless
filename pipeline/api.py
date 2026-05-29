@@ -2602,13 +2602,27 @@ def get_song_cover(run_id: str,
 
 
 @app.get("/songs/{run_id}/video")
-def get_song_video(run_id: str,
-                   user: User = Depends(require_user_header_or_query)):
+def get_song_video(
+    run_id: str,
+    download: bool = False,
+    user: User = Depends(require_user_header_or_query),
+):
+    """Stream the final.mp4. With `?download=1` the server sets
+    Content-Disposition: attachment so the browser saves the file
+    instead of playing it inline."""
     run_dir = _resolve_song_dir(run_id, user)
     path = run_dir / "final.mp4"
     if not path.exists():
         raise HTTPException(404, "final.mp4 not yet assembled")
-    return FileResponse(path, media_type="video/mp4")
+    headers = {}
+    if download:
+        # Filename uses the run_id; the song's title would be nicer but
+        # contains Arabic characters that need RFC 5987 encoding to be
+        # safe in the header. run_id is ASCII timestamp — keep it simple.
+        headers["Content-Disposition"] = (
+            f'attachment; filename="faceless-song-{run_id}.mp4"'
+        )
+    return FileResponse(path, media_type="video/mp4", headers=headers)
 
 
 @app.get("/songs/{run_id}/log")

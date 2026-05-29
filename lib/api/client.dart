@@ -626,6 +626,20 @@ class FacelessApiClient {
     return Uri.parse('${_stripTrailing(base)}/songs/$id/video?token=$token');
   }
 
+  /// Download URL — same as songVideoUrl but with `download=1` so the
+  /// server sends Content-Disposition: attachment. The browser saves
+  /// the file instead of playing it inline.
+  Future<Uri> songDownloadUrl(String id) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    return Uri.parse(
+      '${_stripTrailing(base)}/songs/$id/video?token=$token&download=1',
+    );
+  }
+
   Future<Uri> songCoverUrl(String id) async {
     final base = await _settings.baseUrl();
     final token = await _resolveToken();

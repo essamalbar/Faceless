@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../api/client.dart';
@@ -139,6 +140,23 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
 
   // ─── inline video player ────────────────────────────────────────────────────
 
+  Future<void> _downloadVideo() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final uri = await widget.client.songDownloadUrl(widget.runId);
+      // On web, _blank pops a new tab; with Content-Disposition: attachment
+      // the browser saves directly. On mobile, this routes through the OS
+      // download handler.
+      await launchUrl(uri, webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Download failed: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _initVideo() async {
     setState(() {
       _videoLoading = true;
@@ -224,6 +242,14 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           if (s.status == 'complete') ...[
             const SizedBox(height: 16),
             _buildVideoSection(context),
+            const SizedBox(height: 12),
+            // Download button is always visible once status=complete,
+            // regardless of whether the inline player has been started.
+            OutlinedButton.icon(
+              icon: const Icon(Icons.download),
+              label: const Text('Download MP4'),
+              onPressed: _downloadVideo,
+            ),
             const SizedBox(height: 16),
             if (s.chosenTake != null) _buildTakeSwapCard(context, s),
           ],
@@ -318,11 +344,23 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final c = _videoController;
 
     if (c == null && !_videoLoading && _videoError == null) {
-      // Not started yet — show a play button to load on demand
-      return FilledButton.icon(
-        icon: const Icon(Icons.play_arrow),
-        label: const Text('Play video'),
-        onPressed: _initVideo,
+      // Not started yet — show play + download buttons
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Play video'),
+              onPressed: _initVideo,
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.download),
+            label: const Text('Download'),
+            onPressed: _downloadVideo,
+          ),
+        ],
       );
     }
 
