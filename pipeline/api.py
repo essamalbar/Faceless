@@ -2571,11 +2571,15 @@ def swap_take(
     return {"ok": True, "chosen_take": req.take}
 
 
+# Binary streaming endpoints accept the token via ?token=... query
+# string in addition to the Authorization header, because browsers
+# cannot set Authorization on <video>, <audio>, or <img> requests.
+# Same pattern as the horror /runs/{id}/video endpoint.
 @app.get("/songs/{run_id}/audio")
 def get_song_audio(
     run_id: str,
     take: int | None = None,
-    user: User = Depends(require_user),
+    user: User = Depends(require_user_header_or_query),
 ):
     run_dir = _resolve_song_dir(run_id, user)
     if take is not None:
@@ -2588,7 +2592,8 @@ def get_song_audio(
 
 
 @app.get("/songs/{run_id}/cover")
-def get_song_cover(run_id: str, user: User = Depends(require_user)):
+def get_song_cover(run_id: str,
+                   user: User = Depends(require_user_header_or_query)):
     run_dir = _resolve_song_dir(run_id, user)
     path = run_dir / "cover.png"
     if not path.exists():
@@ -2597,7 +2602,8 @@ def get_song_cover(run_id: str, user: User = Depends(require_user)):
 
 
 @app.get("/songs/{run_id}/video")
-def get_song_video(run_id: str, user: User = Depends(require_user)):
+def get_song_video(run_id: str,
+                   user: User = Depends(require_user_header_or_query)):
     run_dir = _resolve_song_dir(run_id, user)
     path = run_dir / "final.mp4"
     if not path.exists():
