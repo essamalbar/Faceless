@@ -62,11 +62,15 @@ gcloud builds submit \
 # :latest between the build and the rollout, leaving the Service
 # running one digest and the Job running another.
 echo "-> Resolving image digest"
-DIGEST=$(gcloud artifacts docker tags list \
+# gcloud's `tags list --filter=tag=latest` has a deprecated filter
+# operator (warns + returns nothing); `images list --filter=tags:latest`
+# is the supported equivalent.
+DIGEST=$(gcloud artifacts docker images list \
   "${REGION}-docker.pkg.dev/${PROJECT_ID}/faceless/faceless" \
-  --filter="tag=latest" \
+  --include-tags \
+  --filter="tags:latest" \
   --format="value(version)" \
-  --project="${PROJECT_ID}" | head -1)
+  --project="${PROJECT_ID}" 2>/dev/null | head -1)
 if [ -z "${DIGEST}" ]; then
   echo "WARN: could not resolve digest for :latest — falling back to tag" >&2
   IMAGE_REF="${IMAGE}"
