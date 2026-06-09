@@ -680,3 +680,52 @@ def test_delete_song_404_for_unknown_id(app):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 404
+
+
+# ─────────────── POST /songs/{id}/regenerate-cover ───────────────────────────
+
+def test_regenerate_cover_sets_flag_and_spawns(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod
+    spawn_calls = []
+    def fake_spawn(args, run_dir):
+        spawn_calls.append((args, run_dir))
+        return 99999
+    api_mod.set_spawn_fn(fake_spawn)
+
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    # Force state to complete
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    r = client.post(
+        f"/songs/{run_id}/regenerate-cover",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    new_state = json.loads((run_dir / "api_state.json").read_text())
+    assert new_state["status"] == "generating_cover"
+    assert new_state["regenerate_cover"] is True
+    assert len(spawn_calls) == 1
+
+
+def test_regenerate_cover_409_when_not_complete(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    r = client.post(
+        f"/songs/{run_id}/regenerate-cover",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409

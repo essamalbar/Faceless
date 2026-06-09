@@ -266,6 +266,57 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     }
   }
 
+  Future<void> _downloadAudio() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final uri = await widget.client.songAudioDownloadUrl(widget.runId);
+      await launchUrl(uri, webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Download failed: $e')));
+      }
+    }
+  }
+
+  Future<void> _regenerateCover() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Regenerate cover?'),
+        content: const Text(
+          'Calls Flux for a fresh cover image (~\$0.03) and re-assembles '
+          'the video with the new cover. Suno output is preserved. '
+          'Takes ~2 minutes.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Regenerate')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.client.regenerateSongCover(widget.runId);
+      if (mounted) {
+        messenger.showSnackBar(const SnackBar(
+          content: Text('Regenerating cover — refresh in ~2 min'),
+        ));
+        // Re-poll to show the new "generating_cover" status
+        setState(() {
+          _summary = null;
+        });
+        _poll();
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Failed: $e')));
+      }
+    }
+  }
+
   Future<void> _initVideo() async {
     setState(() {
       _videoLoading = true;
@@ -367,10 +418,24 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             const SizedBox(height: 12),
             // Download button is always visible once status=complete,
             // regardless of whether the inline player has been started.
-            OutlinedButton.icon(
-              icon: const Icon(Icons.download),
-              label: const Text('Download MP4'),
-              onPressed: _downloadVideo,
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download MP4'),
+                    onPressed: _downloadVideo,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.music_note),
+                    label: const Text('Download MP3'),
+                    onPressed: _downloadAudio,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             // Save this song's voice as a Persona for reuse in
@@ -380,6 +445,12 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               icon: const Icon(Icons.record_voice_over),
               label: const Text('Save this voice'),
               onPressed: () => _showSavePersonaDialog(s),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: const Text('Regenerate cover'),
+              onPressed: _regenerateCover,
             ),
             const SizedBox(height: 16),
             if (s.chosenTake != null) _buildTakeSwapCard(context, s),

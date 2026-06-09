@@ -2604,8 +2604,11 @@ def swap_take(
 def get_song_audio(
     run_id: str,
     take: int | None = None,
+    download: bool = False,
     user: User = Depends(require_user_header_or_query),
 ):
+    """Stream the song MP3. With ?download=1 the browser saves it
+    via Content-Disposition: attachment instead of inline playback."""
     run_dir = _resolve_song_dir(run_id, user)
     if take is not None:
         path = run_dir / "takes" / f"take_{take}.mp3"
@@ -2613,7 +2616,13 @@ def get_song_audio(
         path = run_dir / "song.mp3"
     if not path.exists():
         raise HTTPException(404, "audio not found")
-    return FileResponse(path, media_type="audio/mpeg")
+    headers = {}
+    if download:
+        suffix = f"-take-{take}" if take is not None else ""
+        headers["Content-Disposition"] = (
+            f'attachment; filename="faceless-song-{run_id}{suffix}.mp3"'
+        )
+    return FileResponse(path, media_type="audio/mpeg", headers=headers)
 
 
 @app.get("/songs/{run_id}/cover")
@@ -2701,6 +2710,42 @@ def resume_song(run_id: str, user: User = Depends(require_user)):
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
     _write_state(run_dir, status="generating_song", pid=pid, last_error=None)
+    return {"ok": True}
+
+
+@app.post("/songs/{run_id}/regenerate-cover")
+def regenerate_song_cover(run_id: str, user: User = Depends(require_user)):
+    """Re-render the cover image (and the final MP4 with the new
+    cover baked in) without re-generating the song.
+
+    Useful when the Flux output came back ugly or when the cover
+    prompt was tweaked after the song completed. Suno is skipped
+    (takes/song.mp3 already on disk); only Flux + ffmpeg run.
+
+    Sets a `regenerate_cover` flag in api_state.json that run.py
+    reads to bypass its normal "cover_raw.png exists → skip Flux"
+    optimization for this run.
+    """
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(
+            409,
+            f"can only regenerate cover for a complete song "
+            f"(state: {state.get('status')!r})",
+        )
+
+    _write_state(
+        run_dir,
+        status="generating_cover",
+        regenerate_cover=True,
+        last_error=None,
+    )
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid)
     return {"ok": True}
 
 

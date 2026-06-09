@@ -609,6 +609,31 @@ class FacelessApiClient {
     _checkOk(r);
   }
 
+  Future<void> regenerateSongCover(String id) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/regenerate-cover'),
+      headers: await _headers(),
+    );
+    _checkOk(r);
+  }
+
+  /// MP3 download URL with the bearer token in the query string.
+  /// Browsers can't set Authorization headers on a plain link click;
+  /// this URL is self-authenticating so url_launcher can hand it off
+  /// to the OS download handler.
+  Future<Uri> songAudioDownloadUrl(String id, {int? take}) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    final takeParam = take != null ? '&take=$take' : '';
+    return Uri.parse(
+      '${_stripTrailing(base)}/songs/$id/audio'
+      '?token=$token&download=1$takeParam',
+    );
+  }
+
   Future<void> deleteSong(String id) async {
     final r = await _http.delete(
       await _uri('/songs/$id'),

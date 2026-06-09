@@ -997,15 +997,27 @@ def _run_song_post_approve(args) -> int:
         # --- Stage 2: cover ---
         # Skip the Flux call if cover_raw.png is already on disk; just
         # re-do the title overlay (which is free and deterministic).
+        # POST /songs/{id}/regenerate-cover sets regenerate_cover=true
+        # in state to force a fresh Flux call even when cover_raw.png
+        # already exists.
         write_state(status="generating_cover")
-        if raw_cover_path.exists():
+        # Re-read state in case the API set regenerate_cover after
+        # we initially loaded it.
+        current_state = json.loads(state_path.read_text()) if state_path.exists() else {}
+        force_regen_cover = current_state.get("regenerate_cover", False)
+        if raw_cover_path.exists() and not force_regen_cover:
             print(f"[song-post-approve] skipping Flux — cover_raw.png already on disk")
         else:
+            if force_regen_cover:
+                print(f"[song-post-approve] regenerate_cover flag set — calling Flux fresh")
             raw_cover_path = song_cover.generate_cover_image(
                 client=client,
                 cover_prompt=script["cover_prompt"],
                 out_dir=run_dir,
             )
+            # Clear the flag — single-use
+            if force_regen_cover:
+                write_state(regenerate_cover=False)
         song_cover.apply_title_overlay(
             raw_path=raw_cover_path,
             title=script["title"],
