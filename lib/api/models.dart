@@ -361,6 +361,18 @@ class SongScript {
       );
 }
 
+class ShareInfo {
+  final String token;
+  final String url;
+
+  ShareInfo({required this.token, required this.url});
+
+  factory ShareInfo.fromJson(Map<String, dynamic> j) => ShareInfo(
+        token: j['token'] as String,
+        url: j['url'] as String,
+      );
+}
+
 class Persona {
   final String id;
   final String name;

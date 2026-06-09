@@ -729,3 +729,122 @@ def test_regenerate_cover_409_when_not_complete(app):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 409
+
+
+# ─────────────── Sharing ────────────────────────────────────────────────────
+
+def test_share_song_mints_token_and_is_idempotent(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    r1 = client.post(
+        f"/songs/{run_id}/share",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r1.status_code == 200, r1.text
+    body1 = r1.json()
+    assert body1["token"]
+    assert body1["url"].endswith(f"/p/{body1['token']}")
+
+    # Second call returns the same token (idempotent)
+    r2 = client.post(
+        f"/songs/{run_id}/share",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r2.json()["token"] == body1["token"]
+
+
+def test_share_song_409_when_not_complete(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    r = client.post(
+        f"/songs/{run_id}/share",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409
+
+
+def test_public_page_serves_without_auth(app):
+    """The whole point of share: anyone with the link can view,
+    no auth required. Hit /p/{token} with NO Authorization header
+    and confirm 200 + correct content type."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    share = client.post(
+        f"/songs/{run_id}/share",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    share_token = share.json()["token"]
+
+    # NO Authorization header on this request — the public page MUST
+    # be reachable anonymously.
+    r = client.get(f"/p/{share_token}")
+    assert r.status_code == 200, r.text
+    assert "text/html" in r.headers["content-type"]
+    # Open Graph + Twitter Card markers
+    assert 'property="og:title"' in r.text
+    assert 'property="og:video"' in r.text
+    assert 'name="twitter:card"' in r.text
+
+
+def test_public_page_404_for_bad_token(app):
+    fastapi_app, _ = app
+    client = TestClient(fastapi_app)
+    r = client.get("/p/totally-bogus-token")
+    assert r.status_code == 404
+
+
+def test_unshare_revokes_link(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    share = client.post(
+        f"/songs/{run_id}/share",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    share_token = share.json()["token"]
+    # Pre-revocation: public page works
+    assert client.get(f"/p/{share_token}").status_code == 200
+
+    # Revoke
+    r = client.delete(
+        f"/songs/{run_id}/share",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 204
+
+    # Post-revocation: public page is gone
+    assert client.get(f"/p/{share_token}").status_code == 404

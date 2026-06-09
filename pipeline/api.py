@@ -413,6 +413,11 @@ class PersonaSummary(BaseModel):
     created_at: str
 
 
+class ShareInfo(BaseModel):
+    token: str
+    url: str  # the public /p/{token} URL
+
+
 class SongRunSummary(BaseModel):
     id: str
     status: str
@@ -2901,6 +2906,211 @@ def delete_persona(persona_id: str, user: User = Depends(require_user)):
         raise HTTPException(404, "persona not found")
     _save_personas(user, new_list)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Public sharing — /p/{token} pages anyone can view (no auth).
+#
+# When a user taps "Share" on a song, the API mints a random token
+# and writes a mapping {token → (user_id, run_id)} into a shared
+# index file. The public-facing /p/{token} page reads the index,
+# loads the song's metadata + cover + video, and renders an HTML
+# page with Open Graph + Twitter Card meta so links preview nicely
+# in WhatsApp / Twitter / Facebook.
+#
+# Privacy posture: tokens are 128-bit URL-safe random (secrets.token_
+# urlsafe(16)). Security is share-by-link — anyone with the URL can
+# play the song. Owner can revoke at any time by deleting the token.
+# ---------------------------------------------------------------------------
+
+_SHARE_INDEX_PATH = lambda: _out_root() / "_share_index.json"  # noqa: E731
+
+
+def _load_share_index() -> dict:
+    p = _SHARE_INDEX_PATH()
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_share_index(idx: dict) -> None:
+    p = _SHARE_INDEX_PATH()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(idx, ensure_ascii=False, indent=2),
+                   encoding="utf-8")
+    tmp.replace(p)
+
+
+def _resolve_shared_song(token: str) -> tuple[Path, dict]:
+    """Look up a shared run by token. Returns (run_dir, song_json).
+    Raises 404 if the token doesn't exist or the run dir was deleted."""
+    idx = _load_share_index()
+    entry = idx.get(token)
+    if not entry:
+        raise HTTPException(404, "shared link not found")
+    user_id = entry.get("user_id")
+    run_id = entry.get("run_id")
+    if not user_id or not run_id:
+        raise HTTPException(404, "shared link corrupted")
+    run_dir = _out_root() / user_id / run_id
+    if not run_dir.exists():
+        # Run was deleted — stale index entry; clean it up.
+        idx.pop(token, None)
+        _save_share_index(idx)
+        raise HTTPException(404, "shared song was deleted")
+    script_path = run_dir / "song.json"
+    if not script_path.exists():
+        raise HTTPException(404, "song data missing")
+    return run_dir, json.loads(script_path.read_text())
+
+
+@app.post("/songs/{run_id}/share", response_model=ShareInfo)
+def share_song(run_id: str, user: User = Depends(require_user)):
+    """Mint a public share token for this song. Idempotent — repeat
+    calls return the same token if one was already issued.
+
+    Refuses if the song isn't complete (no point sharing an
+    in-progress run)."""
+    import secrets
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(
+            409,
+            f"can only share a complete song (state: {state.get('status')!r})",
+        )
+
+    existing_token = state.get("share_token")
+    if existing_token:
+        token = existing_token
+    else:
+        token = secrets.token_urlsafe(16)
+        _write_state(run_dir, share_token=token)
+        idx = _load_share_index()
+        idx[token] = {"user_id": user.id, "run_id": run_id}
+        _save_share_index(idx)
+
+    base_url = os.environ.get(
+        "FACELESS_PUBLIC_URL",
+        "https://faceless-api-uplzdtffeq-uc.a.run.app",
+    ).rstrip("/")
+    return ShareInfo(token=token, url=f"{base_url}/p/{token}")
+
+
+@app.delete("/songs/{run_id}/share", status_code=204)
+def unshare_song(run_id: str, user: User = Depends(require_user)):
+    """Revoke a song's share link. Existing links 404 after this."""
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    token = state.get("share_token")
+    if not token:
+        return None  # idempotent no-op
+    idx = _load_share_index()
+    idx.pop(token, None)
+    _save_share_index(idx)
+    _write_state(run_dir, share_token=None)
+    return None
+
+
+@app.get("/p/{token}", include_in_schema=False)
+def shared_song_page(token: str):
+    """HTML page that anyone can view (no auth) — embeds the video
+    + sets Open Graph / Twitter Card meta tags so links preview
+    nicely in WhatsApp, Twitter, Facebook, iMessage."""
+    from fastapi.responses import HTMLResponse
+    _, script = _resolve_shared_song(token)
+    title = script.get("title", "AI song")
+    description = script.get("style_prompt", "")[:200]
+    base_url = os.environ.get(
+        "FACELESS_PUBLIC_URL",
+        "https://faceless-api-uplzdtffeq-uc.a.run.app",
+    ).rstrip("/")
+    page_url = f"{base_url}/p/{token}"
+    video_url = f"{base_url}/p/{token}/video"
+    cover_url = f"{base_url}/p/{token}/cover"
+    # Escape for HTML — minimal but adequate
+    def esc(s: str) -> str:
+        return (s.replace("&", "&amp;").replace("<", "&lt;")
+                 .replace(">", "&gt;").replace('"', "&quot;"))
+    html = f"""<!DOCTYPE html>
+<html lang="ar" dir="auto">
+<head>
+<meta charset="utf-8">
+<title>{esc(title)}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="{esc(description)}">
+
+<!-- Open Graph -->
+<meta property="og:title" content="{esc(title)}">
+<meta property="og:description" content="{esc(description)}">
+<meta property="og:image" content="{cover_url}">
+<meta property="og:image:width" content="1080">
+<meta property="og:image:height" content="1080">
+<meta property="og:video" content="{video_url}">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="1080">
+<meta property="og:video:height" content="1080">
+<meta property="og:type" content="video.other">
+<meta property="og:url" content="{page_url}">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="player">
+<meta name="twitter:title" content="{esc(title)}">
+<meta name="twitter:description" content="{esc(description)}">
+<meta name="twitter:image" content="{cover_url}">
+<meta name="twitter:player" content="{page_url}">
+<meta name="twitter:player:width" content="1080">
+<meta name="twitter:player:height" content="1080">
+
+<style>
+  html, body {{ margin: 0; padding: 0; background: #0b0e16; color: #e8eaf2; font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; min-height: 100vh; }}
+  .wrap {{ max-width: 540px; margin: 0 auto; padding: 24px 16px; }}
+  h1 {{ font-size: 22px; margin: 16px 0 4px; text-align: center; }}
+  p.style {{ font-size: 13px; color: #9da3b8; text-align: center; margin: 0 0 16px; }}
+  video {{ width: 100%; border-radius: 12px; background: black; }}
+  footer {{ margin-top: 24px; text-align: center; font-size: 12px; color: #5d6480; }}
+  footer a {{ color: #9da3b8; text-decoration: none; }}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <video controls playsinline poster="{cover_url}" preload="metadata">
+    <source src="{video_url}" type="video/mp4">
+  </video>
+  <h1>{esc(title)}</h1>
+  <p class="style">{esc(description)}</p>
+  <footer>Made with <a href="{base_url}/app/">faceless</a></footer>
+</div>
+</body>
+</html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/p/{token}/video", include_in_schema=False)
+def shared_song_video(token: str):
+    """No-auth video endpoint for the public share page."""
+    run_dir, _ = _resolve_shared_song(token)
+    path = run_dir / "final.mp4"
+    if not path.exists():
+        raise HTTPException(404, "video not found")
+    return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/p/{token}/cover", include_in_schema=False)
+def shared_song_cover(token: str):
+    """No-auth cover endpoint for the public share page (used by
+    OG image meta + the <video> poster)."""
+    run_dir, _ = _resolve_shared_song(token)
+    path = run_dir / "cover.png"
+    if not path.exists():
+        raise HTTPException(404, "cover not found")
+    return FileResponse(path, media_type="image/png")
 
 
 # ---------------------------------------------------------------------------

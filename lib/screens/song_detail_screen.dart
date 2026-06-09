@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -278,6 +279,69 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     }
   }
 
+  Future<void> _shareSong() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final info = await widget.client.shareSong(widget.runId);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Share this song'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Anyone with this link can play the song — no sign-in '
+                'needed. Paste it in WhatsApp, Twitter, or anywhere; '
+                'the preview shows the cover.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              SelectableText(
+                info.url,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                launchUrl(Uri.parse(info.url),
+                    webOnlyWindowName: '_blank');
+              },
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.copy),
+              label: const Text('Copy link'),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: info.url));
+                if (ctx.mounted) Navigator.pop(ctx);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Link copied to clipboard')),
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Share failed: $e')));
+      }
+    }
+  }
+
   Future<void> _regenerateCover() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -447,10 +511,24 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               onPressed: () => _showSavePersonaDialog(s),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.refresh),
-              label: const Text('Regenerate cover'),
-              onPressed: _regenerateCover,
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.share),
+                    label: const Text('Share'),
+                    onPressed: _shareSong,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Regenerate cover'),
+                    onPressed: _regenerateCover,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             if (s.chosenTake != null) _buildTakeSwapCard(context, s),

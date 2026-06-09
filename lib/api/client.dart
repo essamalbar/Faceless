@@ -609,6 +609,22 @@ class FacelessApiClient {
     _checkOk(r);
   }
 
+  Future<ShareInfo> shareSong(String id) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/share'),
+      headers: await _headers(),
+    );
+    return _parse(r, (j) => ShareInfo.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<void> unshareSong(String id) async {
+    final r = await _http.delete(
+      await _uri('/songs/$id/share'),
+      headers: await _headers(),
+    );
+    _checkOk(r);
+  }
+
   Future<void> regenerateSongCover(String id) async {
     final r = await _http.post(
       await _uri('/songs/$id/regenerate-cover'),
