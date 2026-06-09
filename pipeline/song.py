@@ -211,7 +211,7 @@ def download_take(client: KieClient, url: str, out_path: Path) -> None:
 # that subsequent submit_song_job calls can pass via persona_id to
 # preserve voice character.
 SUNO_PERSONA_GENERATE_PATH = os.environ.get(
-    "KIE_SUNO_PERSONA_GENERATE_PATH", "/api/v1/persona/generate"
+    "KIE_SUNO_PERSONA_GENERATE_PATH", "/api/v1/generate/generate-persona"
 )
 
 

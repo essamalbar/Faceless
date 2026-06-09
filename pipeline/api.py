@@ -3020,13 +3020,27 @@ def unshare_song(run_id: str, user: User = Depends(require_user)):
 
 @app.get("/p/{token}", include_in_schema=False)
 def shared_song_page(token: str):
-    """HTML page that anyone can view (no auth) — embeds the video
-    + sets Open Graph / Twitter Card meta tags so links preview
-    nicely in WhatsApp, Twitter, Facebook, iMessage."""
+    """Public share page (no auth) — embeds the video, displays the
+    lyrics with proper RTL handling and section-tag styling, sets
+    Open Graph / Twitter Card meta tags for link previews."""
     from fastapi.responses import HTMLResponse
     _, script = _resolve_shared_song(token)
     title = script.get("title", "AI song")
-    description = script.get("style_prompt", "")[:200]
+    lyrics = script.get("lyrics", "")
+    language = script.get("language", "ar")
+    # OG description is a single-line teaser — first stanza of the
+    # lyrics, cleaned of section tags and capped to a sensible length.
+    import re as _re
+    teaser_lines = []
+    for line in lyrics.split("\n"):
+        line = line.strip()
+        if not line or _re.match(r"^\[", line):
+            continue
+        teaser_lines.append(line)
+        if len(teaser_lines) >= 2:
+            break
+    teaser = " · ".join(teaser_lines)[:160] or "Listen to this AI-generated song."
+
     base_url = os.environ.get(
         "FACELESS_PUBLIC_URL",
         "https://faceless-api-uplzdtffeq-uc.a.run.app",
@@ -3034,25 +3048,53 @@ def shared_song_page(token: str):
     page_url = f"{base_url}/p/{token}"
     video_url = f"{base_url}/p/{token}/video"
     cover_url = f"{base_url}/p/{token}/cover"
-    # Escape for HTML — minimal but adequate
+
     def esc(s: str) -> str:
         return (s.replace("&", "&amp;").replace("<", "&lt;")
                  .replace(">", "&gt;").replace('"', "&quot;"))
+
+    # Render lyrics: each line is either a `[Verse 1]`-style section
+    # header (rendered as a small chip) or a normal sung line.
+    is_rtl = language in ("ar", "he", "fa", "ur")
+    text_dir = "rtl" if is_rtl else "ltr"
+    lyrics_html_parts: list[str] = []
+    section_re = _re.compile(r"^\[([^\]]+)\]\s*$")
+    for raw in lyrics.split("\n"):
+        line = raw.strip()
+        if not line:
+            lyrics_html_parts.append('<div class="gap"></div>')
+            continue
+        m = section_re.match(line)
+        if m:
+            lyrics_html_parts.append(
+                f'<div class="section">{esc(m.group(1))}</div>'
+            )
+        else:
+            lyrics_html_parts.append(
+                f'<p class="line">{esc(line)}</p>'
+            )
+    lyrics_html = "\n".join(lyrics_html_parts)
+
     html = f"""<!DOCTYPE html>
-<html lang="ar" dir="auto">
+<html lang="{esc(language)}">
 <head>
 <meta charset="utf-8">
-<title>{esc(title)}</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="{esc(description)}">
+<title>{esc(title)} · faceless</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="{esc(teaser)}">
+<meta name="theme-color" content="#0a0d14">
 
 <!-- Open Graph -->
+<meta property="og:site_name" content="faceless">
 <meta property="og:title" content="{esc(title)}">
-<meta property="og:description" content="{esc(description)}">
+<meta property="og:description" content="{esc(teaser)}">
 <meta property="og:image" content="{cover_url}">
+<meta property="og:image:secure_url" content="{cover_url}">
 <meta property="og:image:width" content="1080">
 <meta property="og:image:height" content="1080">
+<meta property="og:image:alt" content="{esc(title)}">
 <meta property="og:video" content="{video_url}">
+<meta property="og:video:secure_url" content="{video_url}">
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="1080">
 <meta property="og:video:height" content="1080">
@@ -3061,31 +3103,143 @@ def shared_song_page(token: str):
 
 <!-- Twitter -->
 <meta name="twitter:card" content="player">
+<meta name="twitter:site" content="@faceless">
 <meta name="twitter:title" content="{esc(title)}">
-<meta name="twitter:description" content="{esc(description)}">
+<meta name="twitter:description" content="{esc(teaser)}">
 <meta name="twitter:image" content="{cover_url}">
+<meta name="twitter:image:alt" content="{esc(title)}">
 <meta name="twitter:player" content="{page_url}">
 <meta name="twitter:player:width" content="1080">
 <meta name="twitter:player:height" content="1080">
+<meta name="twitter:player:stream" content="{video_url}">
+<meta name="twitter:player:stream:content_type" content="video/mp4">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
-  html, body {{ margin: 0; padding: 0; background: #0b0e16; color: #e8eaf2; font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; min-height: 100vh; }}
-  .wrap {{ max-width: 540px; margin: 0 auto; padding: 24px 16px; }}
-  h1 {{ font-size: 22px; margin: 16px 0 4px; text-align: center; }}
-  p.style {{ font-size: 13px; color: #9da3b8; text-align: center; margin: 0 0 16px; }}
-  video {{ width: 100%; border-radius: 12px; background: black; }}
-  footer {{ margin-top: 24px; text-align: center; font-size: 12px; color: #5d6480; }}
-  footer a {{ color: #9da3b8; text-decoration: none; }}
+  :root {{
+    --bg-0: #06080d;
+    --bg-1: #0d1119;
+    --bg-2: #161b27;
+    --fg-0: #f3f5fb;
+    --fg-1: #c5cad9;
+    --fg-2: #7f869c;
+    --fg-3: #4a5266;
+    --accent: #d7b46a;
+    --accent-soft: rgba(215, 180, 106, 0.16);
+  }}
+  * {{ box-sizing: border-box; }}
+  html, body {{
+    margin: 0; padding: 0;
+    background: radial-gradient(120% 80% at 50% 0%, #131a2a 0%, var(--bg-0) 55%) fixed;
+    color: var(--fg-0);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    min-height: 100vh; min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }}
+  body[dir="rtl"] .line, body[dir="rtl"] .title {{
+    font-family: 'Amiri', 'Inter', serif;
+  }}
+  .wrap {{
+    max-width: 640px; margin: 0 auto;
+    padding: 32px 20px 80px;
+  }}
+  .player {{
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    background: black;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7),
+                0 0 0 1px rgba(255,255,255,0.04);
+    aspect-ratio: 1 / 1;
+  }}
+  .player video {{
+    width: 100%; height: 100%; display: block;
+    object-fit: cover;
+  }}
+  .title {{
+    font-size: 28px; font-weight: 700; letter-spacing: -0.01em;
+    text-align: center; margin: 28px 0 6px;
+    color: var(--fg-0);
+  }}
+  .made-by {{
+    text-align: center; font-size: 12px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--fg-3);
+    margin: 0 0 32px;
+  }}
+  .made-by .dot {{
+    display: inline-block; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent); margin: 0 8px; vertical-align: middle;
+  }}
+  .lyrics {{
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 18px;
+    padding: 28px 24px;
+    line-height: 1.85;
+  }}
+  .lyrics .section {{
+    display: inline-block;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin: 18px 0 8px;
+  }}
+  .lyrics .section:first-child {{ margin-top: 0; }}
+  .lyrics .line {{
+    margin: 0;
+    font-size: 18px;
+    color: var(--fg-0);
+    font-weight: 500;
+  }}
+  body[dir="rtl"] .lyrics .line {{ font-size: 21px; line-height: 2.0; }}
+  .lyrics .gap {{ height: 10px; }}
+  footer {{
+    margin-top: 40px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--fg-3);
+    letter-spacing: 0.02em;
+  }}
+  footer a {{
+    color: var(--fg-1);
+    text-decoration: none;
+    border-bottom: 1px solid var(--fg-3);
+    padding-bottom: 1px;
+  }}
+  footer a:hover {{ color: var(--accent); border-color: var(--accent); }}
+  @media (max-width: 480px) {{
+    .wrap {{ padding: 20px 16px 60px; }}
+    .title {{ font-size: 24px; }}
+    .lyrics {{ padding: 20px 18px; }}
+    .lyrics .line {{ font-size: 16px; }}
+    body[dir="rtl"] .lyrics .line {{ font-size: 19px; }}
+  }}
 </style>
 </head>
-<body>
+<body dir="{text_dir}">
 <div class="wrap">
-  <video controls playsinline poster="{cover_url}" preload="metadata">
-    <source src="{video_url}" type="video/mp4">
-  </video>
-  <h1>{esc(title)}</h1>
-  <p class="style">{esc(description)}</p>
-  <footer>Made with <a href="{base_url}/app/">faceless</a></footer>
+  <div class="player">
+    <video controls playsinline poster="{cover_url}" preload="metadata">
+      <source src="{video_url}" type="video/mp4">
+      Your browser does not support embedded video.
+    </video>
+  </div>
+  <h1 class="title">{esc(title)}</h1>
+  <p class="made-by">faceless<span class="dot"></span>AI song</p>
+  <div class="lyrics">
+    {lyrics_html}
+  </div>
+  <footer>
+    Made with <a href="{base_url}/app/">faceless</a> — AI-generated music
+  </footer>
 </div>
 </body>
 </html>"""
