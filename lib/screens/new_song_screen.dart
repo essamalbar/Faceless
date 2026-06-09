@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/client.dart';
+import '../api/models.dart';
 import '../theme.dart';
 import 'song_approve_screen.dart';
 
@@ -17,8 +18,25 @@ class _NewSongScreenState extends State<NewSongScreen> {
   final _lyricsCtrl = TextEditingController();
   final _styleCtrl = TextEditingController();
   String _language = 'ar';
+  String? _personaId;          // null = no persona (let Suno pick)
+  List<Persona> _personas = [];
   bool _submitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPersonas();
+  }
+
+  Future<void> _loadPersonas() async {
+    try {
+      final list = await widget.client.listPersonas();
+      if (mounted) setState(() => _personas = list);
+    } catch (_) {
+      // Personas are optional; ignore listing errors silently
+    }
+  }
 
   @override
   void dispose() {
@@ -44,6 +62,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
             _lyricsCtrl.text.trim().isEmpty ? null : _lyricsCtrl.text,
         styleHint: _styleCtrl.text.trim().isEmpty ? null : _styleCtrl.text,
         language: _language,
+        personaId: _personaId,
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
@@ -123,7 +142,29 @@ class _NewSongScreenState extends State<NewSongScreen> {
               ],
               onChanged: (v) => setState(() => _language = v ?? 'ar'),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+            // Voice picker — only shows once user has saved at least
+            // one persona. Default is "Auto" which lets Suno pick.
+            if (_personas.isNotEmpty)
+              DropdownButtonFormField<String?>(
+                initialValue: _personaId,
+                decoration: const InputDecoration(
+                  labelText: 'Voice',
+                  helperText: 'Reuse a saved singer voice from a previous song',
+                  border: OutlineInputBorder(),
+                ),
+                items: <DropdownMenuItem<String?>>[
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('Auto (let Suno pick)'),
+                  ),
+                  for (final p in _personas)
+                    DropdownMenuItem(value: p.id, child: Text(p.name)),
+                ],
+                onChanged: (v) => setState(() => _personaId = v),
+              ),
+            if (_personas.isNotEmpty) const SizedBox(height: 16),
+            const SizedBox(height: 8),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),

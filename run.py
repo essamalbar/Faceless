@@ -971,6 +971,14 @@ def _run_song_post_approve(args) -> int:
             for i, take in enumerate(takes, start=1):
                 song.download_take(client, take.url, takes_dir / f"take_{i}.mp3")
 
+            # Persist Suno taskId + per-take audioIds so a future
+            # /save-persona call has the references it needs (Kie's
+            # persona/generate endpoint requires both).
+            write_state(
+                suno_task_id=task_id,
+                take_audio_ids=[t.audio_id for t in takes],
+            )
+
             # Pick the longer take (Suno truncates one ~20% of the time)
             if len(takes) >= 2:
                 chosen = 1 if takes[0].duration_s >= takes[1].duration_s else 2

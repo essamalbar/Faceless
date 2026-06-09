@@ -157,6 +157,74 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     }
   }
 
+  Future<void> _showSavePersonaDialog(SongSummary s) async {
+    final nameCtrl = TextEditingController(text: s.title ?? '');
+    final descCtrl = TextEditingController(
+      text: 'Arabic male vocal, warm baritone, gentle vibrato, '
+          'intimate close-mic, modern 2020s production',
+    );
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save this voice'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Locks the singer\'s voice from this song so you can reuse '
+              'it on future generations.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Voice name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                helperText: 'Genre, mood, vocal qualities',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (saved != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final persona = await widget.client.createPersonaFromSong(
+        widget.runId,
+        name: nameCtrl.text.trim(),
+        description: descCtrl.text.trim(),
+      );
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(
+          content: Text('Voice "${persona.name}" saved. Use it on '
+              'the next song from the New Song form.'),
+          duration: const Duration(seconds: 5),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      }
+    }
+  }
+
   Future<void> _initVideo() async {
     setState(() {
       _videoLoading = true;
@@ -249,6 +317,15 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               icon: const Icon(Icons.download),
               label: const Text('Download MP4'),
               onPressed: _downloadVideo,
+            ),
+            const SizedBox(height: 8),
+            // Save this song's voice as a Persona for reuse in
+            // future songs. Closest thing Suno offers to voice
+            // cloning across generations.
+            OutlinedButton.icon(
+              icon: const Icon(Icons.record_voice_over),
+              label: const Text('Save this voice'),
+              onPressed: () => _showSavePersonaDialog(s),
             ),
             const SizedBox(height: 16),
             if (s.chosenTake != null) _buildTakeSwapCard(context, s),

@@ -398,6 +398,21 @@ class SongScriptResponse(BaseModel):
     cost_usd: float
 
 
+class CreatePersonaRequest(BaseModel):
+    name: str
+    description: str
+    take: int | None = None  # defaults to the run's chosen_take
+
+
+class PersonaSummary(BaseModel):
+    id: str            # the Kie personaId
+    name: str
+    description: str
+    source_run_id: str
+    source_take: int
+    created_at: str
+
+
 class SongRunSummary(BaseModel):
     id: str
     status: str
@@ -2687,6 +2702,133 @@ def resume_song(run_id: str, user: User = Depends(require_user)):
     pid = _SPAWN_FN(args, run_dir)
     _write_state(run_dir, status="generating_song", pid=pid, last_error=None)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Personas — voice locking across songs.
+#
+# Suno V5/V5.5 supports a personaId parameter that pins the singer's
+# voice across generations. A Persona is created from an existing
+# Suno taskId+audioId pair via Kie's /api/v1/persona/generate.
+#
+# Storage: a single personas.json file under each user's run-root.
+# Small footprint, easy to list, atomic temp+rename writes.
+# ---------------------------------------------------------------------------
+
+
+def _personas_path(user: "User") -> Path:
+    return _user_runs_root(user) / "personas.json"
+
+
+def _load_personas(user: "User") -> list[dict]:
+    p = _personas_path(user)
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text())
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_personas(user: "User", personas: list[dict]) -> None:
+    p = _personas_path(user)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(personas, ensure_ascii=False, indent=2),
+                   encoding="utf-8")
+    tmp.replace(p)
+
+
+@app.post("/songs/{run_id}/save-persona", response_model=PersonaSummary,
+          status_code=201)
+def save_persona_from_song(
+    run_id: str,
+    req: CreatePersonaRequest,
+    user: User = Depends(require_user),
+):
+    """Create a Suno Persona from a finished song's take.
+
+    The run must have status=complete and a recorded suno_task_id +
+    take_audio_ids (saved by run.py during the post-approve stage).
+    """
+    from pipeline.song import submit_persona_job
+    from pipeline.kie import KieClient
+
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(
+            409,
+            f"persona can only be saved from a complete song "
+            f"(current state: {state.get('status')!r})",
+        )
+
+    suno_task_id = state.get("suno_task_id")
+    audio_ids = state.get("take_audio_ids") or []
+    if not suno_task_id or not audio_ids:
+        raise HTTPException(
+            409,
+            "this run pre-dates persona support (no suno_task_id "
+            "or audio_ids saved) — generate a new song first",
+        )
+
+    take_index = (req.take or state.get("chosen_take") or 1) - 1
+    if not (0 <= take_index < len(audio_ids)):
+        raise HTTPException(
+            422, f"invalid take {req.take!r}; this run has {len(audio_ids)} take(s)",
+        )
+    audio_id = audio_ids[take_index]
+    if not audio_id:
+        raise HTTPException(
+            500, f"audio_id for take {take_index + 1} missing — Kie didn't return it",
+        )
+
+    if not req.name.strip():
+        raise HTTPException(422, "persona name is required")
+    if len(req.name) > 80:
+        raise HTTPException(422, "persona name exceeds 80 chars")
+    if len(req.description) > 500:
+        raise HTTPException(422, "persona description exceeds 500 chars")
+
+    client = KieClient()
+    persona_id = submit_persona_job(
+        client,
+        source_task_id=suno_task_id,
+        source_audio_id=audio_id,
+        name=req.name.strip(),
+        description=req.description.strip(),
+    )
+
+    record = {
+        "id": persona_id,
+        "name": req.name.strip(),
+        "description": req.description.strip(),
+        "source_run_id": run_id,
+        "source_take": take_index + 1,
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    personas = _load_personas(user)
+    personas.append(record)
+    _save_personas(user, personas)
+    return PersonaSummary(**record)
+
+
+@app.get("/personas", response_model=list[PersonaSummary])
+def list_personas(user: User = Depends(require_user)):
+    return [PersonaSummary(**p) for p in _load_personas(user)]
+
+
+@app.delete("/personas/{persona_id}", status_code=204)
+def delete_persona(persona_id: str, user: User = Depends(require_user)):
+    personas = _load_personas(user)
+    new_list = [p for p in personas if p.get("id") != persona_id]
+    if len(new_list) == len(personas):
+        raise HTTPException(404, "persona not found")
+    _save_personas(user, new_list)
+    return None
 
 
 # ---------------------------------------------------------------------------

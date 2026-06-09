@@ -54,6 +54,7 @@ class SongGenerationTimeout(KieError):
 class SongTake:
     url: str
     duration_s: float = 0.0
+    audio_id: str = ""  # the sunoData[i].id — needed to create a Persona
 
 
 def submit_song_job(
@@ -121,7 +122,10 @@ def _parse_takes(suno_data: list[dict]) -> list[SongTake]:
             duration_s = float(duration)
         except (TypeError, ValueError):
             duration_s = 0.0
-        takes.append(SongTake(url=str(url), duration_s=duration_s))
+        audio_id = str(entry.get("id") or "")
+        takes.append(SongTake(
+            url=str(url), duration_s=duration_s, audio_id=audio_id,
+        ))
     return takes
 
 
@@ -200,3 +204,46 @@ def wait_for_song(
 def download_take(client: KieClient, url: str, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     client._download(url, out_path)
+
+
+# Persona endpoint — used to lock a singer's voice across future songs.
+# Pass a previous generation's taskId + audioId; Kie returns a personaId
+# that subsequent submit_song_job calls can pass via persona_id to
+# preserve voice character.
+SUNO_PERSONA_GENERATE_PATH = os.environ.get(
+    "KIE_SUNO_PERSONA_GENERATE_PATH", "/api/v1/persona/generate"
+)
+
+
+def submit_persona_job(
+    client: KieClient,
+    *,
+    source_task_id: str,
+    source_audio_id: str,
+    name: str,
+    description: str,
+) -> str:
+    """Create a Persona from an existing Suno generation.
+
+    Returns the personaId, which can be passed to submit_song_job's
+    persona_id parameter to reuse the same singer's voice in future
+    songs. Custom-mode + V5/V5.5 only.
+
+    Per Kie.ai docs:
+      - source_task_id is the taskId returned from /api/v1/generate
+        (or /api/v1/generate/extend)
+      - source_audio_id is the sunoData[i].id of the specific track
+        within that generation (since each submission has 2 takes)
+    """
+    body = {
+        "taskId": source_task_id,
+        "audioId": source_audio_id,
+        "name": name,
+        "description": description,
+    }
+    resp = client._post_json(SUNO_PERSONA_GENERATE_PATH, body)
+    data = resp.get("data") or {}
+    persona_id = data.get("personaId") or resp.get("personaId")
+    if not persona_id:
+        raise KieError(f"persona response missing personaId: {resp}")
+    return str(persona_id)

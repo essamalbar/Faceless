@@ -360,3 +360,30 @@ class SongScript {
         costUsd: (j['cost_usd'] as num).toDouble(),
       );
 }
+
+class Persona {
+  final String id;
+  final String name;
+  final String description;
+  final String sourceRunId;
+  final int sourceTake;
+  final String createdAt;
+
+  Persona({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.sourceRunId,
+    required this.sourceTake,
+    required this.createdAt,
+  });
+
+  factory Persona.fromJson(Map<String, dynamic> j) => Persona(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        description: j['description'] as String,
+        sourceRunId: j['source_run_id'] as String,
+        sourceTake: j['source_take'] as int,
+        createdAt: (j['created_at'] as String?) ?? '',
+      );
+}

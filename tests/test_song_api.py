@@ -480,3 +480,143 @@ def test_resume_succeeds_when_status_is_failed(app):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 200, r.text
+
+
+# ─────────────── Personas ────────────────────────────────────────────────────
+
+def _setup_complete_song(app, monkeypatch, *, with_audio_ids=True):
+    """Fixture helper: create a song, force state to 'complete' with
+    suno_task_id + audio_ids. Returns (run_id, run_dir)."""
+    from pipeline import song
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    state["chosen_take"] = 1
+    if with_audio_ids:
+        state["suno_task_id"] = "fake-task-123"
+        state["take_audio_ids"] = ["audio-id-take-1", "audio-id-take-2"]
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+    return run_id, run_dir, client, token
+
+
+def test_save_persona_creates_record(app, monkeypatch):
+    from pipeline import song
+    monkeypatch.setattr(
+        song, "submit_persona_job",
+        lambda client, **kw: "persona-uuid-abc",
+    )
+    run_id, _, client, token = _setup_complete_song(app, monkeypatch)
+    r = client.post(
+        f"/songs/{run_id}/save-persona",
+        json={"name": "Warm Male Ballad", "description": "Arabic baritone, gentle vibrato"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["id"] == "persona-uuid-abc"
+    assert body["name"] == "Warm Male Ballad"
+    assert body["source_run_id"] == run_id
+    assert body["source_take"] == 1
+
+
+def test_save_persona_409_when_not_complete(app, monkeypatch):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    # Still awaiting_approval — not complete
+    r = client.post(
+        f"/songs/{run_id}/save-persona",
+        json={"name": "x", "description": "y"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409
+
+
+def test_save_persona_409_when_missing_audio_ids(app, monkeypatch):
+    """Pre-persona runs (created before suno_task_id was saved) can't
+    create personas — surface that clearly."""
+    run_id, _, client, token = _setup_complete_song(
+        app, monkeypatch, with_audio_ids=False,
+    )
+    r = client.post(
+        f"/songs/{run_id}/save-persona",
+        json={"name": "x", "description": "y"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409
+    assert "pre-dates persona support" in r.text
+
+
+def test_save_persona_422_on_invalid_take(app, monkeypatch):
+    from pipeline import song
+    monkeypatch.setattr(
+        song, "submit_persona_job", lambda client, **kw: "p",
+    )
+    run_id, _, client, token = _setup_complete_song(app, monkeypatch)
+    r = client.post(
+        f"/songs/{run_id}/save-persona",
+        json={"name": "x", "description": "y", "take": 99},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422
+
+
+def test_list_personas_returns_saved(app, monkeypatch):
+    from pipeline import song
+    monkeypatch.setattr(
+        song, "submit_persona_job",
+        lambda client, **kw: f"persona-{kw['name'][:5]}",
+    )
+    run_id, _, client, token = _setup_complete_song(app, monkeypatch)
+    for n in ("Voice One", "Voice Two"):
+        client.post(
+            f"/songs/{run_id}/save-persona",
+            json={"name": n, "description": "test"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    r = client.get("/personas", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 2
+    assert {p["name"] for p in body} == {"Voice One", "Voice Two"}
+
+
+def test_delete_persona_removes_record(app, monkeypatch):
+    from pipeline import song
+    monkeypatch.setattr(
+        song, "submit_persona_job", lambda client, **kw: "persona-to-delete",
+    )
+    run_id, _, client, token = _setup_complete_song(app, monkeypatch)
+    client.post(
+        f"/songs/{run_id}/save-persona",
+        json={"name": "x", "description": "y"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    r = client.delete(
+        "/personas/persona-to-delete",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 204
+    r2 = client.get("/personas", headers={"Authorization": f"Bearer {token}"})
+    assert r2.json() == []
+
+
+def test_delete_persona_404_when_missing(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    r = client.delete(
+        "/personas/never-existed",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 404

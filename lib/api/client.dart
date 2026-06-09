@@ -524,12 +524,16 @@ class FacelessApiClient {
     String? customLyrics,
     String? styleHint,
     String language = 'ar',
+    String? personaId,
+    String vocalGender = 'm',
   }) async {
     final body = <String, dynamic>{
       'theme': theme,
       if (customLyrics != null && customLyrics.isNotEmpty) 'custom_lyrics': customLyrics,
       if (styleHint != null && styleHint.isNotEmpty) 'style_hint': styleHint,
       'language': language,
+      if (personaId != null && personaId.isNotEmpty) 'persona_id': personaId,
+      'vocal_gender': vocalGender,
     };
     final r = await _http.post(
       await _uri('/songs'),
@@ -657,6 +661,42 @@ class FacelessApiClient {
     }
     final takeParam = take != null ? '&take=$take' : '';
     return Uri.parse('${_stripTrailing(base)}/songs/$id/audio?token=$token$takeParam');
+  }
+
+  // ---------- personas ----------
+
+  Future<List<Persona>> listPersonas() async {
+    final r = await _http.get(await _uri('/personas'), headers: await _headers());
+    return _parse(r, (j) => (j as List)
+        .map((x) => Persona.fromJson(x as Map<String, dynamic>))
+        .toList());
+  }
+
+  Future<Persona> createPersonaFromSong(
+    String runId, {
+    required String name,
+    required String description,
+    int? take,
+  }) async {
+    final body = <String, dynamic>{
+      'name': name,
+      'description': description,
+      if (take != null) 'take': take,
+    };
+    final r = await _http.post(
+      await _uri('/songs/$runId/save-persona'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    return _parse(r, (j) => Persona.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<void> deletePersona(String personaId) async {
+    final r = await _http.delete(
+      await _uri('/personas/$personaId'),
+      headers: await _headers(),
+    );
+    _checkOk(r);
   }
 
   void close() => _http.close();
