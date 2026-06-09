@@ -2317,6 +2317,48 @@ _SONG_ACTIVE_STATUSES = frozenset({
 })
 
 
+# Per-user concurrent active song run cap. Stops users from
+# accidentally approving / resuming multiple songs simultaneously
+# and burning multiple Suno spends in parallel before the first one
+# even finishes.
+_SONG_CONCURRENT_LIMIT = int(
+    os.environ.get("FACELESS_SONG_CONCURRENT_LIMIT", "1")
+)
+
+
+def _count_active_song_runs(user: "User") -> int:
+    """Count the user's song runs whose status is currently
+    generating_* or assembling. O(N) over the user's run dirs —
+    fine for any realistic N (a few hundred max)."""
+    user_root = _user_runs_root(user)
+    if not user_root.exists():
+        return 0
+    count = 0
+    for d in user_root.iterdir():
+        if not d.is_dir():
+            continue
+        state = _read_state(d)
+        if (state.get("kind") == "song"
+                and state.get("status") in _SONG_ACTIVE_STATUSES):
+            count += 1
+    return count
+
+
+def _enforce_concurrent_song_limit(user: "User") -> None:
+    """Raise 429 if the user already has at least
+    _SONG_CONCURRENT_LIMIT active song runs. Service tokens
+    bypass the cap."""
+    if user.role == "service":
+        return
+    active = _count_active_song_runs(user)
+    if active >= _SONG_CONCURRENT_LIMIT:
+        raise HTTPException(
+            429,
+            f"you already have {active} song generation(s) in progress; "
+            f"wait for them to finish before starting another",
+        )
+
+
 @app.get("/songs/{run_id}", response_model=SongRunSummary)
 def get_song(run_id: str, user: User = Depends(require_user)):
     run_dir = _resolve_song_dir(run_id, user)
@@ -2523,6 +2565,11 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
         return {"run_id": run_id, "balance_after": _credits.get_balance(user.id),
                 "status": state.get("status")}
 
+    # Per-user concurrent-runs cap. Stops users from accidentally
+    # tapping Approve on multiple drafts and burning multiple
+    # Suno spends in parallel.
+    _enforce_concurrent_song_limit(user)
+
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
     amount = cfg.song.credits_per_song if cfg.song else 1
@@ -2712,6 +2759,9 @@ def resume_song(run_id: str, user: User = Depends(require_user)):
             f"song is in state {status!r}, cannot resume (must be 'failed')",
         )
 
+    # Per-user concurrent-runs cap.
+    _enforce_concurrent_song_limit(user)
+
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
     _write_state(run_dir, status="generating_song", pid=pid, last_error=None)
@@ -2741,6 +2791,9 @@ def regenerate_song_cover(run_id: str, user: User = Depends(require_user)):
             f"can only regenerate cover for a complete song "
             f"(state: {state.get('status')!r})",
         )
+
+    # Per-user concurrent-runs cap.
+    _enforce_concurrent_song_limit(user)
 
     _write_state(
         run_dir,

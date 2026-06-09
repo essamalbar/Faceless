@@ -200,11 +200,23 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   }
 
   Future<void> _showSavePersonaDialog(SongSummary s) async {
+    // Default the description to the song's actual style_prompt
+    // (BPM, instrumentation, vocal traits) — it's the most accurate
+    // description of the persona we're saving. Falls back to a
+    // generic Arabic-male string if the script fetch fails.
+    String defaultDesc = 'Arabic male vocal, warm baritone, gentle '
+        'vibrato, intimate close-mic, modern 2020s production';
+    try {
+      final script = await widget.client.getSongScript(widget.runId);
+      if (script.stylePrompt.isNotEmpty) {
+        defaultDesc = script.stylePrompt;
+      }
+    } catch (_) {
+      // Use the fallback; not fatal.
+    }
+    if (!mounted) return;
     final nameCtrl = TextEditingController(text: s.title ?? '');
-    final descCtrl = TextEditingController(
-      text: 'Arabic male vocal, warm baritone, gentle vibrato, '
-          'intimate close-mic, modern 2020s production',
-    );
+    final descCtrl = TextEditingController(text: defaultDesc);
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

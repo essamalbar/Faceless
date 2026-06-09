@@ -848,3 +848,48 @@ def test_unshare_revokes_link(app):
 
     # Post-revocation: public page is gone
     assert client.get(f"/p/{share_token}").status_code == 404
+
+
+# ─────────────── Concurrent-runs cap ─────────────────────────────────────────
+
+def test_approve_429_when_another_run_active(app, monkeypatch):
+    """A second song's /approve must refuse with 429 while another
+    of the user's runs is mid-generation. Prevents N×Suno spend
+    from a multi-tap accident."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod, credits, db
+    from pipeline.auth import User, require_user
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+    monkeypatch.setattr(credits, "check_or_deduct",
+                        lambda user, amount, run_id, reason: 99)
+    monkeypatch.setattr(db, "get_balance", lambda uid: 100)
+    api_mod.set_spawn_fn(lambda args, run_dir: 12345)
+
+    # Use a non-service identity so the concurrency cap actually fires
+    # (service tokens bypass per _enforce_concurrent_song_limit).
+    fastapi_app.dependency_overrides[require_user] = lambda: User(
+        id="admin", email="t@example.com", role="user",
+    )
+    try:
+        # Run A → set to generating_song manually (simulates in-flight)
+        create_a = client.post("/songs", json={"theme": "a"},
+                               headers={"Authorization": f"Bearer {token}"})
+        run_a = create_a.json()["run_id"]
+        run_a_dir = _find_run_dir(run_a)
+        sa = json.loads((run_a_dir / "api_state.json").read_text())
+        sa["status"] = "generating_song"
+        (run_a_dir / "api_state.json").write_text(json.dumps(sa))
+
+        # Run B is fresh awaiting_approval
+        create_b = client.post("/songs", json={"theme": "b"},
+                               headers={"Authorization": f"Bearer {token}"})
+        run_b = create_b.json()["run_id"]
+
+        # Approve B → must 429
+        r = client.post(f"/songs/{run_b}/approve",
+                        headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 429, r.text
+        assert "in progress" in r.text
+    finally:
+        fastapi_app.dependency_overrides.pop(require_user, None)

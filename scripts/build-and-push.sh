@@ -56,15 +56,34 @@ gcloud builds submit \
   --project="${PROJECT_ID}" \
   .
 
+# Resolve :latest to an immutable digest so the Service + Job both
+# get pinned to the exact image we just built. Without this, a
+# concurrent push from another dev (or a build retry) could shift
+# :latest between the build and the rollout, leaving the Service
+# running one digest and the Job running another.
+echo "-> Resolving image digest"
+DIGEST=$(gcloud artifacts docker tags list \
+  "${REGION}-docker.pkg.dev/${PROJECT_ID}/faceless/faceless" \
+  --filter="tag=latest" \
+  --format="value(version)" \
+  --project="${PROJECT_ID}" | head -1)
+if [ -z "${DIGEST}" ]; then
+  echo "WARN: could not resolve digest for :latest — falling back to tag" >&2
+  IMAGE_REF="${IMAGE}"
+else
+  IMAGE_REF="${REGION}-docker.pkg.dev/${PROJECT_ID}/faceless/faceless@${DIGEST}"
+  echo "   pinned to ${DIGEST:0:24}…"
+fi
+
 echo "-> Updating Service to roll out the new image"
 gcloud run services update faceless-api \
   --region="${REGION}" --project="${PROJECT_ID}" \
-  --image="${IMAGE}"
+  --image="${IMAGE_REF}"
 
 echo "-> Updating Job to roll out the new image"
 gcloud run jobs update faceless-pipeline \
   --region="${REGION}" --project="${PROJECT_ID}" \
-  --image="${IMAGE}"
+  --image="${IMAGE_REF}"
 
 URL=$(gcloud run services describe faceless-api \
   --region="${REGION}" --project="${PROJECT_ID}" \
