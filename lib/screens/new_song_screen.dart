@@ -13,12 +13,61 @@ class NewSongScreen extends StatefulWidget {
   State<NewSongScreen> createState() => _NewSongScreenState();
 }
 
+// Vetted style presets — tested against ai song.mp4 quality bar.
+// Each entry: (label shown on chip, full style string stamped into the
+// textfield when picked). Users can edit the stamped string before
+// submitting. The lyrics LLM auto-generates a style if the field is
+// left empty, but explicit presets give more consistent results.
+const _kStylePresets = <(String, String)>[
+  (
+    'Romantic Arabic (reference)',
+    'modern Arabic pop ballad, mid-tempo 88 BPM, male lyric-baritone vocal '
+        'with expressive emotional delivery, warm intimate close-mic tone, '
+        'oud + classical Arabic strings + piano + tasteful percussion, '
+        'polished 2020s Arabic pop production, atmospheric and yearning, '
+        'romantic contemplative not crying-sad, C# minor key',
+  ),
+  (
+    'Sad Arabic Ballad',
+    'Arabic emotional ballad, slow tempo 70 BPM, oud + classical Arabic '
+        'strings + soft piano, male vocal warm and melancholic with vibrato, '
+        'modern 2020s Arabic production, deeply emotional minor key',
+  ),
+  (
+    'Khaleeji Romantic',
+    'Khaleeji romantic ballad, mid-tempo 90 BPM, male vocal warm baritone '
+        'smooth delivery, oud + qanun + classical Arabic strings + light '
+        'percussion, traditional Gulf-style production with modern polish, '
+        'romantic longing, minor key',
+  ),
+  (
+    'Upbeat Arabic Pop',
+    'modern Arabic pop, upbeat tempo 105 BPM, energetic male vocal, '
+        'electronic drums + bass + synth + oud accents, polished 2020s '
+        'Arabic pop production, optimistic danceable, major key',
+  ),
+  (
+    'Acoustic Slow',
+    'acoustic ballad, slow tempo 65 BPM, male vocal intimate and breathy, '
+        'acoustic guitar + soft strings + minimal percussion, organic 2020s '
+        'production, deeply emotional, minor key',
+  ),
+  (
+    'English Pop Ballad',
+    'modern English pop ballad, mid-tempo 80 BPM, male vocal expressive '
+        'and emotional, piano + strings + light percussion, polished 2020s '
+        'production, atmospheric and longing, minor key',
+  ),
+];
+
+
 class _NewSongScreenState extends State<NewSongScreen> {
   final _themeCtrl = TextEditingController();
   final _lyricsCtrl = TextEditingController();
   final _styleCtrl = TextEditingController();
   String _language = 'ar';
   String? _personaId;          // null = no persona (let Suno pick)
+  String? _selectedPreset;     // label of the chip that filled the style field
   List<Persona> _personas = [];
   bool _submitting = false;
   String? _error;
@@ -118,13 +167,48 @@ class _NewSongScreenState extends State<NewSongScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            // Style presets — quick fillers. Tap to stamp a vetted
+            // style string into the textfield below; user can edit.
+            Text(
+              'Quick styles',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (label, preset) in _kStylePresets)
+                  FilterChip(
+                    label: Text(label),
+                    selected: _selectedPreset == label,
+                    onSelected: (_) {
+                      setState(() {
+                        _styleCtrl.text = preset;
+                        _selectedPreset = label;
+                      });
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _styleCtrl,
+              maxLines: 3,
               decoration: const InputDecoration(
-                labelText: 'Style hint (optional)',
-                hintText: 'Arabic ballad, slow tempo, male vocal',
+                labelText: 'Style hint',
+                hintText: 'Pick a Quick style above, or type your own. '
+                    'Leave empty for AI to auto-pick.',
                 border: OutlineInputBorder(),
+                alignLabelWithHint: true,
               ),
+              onChanged: (_) {
+                // Clear preset selection if user edits — they've
+                // departed from the canned text.
+                if (_selectedPreset != null) {
+                  setState(() => _selectedPreset = null);
+                }
+              },
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
