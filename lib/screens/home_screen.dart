@@ -190,6 +190,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _openNewSongWithSample(String theme, String presetLabel) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NewSongScreen(
+          client: _client,
+          initialTheme: theme,
+          initialPresetLabel: presetLabel,
+        ),
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        _songsFuture = _client.listSongs();
+      });
+    }
+  }
+
   void _openRun(RunSummary run) {
     Navigator.of(context)
         .push(MaterialPageRoute(
@@ -491,29 +508,10 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           final songs = snap.data ?? [];
           if (songs.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.music_note,
-                        size: 64, color: FacelessTheme.textSecondary),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'No songs yet.\nTap + to create your first song.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: FacelessTheme.textSecondary),
-                    ),
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
-                      onPressed: _openNewSong,
-                      icon: const Icon(Icons.add),
-                      label: const Text('New Song'),
-                    ),
-                  ],
-                ),
-              ),
+            return _SongsEmptyState(
+              onCreate: _openNewSong,
+              onTrySample: (theme, presetLabel) =>
+                  _openNewSongWithSample(theme, presetLabel),
             );
           }
           // itemCount = songs + 1 header row that holds the "New song"
@@ -2233,6 +2231,94 @@ class _BalanceBadgeState extends State<_BalanceBadge> {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+/// Empty state shown on the Song tab when the user has no songs yet.
+/// Offers a "Try one of these" set of one-tap samples that pre-fill
+/// the new-song form with a vetted theme + style preset, so a new
+/// user can hit "Generate draft" without typing anything.
+class _SongsEmptyState extends StatelessWidget {
+  final VoidCallback onCreate;
+  final void Function(String theme, String presetLabel) onTrySample;
+  const _SongsEmptyState({required this.onCreate, required this.onTrySample});
+
+  // Samples paired with the style preset that best fits the vibe.
+  // Preset labels MUST match _kStylePresets in new_song_screen.dart.
+  static const _samples = <(String, String, String)>[
+    // (emoji, theme prefilled, preset label)
+    ('🌙', 'أغنية رومانسية عن القمر والشوق', 'Romantic Arabic (reference)'),
+    ('💔', 'أغنية حزينة عن الفراق', 'Sad Arabic Ballad'),
+    ('🎶', 'أغنية بحرية خليجية عن البحر والصيد', 'Khaleeji Romantic'),
+    ('🎸', 'A quiet acoustic song about long drives at night',
+        'Acoustic Slow'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
+      children: [
+        const Icon(Icons.music_note,
+            size: 64, color: FacelessTheme.textSecondary),
+        const SizedBox(height: 12),
+        Text(
+          'Make your first AI song',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Pick a sample to start with, or tap "New song" to write your own.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: FacelessTheme.textSecondary),
+        ),
+        const SizedBox(height: 24),
+        for (final (emoji, theme, preset) in _samples)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: OutlinedButton(
+              onPressed: () => onTrySample(theme, preset),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                alignment: Alignment.centerLeft,
+              ),
+              child: Row(
+                children: [
+                  Text(emoji, style: const TextStyle(fontSize: 22)),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(theme,
+                            textAlign: TextAlign.start,
+                            style: const TextStyle(fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 2),
+                        Text(preset,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: FacelessTheme.textSecondary)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right,
+                      color: FacelessTheme.textSecondary, size: 18),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 24),
+        Center(
+          child: FilledButton.icon(
+            onPressed: onCreate,
+            icon: const Icon(Icons.add),
+            label: const Text('New song from scratch'),
+          ),
+        ),
+      ],
     );
   }
 }

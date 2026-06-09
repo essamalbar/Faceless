@@ -7,7 +7,17 @@ import 'song_approve_screen.dart';
 
 class NewSongScreen extends StatefulWidget {
   final FacelessApiClient client;
-  const NewSongScreen({super.key, required this.client});
+  // Optional pre-fills for "try this sample" entry points from the
+  // empty state. When set, the form opens with these values populated
+  // so the user is one tap away from generating.
+  final String? initialTheme;
+  final String? initialPresetLabel;
+  const NewSongScreen({
+    super.key,
+    required this.client,
+    this.initialTheme,
+    this.initialPresetLabel,
+  });
 
   @override
   State<NewSongScreen> createState() => _NewSongScreenState();
@@ -77,6 +87,20 @@ class _NewSongScreenState extends State<NewSongScreen> {
   void initState() {
     super.initState();
     _loadPersonas();
+    // Apply optional pre-fills from the empty-state "try this" chips.
+    if (widget.initialTheme != null) {
+      _themeCtrl.text = widget.initialTheme!;
+    }
+    if (widget.initialPresetLabel != null) {
+      final match = _kStylePresets.firstWhere(
+        (e) => e.$1 == widget.initialPresetLabel,
+        orElse: () => ('', ''),
+      );
+      if (match.$1.isNotEmpty) {
+        _styleCtrl.text = match.$2;
+        _selectedPreset = match.$1;
+      }
+    }
   }
 
   Future<void> _loadPersonas() async {
