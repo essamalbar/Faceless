@@ -15,6 +15,7 @@ import 'cost_screen.dart';
 import 'new_run_screen.dart';
 import 'run_detail_screen.dart';
 import 'new_song_screen.dart';
+import 'personas_screen.dart';
 import 'settings_screen.dart';
 import 'song_approve_screen.dart';
 import 'song_detail_screen.dart';
@@ -280,6 +281,16 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: 'Refresh',
             onPressed: _refresh,
           ),
+          // Only show the saved-voices entry when on the Song tab —
+          // it's a song-mode concept, irrelevant to horror runs.
+          if (_mode == 'song')
+            IconButton(
+              icon: const Icon(Icons.record_voice_over),
+              tooltip: 'Saved voices',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => PersonasScreen(client: _client),
+              )),
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',

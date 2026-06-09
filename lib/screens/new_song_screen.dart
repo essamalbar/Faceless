@@ -66,6 +66,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
   final _lyricsCtrl = TextEditingController();
   final _styleCtrl = TextEditingController();
   String _language = 'ar';
+  String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
   String? _personaId;          // null = no persona (let Suno pick)
   String? _selectedPreset;     // label of the chip that filled the style field
   List<Persona> _personas = [];
@@ -112,6 +113,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
         styleHint: _styleCtrl.text.trim().isEmpty ? null : _styleCtrl.text,
         language: _language,
         personaId: _personaId,
+        vocalGender: _vocalGender,
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
@@ -225,6 +227,23 @@ class _NewSongScreenState extends State<NewSongScreen> {
                 DropdownMenuItem(value: 'tr', child: Text('Turkish')),
               ],
               onChanged: (v) => setState(() => _language = v ?? 'ar'),
+            ),
+            const SizedBox(height: 16),
+            // Vocal gender — defaults to Male to match the reference
+            // ai song.mp4 sound. Pinning gender raises probability but
+            // doesn't guarantee (per Suno docs).
+            DropdownButtonFormField<String>(
+              initialValue: _vocalGender,
+              decoration: const InputDecoration(
+                labelText: 'Vocal',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'm', child: Text('Male')),
+                DropdownMenuItem(value: 'f', child: Text('Female')),
+                DropdownMenuItem(value: 'auto', child: Text('Auto (Suno picks)')),
+              ],
+              onChanged: (v) => setState(() => _vocalGender = v ?? 'm'),
             ),
             const SizedBox(height: 16),
             // Voice picker — only shows once user has saved at least
