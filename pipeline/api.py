@@ -2853,6 +2853,35 @@ if _STATIC_WEB_DIR.exists() and (_STATIC_WEB_DIR / "index.html").exists():
     )
 
 
+# Cache-Control middleware for SPA entry points.
+#
+# The default StaticFiles response has no Cache-Control header, which
+# means browsers and CDNs may cache flutter_service_worker.js and
+# flutter_bootstrap.js for an undefined duration. When that happens,
+# users keep loading the OLD bundle even after a deploy because their
+# browser never re-checks the SW file with the server.
+#
+# Fix: explicitly mark the SW + bootstrap files as no-cache. Their
+# contents change every build (each carries a fresh version hash), so
+# caching them is always wrong.
+_NO_CACHE_PATHS = frozenset({
+    "/app/flutter_service_worker.js",
+    "/app/flutter_bootstrap.js",
+    "/app/index.html",
+    "/app/",
+})
+
+
+@app.middleware("http")
+async def _no_cache_spa_entry_points(request, call_next):
+    response = await call_next(request)
+    if request.url.path in _NO_CACHE_PATHS:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 @app.get("/", include_in_schema=False)
 def _root():
     """Visitors at the bare Cloud Run URL get bounced to the SPA when it's

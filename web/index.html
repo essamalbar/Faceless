@@ -34,13 +34,52 @@
 </head>
 <body>
   <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+    Service worker auto-update — fixes the "users see stale bundle
+    after a deploy" problem. Default Flutter SW puts the new version
+    into a `waiting` state and won't activate until every tab is
+    closed (which never happens in practice — users keep the tab
+    open for days). This snippet:
+      1. On every page load, asks the registered SW to check for an
+         update against the server.
+      2. When a new SW finishes installing, tells it skipWaiting()
+         so it activates immediately.
+      3. When the SW takes control (controllerchange), reloads the
+         page once so the user sees the new bundle.
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
+    Together with the auto-skip in the build-time SW, users get the
+    new app on their next page load instead of having to hard-refresh
+    or open incognito. See scripts/inject-sw-skip-waiting.sh which
+    patches flutter_service_worker.js after `flutter build web`.
   -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      let _reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (_reloaded) return;
+        _reloaded = true;
+        window.location.reload();
+      });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.ready.then((reg) => {
+          // Force an update check on every page load
+          reg.update().catch(() => {});
+          reg.addEventListener('updatefound', () => {
+            const sw = reg.installing;
+            if (!sw) return;
+            sw.addEventListener('statechange', () => {
+              if (sw.state === 'installed' &&
+                  navigator.serviceWorker.controller) {
+                // New SW installed alongside an active one — ask it
+                // to take over now instead of waiting for all tabs
+                // to close.
+                sw.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+        });
+      });
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
