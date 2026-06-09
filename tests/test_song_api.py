@@ -400,3 +400,83 @@ def test_approve_song_402_when_balance_insufficient(app, monkeypatch):
         assert r.status_code == 402
     finally:
         fastapi_app.dependency_overrides.pop(require_user, None)
+
+
+def test_resume_409_when_worker_already_running(app):
+    """Concurrency guard: if a worker is already processing this song
+    (status in generating_*/assembling), a second /resume call must
+    refuse with 409 instead of spawning another worker. Without this
+    guard, a rapid double-tap on Retry races on song.mp3 + final.mp4
+    and the output gets truncated."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+
+    # Simulate an in-flight worker by writing status directly.
+    run_dir = _find_run_dir(run_id)
+    for active_status in ("generating_song", "generating_cover", "assembling"):
+        state = json.loads((run_dir / "api_state.json").read_text())
+        state["status"] = active_status
+        (run_dir / "api_state.json").write_text(json.dumps(state))
+
+        r = client.post(
+            f"/songs/{run_id}/resume",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 409, (
+            f"/resume must refuse while status={active_status!r}, "
+            f"got {r.status_code}: {r.text}"
+        )
+        assert "already processing" in r.text, r.text
+
+
+def test_resume_409_when_status_is_complete_or_canceled(app):
+    """/resume only makes sense for a failed run. Refuse for terminal
+    successes too — a 'complete' song should not be re-rendered."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    for terminal_status in ("complete", "canceled", "awaiting_approval"):
+        state = json.loads((run_dir / "api_state.json").read_text())
+        state["status"] = terminal_status
+        (run_dir / "api_state.json").write_text(json.dumps(state))
+        r = client.post(
+            f"/songs/{run_id}/resume",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 409, (
+            f"/resume must refuse while status={terminal_status!r}, "
+            f"got {r.status_code}"
+        )
+
+
+def test_resume_succeeds_when_status_is_failed(app):
+    """Sanity: /resume DOES proceed from 'failed' state — that's
+    the whole point of the endpoint."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "failed"
+    state["last_error"] = "test failure"
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    r = client.post(
+        f"/songs/{run_id}/resume",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text

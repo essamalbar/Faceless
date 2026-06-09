@@ -2287,6 +2287,16 @@ def _resolve_song_dir(run_id: str, user: "User") -> Path:
     return run_dir
 
 
+# Statuses that indicate a worker is actively processing this run.
+# Used by /songs/{id}/resume to refuse a second spawn while the first
+# is still in flight.
+_SONG_ACTIVE_STATUSES = frozenset({
+    "generating_song",
+    "generating_cover",
+    "assembling",
+})
+
+
 @app.get("/songs/{run_id}", response_model=SongRunSummary)
 def get_song(run_id: str, user: User = Depends(require_user)):
     run_dir = _resolve_song_dir(run_id, user)
@@ -2642,12 +2652,37 @@ def get_song_log(
 
 @app.post("/songs/{run_id}/resume")
 def resume_song(run_id: str, user: User = Depends(require_user)):
+    """Retry a failed song run.
+
+    Concurrency guard: if a worker is already actively processing this
+    run (status is generating_song / generating_cover / assembling),
+    refuse with 409. This stops the race we saw in production where a
+    rapid double-tap on Retry, or simultaneous Retry + automatic
+    /resume from the detail screen, spawned two workers that both
+    wrote to song.mp3 and final.mp4, producing a truncated output.
+
+    Only `failed` is a valid starting state for /resume — terminal
+    successes (`complete`, `canceled`) and pre-spend states
+    (`awaiting_approval`, `writing_lyrics`) are also rejected.
+    """
     run_dir = _resolve_song_dir(run_id, user)
     state = _read_state(run_dir)
     if state.get("kind") != "song":
         raise HTTPException(404, "not a song run")
-    if state.get("status") != "failed":
-        raise HTTPException(409, f"song is in state {state.get('status')!r}, cannot resume")
+
+    status = state.get("status")
+    if status in _SONG_ACTIVE_STATUSES:
+        raise HTTPException(
+            409,
+            f"a worker is already processing this song "
+            f"(current state: {status!r}); wait for it to complete or fail",
+        )
+    if status != "failed":
+        raise HTTPException(
+            409,
+            f"song is in state {status!r}, cannot resume (must be 'failed')",
+        )
+
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
     _write_state(run_dir, status="generating_song", pid=pid, last_error=None)
