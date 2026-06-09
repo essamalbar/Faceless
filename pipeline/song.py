@@ -215,6 +215,12 @@ SUNO_PERSONA_GENERATE_PATH = os.environ.get(
 )
 
 
+class PersonaSourceNotFound(KieError):
+    """The source song's Suno taskId is no longer queryable on Kie's
+    side (typically because it expired or was never recorded). The
+    user needs to generate a fresh song to create a persona from."""
+
+
 def submit_persona_job(
     client: KieClient,
     *,
@@ -242,6 +248,21 @@ def submit_persona_job(
         "description": description,
     }
     resp = client._post_json(SUNO_PERSONA_GENERATE_PATH, body)
+    # Kie semantically-fails the request even when HTTP returns 200,
+    # via the code/msg fields in the body. The most common is
+    # code=422 / msg="Music does not exist" — happens when Kie's
+    # retention window has expired or the taskId was never persisted.
+    code = resp.get("code")
+    if code is not None and code != 200:
+        msg = resp.get("msg") or "unknown error from Kie persona endpoint"
+        if "Music does not exist" in msg or code == 422:
+            raise PersonaSourceNotFound(
+                f"Kie can no longer find the source Suno generation "
+                f"(taskId={source_task_id}). This usually means the "
+                f"song is too old or was generated before voice-saving "
+                f"was wired up. Try generating a fresh song first."
+            )
+        raise KieError(f"persona endpoint returned code={code}: {msg}")
     data = resp.get("data") or {}
     persona_id = data.get("personaId") or resp.get("personaId")
     if not persona_id:

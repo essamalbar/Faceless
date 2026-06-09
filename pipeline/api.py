@@ -2829,7 +2829,7 @@ def save_persona_from_song(
     The run must have status=complete and a recorded suno_task_id +
     take_audio_ids (saved by run.py during the post-approve stage).
     """
-    from pipeline.song import submit_persona_job
+    from pipeline.song import submit_persona_job, PersonaSourceNotFound
     from pipeline.kie import KieClient
 
     run_dir = _resolve_song_dir(run_id, user)
@@ -2871,13 +2871,19 @@ def save_persona_from_song(
         raise HTTPException(422, "persona description exceeds 500 chars")
 
     client = KieClient()
-    persona_id = submit_persona_job(
-        client,
-        source_task_id=suno_task_id,
-        source_audio_id=audio_id,
-        name=req.name.strip(),
-        description=req.description.strip(),
-    )
+    try:
+        persona_id = submit_persona_job(
+            client,
+            source_task_id=suno_task_id,
+            source_audio_id=audio_id,
+            name=req.name.strip(),
+            description=req.description.strip(),
+        )
+    except PersonaSourceNotFound as e:
+        # Kie's retention window expired (or this run pre-dates the
+        # voice-saving code). Surface a user-actionable 422 instead
+        # of a generic 500 — the message tells them what to do next.
+        raise HTTPException(422, str(e))
 
     record = {
         "id": persona_id,
