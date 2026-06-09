@@ -620,3 +620,63 @@ def test_delete_persona_404_when_missing(app):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 404
+
+
+# ─────────────── DELETE /songs/{id} ──────────────────────────────────────────
+
+def test_delete_song_removes_run_dir(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    assert run_dir.exists()
+
+    r = client.delete(
+        f"/songs/{run_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 204
+    assert not run_dir.exists()
+
+    # GET now 404s
+    r2 = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 404
+
+
+def test_delete_song_409_when_worker_active(app):
+    """Don't let users delete a run that's mid-encode — files would
+    vanish out from under the worker."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    for active in ("generating_song", "generating_cover", "assembling"):
+        state = json.loads((run_dir / "api_state.json").read_text())
+        state["status"] = active
+        (run_dir / "api_state.json").write_text(json.dumps(state))
+        r = client.delete(
+            f"/songs/{run_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 409, (
+            f"delete must refuse while status={active!r}, got {r.status_code}"
+        )
+        assert run_dir.exists()
+
+
+def test_delete_song_404_for_unknown_id(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    r = client.delete(
+        "/songs/never-existed",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 404

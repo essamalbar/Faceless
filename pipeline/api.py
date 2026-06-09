@@ -2704,6 +2704,33 @@ def resume_song(run_id: str, user: User = Depends(require_user)):
     return {"ok": True}
 
 
+@app.delete("/songs/{run_id}", status_code=204)
+def delete_song(run_id: str, user: User = Depends(require_user)):
+    """Delete a song run entirely — removes the run dir and all
+    artifacts (song.json, lyrics.txt, cover.png, take_*.mp3, song.mp3,
+    final.mp4, api_state.json, etc.).
+
+    Refuses with 409 if a worker is actively processing the run. The
+    user must wait for it to complete (or fail), then delete.
+    """
+    import shutil
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") in _SONG_ACTIVE_STATUSES:
+        raise HTTPException(
+            409,
+            f"a worker is processing this song (state: {state.get('status')!r}); "
+            f"wait for it to finish before deleting",
+        )
+    try:
+        shutil.rmtree(run_dir)
+    except OSError as e:
+        raise HTTPException(500, f"failed to remove run dir: {e}")
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Personas — voice locking across songs.
 #

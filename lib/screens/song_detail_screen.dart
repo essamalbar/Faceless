@@ -157,6 +157,47 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     }
   }
 
+  Future<void> _showDeleteDialog(SongSummary s) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this song?'),
+        content: Text(
+          'This permanently removes the song, cover, takes, and final '
+          'video for "${s.title ?? s.theme ?? 'this run'}". '
+          'Credits already spent on Suno + Flux are not refunded.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    try {
+      await widget.client.deleteSong(widget.runId);
+      if (mounted) {
+        messenger.showSnackBar(const SnackBar(content: Text('Song deleted')));
+        // Pop back to the songs list so the deleted run isn't still
+        // showing on screen.
+        nav.pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+      }
+    }
+  }
+
   Future<void> _showSavePersonaDialog(SongSummary s) async {
     final nameCtrl = TextEditingController(text: s.title ?? '');
     final descCtrl = TextEditingController(
@@ -300,6 +341,19 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           s.title ?? 'Song',
           textDirection: TextDirection.rtl,
         ),
+        actions: [
+          // Delete song — only when not actively rendering. The
+          // backend also rejects deletes during active workers
+          // (409); this just hides the button to keep the UI clean.
+          if (s.status != 'generating_song'
+              && s.status != 'generating_cover'
+              && s.status != 'assembling')
+            IconButton(
+              tooltip: 'Delete this song',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _showDeleteDialog(s),
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

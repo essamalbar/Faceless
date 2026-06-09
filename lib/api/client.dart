@@ -609,6 +609,14 @@ class FacelessApiClient {
     _checkOk(r);
   }
 
+  Future<void> deleteSong(String id) async {
+    final r = await _http.delete(
+      await _uri('/songs/$id'),
+      headers: await _headers(),
+    );
+    _checkOk(r);
+  }
+
   Future<void> cancelSong(String id) async {
     final r = await _http.post(await _uri('/songs/$id/cancel'), headers: await _headers());
     _checkOk(r);
