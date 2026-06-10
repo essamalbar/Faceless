@@ -284,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const FacelessLogo(size: 30),
             const SizedBox(width: 10),
-            const Text('Faceless',
+            const Text('Faceless Lab',
                 style: TextStyle(fontWeight: FontWeight.w700)),
           ],
         ),

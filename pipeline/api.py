@@ -3468,7 +3468,7 @@ def shared_song_page(token: str):
 <meta name="theme-color" content="#0a0d14">
 
 <!-- Open Graph -->
-<meta property="og:site_name" content="faceless">
+<meta property="og:site_name" content="Faceless Lab">
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(teaser)}">
 <meta property="og:image" content="{cover_url}">
@@ -3626,12 +3626,12 @@ def shared_song_page(token: str):
     </video>
   </div>
   <h1 class="title">{esc(title)}</h1>
-  <p class="made-by">faceless<span class="dot"></span>AI song</p>
+  <p class="made-by">Faceless Lab<span class="dot"></span>AI song</p>
   <div class="lyrics idle" id="lyrics" data-total-stanzas="{total_stanzas}">
     {lyrics_html}
   </div>
   <footer>
-    Made with <a href="{base_url}/app/">faceless</a> — AI-generated music
+    Made with <a href="{base_url}/app/">Faceless Lab</a> — AI-generated music
   </footer>
 </div>
 <script>
