@@ -63,7 +63,20 @@ def assemble_song_video(*, cover_path: Path, song_mp3: Path, out_mp4: Path) -> N
         "-shortest",
         "-movflags", "+faststart",
         "-threads", "0",  # use all available vCPUs
-        str(out_mp4),
+        # Force MP4 muxer — ffmpeg infers format from the output
+        # file extension, but we're writing to "<name>.mp4.tmp" so
+        # the autodetect fails. -f mp4 makes the format explicit.
+        "-f", "mp4",
+        # Write to a temp file then atomic-rename. Without this, a
+        # killed worker or a crashed ffmpeg leaves a half-written
+        # final.mp4 on disk that the API happily serves as broken
+        # video. Two concurrent assemblers also corrupt each other.
+        str(out_mp4) + ".tmp",
     ]
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = Path(str(out_mp4) + ".tmp")
     subprocess.run(cmd, check=True, capture_output=True)
+    # Atomic rename — POSIX guarantees readers see either the old
+    # file or the new one, never a torn read. GCS Fuse supports
+    # atomic rename on objects without the .tmp prefix conflict.
+    tmp_path.replace(out_mp4)

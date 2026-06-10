@@ -2623,29 +2623,55 @@ def swap_take(
     req: SwapTakeRequest,
     user: User = Depends(require_user),
 ):
-    import shutil
-    from pipeline import song_assemble
+    """Switch the active take and re-assemble final.mp4 in the
+    background worker.
+
+    The previous synchronous design (run ffmpeg inside the request)
+    caused three real problems:
+      1. Cloud Run kills the request → partial final.mp4 left on disk
+      2. Two concurrent calls raced on song.mp3 + final.mp4
+      3. The mobile UI showed a spinner for 2 minutes blocking the user
+
+    Now it just queues the swap: sets a swap_to_take flag in state,
+    spawns the worker, and returns immediately. run.py reads the
+    flag, copies the take, and re-assembles atomically.
+    """
     if req.take not in (1, 2):
         raise HTTPException(422, "take must be 1 or 2")
     run_dir = _resolve_song_dir(run_id, user)
     state = _read_state(run_dir)
     if state.get("kind") != "song":
         raise HTTPException(404, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(
+            409,
+            f"swap-take only valid for a complete song "
+            f"(state: {state.get('status')!r})",
+        )
     take_path = run_dir / "takes" / f"take_{req.take}.mp3"
     if not take_path.exists():
         raise HTTPException(404, f"take_{req.take}.mp3 not found")
-    song_mp3 = run_dir / "song.mp3"
-    # GCS Fuse refuses unlink; truncate-on-write is fine.
-    with take_path.open("rb") as src, song_mp3.open("wb") as dst:
-        while chunk := src.read(1 << 20):
-            dst.write(chunk)
-    song_assemble.assemble_song_video(
-        cover_path=run_dir / "cover.png",
-        song_mp3=song_mp3,
-        out_mp4=run_dir / "final.mp4",
+
+    # No-op if the requested take is already chosen — saves a worker
+    # spawn for accidental re-tap.
+    if state.get("chosen_take") == req.take:
+        return {"ok": True, "chosen_take": req.take, "noop": True}
+
+    _enforce_concurrent_song_limit(user)
+
+    # Set the swap flag + status BEFORE spawning so the concurrency
+    # cap blocks any double-tap that arrives between now and the
+    # worker writing its first status update.
+    _write_state(
+        run_dir,
+        status="assembling",
+        swap_to_take=req.take,
+        last_error=None,
     )
-    _write_state(run_dir, chosen_take=req.take)
-    return {"ok": True, "chosen_take": req.take}
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid)
+    return {"ok": True, "chosen_take": req.take, "queued": True}
 
 
 # Binary streaming endpoints accept the token via ?token=... query
@@ -3083,7 +3109,7 @@ def shared_song_page(token: str):
     lyrics with proper RTL handling and section-tag styling, sets
     Open Graph / Twitter Card meta tags for link previews."""
     from fastapi.responses import HTMLResponse
-    _, script = _resolve_shared_song(token)
+    run_dir, script = _resolve_shared_song(token)
     title = script.get("title", "AI song")
     lyrics = script.get("lyrics", "")
     language = script.get("language", "ar")
@@ -3105,8 +3131,22 @@ def shared_song_page(token: str):
         "https://faceless-api-uplzdtffeq-uc.a.run.app",
     ).rstrip("/")
     page_url = f"{base_url}/p/{token}"
-    video_url = f"{base_url}/p/{token}/video"
-    cover_url = f"{base_url}/p/{token}/cover"
+    # Fingerprint the video + cover URLs with their file mtimes so
+    # regenerating the cover or swapping a take produces NEW URLs.
+    # Without this, browsers / WhatsApp / Twitter cache the first
+    # version they fetched forever and show the old cover even
+    # after the user regenerates. The HTML page itself sends
+    # Cache-Control: no-cache (below) so each fresh visit gets the
+    # current mtime values.
+    def _mtime(p: Path) -> int:
+        try:
+            return int(p.stat().st_mtime)
+        except OSError:
+            return 0
+    cover_v = _mtime(run_dir / "cover.png")
+    video_v = _mtime(run_dir / "final.mp4")
+    video_url = f"{base_url}/p/{token}/video?v={video_v}"
+    cover_url = f"{base_url}/p/{token}/cover?v={cover_v}"
 
     def esc(s: str) -> str:
         return (s.replace("&", "&amp;").replace("<", "&lt;")
@@ -3302,7 +3342,27 @@ def shared_song_page(token: str):
 </div>
 </body>
 </html>"""
-    return HTMLResponse(html)
+    # no-cache on the HTML so each fresh visit re-evaluates the
+    # cover/video mtimes; the embedded URLs are themselves
+    # fingerprinted, so the actual binary fetches are cache-friendly.
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+# Public binary endpoints use mtime-fingerprinted URLs (?v=N in the
+# share page HTML), so the same URL is always the same bytes — safe
+# to mark immutable. WhatsApp / Twitter / iMessage will cache these
+# aggressively which is what we want; cache invalidation happens
+# automatically via the new ?v= when the file changes.
+_PUBLIC_BINARY_CACHE_HEADERS = {
+    "Cache-Control": "public, max-age=604800, immutable",
+}
 
 
 @app.get("/p/{token}/video", include_in_schema=False)
@@ -3312,7 +3372,9 @@ def shared_song_video(token: str):
     path = run_dir / "final.mp4"
     if not path.exists():
         raise HTTPException(404, "video not found")
-    return FileResponse(path, media_type="video/mp4")
+    return FileResponse(
+        path, media_type="video/mp4", headers=_PUBLIC_BINARY_CACHE_HEADERS,
+    )
 
 
 @app.get("/p/{token}/cover", include_in_schema=False)
@@ -3323,7 +3385,9 @@ def shared_song_cover(token: str):
     path = run_dir / "cover.png"
     if not path.exists():
         raise HTTPException(404, "cover not found")
-    return FileResponse(path, media_type="image/png")
+    return FileResponse(
+        path, media_type="image/png", headers=_PUBLIC_BINARY_CACHE_HEADERS,
+    )
 
 
 # ---------------------------------------------------------------------------

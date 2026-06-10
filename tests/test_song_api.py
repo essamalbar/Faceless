@@ -297,39 +297,77 @@ def test_approve_song_idempotent_after_first_call(app, monkeypatch):
     assert deduction_count["n"] == 1
 
 
-def test_swap_take_reruns_assembly(app, tmp_path: Path, monkeypatch):
+def test_swap_take_queues_worker(app, monkeypatch):
+    """swap-take now spawns the worker (was synchronous before).
+    Verify the spawn is called and state carries swap_to_take +
+    status=assembling for the worker to pick up."""
     fastapi_app, token = app
     client = TestClient(fastapi_app)
+    from pipeline import api as api_mod
+    spawn_calls = []
+    def fake_spawn(args, run_dir):
+        spawn_calls.append((args, run_dir))
+        return 99999
+    api_mod.set_spawn_fn(fake_spawn)
+
     create = client.post(
         "/songs", json={"theme": "x"},
         headers={"Authorization": f"Bearer {token}"},
     )
     run_id = create.json()["run_id"]
-
     run_dir = _find_run_dir(run_id)
     (run_dir / "takes").mkdir(exist_ok=True)
     (run_dir / "takes" / "take_1.mp3").write_bytes(b"\x00" * 100)
     (run_dir / "takes" / "take_2.mp3").write_bytes(b"\x00" * 100)
-    (run_dir / "song.mp3").write_bytes(b"\x00" * 100)
     state = json.loads((run_dir / "api_state.json").read_text())
     state["status"] = "complete"
     state["chosen_take"] = 1
     (run_dir / "api_state.json").write_text(json.dumps(state))
-
-    from pipeline import song_assemble
-    monkeypatch.setattr(
-        song_assemble, "assemble_song_video",
-        lambda *, cover_path, song_mp3, out_mp4: out_mp4.write_bytes(b"FAKE"),
-    )
 
     r = client.post(
         f"/songs/{run_id}/swap-take",
         json={"take": 2},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("queued") is True
+    assert len(spawn_calls) == 1
     new_state = json.loads((run_dir / "api_state.json").read_text())
-    assert new_state["chosen_take"] == 2
+    assert new_state["swap_to_take"] == 2
+    assert new_state["status"] == "assembling"
+
+
+def test_swap_take_noop_when_same_take(app):
+    """Tapping 'Use Take 1' when chosen_take is already 1 should
+    no-op (don't spawn a worker, don't burn ffmpeg time)."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod
+    spawn_calls = []
+    api_mod.set_spawn_fn(lambda args, run_dir: spawn_calls.append(args) or 0)
+
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    (run_dir / "takes").mkdir(exist_ok=True)
+    (run_dir / "takes" / "take_1.mp3").write_bytes(b"\x00" * 100)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    state["chosen_take"] = 1
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    r = client.post(
+        f"/songs/{run_id}/swap-take",
+        json={"take": 1},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert r.json().get("noop") is True
+    assert spawn_calls == []  # no worker spawned
 
 
 def test_get_audio_serves_chosen_take(app):

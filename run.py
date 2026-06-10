@@ -942,6 +942,26 @@ def _run_song_post_approve(args) -> int:
         final_cover_path = run_dir / "cover.png"
         final_mp4 = run_dir / "final.mp4"
 
+        # --- Stage 0: swap_to_take handling ---
+        # If the API set swap_to_take=N in state, this run was
+        # triggered by POST /songs/{id}/swap-take. Copy the requested
+        # take's mp3 to song.mp3, update chosen_take, and let stages
+        # 1 + 2 + 3 short-circuit (Suno + Flux skipped, only assemble
+        # runs).
+        current_state = json.loads(state_path.read_text()) if state_path.exists() else {}
+        swap_to = current_state.get("swap_to_take")
+        if swap_to in (1, 2):
+            print(f"[song-post-approve] swap-to-take {swap_to}")
+            take_path = takes_dir / f"take_{swap_to}.mp3"
+            if take_path.exists():
+                with take_path.open("rb") as src, song_mp3.open("wb") as dst:
+                    while chunk := src.read(1 << 20):
+                        dst.write(chunk)
+                write_state(chosen_take=swap_to, swap_to_take=None)
+            else:
+                print(f"[song-post-approve] WARN swap target {take_path} missing — skipping")
+                write_state(swap_to_take=None)
+
         # --- Stage 1: Suno song ---
         # Skip if BOTH takes are already on disk from a prior partial run.
         # This is the spec's deferred "stage-aware /resume" — it lets the
