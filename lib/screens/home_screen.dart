@@ -537,7 +537,7 @@ class _HomeScreenState extends State<HomeScreen> {
               return ListTile(
                 leading: s.hasVideo
                     ? FutureBuilder<Uri>(
-                        future: _client.songCoverUrl(s.id),
+                        future: _client.songCoverUrl(s.id, thumb: true),
                         builder: (ctx, snap) => snap.hasData
                             ? Image.network(
                                 snap.data!.toString(),

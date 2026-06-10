@@ -185,4 +185,12 @@ def apply_title_overlay(
 
     composed = Image.alpha_composite(img, shadow_layer)
     composed = Image.alpha_composite(composed, overlay)
-    composed.convert("RGB").save(out_path, format="PNG")
+    rgb = composed.convert("RGB")
+    rgb.save(out_path, format="PNG")
+    # Also write a small JPEG thumbnail so the song-list endpoint
+    # can serve tiny previews instead of full 1080x1080 PNGs.
+    # 256px JPEG @ q=80 is ~15-25 KB vs 1.2 MB for the source PNG.
+    thumb = rgb.copy()
+    thumb.thumbnail((256, 256), Image.LANCZOS)
+    thumb.save(out_path.parent / "cover_thumb.jpg",
+               format="JPEG", quality=80, optimize=True)

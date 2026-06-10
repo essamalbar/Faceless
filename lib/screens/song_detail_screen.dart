@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -21,6 +23,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   SongSummary? _summary;
   bool _polling = true;
   bool _swapping = false;
+  StreamSubscription<Map<String, dynamic>>? _eventsSub;
 
   // Inline video player state
   VideoPlayerController? _videoController;
@@ -49,6 +52,79 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   // ─── polling ────────────────────────────────────────────────────────────────
 
   Future<void> _poll() async {
+    // First load: snapshot via REST so the UI has data immediately.
+    try {
+      final s = await widget.client.getSong(widget.runId);
+      if (!mounted) return;
+      setState(() => _summary = s);
+      if (_terminalStatuses.contains(s.status)) {
+        setState(() => _polling = false);
+        return;
+      }
+    } catch (_) {
+      // Tolerate transient errors; SSE will re-establish.
+    }
+    _subscribeToEvents();
+  }
+
+  /// Subscribe to the SSE event stream for live status updates.
+  /// Falls back to a 3-second poll loop if SSE fails for any reason
+  /// (some old browsers, hostile proxies, etc).
+  void _subscribeToEvents() {
+    _eventsSub?.cancel();
+    _eventsSub = widget.client.songEvents(widget.runId).listen(
+      (event) async {
+        if (!mounted) return;
+        final summary = _summary;
+        if (summary == null) {
+          // No baseline yet — fetch a full snapshot
+          final s = await widget.client.getSong(widget.runId).catchError(
+            (_) => SongSummary(
+              id: widget.runId,
+              status: event['status'] as String? ?? 'unknown',
+              title: null, theme: null, createdAt: '',
+              hasVideo: false, chosenTake: null, lastError: null,
+            ),
+          );
+          if (!mounted) return;
+          setState(() => _summary = s);
+          return;
+        }
+        // Merge event fields into the current summary
+        final merged = SongSummary(
+          id: summary.id,
+          status: (event['status'] as String?) ?? summary.status,
+          title: summary.title,
+          theme: summary.theme,
+          createdAt: summary.createdAt,
+          hasVideo: summary.hasVideo
+              || (event['status'] == 'complete'),
+          chosenTake: (event['chosen_take'] as int?) ?? summary.chosenTake,
+          lastError: event['last_error'] as String? ?? summary.lastError,
+          failureStage:
+              event['failure_stage'] as String? ?? summary.failureStage,
+        );
+        setState(() => _summary = merged);
+        if (_terminalStatuses.contains(merged.status)) {
+          setState(() => _polling = false);
+        }
+      },
+      onError: (_) {
+        // SSE dropped — fall back to slow REST polling.
+        _fallbackPollLoop();
+      },
+      onDone: () {
+        // Stream closed (server saw terminal). Re-snapshot once to
+        // pull fields the SSE didn't carry (e.g. hasVideo path-existence).
+        if (!mounted) return;
+        widget.client.getSong(widget.runId).then((s) {
+          if (mounted) setState(() => _summary = s);
+        }).catchError((_) {});
+      },
+    );
+  }
+
+  Future<void> _fallbackPollLoop() async {
     while (mounted && _polling) {
       try {
         final s = await widget.client.getSong(widget.runId);
@@ -58,9 +134,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           setState(() => _polling = false);
           return;
         }
-      } catch (_) {
-        // tolerate transient errors during polling
-      }
+      } catch (_) {/* tolerate */}
       await Future.delayed(const Duration(seconds: 3));
     }
   }
@@ -373,6 +447,44 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     }
   }
 
+  Future<void> _rerollTakes() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Re-roll voice takes?'),
+        content: const Text(
+          'Generates two fresh Suno vocal takes (~\$0.05). Lyrics, '
+          'style, and cover are preserved. Use this when both '
+          'current takes missed the mood.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Re-roll')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.client.rerollSongTakes(widget.runId);
+      if (mounted) {
+        messenger.showSnackBar(const SnackBar(
+          content: Text('Re-rolling Suno takes — ready in ~2 min'),
+        ));
+        setState(() {
+          _summary = null;
+        });
+        _poll();
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Re-roll failed: $e')));
+      }
+    }
+  }
+
   Future<void> _regenerateCover() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -560,6 +672,14 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            // Re-roll both Suno takes (paid). Use when both takes
+            // missed the mark — lyrics + cover are preserved.
+            OutlinedButton.icon(
+              icon: const Icon(Icons.shuffle),
+              label: const Text('Re-roll voice takes'),
+              onPressed: _rerollTakes,
             ),
             const SizedBox(height: 16),
             if (s.chosenTake != null) _buildTakeSwapCard(context, s),
@@ -913,6 +1033,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   @override
   void dispose() {
     _polling = false;
+    _eventsSub?.cancel();
     _videoController?.removeListener(_onVideoTick);
     _videoController?.dispose();
     super.dispose();

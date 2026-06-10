@@ -38,7 +38,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -386,6 +386,14 @@ class CreateSongRequest(BaseModel):
     # to get male voices manually. See pipeline/song.py submit_song_job.
     vocal_gender: str | None = "m"  # 'm' | 'f' | None
     persona_id: str | None = None   # for pinned-voice future use
+    # Optional Suno model override. Validated against
+    # _ALLOWED_SUNO_MODELS below. None → use config default (V5_5).
+    suno_model: str | None = None
+
+
+# Whitelist of Suno model ids the user can pick from. V3_5 is the
+# obvious-AI sound and explicitly excluded per spec quality gate.
+_ALLOWED_SUNO_MODELS = frozenset({"V5_5", "V5", "V4_5", "V4"})
 
 
 class SongScriptResponse(BaseModel):
@@ -2295,6 +2303,13 @@ def create_song(
             # through whatever the request specified.
             "vocal_gender": req.vocal_gender,
             "persona_id": req.persona_id,
+            # Optional Suno model override. Validated against
+            # _ALLOWED_SUNO_MODELS; None falls back to config default.
+            "suno_model": (
+                req.suno_model
+                if req.suno_model in _ALLOWED_SUNO_MODELS
+                else None
+            ),
         }, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
@@ -2827,8 +2842,19 @@ def get_song_audio(
 
 @app.get("/songs/{run_id}/cover")
 def get_song_cover(run_id: str,
+                   thumb: bool = False,
                    user: User = Depends(require_user_header_or_query)):
+    """Serve the cover image. ?thumb=1 returns the small 256px JPEG
+    (15-25 KB) — used by the song-list to keep scroll snappy.
+    Without thumb, returns the full 1080x1080 PNG (~1.2 MB)."""
     run_dir = _resolve_song_dir(run_id, user)
+    if thumb:
+        thumb_path = run_dir / "cover_thumb.jpg"
+        if thumb_path.exists():
+            return FileResponse(thumb_path, media_type="image/jpeg")
+        # Older runs predate the thumbnail-on-assemble change; fall
+        # through to the full-size cover. Better one slow first-load
+        # than a broken image.
     path = run_dir / "cover.png"
     if not path.exists():
         raise HTTPException(404, "cover not yet generated")
@@ -2872,6 +2898,70 @@ def get_song_log(
     text = path.read_text(errors="replace")
     tail = "\n".join(text.splitlines()[-lines:])
     return {"log": tail}
+
+
+@app.get("/songs/{run_id}/events")
+async def song_events(
+    run_id: str,
+    user: User = Depends(require_user_header_or_query),
+):
+    """Server-Sent Events stream for a song run's live status.
+
+    Replaces the Flutter app's 3-second polling loop with a push
+    channel — status flips are observable within ~200ms instead of
+    averaging 1.5s of polling lag. The stream emits one event per
+    state transition and ends when the run reaches a terminal status
+    (complete / failed / canceled).
+
+    Uses ?token=... query auth so EventSource can connect (it can't
+    set Authorization headers).
+    """
+    import asyncio
+    run_dir = _resolve_song_dir(run_id, user)
+    if _read_state(run_dir).get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+
+    _TERMINAL = frozenset({"complete", "failed", "canceled"})
+
+    async def generator():
+        last_serialized: str | None = None
+        # Send one immediate snapshot so the client doesn't sit on a
+        # blank screen for up to a poll interval before the first
+        # state change.
+        deadline = asyncio.get_event_loop().time() + 600  # 10 min cap
+        while True:
+            state = _read_state(run_dir)
+            # Build a small status payload — full state.json has
+            # internal fields the UI doesn't need.
+            payload = {
+                "status": state.get("status"),
+                "chosen_take": state.get("chosen_take"),
+                "failure_stage": state.get("failure_stage"),
+                "last_error": state.get("last_error"),
+            }
+            serialized = json.dumps(payload, sort_keys=True)
+            if serialized != last_serialized:
+                yield f"data: {serialized}\n\n"
+                last_serialized = serialized
+            if payload.get("status") in _TERMINAL:
+                # One final event then close.
+                yield "event: done\ndata: {}\n\n"
+                return
+            if asyncio.get_event_loop().time() > deadline:
+                # Hard cap so a stuck connection doesn't tie up a
+                # Cloud Run instance forever. Client can reconnect.
+                yield "event: timeout\ndata: {}\n\n"
+                return
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store",
+            "X-Accel-Buffering": "no",  # disable nginx buffering if proxied
+        },
+    )
 
 
 @app.post("/songs/{run_id}/resume")
@@ -2953,6 +3043,64 @@ def regenerate_song_cover(run_id: str, user: User = Depends(require_user)):
     pid = _SPAWN_FN(args, run_dir)
     _write_state(run_dir, pid=pid)
     return {"ok": True}
+
+
+@app.post("/songs/{run_id}/reroll-takes")
+def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
+    """Generate fresh Suno takes for this song (keeps the same lyrics,
+    style, and cover prompt). Charges credits like a new approval —
+    this is full Suno re-generation, not a free retry.
+
+    Use when both Suno takes came back bad. Cheaper than canceling +
+    starting over because the lyrics + cover are reused.
+    """
+    import pipeline.credits as _credits
+    from pipeline.config import load_config
+
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(
+            409,
+            f"can only re-roll takes from a complete song "
+            f"(state: {state.get('status')!r})",
+        )
+
+    _enforce_concurrent_song_limit(user)
+    _enforce_daily_song_limit(user)
+
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+    amount = cfg.song.credits_per_song if cfg.song else 1
+
+    if user.role != "service":
+        balance = _credits.get_balance(user.id)
+        if balance < amount:
+            _raise_402_insufficient_credits(balance, amount)
+
+    new_balance = _credits.check_or_deduct(
+        user, amount=amount, run_id=run_id, reason="song-spend (reroll)",
+    )
+
+    # Delete the existing take files so the worker's
+    # "skip Suno if takes exist" logic doesn't skip the regen.
+    takes_dir = run_dir / "takes"
+    if takes_dir.exists():
+        for f in takes_dir.glob("take_*.mp3"):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    # song.mp3 will be overwritten by the worker after Suno returns.
+
+    _write_state(run_dir, status="generating_song", last_error=None)
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    _record_song_approval(user)
+    _write_state(run_dir, pid=pid)
+    return {"ok": True, "balance_after": new_balance}
 
 
 @app.delete("/songs/{run_id}", status_code=204)

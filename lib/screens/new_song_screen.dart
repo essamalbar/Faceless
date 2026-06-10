@@ -77,6 +77,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
   final _styleCtrl = TextEditingController();
   String _language = 'ar';
   String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
+  String? _sunoModel;          // null = use server default (V5_5)
   String? _personaId;          // null = no persona (let Suno pick)
   String? _selectedPreset;     // label of the chip that filled the style field
   List<Persona> _personas = [];
@@ -138,6 +139,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
         language: _language,
         personaId: _personaId,
         vocalGender: _vocalGender,
+        sunoModel: _sunoModel,
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
@@ -268,6 +270,29 @@ class _NewSongScreenState extends State<NewSongScreen> {
                 DropdownMenuItem(value: 'auto', child: Text('Auto (Suno picks)')),
               ],
               onChanged: (v) => setState(() => _vocalGender = v ?? 'm'),
+            ),
+            const SizedBox(height: 16),
+            // Suno model picker. Default V5_5 is the highest quality
+            // at design time. V5 has a slightly different voice
+            // character — useful for A/B testing. V4_5 is the older
+            // fallback for users on the cheaper tier.
+            DropdownButtonFormField<String?>(
+              initialValue: _sunoModel,
+              decoration: const InputDecoration(
+                labelText: 'Suno model',
+                helperText: 'Newer = better quality. V3_5 is excluded '
+                    '(obvious-AI sound).',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: null,
+                    child: Text('Default (V5_5)')),
+                DropdownMenuItem(value: 'V5_5', child: Text('V5_5 (latest)')),
+                DropdownMenuItem(value: 'V5', child: Text('V5')),
+                DropdownMenuItem(value: 'V4_5', child: Text('V4_5')),
+                DropdownMenuItem(value: 'V4', child: Text('V4 (legacy)')),
+              ],
+              onChanged: (v) => setState(() => _sunoModel = v),
             ),
             const SizedBox(height: 16),
             // Voice picker — only shows once user has saved at least

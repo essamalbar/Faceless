@@ -982,7 +982,12 @@ def _run_song_post_approve(args) -> int:
                 lyrics=script["lyrics"],
                 style_prompt=script["style_prompt"],
                 title=script["title"],
-                model=cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID,
+                # Per-song model override (set by POST /songs) wins
+                # over config default, falling back to V5_5 baseline.
+                model=(
+                    script.get("suno_model")
+                    or (cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID)
+                ),
                 vocal_gender=script.get("vocal_gender"),
                 persona_id=script.get("persona_id"),
             )

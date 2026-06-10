@@ -526,6 +526,7 @@ class FacelessApiClient {
     String language = 'ar',
     String? personaId,
     String vocalGender = 'm',
+    String? sunoModel,
   }) async {
     final body = <String, dynamic>{
       'theme': theme,
@@ -534,6 +535,7 @@ class FacelessApiClient {
       'language': language,
       if (personaId != null && personaId.isNotEmpty) 'persona_id': personaId,
       'vocal_gender': vocalGender,
+      if (sunoModel != null) 'suno_model': sunoModel,
     };
     final r = await _http.post(
       await _uri('/songs'),
@@ -553,6 +555,62 @@ class FacelessApiClient {
   Future<SongSummary> getSong(String id) async {
     final r = await _http.get(await _uri('/songs/$id'), headers: await _headers());
     return _parse(r, (j) => SongSummary.fromJson(j as Map<String, dynamic>));
+  }
+
+  /// Server-Sent Events stream of song-status updates. Yields one
+  /// map per state transition; the stream completes when the run
+  /// reaches a terminal status (complete/failed/canceled). Returns
+  /// `null` for the keys not present in a given event.
+  ///
+  /// Replaces the manual poll loop in song_detail_screen with a
+  /// push channel — status flips arrive within ~200ms instead of
+  /// 1.5s avg.
+  Stream<Map<String, dynamic>> songEvents(String id) async* {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    final uri = Uri.parse(
+      '${_stripTrailing(base)}/songs/$id/events?token=$token',
+    );
+    final req = http.Request('GET', uri);
+    req.headers['Accept'] = 'text/event-stream';
+    req.headers['Cache-Control'] = 'no-cache';
+    final streamed = await _http.send(req);
+    if (streamed.statusCode >= 400) {
+      throw FacelessApiException(
+        'SSE failed: ${streamed.statusCode}',
+        status: streamed.statusCode,
+      );
+    }
+    var buffer = '';
+    await for (final chunk in streamed.stream.transform(utf8.decoder)) {
+      buffer += chunk;
+      // SSE events are separated by blank lines (\n\n).
+      while (buffer.contains('\n\n')) {
+        final idx = buffer.indexOf('\n\n');
+        final block = buffer.substring(0, idx);
+        buffer = buffer.substring(idx + 2);
+        final dataLines = <String>[];
+        String? eventName;
+        for (final line in block.split('\n')) {
+          if (line.startsWith('data: ')) {
+            dataLines.add(line.substring(6));
+          } else if (line.startsWith('event: ')) {
+            eventName = line.substring(7);
+          }
+        }
+        if (eventName == 'done' || eventName == 'timeout') return;
+        if (dataLines.isEmpty) continue;
+        try {
+          final parsed = jsonDecode(dataLines.join('\n'));
+          if (parsed is Map<String, dynamic>) yield parsed;
+        } catch (_) {
+          // Skip malformed events rather than break the stream
+        }
+      }
+    }
   }
 
   Future<SongScript> getSongScript(String id) async {
@@ -620,6 +678,14 @@ class FacelessApiClient {
   Future<void> unshareSong(String id) async {
     final r = await _http.delete(
       await _uri('/songs/$id/share'),
+      headers: await _headers(),
+    );
+    _checkOk(r);
+  }
+
+  Future<void> rerollSongTakes(String id) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/reroll-takes'),
       headers: await _headers(),
     );
     _checkOk(r);
@@ -693,13 +759,20 @@ class FacelessApiClient {
     );
   }
 
-  Future<Uri> songCoverUrl(String id) async {
+  /// Cover URL. Pass thumb=true to get the small 256px JPEG variant
+  /// (15-25 KB) for fast list rendering instead of the full 1.2 MB
+  /// PNG. Used by the song-list home screen — full-size is reserved
+  /// for the detail screen.
+  Future<Uri> songCoverUrl(String id, {bool thumb = false}) async {
     final base = await _settings.baseUrl();
     final token = await _resolveToken();
     if (base == null || token == null) {
       throw FacelessApiException('Not configured');
     }
-    return Uri.parse('${_stripTrailing(base)}/songs/$id/cover?token=$token');
+    final suffix = thumb ? '&thumb=1' : '';
+    return Uri.parse(
+      '${_stripTrailing(base)}/songs/$id/cover?token=$token$suffix',
+    );
   }
 
   Future<Uri> songAudioUrl(String id, {int? take}) async {
