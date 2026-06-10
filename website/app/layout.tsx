@@ -28,17 +28,18 @@ import type { Metadata } from "next";
 // preview domain. Override via NEXT_PUBLIC_SITE_URL once a custom domain
 // (e.g. faceless.binghatti.com) is mapped in Vercel.
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-shorts.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-lab.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Faceless — AI Arabic horror video generator | فيديوهات رعب بالعربي",
-    template: "%s · Faceless",
+    default: "Faceless Lab — AI Arabic horror shorts + AI songs | فيديوهات رعب وأغاني بالذكاء الاصطناعي",
+    template: "%s · Faceless Lab",
   },
   description:
-    "Generate cinematic Arabic horror Shorts from one sentence. 6 dialects (Syrian, Egyptian, Khaliji, MSA, Maghrebi, Iraqi). Free script preview. Per-clip reroll. Refund on failure. أنشئ فيديوهات رعب عربية احترافية من جملة واحدة.",
+    "Generate cinematic Arabic horror Shorts AND original Arabic songs with AI. Horror: 6 dialects, free script preview, per-clip reroll, refund on failure. Songs: Suno V5 vocals, lyric-aware cover art, shareable music videos. أنشئ فيديوهات رعب وأغاني عربية احترافية.",
   keywords: [
+    // Horror — existing
     "Arabic AI video",
     "Arabic horror shorts",
     "AI video generator",
@@ -54,6 +55,15 @@ export const metadata: Metadata = {
     "صانع فيديوهات قصيرة",
     "Veo3 Arabic",
     "Kling Arabic horror",
+    // Songs — new
+    "AI Arabic song generator",
+    "Suno Arabic",
+    "AI music Arabic",
+    "Arabic ballad AI",
+    "مولد أغاني بالذكاء الاصطناعي",
+    "أغاني عربية AI",
+    "ذكاء اصطناعي موسيقى",
+    "AI music video Arabic",
   ],
   alternates: {
     canonical: SITE_URL,
@@ -70,18 +80,18 @@ export const metadata: Metadata = {
     // it here or we'll override the auto-detection.
     type: "website",
     url: SITE_URL,
-    siteName: "Faceless",
-    title: "Faceless — AI Arabic horror shorts",
+    siteName: "Faceless Lab",
+    title: "Faceless Lab — AI Arabic horror shorts + AI songs",
     description:
-      "One sentence → full Arabic horror short. Script free, render-on-demand. 6 dialects. Refund on failure. اكتب جملة، احصل على فيلم قصير كامل.",
+      "Two modes, one studio. Generate full Arabic horror shorts from one sentence, or an AI-sung Arabic song with cover art from a theme. اكتب جملة، احصل على فيلم قصير. اكتب فكرة، احصل على أغنية كاملة.",
     locale: "ar_SA",
   },
   twitter: {
     // Same — twitter card pulls from app/opengraph-image.tsx automatically.
     card: "summary_large_image",
-    title: "Faceless — AI Arabic horror shorts",
+    title: "Faceless Lab — AI Arabic horror shorts + AI songs",
     description:
-      "Write one sentence → get a full Arabic horror short. Free preview, refund on failure.",
+      "Two modes, one studio. Arabic horror shorts AND AI-sung Arabic songs. Free draft, pay only when you generate.",
   },
   robots: {
     index: true,
@@ -109,11 +119,11 @@ export const metadata: Metadata = {
 const softwareApplicationLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "Faceless",
+  "name": "Faceless Lab",
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Web, iOS, Android",
   "description":
-    "AI Arabic horror Shorts generator. Turn a one-line premise into a full cinematic Arabic short with native dialect dialogue, locked character identity across clips, and per-clip refund on failure.",
+    "AI Arabic content studio with two modes: (1) Horror Shorts — turn a one-line premise into a full cinematic Arabic short with native dialect dialogue, locked character identity across clips, and per-clip refund on failure. (2) AI Songs — generate full Arabic songs with Suno V5 vocals and lyric-aware AI cover art, with sharable music-video output.",
   "offers": [
     {
       "@type": "Offer",
@@ -138,6 +148,7 @@ const softwareApplicationLd = {
     },
   ],
   "featureList": [
+    // Horror mode
     "AI Arabic script writer (6 dialects: MSA, Syrian, Egyptian, Khaliji, Maghrebi, Iraqi)",
     "Free script preview before any paid render",
     "Per-clip reroll — regenerate one bad clip without paying for the whole video",
@@ -145,6 +156,13 @@ const softwareApplicationLd = {
     "Character identity locked across clips via reference image",
     "Native Arabic dialogue with lip-synced audio",
     "9:16 vertical export ready for TikTok, YouTube Shorts, Instagram Reels",
+    // Songs mode
+    "AI Arabic song generator powered by Suno V5",
+    "Lyric-aware AI cover art via Flux Kontext Max",
+    "Voice persona save & reuse — keep the same singer across multiple songs",
+    "Free lyrics + cover-prompt draft before any paid generation",
+    "Square 1:1 music-video export with karaoke-style lyric reveal on the shareable page",
+    "Take A / Take B swap — pick the better Suno vocal take, free re-assemble",
   ],
 };
 
@@ -203,7 +221,25 @@ const faqLd = {
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "Those are general-purpose tools. Faceless is Arabic-first: the script writer is tuned for Arabic horror, character identity persists across clips, and the audio is genuine Arabic dialect — not English translated. Pricing is also clip-by-clip refundable, not all-or-nothing.",
+          "Those are general-purpose tools. Faceless Lab is Arabic-first: the script writer is tuned for Arabic horror, character identity persists across clips, and the audio is genuine Arabic dialect — not English translated. Pricing is also clip-by-clip refundable, not all-or-nothing.",
+      },
+    },
+    {
+      "@type": "Question",
+      "name": "Can I generate Arabic songs too?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text":
+          "Yes. Faceless Lab has a second mode that generates a full Arabic song from a theme and style. Suno V5 produces the vocals; Flux Kontext Max produces a matching album cover. You get a 1:1 music video with karaoke-style lyric reveal on the share page, ready for WhatsApp and Instagram. Voice personas let you keep the same singer across future songs.",
+      },
+    },
+    {
+      "@type": "Question",
+      "name": "How much does a song cost?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text":
+          "About 1 credit per song. The cost is approximately equal to one horror video clip, so the same monthly subscription covers both modes. Drafts (lyrics + cover prompt) are free; you only pay when you approve the full generation.",
       },
     },
   ],

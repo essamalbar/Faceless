@@ -119,11 +119,11 @@ function Nav() {
         <a href="#" className="flex items-center gap-2.5">
           <SparkleLogo size={28} />
           <span className="font-semibold text-[15px] tracking-tight">
-            Faceless
+            Faceless Lab
           </span>
         </a>
         <nav className="hidden md:flex items-center gap-7 ml-12 text-[13px] text-muted">
-          <a href="#why" className="hover:text-ink transition-colors">Why Faceless</a>
+          <a href="#why" className="hover:text-ink transition-colors">Why us</a>
           <a href="#showreel" className="hover:text-ink transition-colors">Showreel</a>
           <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
           <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
@@ -197,7 +197,7 @@ function Hero() {
           className="inline-flex items-center gap-2 mb-6 px-3 py-1 rounded-full border border-white/15 bg-black/40 backdrop-blur-sm text-[11px] tracking-wide"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-          AI Arabic horror shorts
+          AI Arabic horror shorts + AI songs
         </motion.div>
 
         <motion.h1
@@ -206,10 +206,10 @@ function Hero() {
           transition={{ duration: 0.7, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
           className="text-[52px] sm:text-7xl lg:text-[100px] font-semibold tracking-[-0.045em] leading-[0.96] max-w-5xl mb-7"
         >
-          Write one line.
+          Two modes.
           <br />
           <span className="bg-gradient-to-br from-accent via-amber-200 to-accent2 bg-clip-text text-transparent">
-            Get a cinematic short.
+            One Arabic studio.
           </span>
         </motion.h1>
 
@@ -219,9 +219,12 @@ function Hero() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="text-lg sm:text-xl text-ink/85 max-w-2xl mb-3 leading-relaxed"
         >
-          Faceless writes the Arabic script, casts the characters, voices them
-          in your dialect, and renders the video. Preview the script for free,
-          render only when you're ready. Refund if anything fails.
+          <strong className="text-ink">Horror shorts:</strong> Faceless Lab
+          writes the Arabic script, casts the characters, voices them in your
+          dialect, and renders the video.{" "}
+          <strong className="text-ink">AI songs:</strong> a theme becomes a
+          full Arabic ballad with Suno V5 vocals and matching cover art.
+          Preview before you spend. Refund on failure.
         </motion.p>
         <motion.p
           initial={{ opacity: 0, y: 16 }}
@@ -230,7 +233,7 @@ function Hero() {
           className="text-base text-muted/80 max-w-xl mb-10 font-arabic"
           dir="rtl"
         >
-          من جملة واحدة إلى فيلم قصير عربي كامل — اقرأ السيناريو مجاناً قبل أن تدفع
+          استوديو عربي بوضعَين: قصص رعب قصيرة وأغانٍ كاملة — راجع الناتج قبل أن تدفع
         </motion.p>
 
         <motion.div
@@ -255,7 +258,7 @@ function Hero() {
             Watch the showreel
           </a>
           <span className="text-muted/40">·</span>
-          <span>Free to write. Subscribe to render.</span>
+          <span>Free to draft. Subscribe to generate.</span>
         </motion.div>
       </motion.div>
 
@@ -456,15 +459,23 @@ function WhyFaceless() {
       body: "Same face, same voice, same outfit — clip after clip. Built on a reference image so identity persists where generic models drift.",
       badge: "Consistent cast",
     },
+    {
+      icon: Sparkles,
+      title: "Plus a full song studio",
+      ar: "وأيضًا استوديو أغاني كامل",
+      body: "Same account, second mode: theme → full Arabic song with Suno V5 vocals, lyric-aware cover art, and a sharable music-video page with karaoke-style lyric reveal.",
+      badge: "Two modes, one studio",
+    },
   ];
   return (
     <section id="why" className="relative py-24 px-5 sm:px-8 border-t border-white/[0.05]">
       <div className="max-w-7xl mx-auto">
-        <SectionEyebrow text="WHY FACELESS" />
+        <SectionEyebrow text="WHY US" />
         <SectionTitle en="Built for Arabic creators." ar="مصنوع لصُنّاع المحتوى العربي" />
         <p className="mt-4 text-muted max-w-2xl">
-          What the big AI video tools won't give you: cost transparency,
-          recovery from failure, and Arabic as a first-class citizen.
+          What the big AI tools won't give you: cost transparency, recovery
+          from failure, Arabic as a first-class citizen — and a music studio
+          in the same account.
         </p>
         <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-4">
           {items.map((it, i) => (
@@ -732,10 +743,11 @@ function FinalCTA() {
           <SparkleLogo size={56} />
         </div>
         <h2 className="text-4xl sm:text-6xl font-semibold tracking-[-0.035em] mb-5">
-          Your first story is free.
+          Your first draft is free.
         </h2>
         <p className="text-base sm:text-lg text-muted max-w-md mx-auto mb-9">
-          Write one sentence. We do the rest. Render whenever you're ready.
+          A horror short or an Arabic song — write one line, we do the rest.
+          Pay only when you generate.
         </p>
         <a
           href={`${APP_URL}/`}
@@ -760,7 +772,7 @@ function Footer() {
         <div className="flex items-center gap-2.5">
           <SparkleLogo size={22} />
           <span className="text-[13px] text-muted">
-            Faceless · made for Arabic storytellers
+            Faceless Lab · faceless-lab.com
           </span>
         </div>
         <div className="sm:ml-auto flex items-center gap-6 text-[13px] text-muted">
