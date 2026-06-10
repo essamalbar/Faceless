@@ -3424,25 +3424,39 @@ def shared_song_page(token: str):
 
     # Render lyrics: each line is either a `[Verse 1]`-style section
     # header (rendered as a small chip) or a normal sung line.
+    # Each STANZA (group of lines between two section headers OR
+    # blanks) gets a data-stanza index so the JS karaoke highlighter
+    # can scroll to the currently-playing one.
     is_rtl = language in ("ar", "he", "fa", "ur")
     text_dir = "rtl" if is_rtl else "ltr"
     lyrics_html_parts: list[str] = []
     section_re = _re.compile(r"^\[([^\]]+)\]\s*$")
+    stanza_idx = 0
+    in_stanza = False
     for raw in lyrics.split("\n"):
         line = raw.strip()
         if not line:
             lyrics_html_parts.append('<div class="gap"></div>')
+            in_stanza = False
             continue
         m = section_re.match(line)
         if m:
+            stanza_idx += 1
             lyrics_html_parts.append(
-                f'<div class="section">{esc(m.group(1))}</div>'
+                f'<div class="section" data-stanza="{stanza_idx}">'
+                f'{esc(m.group(1))}</div>'
             )
+            in_stanza = True
         else:
+            if not in_stanza:
+                stanza_idx += 1
+                in_stanza = True
             lyrics_html_parts.append(
-                f'<p class="line">{esc(line)}</p>'
+                f'<p class="line" data-stanza="{stanza_idx}">'
+                f'{esc(line)}</p>'
             )
     lyrics_html = "\n".join(lyrics_html_parts)
+    total_stanzas = stanza_idx
 
     html = f"""<!DOCTYPE html>
 <html lang="{esc(language)}">
@@ -3591,25 +3605,76 @@ def shared_song_page(token: str):
     .lyrics .line {{ font-size: 16px; }}
     body[dir="rtl"] .lyrics .line {{ font-size: 19px; }}
   }}
+  /* Karaoke highlighter — lines outside the currently-playing
+     stanza dim slightly; active stanza gets a subtle gold rim. */
+  .lyrics .line, .lyrics .section {{
+    transition: opacity 0.5s ease, color 0.5s ease;
+    opacity: 0.45;
+  }}
+  .lyrics .line.active, .lyrics .section.active {{
+    opacity: 1;
+  }}
+  .lyrics.idle .line, .lyrics.idle .section {{ opacity: 1; }}
 </style>
 </head>
 <body dir="{text_dir}">
 <div class="wrap">
   <div class="player">
-    <video controls playsinline poster="{cover_url}" preload="metadata">
+    <video id="player" controls playsinline poster="{cover_url}" preload="metadata">
       <source src="{video_url}" type="video/mp4">
       Your browser does not support embedded video.
     </video>
   </div>
   <h1 class="title">{esc(title)}</h1>
   <p class="made-by">faceless<span class="dot"></span>AI song</p>
-  <div class="lyrics">
+  <div class="lyrics idle" id="lyrics" data-total-stanzas="{total_stanzas}">
     {lyrics_html}
   </div>
   <footer>
     Made with <a href="{base_url}/app/">faceless</a> — AI-generated music
   </footer>
 </div>
+<script>
+  // Karaoke-style lyric highlight. Honest about its limits: Suno
+  // doesn't return per-line timestamps, so we divide the song's
+  // total duration evenly across the stanza count. Close enough
+  // for a song that's roughly verse-chorus-verse-chorus; will
+  // drift on songs with big tempo changes.
+  (function() {{
+    const player = document.getElementById('player');
+    const lyrics = document.getElementById('lyrics');
+    if (!player || !lyrics) return;
+    const total = parseInt(lyrics.dataset.totalStanzas || '0', 10);
+    if (total <= 0) return;
+    const items = lyrics.querySelectorAll('[data-stanza]');
+    let activeIdx = -1;
+    let activated = false;
+    player.addEventListener('play', function() {{
+      if (!activated) {{ lyrics.classList.remove('idle'); activated = true; }}
+    }});
+    player.addEventListener('timeupdate', function() {{
+      const dur = player.duration;
+      if (!dur || isNaN(dur)) return;
+      const idx = Math.min(total, Math.floor((player.currentTime / dur) * total) + 1);
+      if (idx === activeIdx) return;
+      activeIdx = idx;
+      items.forEach(function(el) {{
+        if (parseInt(el.dataset.stanza, 10) === idx) {{
+          el.classList.add('active');
+          el.scrollIntoView({{behavior: 'smooth', block: 'center'}});
+        }} else {{
+          el.classList.remove('active');
+        }}
+      }});
+    }});
+    player.addEventListener('ended', function() {{
+      items.forEach(function(el) {{ el.classList.remove('active'); }});
+      lyrics.classList.add('idle');
+      activated = false;
+      activeIdx = -1;
+    }});
+  }})();
+</script>
 </body>
 </html>"""
     # no-cache on the HTML so each fresh visit re-evaluates the

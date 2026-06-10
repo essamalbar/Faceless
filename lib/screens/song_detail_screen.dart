@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+
+import '../web_share_stub.dart' if (dart.library.js_interop) '../web_share_web.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
@@ -389,6 +392,14 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     try {
       final info = await widget.client.shareSong(widget.runId);
       if (!mounted) return;
+      // Try the platform's native share sheet first via the Web
+      // Share API. On mobile (Safari iOS, Chrome Android) this
+      // pops the OS share UI (WhatsApp, Telegram, Mail, etc).
+      // Falls through to the copy-link dialog if unsupported
+      // (desktop Chrome on most platforms, Firefox).
+      if (await _tryNativeShare(info.url, _summary?.title ?? 'AI song')) {
+        return;
+      }
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -445,6 +456,14 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
         messenger.showSnackBar(SnackBar(content: Text('Share failed: $e')));
       }
     }
+  }
+
+  /// Try the platform's native share sheet (Web Share API on web).
+  /// Returns true when the sheet was shown — caller skips its alt
+  /// UI in that case.
+  Future<bool> _tryNativeShare(String url, String title) async {
+    if (!kIsWeb) return false;  // Mobile/desktop falls through
+    return tryNativeWebShare(url: url, title: title);
   }
 
   Future<void> _rerollTakes() async {

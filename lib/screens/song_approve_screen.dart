@@ -58,6 +58,71 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
     });
   }
 
+  Future<void> _editLyrics(SongScript s) async {
+    final ctrl = TextEditingController(text: s.lyrics);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit lyrics'),
+        content: SizedBox(
+          width: 560,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Keep Suno section tags ([Verse 1], [Chorus]) intact — '
+                'Suno uses them to structure the arrangement. Dropping '
+                'them gives a formless song.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              Directionality(
+                textDirection: s.language == 'ar' || s.language == 'he'
+                        || s.language == 'fa' || s.language == 'ur'
+                    ? TextDirection.rtl
+                    : TextDirection.ltr,
+                child: TextField(
+                  controller: ctrl,
+                  maxLines: 16,
+                  style: const TextStyle(fontSize: 15, height: 1.6),
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (saved != true || !mounted) return;
+    if (ctrl.text.length > 4000) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Lyrics exceed 4000 chars'),
+      ));
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.client.editSong(widget.runId, lyrics: ctrl.text);
+      final script = await widget.client.getSongScript(widget.runId);
+      if (!mounted) return;
+      setState(() => _script = script);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _regenLyrics() async {
     setState(() => _busy = true);
     try {
@@ -149,19 +214,16 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
             children: [
               _SectionCard(
                 title: 'Lyrics',
-                body: Directionality(
-                  textDirection: s.language == 'ar' ||
-                          s.language == 'he' ||
-                          s.language == 'fa' ||
-                          s.language == 'ur'
-                      ? TextDirection.rtl
-                      : TextDirection.ltr,
-                  child: Text(
-                    s.lyrics,
-                    style: const TextStyle(fontSize: 16, height: 1.5),
-                  ),
+                body: _LyricsPreview(
+                  lyrics: s.lyrics,
+                  language: s.language,
                 ),
                 actions: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Edit'),
+                    onPressed: _busy ? null : () => _editLyrics(s),
+                  ),
                   TextButton.icon(
                     icon: const Icon(Icons.refresh),
                     label: const Text('Re-roll'),
@@ -275,4 +337,73 @@ class _SectionCard extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+/// Lyrics renderer that pulls section tags ([Verse 1], [Chorus], etc.)
+/// out into colored chip headers — matches the public share page so
+/// users approve what they'll actually see published.
+class _LyricsPreview extends StatelessWidget {
+  final String lyrics;
+  final String language;
+  const _LyricsPreview({required this.lyrics, required this.language});
+
+  static final _sectionRe = RegExp(r'^\[([^\]]+)\]\s*$');
+
+  bool get _isRtl =>
+      language == 'ar' || language == 'he' ||
+      language == 'fa' || language == 'ur';
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = const Color(0xFFD7B46A);
+    final lines = <Widget>[];
+    for (final raw in lyrics.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) {
+        lines.add(const SizedBox(height: 8));
+        continue;
+      }
+      final m = _sectionRe.firstMatch(line);
+      if (m != null) {
+        lines.add(Align(
+          alignment: _isRtl ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            margin: const EdgeInsets.only(top: 12, bottom: 4),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              m.group(1)!,
+              style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 1.6,
+                fontWeight: FontWeight.w600,
+                color: accent,
+              ),
+            ),
+          ),
+        ));
+      } else {
+        lines.add(Text(
+          line,
+          textAlign: _isRtl ? TextAlign.right : TextAlign.left,
+          style: TextStyle(
+            fontSize: _isRtl ? 17 : 15,
+            height: _isRtl ? 1.9 : 1.6,
+          ),
+        ));
+      }
+    }
+    return Directionality(
+      textDirection: _isRtl ? TextDirection.rtl : TextDirection.ltr,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: lines,
+      ),
+    );
+  }
 }
