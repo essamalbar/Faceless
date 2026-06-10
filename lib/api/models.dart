@@ -307,6 +307,11 @@ class SongSummary {
   final bool hasVideo;
   final int? chosenTake;
   final String? lastError;
+  // generating_song / generating_cover / assembling — when status
+  // is "failed", tells the UI which stage was running so it can
+  // show an actionable retry hint (e.g. "Suno failed — retry will
+  // re-charge" vs "Cover failed — retry is free").
+  final String? failureStage;
 
   SongSummary({
     required this.id,
@@ -317,6 +322,7 @@ class SongSummary {
     required this.hasVideo,
     required this.chosenTake,
     required this.lastError,
+    this.failureStage,
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -328,6 +334,7 @@ class SongSummary {
         hasVideo: (j['has_video'] as bool?) ?? false,
         chosenTake: j['chosen_take'] as int?,
         lastError: j['last_error'] as String?,
+        failureStage: j['failure_stage'] as String?,
       );
 }
 

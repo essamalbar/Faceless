@@ -1056,7 +1056,16 @@ def _run_song_post_approve(args) -> int:
         write_state(status="complete")
         return 0
     except Exception as e:
-        write_state(status="failed", last_error=f"{type(e).__name__}: {e}")
+        # Tag the failure with the stage we were in, so the API can
+        # surface "Suno timeout" vs "cover failed" vs "ffmpeg error"
+        # to the user instead of an opaque message.
+        prev_status = json.loads(state_path.read_text()).get("status", "unknown") \
+            if state_path.exists() else "unknown"
+        write_state(
+            status="failed",
+            failure_stage=prev_status,
+            last_error=f"{type(e).__name__}: {e}",
+        )
         print(f"[song-post-approve] failed: {e}", file=_sys.stderr)
         return 1
 

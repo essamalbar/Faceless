@@ -428,6 +428,11 @@ class SongRunSummary(BaseModel):
     has_video: bool
     chosen_take: int | None = None
     last_error: str | None = None
+    # Which stage was running when failure hit:
+    # generating_song / generating_cover / assembling. Lets the UI
+    # show actionable hints (e.g. "Suno timeout — retry will re-charge"
+    # vs "cover failed — retry is free").
+    failure_stage: str | None = None
 
 
 class RunProgress(BaseModel):
@@ -2359,6 +2364,63 @@ def _enforce_concurrent_song_limit(user: "User") -> None:
         )
 
 
+# Per-user daily song-approve rate limit. Hard cap on how many songs
+# a single account can spawn in 24 hours, independent of credits.
+# Stops bill-shock attacks (compromised account or a runaway script
+# trying to drain credits + max out Kie usage).
+_SONG_DAILY_LIMIT = int(
+    os.environ.get("FACELESS_SONG_DAILY_LIMIT", "30")
+)
+
+
+def _rate_limit_path(user: "User") -> Path:
+    return _user_runs_root(user) / "_rate_limit.json"
+
+
+def _load_rate_log(user: "User") -> list[float]:
+    """Load timestamps of recent song approvals (epoch seconds)."""
+    p = _rate_limit_path(user)
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text())
+        return data.get("approvals", []) if isinstance(data, dict) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _record_song_approval(user: "User") -> None:
+    """Append now() to the user's approval log, dropping entries older
+    than 24h. Atomic write."""
+    import time
+    p = _rate_limit_path(user)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    cutoff = now - 86400
+    log = [t for t in _load_rate_log(user) if t > cutoff]
+    log.append(now)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps({"approvals": log}, ensure_ascii=False),
+                   encoding="utf-8")
+    tmp.replace(p)
+
+
+def _enforce_daily_song_limit(user: "User") -> None:
+    """Raise 429 if the user has approved >= _SONG_DAILY_LIMIT songs
+    in the last 24 hours. Service tokens bypass."""
+    if user.role == "service":
+        return
+    import time
+    cutoff = time.time() - 86400
+    recent = sum(1 for t in _load_rate_log(user) if t > cutoff)
+    if recent >= _SONG_DAILY_LIMIT:
+        raise HTTPException(
+            429,
+            f"daily song limit reached ({_SONG_DAILY_LIMIT} per 24h); "
+            f"try again later",
+        )
+
+
 @app.get("/songs/{run_id}", response_model=SongRunSummary)
 def get_song(run_id: str, user: User = Depends(require_user)):
     run_dir = _resolve_song_dir(run_id, user)
@@ -2375,6 +2437,7 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         has_video=(run_dir / "final.mp4").exists(),
         chosen_take=state.get("chosen_take"),
         last_error=state.get("last_error"),
+        failure_stage=state.get("failure_stage"),
     )
 
 
@@ -2399,8 +2462,59 @@ def get_song_script(run_id: str, user: User = Depends(require_user)):
     )
 
 
+_FAILED_RUN_TTL_DAYS = int(
+    os.environ.get("FACELESS_FAILED_RUN_TTL_DAYS", "30")
+)
+
+
+def _cleanup_old_failed_song_runs(user: "User") -> int:
+    """Delete song runs that have been in `failed` status for more
+    than _FAILED_RUN_TTL_DAYS. Cheap to run lazily from /songs (the
+    list endpoint walks the dirs anyway). Returns count deleted."""
+    import shutil
+    import time
+    user_root = _user_runs_root(user)
+    if not user_root.exists():
+        return 0
+    cutoff = time.time() - (_FAILED_RUN_TTL_DAYS * 86400)
+    deleted = 0
+    for d in user_root.iterdir():
+        if not d.is_dir():
+            continue
+        state = _read_state(d)
+        if state.get("kind") != "song":
+            continue
+        if state.get("status") != "failed":
+            continue
+        # Last update older than TTL → drop it.
+        updated_at = state.get("updated_at")
+        if not updated_at:
+            continue
+        try:
+            from datetime import datetime as _dt
+            ts = _dt.fromisoformat(updated_at).timestamp()
+        except (TypeError, ValueError):
+            continue
+        if ts < cutoff:
+            try:
+                shutil.rmtree(d)
+                deleted += 1
+            except OSError:
+                continue
+    return deleted
+
+
 @app.get("/songs", response_model=list[SongRunSummary])
 def list_songs(user: User = Depends(require_user)):
+    # Lazy cleanup of stale failed runs. ~30 days TTL by default.
+    # Runs in the request path because /songs is already iterating
+    # the user's run dirs; the extra cost is just a couple stat()
+    # calls per failed entry.
+    try:
+        _cleanup_old_failed_song_runs(user)
+    except Exception:
+        # Cleanup failures must never block a successful list. Swallow.
+        pass
     out = []
     user_root = _user_runs_root(user)
     if not user_root.exists():
@@ -2421,6 +2535,7 @@ def list_songs(user: User = Depends(require_user)):
             has_video=(d / "final.mp4").exists(),
             chosen_take=state.get("chosen_take"),
             last_error=state.get("last_error"),
+            failure_stage=state.get("failure_stage"),
         ))
     return out
 
@@ -2569,6 +2684,9 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     # tapping Approve on multiple drafts and burning multiple
     # Suno spends in parallel.
     _enforce_concurrent_song_limit(user)
+    # Per-user daily-rate cap. Stops a runaway script or compromised
+    # account from draining credits + maxing out Kie usage.
+    _enforce_daily_song_limit(user)
 
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
@@ -2593,6 +2711,10 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     _write_state(run_dir, status="generating_song")
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
+    # Record this approval in the rate-limit log AFTER the spawn
+    # succeeds. If spawning fails, no credit gets spent in the wrong
+    # state — we let the user retry without it counting against quota.
+    _record_song_approval(user)
     # Re-read so we don't clobber a worker-side status update that ran
     # synchronously between _SPAWN_FN returning and us getting here
     # (only happens with the in-process spawn used in integration tests).

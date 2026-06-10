@@ -69,21 +69,40 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
 
   Future<void> _swap(int take) async {
     setState(() => _swapping = true);
+    final messenger = ScaffoldMessenger.of(context);
     try {
+      // Swap-take is now async — the API spawns a worker and returns
+      // immediately. Status flips to "assembling" until the worker
+      // finishes (1-2 min on Cloud Run with veryfast preset). We
+      // re-poll so the user sees the live progress, then refresh
+      // the video player once we observe a state change away from
+      // "assembling".
       await widget.client.swapTake(widget.runId, take);
+      // Immediate state read so the take-swap card disables both
+      // buttons while assembling.
       final s = await widget.client.getSong(widget.runId);
       if (!mounted) return;
       setState(() => _summary = s);
-      // Reload the video player so it picks up the new take's clip
-      await _initVideo();
+      if (s.status == 'assembling') {
+        messenger.showSnackBar(SnackBar(
+          content: Text('Switching to Take $take — ready in ~1 min'),
+          duration: const Duration(seconds: 4),
+        ));
+        // Resume polling so the UI auto-updates when assemble completes.
+        _poll();
+      } else {
+        // No-op case (same take already chosen) — refresh video so
+        // the cache-busted URL pulls the current bytes.
+        await _initVideo();
+      }
     } on FacelessApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(content: Text('Swap failed: ${e.message}')),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(content: Text('Swap failed: $e')),
       );
     } finally {
@@ -835,27 +854,54 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
 
   // ─── error card ─────────────────────────────────────────────────────────────
 
+  // Maps the worker's failure_stage to a human title + retry hint.
+  static const _stageInfo = <String, (String, String)>{
+    'generating_song':
+        ('Song generation failed',
+         'Retry will spawn a fresh Suno job — this re-charges credits.'),
+    'generating_cover':
+        ('Cover image failed',
+         'Suno output is saved. Retry only re-runs Flux + ffmpeg (~\$0.03).'),
+    'assembling':
+        ('Video assembly failed',
+         'Suno + cover are saved. Retry only re-runs ffmpeg (free).'),
+  };
+
   Widget _buildErrorCard(BuildContext context, SongSummary s) {
+    final info = _stageInfo[s.failureStage ?? ''];
+    final title = info?.$1 ?? 'Error';
+    final hint = info?.$2;
+    final colors = Theme.of(context).colorScheme;
     return Card(
-      color: Theme.of(context).colorScheme.errorContainer,
+      color: colors.errorContainer,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Error',
+              title,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onErrorContainer,
+                color: colors.onErrorContainer,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               s.lastError ?? 'Unknown error',
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onErrorContainer),
+              style: TextStyle(color: colors.onErrorContainer),
             ),
+            if (hint != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                hint,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: colors.onErrorContainer.withValues(alpha: 0.85),
+                ),
+              ),
+            ],
           ],
         ),
       ),

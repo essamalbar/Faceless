@@ -5,6 +5,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../api/settings.dart';
 import '../theme.dart';
+import 'transactions_screen.dart';
 
 class BillingScreen extends StatefulWidget {
   const BillingScreen({super.key});
@@ -79,6 +80,13 @@ class _BillingScreenState extends State<BillingScreen> {
       appBar: AppBar(
         title: const Text('Billing'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long),
+            tooltip: 'Transactions',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => TransactionsScreen(client: _api),
+            )),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
