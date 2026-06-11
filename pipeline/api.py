@@ -3373,13 +3373,106 @@ def unshare_song(run_id: str, user: User = Depends(require_user)):
     return None
 
 
+def _render_removed_share_page() -> "HTMLResponse":
+    """Friendly HTML 404 served when a share token is missing, corrupted,
+    or its run was deleted. Used only on the HTML /p/{token} route — the
+    /video and /cover sub-paths keep returning JSON 404 because browsers
+    don't render HTML for video/img sources."""
+    from fastapi.responses import HTMLResponse
+    cta_url = os.environ.get("FACELESS_BRAND_URL", "https://faceless-lab.com")
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Song removed · Faceless Lab</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {{ --bg-0:#06080d; --fg-0:#f3f5fb; --fg-1:#c5cad9; --fg-2:#7f869c;
+    --accent:#d7b46a; --accent-soft:rgba(215,180,106,0.16); }}
+  * {{ box-sizing: border-box; }}
+  html, body {{
+    margin: 0; padding: 0;
+    background: radial-gradient(120% 80% at 50% 0%, #131a2a 0%, var(--bg-0) 55%) fixed;
+    color: var(--fg-0);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    min-height: 100vh; min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+  }}
+  .wrap {{
+    max-width: 520px; margin: 0 auto;
+    padding: 80px 24px 60px;
+    text-align: center;
+  }}
+  .icon {{
+    width: 64px; height: 64px;
+    margin: 0 auto 28px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+  }}
+  h1 {{
+    font-size: 26px; font-weight: 700; letter-spacing: -0.01em;
+    margin: 0 0 12px;
+  }}
+  p {{
+    font-size: 15px; line-height: 1.55;
+    color: var(--fg-1);
+    margin: 0 0 32px;
+  }}
+  .cta {{
+    display: inline-block;
+    padding: 12px 28px;
+    background: var(--accent);
+    color: #0f0c06;
+    text-decoration: none;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 15px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }}
+  .cta:hover {{
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px -8px rgba(215, 180, 106, 0.5);
+  }}
+  .footer {{
+    margin-top: 48px;
+    font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--fg-2);
+  }}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="icon">♪</div>
+  <h1>This song has been removed</h1>
+  <p>The creator deleted the share link. The song is no longer available — but you can create your own AI-generated Arabic song in a few minutes.</p>
+  <a class="cta" href="{cta_url}">Try Faceless Lab →</a>
+  <div class="footer">Faceless Lab · AI music & horror shorts</div>
+</div>
+</body>
+</html>"""
+    return HTMLResponse(
+        html,
+        status_code=404,
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
 @app.get("/p/{token}", include_in_schema=False)
 def shared_song_page(token: str):
     """Public share page (no auth) — embeds the video, displays the
     lyrics with proper RTL handling and section-tag styling, sets
     Open Graph / Twitter Card meta tags for link previews."""
     from fastapi.responses import HTMLResponse
-    run_dir, script = _resolve_shared_song(token)
+    try:
+        run_dir, script = _resolve_shared_song(token)
+    except HTTPException as e:
+        if e.status_code == 404:
+            return _render_removed_share_page()
+        raise
     title = script.get("title", "AI song")
     lyrics = script.get("lyrics", "")
     language = script.get("language", "ar")
