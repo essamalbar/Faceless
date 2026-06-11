@@ -25,7 +25,7 @@ import { useEffect, useState } from "react";
 
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ||
-  "https://faceless-api-uplzdtffeq-uc.a.run.app";
+  "https://app.faceless-lab.com";
 
 // ----------------------------------------------------------------------------
 // All atmospheric clips come from Mixkit's free-stock library (CC0,
