@@ -3679,66 +3679,135 @@ def shared_song_page(token: str):
         except (OSError, json.JSONDecodeError):
             aligned = None
 
-    lyrics_html_parts: list[str] = []
+    # New v3 model: group lines into <section class="stanza">…</section>
+    # blocks. The whole stanza highlights together when its time range is
+    # active (vs. the v2 per-line approach that drifted visibly on songs
+    # where Whisper word-segmentation got jittery). Per-line click
+    # handlers are still wired for tap-to-seek.
+    #
+    # Final cues_json shape (per stanza, not per line):
+    #   [{"st": 1, "label": "Verse 1", "s": 0.0, "e": 14.5}, …]
+    #
+    # First pass parses the lyric stream into structured stanza records;
+    # second pass renders HTML + builds the cues array.
     section_re = _re.compile(r"^\[([^\]]+)\]\s*$")
-    stanza_idx = 0
-    line_idx = 0
-    cues: list[dict] = []
-    in_stanza = False
 
-    if aligned and aligned.get("lines"):
-        # New path: render directly from the aligned line list.
-        # aligned["lines"] already has section/line/stanza/start/end —
-        # blanks were dropped during alignment.
-        for entry in aligned["lines"]:
-            kind = entry.get("kind")
-            text = entry.get("text", "")
-            stanza_idx = int(entry.get("stanza") or 0)
-            line_idx += 1
-            start = entry.get("start")
-            end = entry.get("end")
-            if kind == "section":
-                lyrics_html_parts.append(
-                    f'<div class="section" data-line="{line_idx}" '
-                    f'data-stanza="{stanza_idx}">{esc(text)}</div>'
-                )
-            else:
-                lyrics_html_parts.append(
-                    f'<p class="line" data-line="{line_idx}" '
-                    f'data-stanza="{stanza_idx}">{esc(text)}</p>'
-                )
-            if start is not None and end is not None:
-                cues.append({"i": line_idx, "s": float(start), "e": float(end)})
-    else:
-        # Legacy path: no alignment file (older songs). Keep the existing
-        # stanza-divided behavior so old shares don't regress.
-        for raw in lyrics.split("\n"):
+    def _entries_from_aligned(d: dict) -> list[dict]:
+        return [
+            {
+                "kind": e.get("kind"),
+                "text": e.get("text", ""),
+                "stanza": int(e.get("stanza") or 0),
+                "start": e.get("start"),
+                "end": e.get("end"),
+            }
+            for e in d.get("lines", [])
+        ]
+
+    def _entries_from_raw(text: str) -> list[dict]:
+        out: list[dict] = []
+        st = 0
+        in_st = False
+        for raw in text.split("\n"):
             line = raw.strip()
             if not line:
-                lyrics_html_parts.append('<div class="gap"></div>')
-                in_stanza = False
+                in_st = False
                 continue
             m = section_re.match(line)
             if m:
-                stanza_idx += 1
-                line_idx += 1
-                lyrics_html_parts.append(
-                    f'<div class="section" data-line="{line_idx}" '
-                    f'data-stanza="{stanza_idx}">{esc(m.group(1))}</div>'
-                )
-                in_stanza = True
+                st += 1
+                out.append({
+                    "kind": "section", "text": m.group(1),
+                    "stanza": st, "start": None, "end": None,
+                })
+                in_st = True
             else:
-                if not in_stanza:
-                    stanza_idx += 1
-                    in_stanza = True
-                line_idx += 1
-                lyrics_html_parts.append(
-                    f'<p class="line" data-line="{line_idx}" '
-                    f'data-stanza="{stanza_idx}">{esc(line)}</p>'
-                )
+                if not in_st:
+                    st += 1
+                    in_st = True
+                out.append({
+                    "kind": "line", "text": line,
+                    "stanza": st, "start": None, "end": None,
+                })
+        return out
+
+    entries = (
+        _entries_from_aligned(aligned) if aligned and aligned.get("lines")
+        else _entries_from_raw(lyrics)
+    )
+
+    # Group entries by stanza index, preserving order.
+    stanza_records: list[dict] = []
+    by_stanza: dict[int, dict] = {}
+    line_idx = 0
+    for e in entries:
+        sid = e["stanza"]
+        rec = by_stanza.get(sid)
+        if rec is None:
+            rec = {"id": sid, "label": "", "lines": [], "starts": [], "ends": []}
+            by_stanza[sid] = rec
+            stanza_records.append(rec)
+        if e["kind"] == "section":
+            rec["label"] = e["text"]
+        else:
+            line_idx += 1
+            rec["lines"].append({
+                "line_id": line_idx,
+                "text": e["text"],
+                "start": e["start"],
+                "end": e["end"],
+            })
+        if e.get("start") is not None:
+            rec["starts"].append(float(e["start"]))
+        if e.get("end") is not None:
+            rec["ends"].append(float(e["end"]))
+
+    # Compute per-stanza (start, end) ranges from constituent line times.
+    # Stanzas with no aligned lines (legacy songs, edge cases) skip cues.
+    cues: list[dict] = []
+    for rec in stanza_records:
+        s = min(rec["starts"]) if rec["starts"] else None
+        e = max(rec["ends"]) if rec["ends"] else None
+        if s is not None and e is not None and e > s:
+            cues.append({
+                "st": rec["id"],
+                "label": rec["label"],
+                "s": s,
+                "e": e,
+            })
+
+    # Render HTML. Each stanza wraps its section label + lines.
+    lyrics_html_parts: list[str] = []
+    for rec in stanza_records:
+        lyrics_html_parts.append(
+            f'<section class="stanza" data-stanza="{rec["id"]}">'
+        )
+        if rec["label"]:
+            lyrics_html_parts.append(
+                f'<div class="section">{esc(rec["label"])}</div>'
+            )
+        for ln in rec["lines"]:
+            seek_attr = ""
+            if ln["start"] is not None:
+                seek_attr = f' data-seek="{float(ln["start"]):.3f}"'
+            lyrics_html_parts.append(
+                f'<p class="line" data-line="{ln["line_id"]}"'
+                f' data-stanza="{rec["id"]}"{seek_attr}>{esc(ln["text"])}</p>'
+            )
+        lyrics_html_parts.append("</section>")
+
     lyrics_html = "\n".join(lyrics_html_parts)
-    total_stanzas = stanza_idx
+    total_stanzas = len(stanza_records)
     cues_json = json.dumps(cues, ensure_ascii=False)
+    # Compact stanza-ribbon labels: short, accessible, used for the
+    # nav-chip strip rendered between the player and lyrics.
+    nav_chips_html = "".join(
+        f'<button type="button" class="stanza-chip" '
+        f'data-stanza-target="{rec["id"]}">'
+        f'{esc(rec["label"]) if rec["label"] else str(rec["id"])}'
+        f'</button>'
+        for rec in stanza_records if rec["lines"]
+    )
 
     html = f"""<!DOCTYPE html>
 <html lang="{esc(language)}">
@@ -3887,16 +3956,43 @@ def shared_song_page(token: str):
     .lyrics .line {{ font-size: 16px; }}
     body[dir="rtl"] .lyrics .line {{ font-size: 19px; }}
   }}
-  /* Karaoke highlighter — lines outside the currently-playing
-     stanza dim slightly; active stanza gets a subtle gold rim. */
-  .lyrics .line, .lyrics .section {{
-    transition: opacity 0.5s ease, color 0.5s ease;
-    opacity: 0.45;
+  /* Karaoke v3 — section-by-section, not line-by-line.
+     Whole-stanza highlight is honest about the imperfect alignment:
+     the active stanza glows together and all its lines stay readable.
+     Per-line tap-to-seek is still wired (data-seek attributes on
+     each <p>), so visitors can fine-tune position without watching
+     a wobble that tries (and fails) to follow Whisper's word jitter. */
+  .stanza {{
+    position: relative;
+    border-radius: 14px;
+    padding: 12px 16px;
+    margin: 6px -16px;
+    transition:
+      background-color 320ms ease,
+      box-shadow 320ms ease,
+      opacity 320ms ease,
+      transform 320ms ease;
+    opacity: 0.55;
   }}
-  .lyrics .line.active, .lyrics .section.active {{
+  .lyrics.idle .stanza {{ opacity: 1; }}
+  .stanza.active {{
     opacity: 1;
+    background: linear-gradient(180deg,
+      rgba(215, 180, 106, 0.10),
+      rgba(215, 180, 106, 0.02));
+    box-shadow:
+      inset 0 0 0 1px rgba(215, 180, 106, 0.32),
+      0 18px 40px -28px rgba(215, 180, 106, 0.35);
   }}
-  .lyrics.idle .line, .lyrics.idle .section {{ opacity: 1; }}
+  .stanza.active .section {{
+    color: var(--accent);
+    background: rgba(215, 180, 106, 0.22);
+  }}
+  /* Per-line elements no longer animate opacity themselves —
+     stanza-level opacity handles the dim/full state. */
+  .lyrics .line, .lyrics .section {{
+    transition: background-color 200ms ease, transform 200ms ease;
+  }}
 
   /* ---------------- v2: polish + interactivity ---------------- */
 
@@ -3967,11 +4063,6 @@ def shared_song_page(token: str):
   .lyrics .line:hover {{
     background-color: rgba(215, 180, 106, 0.08);
   }}
-  .lyrics .line.active {{
-    background-color: var(--accent-soft);
-    transform: translateX(0);
-  }}
-  body[dir="rtl"] .lyrics .line.active {{ transform: translateX(0); }}
   .lyrics .line:active {{
     transform: scale(0.985);
   }}
@@ -4051,9 +4142,185 @@ def shared_song_page(token: str):
     width: 14px; height: 14px;
     fill: none; stroke: currentColor; stroke-width: 1.7;
   }}
+
+  /* ---------------- v3: nav ribbon, download, particles, entrance ---------------- */
+
+  /* Section-jump nav chips below the player. Horizontally scrolling
+     on mobile; centered on desktop. Active chip is the stanza the
+     player is currently inside. */
+  .stanza-nav {{
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 8px;
+    margin: 20px -20px 0;
+    padding: 0 20px 4px;
+  }}
+  .stanza-nav::-webkit-scrollbar {{ display: none; }}
+  .stanza-chip {{
+    flex: 0 0 auto;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--fg-2);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease,
+      transform 180ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }}
+  .stanza-chip:hover {{
+    background: rgba(215, 180, 106, 0.06);
+    border-color: rgba(215, 180, 106, 0.28);
+    color: var(--fg-0);
+  }}
+  .stanza-chip.active {{
+    background: rgba(215, 180, 106, 0.18);
+    border-color: rgba(215, 180, 106, 0.55);
+    color: var(--accent);
+  }}
+  .stanza-chip:active {{ transform: scale(0.96); }}
+
+  /* Download button — same pill family as the heart, hosted in
+     the stat bar. Subtle gold tint distinguishes it. */
+  .download-btn {{
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--fg-1);
+    border-radius: 999px;
+    padding: 9px 18px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease,
+      transform 200ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }}
+  .download-btn:hover {{
+    background: rgba(215, 180, 106, 0.08);
+    border-color: rgba(215, 180, 106, 0.35);
+    color: var(--fg-0);
+  }}
+  .download-btn:active {{ transform: scale(0.96); }}
+  .download-btn .dl-icon {{
+    width: 14px; height: 14px;
+    fill: none; stroke: currentColor; stroke-width: 1.7;
+  }}
+
+  /* Heart burst — gold sparks fly out when a visitor likes the song.
+     A small particle system on the heart's bounding box. */
+  .heart-btn {{ position: relative; }}
+  .heart-btn .spark {{
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    margin: -3px 0 0 -3px;
+    background: var(--accent);
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+  }}
+  @keyframes spark-fly {{
+    0%   {{ transform: translate(0, 0) scale(1);   opacity: 1; }}
+    100% {{ transform: var(--spark-end) scale(0.2); opacity: 0; }}
+  }}
+
+  /* Atmospheric particle field behind the page — three slow-floating
+     gold orbs, very low opacity. Pure CSS so no extra paint cost from
+     a canvas. */
+  .ambient {{
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }}
+  .ambient .orb {{
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: 0.25;
+    mix-blend-mode: screen;
+  }}
+  .ambient .orb-1 {{
+    width: 320px; height: 320px;
+    top: -80px; left: -60px;
+    background: rgba(215, 180, 106, 0.5);
+    animation: drift-1 18s ease-in-out infinite alternate;
+  }}
+  .ambient .orb-2 {{
+    width: 280px; height: 280px;
+    bottom: -100px; right: -80px;
+    background: rgba(106, 130, 215, 0.32);
+    animation: drift-2 22s ease-in-out infinite alternate;
+  }}
+  .ambient .orb-3 {{
+    width: 200px; height: 200px;
+    top: 50%; left: 75%;
+    background: rgba(215, 106, 156, 0.18);
+    animation: drift-3 28s ease-in-out infinite alternate;
+  }}
+  @keyframes drift-1 {{
+    0%   {{ transform: translate(0,   0)   scale(1);   }}
+    100% {{ transform: translate(40px, 60px) scale(1.15); }}
+  }}
+  @keyframes drift-2 {{
+    0%   {{ transform: translate(0,   0)   scale(1);    }}
+    100% {{ transform: translate(-30px, -40px) scale(1.1); }}
+  }}
+  @keyframes drift-3 {{
+    0%   {{ transform: translate(0, 0) scale(1); opacity: 0.18; }}
+    100% {{ transform: translate(-50px, 30px) scale(0.85); opacity: 0.32; }}
+  }}
+  .wrap {{ position: relative; z-index: 1; }}
+
+  /* Entrance animation — page elements rise into place on first paint
+     so the song reveal feels intentional. Reduces motion gracefully. */
+  @keyframes rise-in {{
+    0%   {{ opacity: 0; transform: translateY(14px); }}
+    100% {{ opacity: 1; transform: translateY(0); }}
+  }}
+  .player, .title, .made-by, .stat-bar, .stanza-nav, .lyrics, footer {{
+    animation: rise-in 800ms cubic-bezier(0.16, 0.84, 0.44, 1) backwards;
+  }}
+  .player {{ animation-delay: 0ms; }}
+  .title  {{ animation-delay: 100ms; }}
+  .made-by{{ animation-delay: 180ms; }}
+  .stat-bar {{ animation-delay: 240ms; }}
+  .stanza-nav {{ animation-delay: 300ms; }}
+  .lyrics {{ animation-delay: 360ms; }}
+  footer {{ animation-delay: 480ms; }}
+  @media (prefers-reduced-motion: reduce) {{
+    .player, .title, .made-by, .stat-bar, .stanza-nav, .lyrics, footer {{
+      animation: none;
+    }}
+    .ambient .orb {{ animation: none; }}
+    .player.before-play::after {{ animation: none; }}
+  }}
 </style>
 </head>
 <body dir="{text_dir}">
+<div class="ambient" aria-hidden="true">
+  <span class="orb orb-1"></span>
+  <span class="orb orb-2"></span>
+  <span class="orb orb-3"></span>
+</div>
 <div class="wrap">
   <div class="player before-play" id="player-wrap">
     <video id="player" controls playsinline poster="{cover_url}" preload="metadata">
@@ -4077,7 +4344,16 @@ def shared_song_page(token: str):
       </svg>
       <span class="view-count" id="view-count">0</span>
     </span>
+    <a class="download-btn" id="download-btn" download href="{video_url}" aria-label="Download MP4">
+      <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 4v12m0 0l-5-5m5 5l5-5M4 20h16" />
+      </svg>
+      <span>Download</span>
+    </a>
   </div>
+  <nav class="stanza-nav" id="stanza-nav" aria-label="Jump to section">
+    {nav_chips_html}
+  </nav>
   <div class="lyrics idle" id="lyrics" data-total-stanzas="{total_stanzas}">
     {lyrics_html}
   </div>
@@ -4087,14 +4363,15 @@ def shared_song_page(token: str):
   </footer>
 </div>
 <script>
-  // Karaoke highlight. Two modes:
-  //   * Aligned (preferred): consumes the lyric-cues JSON produced by
-  //     pipeline/song_align.py — exact per-line start/end seconds from
-  //     Whisper-as-stopwatch. Active line tracks the actual audio.
-  //   * Legacy: cues array empty for old shares pre-alignment. Falls
-  //     back to dividing total duration across stanza count (the
-  //     drift-prone behavior shipped originally — kept so old shares
-  //     still highlight SOMETHING).
+  // Karaoke v3 — SECTION-by-section, never line-by-line.
+  //
+  // The Whisper-derived per-line timestamps drift visibly because
+  // Arabic sub-word boundaries are unreliable. Highlighting an entire
+  // stanza for its whole sung range absorbs that drift: the visitor
+  // sees the right *block* of lyrics for the moment they're hearing,
+  // and individual lines never appear to lag or jump.
+  //
+  // Cue shape (one per stanza): {{st, label, s, e}}.
   (function() {{
     const player = document.getElementById('player');
     const lyrics = document.getElementById('lyrics');
@@ -4104,38 +4381,47 @@ def shared_song_page(token: str):
     if (cuesEl) {{
       try {{ cues = JSON.parse(cuesEl.textContent || '[]'); }} catch (e) {{}}
     }}
-    const sungLines = lyrics.querySelectorAll('.line[data-line]');
-    const allByLineId = new Map();
-    lyrics.querySelectorAll('[data-line]').forEach(function(el) {{
-      allByLineId.set(parseInt(el.dataset.line, 10), el);
+    const stanzas = new Map();
+    lyrics.querySelectorAll('.stanza[data-stanza]').forEach(function(el) {{
+      stanzas.set(parseInt(el.dataset.stanza, 10), el);
+    }});
+    const navChips = new Map();
+    document.querySelectorAll('.stanza-chip[data-stanza-target]').forEach(function(el) {{
+      navChips.set(parseInt(el.dataset.stanzaTarget, 10), el);
     }});
 
-    let activeLineId = -1;
+    let activeStanza = -1;
     let activated = false;
 
-    function setActive(lineId) {{
-      if (lineId === activeLineId) return;
-      activeLineId = lineId;
-      allByLineId.forEach(function(el, id) {{
-        if (id === lineId) {{
-          el.classList.add('active');
-          el.scrollIntoView({{behavior: 'smooth', block: 'center'}});
-        }} else {{
-          el.classList.remove('active');
+    function setActive(stanzaId) {{
+      if (stanzaId === activeStanza) return;
+      activeStanza = stanzaId;
+      stanzas.forEach(function(el, id) {{
+        const on = (id === stanzaId);
+        el.classList.toggle('active', on);
+        if (on) {{
+          // Scroll so the active stanza is visible without snapping the
+          // whole page — use nearest, not center, so the lyric column
+          // scrolls and the player overhead stays put.
+          el.scrollIntoView({{behavior: 'smooth', block: 'nearest'}});
         }}
+      }});
+      navChips.forEach(function(chip, id) {{
+        chip.classList.toggle('active', id === stanzaId);
       }});
     }}
 
-    function findCueAt(t) {{
-      // Cues are ordered by start. Binary search keeps this fast on
-      // a 40-line lyric while still firing on every timeupdate (~4Hz).
-      let lo = 0, hi = cues.length - 1, best = -1;
-      while (lo <= hi) {{
-        const mid = (lo + hi) >> 1;
-        if (cues[mid].s <= t) {{ best = mid; lo = mid + 1; }}
-        else {{ hi = mid - 1; }}
+    function findStanzaAt(t) {{
+      // Linear scan is fine — songs have <20 stanzas.
+      // Returns the latest cue whose start <= t. If we're past the last
+      // cue's end, we still hold that stanza so the highlight doesn't
+      // disappear during outro / instrumental tails.
+      let best = -1;
+      for (let i = 0; i < cues.length; i++) {{
+        if (cues[i].s <= t + 0.05) best = i;
       }}
-      return best;
+      if (best < 0) return -1;
+      return cues[best].st;
     }}
 
     player.addEventListener('play', function() {{
@@ -4144,30 +4430,17 @@ def shared_song_page(token: str):
     player.addEventListener('timeupdate', function() {{
       const t = player.currentTime;
       if (cues.length > 0) {{
-        const idx = findCueAt(t);
-        if (idx < 0) {{ setActive(-1); return; }}
-        const cue = cues[idx];
-        // Stick with the cue as long as we're within its window OR before
-        // the next one — handles brief gaps between lines.
-        const next = cues[idx + 1];
-        if (t <= cue.e || !next || t < next.s) {{
-          setActive(cue.i);
-        }}
+        setActive(findStanzaAt(t));
         return;
       }}
-      // Legacy fallback: stanza-divided linear approximation.
+      // Legacy fallback: linearly partition the audio across stanzas
+      // (old songs minted before lyrics.json existed).
       const dur = player.duration;
       if (!dur || isNaN(dur)) return;
       const total = parseInt(lyrics.dataset.totalStanzas || '0', 10);
       if (total <= 0) return;
       const stIdx = Math.min(total, Math.floor((t / dur) * total) + 1);
-      let target = -1;
-      allByLineId.forEach(function(el, id) {{
-        if (parseInt(el.dataset.stanza, 10) === stIdx && target < 0) {{
-          target = id;
-        }}
-      }});
-      setActive(target);
+      setActive(stIdx);
     }});
     player.addEventListener('ended', function() {{
       setActive(-1);
@@ -4177,33 +4450,44 @@ def shared_song_page(token: str):
   }})();
 
   // ------------------------------------------------------------------
-  // Tap-to-seek: tapping any lyric line jumps the audio to that line's
-  // start time. Honest about the imperfect alignment — letting the user
-  // navigate by line is the workaround until we ship a stronger
-  // forced-alignment model.
+  // Tap-to-seek: clicking any lyric line jumps the audio to that line.
+  // Each <p class="line"> carries data-seek with its start time (set
+  // by the Python side when lyrics.json is available). Tapping a
+  // stanza nav chip jumps to the first line of that stanza.
+  //
+  // This is the manual recovery for any residual drift in the
+  // automatic stanza highlight — the visitor can always click where
+  // they want and the audio follows.
   // ------------------------------------------------------------------
   (function() {{
     const player = document.getElementById('player');
     const lyrics = document.getElementById('lyrics');
-    const cuesEl = document.getElementById('lyric-cues');
-    if (!player || !lyrics || !cuesEl) return;
-    let cues = [];
-    try {{ cues = JSON.parse(cuesEl.textContent || '[]'); }} catch (e) {{}}
-    const byLineId = new Map();
-    cues.forEach(function(c) {{ byLineId.set(c.i, c); }});
-    lyrics.querySelectorAll('.line[data-line]').forEach(function(el) {{
-      const id = parseInt(el.dataset.line, 10);
-      const cue = byLineId.get(id);
-      if (!cue) return;
+    if (!player || !lyrics) return;
+    function seekAndPlay(t) {{
+      try {{ player.currentTime = Math.max(0, t - 0.1); }} catch (e) {{ return; }}
+      if (player.paused) {{
+        const p = player.play();
+        if (p && typeof p.catch === 'function') p.catch(function() {{}});
+      }}
+    }}
+    lyrics.querySelectorAll('.line[data-seek]').forEach(function(el) {{
       el.addEventListener('click', function() {{
-        // Seek to a fraction before the line so the first word is
-        // audible rather than already-spoken; 0.1s usually feels right.
-        const target = Math.max(0, cue.s - 0.1);
-        try {{ player.currentTime = target; }} catch (e) {{ return; }}
-        if (player.paused) {{
-          const p = player.play();
-          if (p && typeof p.catch === 'function') p.catch(function() {{}});
-        }}
+        const t = parseFloat(el.dataset.seek);
+        if (!isNaN(t)) seekAndPlay(t);
+      }});
+    }});
+
+    // Stanza ribbon: each chip jumps to the FIRST line of its stanza
+    // (read the first .line[data-seek] inside that .stanza section).
+    document.querySelectorAll('.stanza-chip[data-stanza-target]').forEach(function(chip) {{
+      chip.addEventListener('click', function() {{
+        const sid = chip.dataset.stanzaTarget;
+        const stanza = lyrics.querySelector('.stanza[data-stanza="' + sid + '"]');
+        if (!stanza) return;
+        const firstLine = stanza.querySelector('.line[data-seek]');
+        if (!firstLine) return;
+        const t = parseFloat(firstLine.dataset.seek);
+        if (!isNaN(t)) seekAndPlay(t);
       }});
     }});
   }})();
@@ -4355,6 +4639,25 @@ def shared_song_page(token: str):
         if (heartCount) {{
           const cur = parseInt(heartCount.textContent || '0', 10) || 0;
           heartCount.textContent = String(Math.max(0, cur + (wasLiked ? -1 : 1)));
+        }}
+        // Spark burst on transition into "liked". Six gold particles
+        // fly outward from the heart's center then fade.
+        if (!wasLiked) {{
+          for (let i = 0; i < 6; i++) {{
+            const spark = document.createElement('span');
+            spark.className = 'spark';
+            const angle = (i / 6) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+            const dist = 22 + Math.random() * 14;
+            const dx = Math.cos(angle) * dist;
+            const dy = Math.sin(angle) * dist;
+            spark.style.setProperty('--spark-end',
+              'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)');
+            spark.style.animation = 'spark-fly 620ms ease-out forwards';
+            heartBtn.appendChild(spark);
+            setTimeout(function(s) {{ return function() {{
+              if (s.parentNode) s.parentNode.removeChild(s);
+            }}; }}(spark), 700);
+          }}
         }}
         fetch('/p/' + encodeURIComponent(token) + '/like', {{
           method: 'POST',
