@@ -26,6 +26,7 @@ import re
 import signal
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -3391,6 +3392,134 @@ def unshare_song(run_id: str, user: User = Depends(require_user)):
     return None
 
 
+# ---------------------------------------------------------------------------
+# Public-share social — view counts + likes for shared songs.
+#
+# Anonymous: no auth required, no account needed. We use a client-generated
+# UUID (stored in the visitor's localStorage) as the "who liked this" key.
+# This is best-effort: a determined visitor can clear localStorage to like
+# again. That's fine — the goal is "thumb-stopping engagement signal,"
+# not a tamper-resistant voting system.
+#
+# Storage: <run_dir>/social.json with shape
+#     {"views": 12, "likes": 3, "liked_client_ids": ["abc...", "def..."]}
+# Atomic writes via .tmp+rename (same pattern as the share index).
+# ---------------------------------------------------------------------------
+
+_VIEW_DEDUPE_WINDOW_S = 6 * 3600  # one view per (client, song) per 6 hours
+
+
+def _social_path(run_dir: Path) -> Path:
+    return run_dir / "social.json"
+
+
+def _load_social(run_dir: Path) -> dict:
+    p = _social_path(run_dir)
+    if not p.exists():
+        return {"views": 0, "likes": 0, "liked_client_ids": [], "views_seen": {}}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"views": 0, "likes": 0, "liked_client_ids": [], "views_seen": {}}
+    # Backfill new fields on older files so we don't crash on read.
+    data.setdefault("views", 0)
+    data.setdefault("likes", 0)
+    data.setdefault("liked_client_ids", [])
+    data.setdefault("views_seen", {})
+    return data
+
+
+def _save_social(run_dir: Path, data: dict) -> None:
+    p = _social_path(run_dir)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(p)
+
+
+class _LikePayload(BaseModel):
+    client_id: str
+
+
+class _ViewPayload(BaseModel):
+    client_id: str
+
+
+@app.post("/p/{token}/like", include_in_schema=False)
+def like_shared_song(token: str, payload: _LikePayload):
+    """Toggle a like. Anonymous — keyed by the visitor's localStorage
+    client_id. Returns {"likes": int, "liked": bool} where `liked`
+    reflects the visitor's new state after the toggle."""
+    try:
+        run_dir, _ = _resolve_shared_song(token)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(404, "song unavailable")
+        raise
+    cid = (payload.client_id or "").strip()
+    if len(cid) < 8 or len(cid) > 128:
+        raise HTTPException(400, "invalid client_id")
+    social = _load_social(run_dir)
+    if cid in social["liked_client_ids"]:
+        social["liked_client_ids"].remove(cid)
+        social["likes"] = max(0, int(social["likes"]) - 1)
+        liked = False
+    else:
+        social["liked_client_ids"].append(cid)
+        social["likes"] = int(social["likes"]) + 1
+        liked = True
+    _save_social(run_dir, social)
+    return {"likes": social["likes"], "liked": liked}
+
+
+@app.post("/p/{token}/view", include_in_schema=False)
+def view_shared_song(token: str, payload: _ViewPayload):
+    """Record a view. Deduped per (client_id, song) inside
+    _VIEW_DEDUPE_WINDOW_S so refreshes don't inflate counts."""
+    try:
+        run_dir, _ = _resolve_shared_song(token)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(404, "song unavailable")
+        raise
+    cid = (payload.client_id or "").strip()
+    if len(cid) < 8 or len(cid) > 128:
+        raise HTTPException(400, "invalid client_id")
+    social = _load_social(run_dir)
+    now = int(time.time())
+    last = int(social["views_seen"].get(cid, 0))
+    if now - last >= _VIEW_DEDUPE_WINDOW_S:
+        social["views"] = int(social["views"]) + 1
+        social["views_seen"][cid] = now
+        # Bound the views_seen map so it doesn't grow unbounded. Prune
+        # entries older than the window — they'd dedupe nothing anyway.
+        cutoff = now - _VIEW_DEDUPE_WINDOW_S
+        social["views_seen"] = {
+            k: v for k, v in social["views_seen"].items() if int(v) >= cutoff
+        }
+        _save_social(run_dir, social)
+    return {"views": social["views"]}
+
+
+@app.get("/p/{token}/stats", include_in_schema=False)
+def get_shared_song_stats(token: str, client_id: str | None = None):
+    """Fetch current stats. Used by the share page JS to refresh
+    counts after a like toggle (so the UI matches the server state)."""
+    try:
+        run_dir, _ = _resolve_shared_song(token)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(404, "song unavailable")
+        raise
+    social = _load_social(run_dir)
+    liked = bool(client_id and client_id in social["liked_client_ids"])
+    return {
+        "views": int(social["views"]),
+        "likes": int(social["likes"]),
+        "liked": liked,
+    }
+
+
 def _render_removed_share_page() -> "HTMLResponse":
     """Friendly HTML 404 served when a share token is missing, corrupted,
     or its run was deleted. Used only on the HTML /p/{token} route — the
@@ -3768,11 +3897,165 @@ def shared_song_page(token: str):
     opacity: 1;
   }}
   .lyrics.idle .line, .lyrics.idle .section {{ opacity: 1; }}
+
+  /* ---------------- v2: polish + interactivity ---------------- */
+
+  /* Bigger, more confident title typography. Subtle text-shadow keeps
+     letters legible against the cover-glow that animates behind. */
+  .title {{
+    font-size: 32px;
+    letter-spacing: -0.015em;
+    text-shadow: 0 1px 24px rgba(0, 0, 0, 0.4);
+  }}
+  body[dir="rtl"] .title {{
+    font-size: 38px;
+    line-height: 1.25;
+  }}
+  @media (max-width: 480px) {{
+    .title {{ font-size: 26px; }}
+    body[dir="rtl"] .title {{ font-size: 30px; }}
+  }}
+
+  /* Audio-driven glow around the player. The JS sets --pulse on a
+     timer driven by Web Audio's AnalyserNode; 0 when paused, 0.3–1.0
+     when playing. The transform stays subtle so it doesn't compete
+     with the actual content. */
+  .player {{
+    --pulse: 0;
+    transition: box-shadow 220ms ease;
+    box-shadow:
+      0 30px 80px -20px rgba(0,0,0,0.7),
+      0 0 0 1px rgba(255,255,255,0.04),
+      0 0 calc(40px + var(--pulse) * 60px) calc(var(--pulse) * 14px)
+        rgba(215, 180, 106, calc(0.10 + var(--pulse) * 0.18));
+  }}
+
+  /* Ken Burns on the poster element. Browsers show the <video>'s poster
+     attribute until play(); we slow-zoom it via a CSS animation so the
+     page doesn't feel static while the visitor reads the title.
+     Animation is suppressed once the video starts (.playing class added
+     by the JS) — at that point the burned-in zoompan from ffmpeg takes
+     over. */
+  .player.before-play::after {{
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(60% 40% at 50% 80%,
+      rgba(215, 180, 106, 0.06), transparent 70%);
+    pointer-events: none;
+    animation: kenburns-glow 8s ease-in-out infinite alternate;
+  }}
+  @keyframes kenburns-glow {{
+    0%   {{ transform: translate(0, 0)   scale(1); opacity: 0.7; }}
+    100% {{ transform: translate(-2%, 2%) scale(1.04); opacity: 1; }}
+  }}
+
+  /* Lyric lines are now clickable — tapping seeks the audio to that
+     cue's start time. The hover affordance has to stay subtle so the
+     reading experience isn't fidgety. */
+  .lyrics .line {{
+    cursor: pointer;
+    border-radius: 10px;
+    padding: 4px 8px;
+    margin-left: -8px;
+    margin-right: -8px;
+    transition:
+      opacity 0.5s ease,
+      color 0.5s ease,
+      background-color 220ms ease,
+      transform 220ms ease;
+  }}
+  .lyrics .line:hover {{
+    background-color: rgba(215, 180, 106, 0.08);
+  }}
+  .lyrics .line.active {{
+    background-color: var(--accent-soft);
+    transform: translateX(0);
+  }}
+  body[dir="rtl"] .lyrics .line.active {{ transform: translateX(0); }}
+  .lyrics .line:active {{
+    transform: scale(0.985);
+  }}
+
+  /* Frosted-glass effect on the lyrics container — picks up the cover
+     gradient subtly. WebKit/blink only; Firefox falls back to solid. */
+  .lyrics {{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)),
+      rgba(13, 17, 25, 0.4);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }}
+
+  /* Stat bar — heart + views. Sits between the artist tag and lyrics. */
+  .stat-bar {{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    margin: 0 0 28px;
+  }}
+  .heart-btn {{
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--fg-1);
+    border-radius: 999px;
+    padding: 9px 18px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease,
+      transform 200ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }}
+  .heart-btn:hover {{
+    background: rgba(215, 180, 106, 0.08);
+    border-color: rgba(215, 180, 106, 0.35);
+    color: var(--fg-0);
+  }}
+  .heart-btn:active {{ transform: scale(0.96); }}
+  .heart-btn.liked {{
+    background: rgba(215, 180, 106, 0.16);
+    border-color: rgba(215, 180, 106, 0.55);
+    color: var(--accent);
+  }}
+  .heart-btn .heart-icon {{
+    width: 16px; height: 16px;
+    transition: transform 220ms ease, fill 220ms ease;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+  }}
+  .heart-btn.liked .heart-icon {{
+    fill: var(--accent);
+    animation: heart-pop 360ms ease-out;
+  }}
+  @keyframes heart-pop {{
+    0%   {{ transform: scale(1); }}
+    35%  {{ transform: scale(1.35); }}
+    100% {{ transform: scale(1); }}
+  }}
+  .view-pill {{
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 13px; color: var(--fg-2);
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 999px;
+    padding: 8px 14px;
+  }}
+  .view-pill .eye-icon {{
+    width: 14px; height: 14px;
+    fill: none; stroke: currentColor; stroke-width: 1.7;
+  }}
 </style>
 </head>
 <body dir="{text_dir}">
 <div class="wrap">
-  <div class="player">
+  <div class="player before-play" id="player-wrap">
     <video id="player" controls playsinline poster="{cover_url}" preload="metadata">
       <source src="{video_url}" type="video/mp4">
       Your browser does not support embedded video.
@@ -3780,6 +4063,21 @@ def shared_song_page(token: str):
   </div>
   <h1 class="title">{esc(title)}</h1>
   <p class="made-by">Faceless Lab<span class="dot"></span>AI song</p>
+  <div class="stat-bar" id="stat-bar" data-token="{token}">
+    <button type="button" class="heart-btn" id="heart-btn" aria-pressed="false" aria-label="Like this song">
+      <svg class="heart-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 20.5s-7.5-4.7-7.5-10.3a4.5 4.5 0 0 1 8-2.8 4.5 4.5 0 0 1 7 2.8C19.5 15.8 12 20.5 12 20.5z" />
+      </svg>
+      <span class="heart-count" id="heart-count">0</span>
+    </button>
+    <span class="view-pill" aria-label="View count">
+      <svg class="eye-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+      <span class="view-count" id="view-count">0</span>
+    </span>
+  </div>
   <div class="lyrics idle" id="lyrics" data-total-stanzas="{total_stanzas}">
     {lyrics_html}
   </div>
@@ -3876,6 +4174,202 @@ def shared_song_page(token: str):
       lyrics.classList.add('idle');
       activated = false;
     }});
+  }})();
+
+  // ------------------------------------------------------------------
+  // Tap-to-seek: tapping any lyric line jumps the audio to that line's
+  // start time. Honest about the imperfect alignment — letting the user
+  // navigate by line is the workaround until we ship a stronger
+  // forced-alignment model.
+  // ------------------------------------------------------------------
+  (function() {{
+    const player = document.getElementById('player');
+    const lyrics = document.getElementById('lyrics');
+    const cuesEl = document.getElementById('lyric-cues');
+    if (!player || !lyrics || !cuesEl) return;
+    let cues = [];
+    try {{ cues = JSON.parse(cuesEl.textContent || '[]'); }} catch (e) {{}}
+    const byLineId = new Map();
+    cues.forEach(function(c) {{ byLineId.set(c.i, c); }});
+    lyrics.querySelectorAll('.line[data-line]').forEach(function(el) {{
+      const id = parseInt(el.dataset.line, 10);
+      const cue = byLineId.get(id);
+      if (!cue) return;
+      el.addEventListener('click', function() {{
+        // Seek to a fraction before the line so the first word is
+        // audible rather than already-spoken; 0.1s usually feels right.
+        const target = Math.max(0, cue.s - 0.1);
+        try {{ player.currentTime = target; }} catch (e) {{ return; }}
+        if (player.paused) {{
+          const p = player.play();
+          if (p && typeof p.catch === 'function') p.catch(function() {{}});
+        }}
+      }});
+    }});
+  }})();
+
+  // ------------------------------------------------------------------
+  // Audio-driven glow: subtle pulse around the player driven by the
+  // current audio's RMS amplitude. Created lazily on the first 'play'
+  // because Chrome only allows AudioContext creation after a user
+  // gesture; before that it's blocked.
+  // ------------------------------------------------------------------
+  (function() {{
+    const player = document.getElementById('player');
+    const wrap = document.getElementById('player-wrap');
+    if (!player || !wrap) return;
+    let ctx = null, src = null, analyser = null, data = null, raf = 0;
+
+    function tick() {{
+      if (!analyser) return;
+      analyser.getByteFrequencyData(data);
+      // Focus on bass + low-mid bins (0–~3 kHz at 44.1 kHz) so the pulse
+      // tracks the actual music energy rather than vocal sibilance.
+      let sum = 0;
+      const cap = Math.min(data.length, 80);
+      for (let i = 0; i < cap; i++) sum += data[i];
+      const avg = sum / cap / 255; // 0..1
+      // Smooth + clamp: ease pulse for visual stability.
+      const cur = parseFloat(wrap.style.getPropertyValue('--pulse')) || 0;
+      const next = Math.max(0, Math.min(1, cur * 0.65 + avg * 0.7));
+      wrap.style.setProperty('--pulse', next.toFixed(3));
+      raf = requestAnimationFrame(tick);
+    }}
+
+    function startIfPossible() {{
+      if (ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try {{
+        ctx = new AC();
+        src = ctx.createMediaElementSource(player);
+        analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.75;
+        data = new Uint8Array(analyser.frequencyBinCount);
+        src.connect(analyser);
+        analyser.connect(ctx.destination);
+      }} catch (e) {{
+        // Some browsers (Safari iOS) restrict createMediaElementSource
+        // on cross-origin media. Fail silent — the static glow is fine.
+        ctx = null;
+        return;
+      }}
+      tick();
+    }}
+
+    player.addEventListener('play', function() {{
+      wrap.classList.remove('before-play');
+      startIfPossible();
+      if (ctx && ctx.state === 'suspended') ctx.resume();
+    }});
+    player.addEventListener('pause', function() {{
+      wrap.style.setProperty('--pulse', '0');
+    }});
+    player.addEventListener('ended', function() {{
+      wrap.style.setProperty('--pulse', '0');
+    }});
+  }})();
+
+  // ------------------------------------------------------------------
+  // Social: anonymous likes + view counter.
+  // Client identity is a random UUID in localStorage — survives across
+  // pages, doesn't survive cache-clears (intentional; this is best-
+  // effort engagement signal, not a voting system).
+  // ------------------------------------------------------------------
+  (function() {{
+    const bar = document.getElementById('stat-bar');
+    if (!bar) return;
+    const token = bar.dataset.token;
+    if (!token) return;
+    const heartBtn = document.getElementById('heart-btn');
+    const heartCount = document.getElementById('heart-count');
+    const viewCount = document.getElementById('view-count');
+
+    function getClientId() {{
+      let cid = '';
+      try {{ cid = localStorage.getItem('faceless_cid') || ''; }} catch (e) {{}}
+      if (cid && cid.length >= 8) return cid;
+      // Modest fallback for browsers that block localStorage (private
+      // mode etc.) — keep it in-memory only; counts simply won't dedupe.
+      cid = (
+        (crypto && crypto.randomUUID) ? crypto.randomUUID()
+                                      : Math.random().toString(36).slice(2) +
+                                        Math.random().toString(36).slice(2)
+      ).replace(/-/g, '');
+      try {{ localStorage.setItem('faceless_cid', cid); }} catch (e) {{}}
+      return cid;
+    }}
+    const cid = getClientId();
+
+    function renderStats(s) {{
+      if (typeof s.likes === 'number' && heartCount) {{
+        heartCount.textContent = String(s.likes);
+      }}
+      if (typeof s.views === 'number' && viewCount) {{
+        viewCount.textContent = String(s.views);
+      }}
+      if (typeof s.liked === 'boolean' && heartBtn) {{
+        heartBtn.classList.toggle('liked', s.liked);
+        heartBtn.setAttribute('aria-pressed', s.liked ? 'true' : 'false');
+      }}
+    }}
+
+    // 1. Initial stats fetch (so any prior view/like state shows correctly).
+    fetch('/p/' + encodeURIComponent(token) + '/stats?client_id=' +
+          encodeURIComponent(cid))
+      .then(function(r) {{ return r.ok ? r.json() : null; }})
+      .then(function(s) {{ if (s) renderStats(s); }})
+      .catch(function() {{}});
+
+    // 2. Register a view. Deduped server-side per (cid, song) in a 6h
+    //    window so refreshes don't inflate. Throttled here too via a
+    //    localStorage timestamp to skip the network call entirely.
+    const viewKey = 'faceless_v_' + token;
+    let lastView = 0;
+    try {{ lastView = parseInt(localStorage.getItem(viewKey) || '0', 10) || 0; }}
+    catch (e) {{}}
+    if (Date.now() - lastView > 6 * 3600 * 1000) {{
+      fetch('/p/' + encodeURIComponent(token) + '/view', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ client_id: cid }})
+      }})
+        .then(function(r) {{ return r.ok ? r.json() : null; }})
+        .then(function(s) {{
+          if (s) renderStats(s);
+          try {{ localStorage.setItem(viewKey, String(Date.now())); }}
+          catch (e) {{}}
+        }})
+        .catch(function() {{}});
+    }}
+
+    // 3. Like toggle on click.
+    if (heartBtn) {{
+      heartBtn.addEventListener('click', function() {{
+        // Optimistic UI — flip the state immediately, then reconcile
+        // with server response.
+        const wasLiked = heartBtn.classList.contains('liked');
+        heartBtn.classList.toggle('liked', !wasLiked);
+        heartBtn.setAttribute('aria-pressed', wasLiked ? 'false' : 'true');
+        if (heartCount) {{
+          const cur = parseInt(heartCount.textContent || '0', 10) || 0;
+          heartCount.textContent = String(Math.max(0, cur + (wasLiked ? -1 : 1)));
+        }}
+        fetch('/p/' + encodeURIComponent(token) + '/like', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{ client_id: cid }})
+        }})
+          .then(function(r) {{ return r.ok ? r.json() : null; }})
+          .then(function(s) {{ if (s) renderStats(s); }})
+          .catch(function() {{
+            // Rollback optimistic UI on failure
+            heartBtn.classList.toggle('liked', wasLiked);
+            heartBtn.setAttribute('aria-pressed', wasLiked ? 'true' : 'false');
+          }});
+      }});
+    }}
   }})();
 </script>
 </body>
