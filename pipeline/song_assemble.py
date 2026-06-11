@@ -60,9 +60,11 @@ def _write_ass_subtitles(lyrics_data: dict, out_path: Path) -> bool:
     (caller skips the subtitle filter otherwise).
 
     Style notes:
-      * Noto Naskh Arabic ships in the Docker image (apt
-        fonts-noto-naskh-arabic). Falls back to libass's default if
-        not installed locally, which is fine for unit-test scenarios.
+      * Scheherazade ships in the Docker image (apt
+        fonts-sil-scheherazade). It's SIL's smart-font Naskh face,
+        explicitly designed for large display use which is what
+        burn-in captions are. Falls back to libass's default if not
+        installed locally, which is fine for unit-test scenarios.
       * Encoding 178 is the ASS code for Arabic — required for some
         legacy libass builds to pick the right shaper.
       * Bottom alignment (8), 110-px margin from the bottom, keeps
@@ -113,7 +115,7 @@ def _write_ass_subtitles(lyrics_data: dict, out_path: Path) -> bool:
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        "Style: Default,Noto Naskh Arabic,52,&H00FFFFFF,&H000000FF,"
+        "Style: Default,Scheherazade,56,&H00FFFFFF,&H000000FF,"
         "&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,60,60,110,178\n"
         "\n"
         "[Events]\n"

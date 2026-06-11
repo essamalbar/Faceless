@@ -16,21 +16,21 @@ FROM python:3.11-slim
 #   git                         — uv sometimes pulls VCS deps
 #   ca-certificates             — HTTPS to Anthropic / Kie / Cloudflare
 #   curl                        — used by the compose healthcheck
-#   fonts-noto-naskh-arabic     — burned-in lyric captions on song MP4s.
-#       libass loads fonts via fontconfig at filter init time; if no
-#       Arabic font is present it falls back to whatever (DejaVu) and
-#       the ligatures break completely. Naskh-Arabic is the cleanest
-#       free Arabic display face that Google maintains.
-#   fonts-amiri                 — fallback Arabic serif. Pipeline/font
-#       PIL code references Amiri for the cover-art title overlay too,
-#       so we install both rather than pick one.
+#   fonts-sil-scheherazade      — Arabic naskh font for burned-in song
+#       lyric captions. libass loads fonts via fontconfig at filter
+#       init time; without an Arabic-shaping font present it falls back
+#       to DejaVu and the ligatures collapse into disconnected letter
+#       forms. Scheherazade is SIL's high-quality smart-font Naskh face.
+#   fonts-hosny-amiri           — Amiri serif (Arabic). Cover-art title
+#       overlay PIL code references "Amiri" by family name and this is
+#       the trixie packaging for it (was fonts-amiri in bookworm).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         git \
         ca-certificates \
         curl \
-        fonts-noto-naskh-arabic \
-        fonts-amiri \
+        fonts-sil-scheherazade \
+        fonts-hosny-amiri \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (matches the dev workflow; faster than pip)
