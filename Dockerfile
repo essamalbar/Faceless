@@ -12,15 +12,25 @@
 FROM python:3.11-slim
 
 # System deps:
-#   ffmpeg          — assemble + faststart re-mux + ffprobe (in the same package)
-#   git             — uv sometimes pulls VCS deps
-#   ca-certificates — HTTPS to Anthropic / Kie / Cloudflare
-#   curl            — used by the compose healthcheck
+#   ffmpeg                      — assemble + faststart re-mux + ffprobe (same package)
+#   git                         — uv sometimes pulls VCS deps
+#   ca-certificates             — HTTPS to Anthropic / Kie / Cloudflare
+#   curl                        — used by the compose healthcheck
+#   fonts-noto-naskh-arabic     — burned-in lyric captions on song MP4s.
+#       libass loads fonts via fontconfig at filter init time; if no
+#       Arabic font is present it falls back to whatever (DejaVu) and
+#       the ligatures break completely. Naskh-Arabic is the cleanest
+#       free Arabic display face that Google maintains.
+#   fonts-amiri                 — fallback Arabic serif. Pipeline/font
+#       PIL code references Amiri for the cover-art title overlay too,
+#       so we install both rather than pick one.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         git \
         ca-certificates \
         curl \
+        fonts-noto-naskh-arabic \
+        fonts-amiri \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (matches the dev workflow; faster than pip)
