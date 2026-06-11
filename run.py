@@ -900,7 +900,7 @@ def _run_song_post_approve(args) -> int:
     import sys as _sys
     from pathlib import Path as _Path
 
-    from pipeline import song, song_cover, song_assemble
+    from pipeline import song, song_cover, song_assemble, song_align
     from pipeline.config import load_config
     from pipeline.kie import KieClient
 
@@ -1050,12 +1050,34 @@ def _run_song_post_approve(args) -> int:
             out_path=final_cover_path,
         )
 
+        # --- Stage 2.5: align lyrics to audio ---
+        # Whisper-as-stopwatch produces lyrics.json with per-line timings.
+        # Drives BOTH the share-page karaoke (replaces the old N/duration
+        # linear approximation) AND the burned-in MP4 captions. Idempotent:
+        # if lyrics.json exists from a previous run, skips Whisper. See
+        # pipeline/song_align.py.
+        write_state(status="aligning")
+        lyrics_json = run_dir / "lyrics.json"
+        try:
+            song_align.align_song_lyrics(
+                song_mp3=song_mp3,
+                lyrics=script["lyrics"],
+                out_json=lyrics_json,
+            )
+        except Exception as align_err:
+            # Alignment is best-effort — if Whisper fails we still want the
+            # MP4 to ship (just without burned-in captions). The share page
+            # falls back to the legacy stanza-divided timing.
+            print(f"[song-post-approve] lyrics alignment failed, "
+                  f"continuing without captions: {align_err}")
+
         # --- Stage 3: assemble ---
         write_state(status="assembling")
         song_assemble.assemble_song_video(
             cover_path=final_cover_path,
             song_mp3=song_mp3,
             out_mp4=final_mp4,
+            lyrics_json=lyrics_json if lyrics_json.exists() else None,
         )
 
         write_state(status="complete")

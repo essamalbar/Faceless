@@ -3517,39 +3517,81 @@ def shared_song_page(token: str):
 
     # Render lyrics: each line is either a `[Verse 1]`-style section
     # header (rendered as a small chip) or a normal sung line.
-    # Each STANZA (group of lines between two section headers OR
-    # blanks) gets a data-stanza index so the JS karaoke highlighter
-    # can scroll to the currently-playing one.
+    # Each line gets a `data-line` index. If lyrics.json exists (produced
+    # by pipeline/song_align.py) we ALSO emit a cues array driving exact
+    # audio-synced highlight. Otherwise we fall back to the legacy
+    # stanza-divided linear approximation.
     is_rtl = language in ("ar", "he", "fa", "ur")
     text_dir = "rtl" if is_rtl else "ltr"
+
+    aligned: dict | None = None
+    aligned_path = run_dir / "lyrics.json"
+    if aligned_path.exists():
+        try:
+            aligned = json.loads(aligned_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            aligned = None
+
     lyrics_html_parts: list[str] = []
     section_re = _re.compile(r"^\[([^\]]+)\]\s*$")
     stanza_idx = 0
+    line_idx = 0
+    cues: list[dict] = []
     in_stanza = False
-    for raw in lyrics.split("\n"):
-        line = raw.strip()
-        if not line:
-            lyrics_html_parts.append('<div class="gap"></div>')
-            in_stanza = False
-            continue
-        m = section_re.match(line)
-        if m:
-            stanza_idx += 1
-            lyrics_html_parts.append(
-                f'<div class="section" data-stanza="{stanza_idx}">'
-                f'{esc(m.group(1))}</div>'
-            )
-            in_stanza = True
-        else:
-            if not in_stanza:
+
+    if aligned and aligned.get("lines"):
+        # New path: render directly from the aligned line list.
+        # aligned["lines"] already has section/line/stanza/start/end —
+        # blanks were dropped during alignment.
+        for entry in aligned["lines"]:
+            kind = entry.get("kind")
+            text = entry.get("text", "")
+            stanza_idx = int(entry.get("stanza") or 0)
+            line_idx += 1
+            start = entry.get("start")
+            end = entry.get("end")
+            if kind == "section":
+                lyrics_html_parts.append(
+                    f'<div class="section" data-line="{line_idx}" '
+                    f'data-stanza="{stanza_idx}">{esc(text)}</div>'
+                )
+            else:
+                lyrics_html_parts.append(
+                    f'<p class="line" data-line="{line_idx}" '
+                    f'data-stanza="{stanza_idx}">{esc(text)}</p>'
+                )
+            if start is not None and end is not None:
+                cues.append({"i": line_idx, "s": float(start), "e": float(end)})
+    else:
+        # Legacy path: no alignment file (older songs). Keep the existing
+        # stanza-divided behavior so old shares don't regress.
+        for raw in lyrics.split("\n"):
+            line = raw.strip()
+            if not line:
+                lyrics_html_parts.append('<div class="gap"></div>')
+                in_stanza = False
+                continue
+            m = section_re.match(line)
+            if m:
                 stanza_idx += 1
+                line_idx += 1
+                lyrics_html_parts.append(
+                    f'<div class="section" data-line="{line_idx}" '
+                    f'data-stanza="{stanza_idx}">{esc(m.group(1))}</div>'
+                )
                 in_stanza = True
-            lyrics_html_parts.append(
-                f'<p class="line" data-stanza="{stanza_idx}">'
-                f'{esc(line)}</p>'
-            )
+            else:
+                if not in_stanza:
+                    stanza_idx += 1
+                    in_stanza = True
+                line_idx += 1
+                lyrics_html_parts.append(
+                    f'<p class="line" data-line="{line_idx}" '
+                    f'data-stanza="{stanza_idx}">{esc(line)}</p>'
+                )
     lyrics_html = "\n".join(lyrics_html_parts)
     total_stanzas = stanza_idx
+    cues_json = json.dumps(cues, ensure_ascii=False)
 
     html = f"""<!DOCTYPE html>
 <html lang="{esc(language)}">
@@ -3723,48 +3765,98 @@ def shared_song_page(token: str):
   <div class="lyrics idle" id="lyrics" data-total-stanzas="{total_stanzas}">
     {lyrics_html}
   </div>
+  <script id="lyric-cues" type="application/json">{cues_json}</script>
   <footer>
     Made with <a href="{base_url}/app/">Faceless Lab</a> — AI-generated music
   </footer>
 </div>
 <script>
-  // Karaoke-style lyric highlight. Honest about its limits: Suno
-  // doesn't return per-line timestamps, so we divide the song's
-  // total duration evenly across the stanza count. Close enough
-  // for a song that's roughly verse-chorus-verse-chorus; will
-  // drift on songs with big tempo changes.
+  // Karaoke highlight. Two modes:
+  //   * Aligned (preferred): consumes the lyric-cues JSON produced by
+  //     pipeline/song_align.py — exact per-line start/end seconds from
+  //     Whisper-as-stopwatch. Active line tracks the actual audio.
+  //   * Legacy: cues array empty for old shares pre-alignment. Falls
+  //     back to dividing total duration across stanza count (the
+  //     drift-prone behavior shipped originally — kept so old shares
+  //     still highlight SOMETHING).
   (function() {{
     const player = document.getElementById('player');
     const lyrics = document.getElementById('lyrics');
     if (!player || !lyrics) return;
-    const total = parseInt(lyrics.dataset.totalStanzas || '0', 10);
-    if (total <= 0) return;
-    const items = lyrics.querySelectorAll('[data-stanza]');
-    let activeIdx = -1;
-    let activated = false;
-    player.addEventListener('play', function() {{
-      if (!activated) {{ lyrics.classList.remove('idle'); activated = true; }}
+    const cuesEl = document.getElementById('lyric-cues');
+    let cues = [];
+    if (cuesEl) {{
+      try {{ cues = JSON.parse(cuesEl.textContent || '[]'); }} catch (e) {{}}
+    }}
+    const sungLines = lyrics.querySelectorAll('.line[data-line]');
+    const allByLineId = new Map();
+    lyrics.querySelectorAll('[data-line]').forEach(function(el) {{
+      allByLineId.set(parseInt(el.dataset.line, 10), el);
     }});
-    player.addEventListener('timeupdate', function() {{
-      const dur = player.duration;
-      if (!dur || isNaN(dur)) return;
-      const idx = Math.min(total, Math.floor((player.currentTime / dur) * total) + 1);
-      if (idx === activeIdx) return;
-      activeIdx = idx;
-      items.forEach(function(el) {{
-        if (parseInt(el.dataset.stanza, 10) === idx) {{
+
+    let activeLineId = -1;
+    let activated = false;
+
+    function setActive(lineId) {{
+      if (lineId === activeLineId) return;
+      activeLineId = lineId;
+      allByLineId.forEach(function(el, id) {{
+        if (id === lineId) {{
           el.classList.add('active');
           el.scrollIntoView({{behavior: 'smooth', block: 'center'}});
         }} else {{
           el.classList.remove('active');
         }}
       }});
+    }}
+
+    function findCueAt(t) {{
+      // Cues are ordered by start. Binary search keeps this fast on
+      // a 40-line lyric while still firing on every timeupdate (~4Hz).
+      let lo = 0, hi = cues.length - 1, best = -1;
+      while (lo <= hi) {{
+        const mid = (lo + hi) >> 1;
+        if (cues[mid].s <= t) {{ best = mid; lo = mid + 1; }}
+        else {{ hi = mid - 1; }}
+      }}
+      return best;
+    }}
+
+    player.addEventListener('play', function() {{
+      if (!activated) {{ lyrics.classList.remove('idle'); activated = true; }}
+    }});
+    player.addEventListener('timeupdate', function() {{
+      const t = player.currentTime;
+      if (cues.length > 0) {{
+        const idx = findCueAt(t);
+        if (idx < 0) {{ setActive(-1); return; }}
+        const cue = cues[idx];
+        // Stick with the cue as long as we're within its window OR before
+        // the next one — handles brief gaps between lines.
+        const next = cues[idx + 1];
+        if (t <= cue.e || !next || t < next.s) {{
+          setActive(cue.i);
+        }}
+        return;
+      }}
+      // Legacy fallback: stanza-divided linear approximation.
+      const dur = player.duration;
+      if (!dur || isNaN(dur)) return;
+      const total = parseInt(lyrics.dataset.totalStanzas || '0', 10);
+      if (total <= 0) return;
+      const stIdx = Math.min(total, Math.floor((t / dur) * total) + 1);
+      let target = -1;
+      allByLineId.forEach(function(el, id) {{
+        if (parseInt(el.dataset.stanza, 10) === stIdx && target < 0) {{
+          target = id;
+        }}
+      }});
+      setActive(target);
     }});
     player.addEventListener('ended', function() {{
-      items.forEach(function(el) {{ el.classList.remove('active'); }});
+      setActive(-1);
       lyrics.classList.add('idle');
       activated = false;
-      activeIdx = -1;
     }});
   }})();
 </script>

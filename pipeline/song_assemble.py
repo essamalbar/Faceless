@@ -29,7 +29,13 @@ def ffprobe_duration(path: Path) -> float:
     return float(json.loads(out.stdout)["format"]["duration"])
 
 
-def assemble_song_video(*, cover_path: Path, song_mp3: Path, out_mp4: Path) -> None:
+def assemble_song_video(
+    *,
+    cover_path: Path,
+    song_mp3: Path,
+    out_mp4: Path,
+    lyrics_json: Path | None = None,  # noqa: ARG001  consumed in the next commit (MP4 burn-in)
+) -> None:
     """Build the music-video MP4. Raises subprocess.CalledProcessError on failure."""
     duration_s = ffprobe_duration(song_mp3)
     total_frames = max(1, int(duration_s * FPS))
