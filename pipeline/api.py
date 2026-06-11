@@ -3123,10 +3123,25 @@ def delete_song(run_id: str, user: User = Depends(require_user)):
             f"a worker is processing this song (state: {state.get('status')!r}); "
             f"wait for it to finish before deleting",
         )
+    # Snapshot the share token (if any) before nuking the run dir, then
+    # remove the matching entry from the share index so old share links
+    # surface the friendly "removed" page immediately rather than racing
+    # with the file-existence check.
+    share_token = state.get("share_token")
     try:
         shutil.rmtree(run_dir)
     except OSError as e:
         raise HTTPException(500, f"failed to remove run dir: {e}")
+    if share_token:
+        try:
+            idx = _load_share_index()
+            if idx.pop(share_token, None) is not None:
+                _save_share_index(idx)
+        except Exception:
+            # Share-index hygiene is best-effort — the orphan token is
+            # harmless (resolves to 404 anyway). Never block the
+            # primary delete on this.
+            pass
     return None
 
 
@@ -3312,12 +3327,15 @@ def _resolve_shared_song(token: str) -> tuple[Path, dict]:
     if not user_id or not run_id:
         raise HTTPException(404, "shared link corrupted")
     run_dir = _out_root() / user_id / run_id
-    if not run_dir.exists():
-        # Run was deleted — stale index entry; clean it up.
-        idx.pop(token, None)
-        _save_share_index(idx)
-        raise HTTPException(404, "shared song was deleted")
     script_path = run_dir / "song.json"
+    # IMPORTANT: do NOT auto-evict the token if the run dir or song.json
+    # look missing. GCS Fuse returns spurious False from exists() during
+    # cold-starts and listing-eventual-consistency windows; a previous
+    # version of this code self-corrupted the share index that way,
+    # turning every fresh share into a 404 within minutes of being minted.
+    # The /songs/{id} DELETE handler is now the only thing that removes
+    # tokens from the index. Stale entries that genuinely point at a
+    # deleted run will just keep 404'ing — harmless.
     if not script_path.exists():
         raise HTTPException(404, "song data missing")
     return run_dir, json.loads(script_path.read_text())
