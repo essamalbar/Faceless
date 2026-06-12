@@ -6,6 +6,11 @@ from pathlib import Path
 
 from pipeline.types import Shot, is_complete_artifact
 
+# Bundled fonts (Inter-Bold for English wordmark + Amiri for Arabic captions).
+# Lives next to the repo's assets/ so the Docker image picks it up alongside
+# every other deployable asset.
+_FONT_DIR_HORROR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+
 # Ken Burns motion patterns. zoompan filter syntax:
 # (z, x, y) — z is zoom factor, x/y are crop offsets within the source.
 # Each pattern returns (z, x, y) expressions over normalized progress t (0→1).
@@ -232,6 +237,25 @@ def build_shorts_filter_graph(
     # 4. Optional captions burn-in (TikTok karaoke .ass).
     # FFmpeg 8.x rejects `subtitles='...'` quote-wrapping; use the explicit
     # `filename=` form and only escape FFmpeg-special chars in the path.
+    # Watermark: "▶ faceless-lab.com" pinned top-right. Burned into the
+    # frame so re-uploads outside our share page still carry attribution
+    # (cannot be stripped without re-cropping). Same family as the song
+    # watermark in pipeline/song_assemble.py.
+    watermark_font = _FONT_DIR_HORROR / "Inter-Bold.ttf"
+    wm_chain = ""
+    if watermark_font.exists():
+        font_path = (str(watermark_font)
+                     .replace("\\", "\\\\").replace(":", "\\:")
+                     .replace("'", "\\'"))
+        wm_chain = (
+            f",drawtext=text='▶ faceless-lab.com':"
+            f"fontfile='{font_path}':"
+            f"fontsize=30:"
+            f"fontcolor=white@0.62:"
+            f"shadowcolor=black@0.55:shadowx=2:shadowy=2:"
+            f"x=w-tw-28:y=28"
+        )
+
     if burn_caption_ass is not None:
         raw = str(burn_caption_ass)
         ass_path = (raw
@@ -241,9 +265,16 @@ def build_shorts_filter_graph(
                     .replace("[", "\\[")
                     .replace("]", "\\]")
                     .replace(";", "\\;"))
-        parts.append(f"[{last_v}]subtitles=filename={ass_path}[vout]")
+        parts.append(
+            f"[{last_v}]subtitles=filename={ass_path}{wm_chain}[vout]"
+        )
     else:
-        parts.append(f"[{last_v}]copy[vout]")
+        if wm_chain:
+            # Drop the `copy` placeholder — drawtext is a real filter
+            # that produces a labeled output on its own.
+            parts.append(f"[{last_v}]drawtext{wm_chain[len(',drawtext'):]}[vout]")
+        else:
+            parts.append(f"[{last_v}]copy[vout]")
 
     # 4. Audio mix. Two modes:
     #
@@ -320,6 +351,7 @@ def assemble_shorts_video(
     crossfade_ms: int = 350,
     ambient_volume: float = 0.15,
     narration_duration_s: float | None = None,
+    title: str | None = None,
 ) -> None:
     """Stitch Veo clips into a vertical 9:16 final video. Resumable.
 
@@ -359,10 +391,30 @@ def assemble_shorts_video(
         narration_duration_s=narration_duration_s,
         native_audio=native_audio,
     )
+
+    # Container metadata — same provenance fields as the song pipeline,
+    # less the per-share comment (horror shorts don't currently mint
+    # share tokens; that's song-only). Lives in the MP4's moov atom so
+    # ffprobe / ACRCloud / YouTube content-ID can identify the source.
+    metadata_args: list[str] = []
+    if title:
+        metadata_args += ["-metadata", f"title={title}"]
+    metadata_args += [
+        "-metadata", "artist=Faceless Lab",
+        "-metadata", "encoded_by=Faceless Lab",
+        "-metadata", (
+            "copyright=© Faceless Lab — AI-generated. "
+            "Not for unauthorized commercial reuse."
+        ),
+        "-metadata",
+        "comment=Generated with Faceless Lab — faceless-lab.com",
+    ]
+
     args += [
         "-filter_complex", graph,
         "-map", "[vout]",
         "-map", "[aout]",
+        *metadata_args,
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "20",

@@ -1099,11 +1099,17 @@ def _run_song_post_approve(args) -> int:
 
         # --- Stage 3: assemble ---
         write_state(status="assembling")
+        # share_token may already exist from a prior /songs/{id}/share
+        # POST. If not, the watermark MP4 will simply name the project
+        # without a deep link (still attributes; just no per-share URL).
+        share_token = current_state.get("share_token") or None
         song_assemble.assemble_song_video(
             cover_path=final_cover_path,
             song_mp3=song_mp3,
             out_mp4=final_mp4,
             lyrics_json=lyrics_json if lyrics_json.exists() else None,
+            title=script.get("title"),
+            share_token=share_token,
         )
 
         write_state(status="complete")

@@ -4705,16 +4705,38 @@ _PUBLIC_BINARY_CACHE_HEADERS = {
 }
 
 
+def _branded_filename(title: str | None, ext: str) -> str:
+    """Slugify the song title into a download-safe filename so the
+    file lands as faceless-lab-<title>.mp4 instead of final.mp4.
+    Falls back to a generic name when the title is empty/missing."""
+    import re as _re
+    if title:
+        slug = _re.sub(r"[^\w\-]+", "-", title.strip(), flags=_re.UNICODE)
+        slug = slug.strip("-")[:80] or "song"
+    else:
+        slug = "song"
+    return f"faceless-lab-{slug}.{ext}"
+
+
 @app.get("/p/{token}/video", include_in_schema=False)
 def shared_song_video(token: str):
-    """No-auth video endpoint for the public share page."""
-    run_dir, _ = _resolve_shared_song(token)
+    """No-auth video endpoint for the public share page.
+
+    `Content-Disposition: inline; filename=...` lets browsers stream
+    the video in-place while supplying a branded filename to "Save
+    video as…" downloads. Without this, every saved file is
+    `final.mp4` regardless of source song — confusing in a library
+    and worthless for downstream attribution. The filename slug is
+    `faceless-lab-<title>.mp4` so re-uploaded copies on disk still
+    advertise the product."""
+    run_dir, script = _resolve_shared_song(token)
     path = run_dir / "final.mp4"
     if not path.exists():
         raise HTTPException(404, "video not found")
-    return FileResponse(
-        path, media_type="video/mp4", headers=_PUBLIC_BINARY_CACHE_HEADERS,
-    )
+    fname = _branded_filename(script.get("title"), "mp4")
+    headers = dict(_PUBLIC_BINARY_CACHE_HEADERS)
+    headers["Content-Disposition"] = f'inline; filename="{fname}"'
+    return FileResponse(path, media_type="video/mp4", headers=headers)
 
 
 @app.get("/p/{token}/cover", include_in_schema=False)

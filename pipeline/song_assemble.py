@@ -13,6 +13,8 @@ import json
 import subprocess
 from pathlib import Path
 
+_FONT_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+
 FPS = 25
 OUTPUT_SIZE = 1080
 UPSCALE_SIZE = 2160  # pre-zoompan upscale to avoid resampling blur
@@ -132,6 +134,25 @@ def _write_ass_subtitles(lyrics_data: dict, out_path: Path) -> bool:
     return True
 
 
+def _ffmpeg_filter_path(p: Path) -> str:
+    """Compatibility alias — drawtext's `fontfile` arg goes through the
+    same filtergraph escaper as `ass`. Older callers still go through
+    the legacy name below; this one keeps the call sites readable."""
+    return _escape_ffmpeg_filter_path(p)
+
+
+def _ffmpeg_drawtext_escape(text: str) -> str:
+    """drawtext's `text=` value sits inside an already-escaped filter
+    string. Three characters MUST be escaped: backslash, single-quote,
+    and colon. Newlines are forbidden; replace with spaces."""
+    return (
+        text.replace("\\", "\\\\")
+            .replace("'", r"\'")
+            .replace(":", r"\:")
+            .replace("\n", " ")
+    )
+
+
 def _escape_ffmpeg_filter_path(p: Path) -> str:
     """ffmpeg's filtergraph parser treats `:` as a delimiter and `'` /
     `\\` as escape chars. The ass= filter takes its path argument in
@@ -153,13 +174,24 @@ def assemble_song_video(
     song_mp3: Path,
     out_mp4: Path,
     lyrics_json: Path | None = None,
+    title: str | None = None,
+    share_token: str | None = None,
 ) -> None:
     """Build the music-video MP4. Raises subprocess.CalledProcessError on failure.
 
     When lyrics_json is provided, generates a sibling lyrics.ass file
     and burns line-by-line karaoke captions into the video via ffmpeg's
     ass filter. Captions are the same per-line cues that drive the
-    share-page karaoke, so the two surfaces stay consistent."""
+    share-page karaoke, so the two surfaces stay consistent.
+
+    title and share_token power container-level provenance:
+      * a top-right "▶ faceless-lab.com" text watermark is always burned
+        into the video so re-uploads outside our share page carry
+        attribution (cannot be cropped without losing visible image),
+      * MP4 metadata tags (title, artist, copyright, comment with the
+        share token, encoded_by) are written into the container so
+        downstream tools (YouTube content-ID, ACRCloud, manual probes)
+        can identify the work. Both are silently skipped when None."""
     duration_s = ffprobe_duration(song_mp3)
     total_frames = max(1, int(duration_s * FPS))
     zoom_step = (ZOOM_END - 1.0) / total_frames
@@ -177,12 +209,59 @@ def assemble_song_video(
             # rather than fail the whole assembly.
             ass_filter = ""
 
+    # Brand-mark watermark: small "▶ faceless-lab.com" pinned top-right,
+    # white at 55% opacity with a faint shadow for legibility on bright
+    # cover backgrounds. Top-right keeps it clear of the bottom-pinned
+    # lyric captions. Burned into the video so re-uploads anywhere else
+    # carry attribution that can't be stripped without re-cropping the
+    # image.
+    watermark_font = _FONT_DIR / "Inter-Bold.ttf"
+    watermark_filter = ""
+    if watermark_font.exists():
+        wm_text = _ffmpeg_drawtext_escape("▶ faceless-lab.com")
+        watermark_filter = (
+            f",drawtext=text='{wm_text}':"
+            f"fontfile='{_ffmpeg_filter_path(watermark_font)}':"
+            f"fontsize=30:"
+            f"fontcolor=white@0.62:"
+            f"shadowcolor=black@0.55:shadowx=2:shadowy=2:"
+            f"x=w-tw-28:y=28"
+        )
+
     filter_complex = (
         f"[0:v]scale={UPSCALE_SIZE}:{UPSCALE_SIZE},"
         f"zoompan=z='1+{zoom_step:.10f}*on':"
         f"d={total_frames}:s={OUTPUT_SIZE}x{OUTPUT_SIZE}:fps={FPS}"
-        f"{ass_filter}[v]"
+        f"{ass_filter}{watermark_filter}[v]"
     )
+
+    # Container metadata. Lives in the MP4's moov atom so tools like
+    # ffprobe, ACRCloud and YouTube's manual review can identify the
+    # source. share_token is the load-bearing field — it's a one-way
+    # cryptographic fingerprint linking re-uploaded copies back to the
+    # original share page on faceless-lab.com.
+    metadata_args: list[str] = []
+    if title:
+        metadata_args += ["-metadata", f"title={title}"]
+    metadata_args += [
+        "-metadata", "artist=Faceless Lab",
+        "-metadata", "encoded_by=Faceless Lab",
+        "-metadata", (
+            "copyright=© Faceless Lab — AI-generated. "
+            "Not for unauthorized commercial reuse."
+        ),
+    ]
+    if share_token:
+        metadata_args += [
+            "-metadata",
+            f"comment=Generated with Faceless Lab — "
+            f"https://faceless-lab.com/p/{share_token}",
+        ]
+    else:
+        metadata_args += [
+            "-metadata",
+            "comment=Generated with Faceless Lab — faceless-lab.com",
+        ]
 
     cmd = [
         "ffmpeg", "-y",
@@ -190,6 +269,7 @@ def assemble_song_video(
         "-i", str(song_mp3),
         "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "1:a",
+        *metadata_args,
         # preset=veryfast: a still cover with slow zoompan has zero
         # motion-compensation benefit from slower presets. On Cloud Run's
         # 2 vCPU, `slow` was taking 15-40 min per song; `veryfast` does
