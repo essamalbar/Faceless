@@ -74,6 +74,7 @@ export function ScrollPipeline() {
             <span
               className="text-xl sm:text-2xl text-muted/60 font-normal font-arabic"
               dir="rtl"
+            lang="ar"
             >
               ثلاث خطوات بلا مونتاج
             </span>
@@ -152,10 +153,13 @@ function TimelineRow({
             {entry.en}
           </h3>
           <p
-            className={`text-base sm:text-lg text-muted/70 font-arabic mb-4 ${
+            // Bumped from text-muted/70 → text-muted (full opacity)
+            // to clear WCAG AA contrast against the dark bg.
+            className={`text-base sm:text-lg text-muted font-arabic mb-4 ${
               onRight ? "" : "sm:text-right"
             }`}
             dir="rtl"
+            lang="ar"
           >
             {entry.ar}
           </p>
@@ -255,6 +259,7 @@ function Step2Visual() {
               <div
                 className="text-sm text-ink font-arabic leading-snug truncate"
                 dir="rtl"
+            lang="ar"
               >
                 {b.line}
               </div>

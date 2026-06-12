@@ -8,8 +8,8 @@
 
 html,
 body {
-  background: #0a0e1a;
-  color: #e5e7eb;
+  background: #0A0E1A;
+  color: #E5E7EB;
 }
 
 /* Smooth scrolling for anchor links from the nav */
@@ -23,4 +23,19 @@ a:focus-visible {
   outline: 2px solid #E7B53C;
   outline-offset: 3px;
   border-radius: 8px;
+}
+
+/* Respect users who've asked for reduced motion. Framer Motion's
+   `motion` components honor this automatically, but the aurora blob
+   animations and the typewriter cursor in PromptInput are CSS — they
+   need an explicit kill switch or Lighthouse flags us. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

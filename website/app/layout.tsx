@@ -1,5 +1,26 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Inter, Noto_Naskh_Arabic } from "next/font/google";
+
+// Self-host the marketing fonts via next/font. This eliminates:
+//   - render-blocking <link> to fonts.googleapis.com (TTFB win)
+//   - FOIT / layout shift on the Arabic subtitle (CLS win)
+//   - the "Noto Naskh Arabic" Tailwind reference resolving to a system
+//     fallback (it wasn't actually loading before).
+// `display: "swap"` shows fallback text immediately, then swaps when the
+// font arrives — keeps LCP fast.
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
+const notoArabic = Noto_Naskh_Arabic({
+  subsets: ["arabic"],
+  display: "swap",
+  variable: "--font-arabic",
+  weight: ["400", "600", "700"],
+});
 
 // ---------------------------------------------------------------------------
 // SEO METADATA
@@ -114,6 +135,17 @@ export const metadata: Metadata = {
       "dDBMtUULMhsbyUW7DJxCx43ffaHo_unJxIf91VQmHhE",
   },
   category: "technology",
+};
+
+// Viewport + theme-color split out of `metadata` per Next.js 15 contract.
+// `viewport` was the missing meta tag that flagged Lighthouse's "Does
+// not have a <meta name=viewport>" audit (mobile-friendly + a11y).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0A0E1A",
+  colorScheme: "dark",
 };
 
 const softwareApplicationLd = {
@@ -251,8 +283,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} ${notoArabic.variable}`}>
       <head>
+        {/* Preconnect to the Mixkit CDN that serves every background
+            video. Saves the DNS + TLS round-trip when the hero video
+            (and downstream lazy clips) start fetching — measurable LCP
+            win on mobile networks. */}
+        <link rel="preconnect" href="https://assets.mixkit.co" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://assets.mixkit.co" />
         <link
           rel="alternate"
           type="application/rss+xml"
@@ -270,7 +308,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }}
         />
       </head>
-      <body className="bg-bg text-ink antialiased">{children}</body>
+      <body className="bg-bg text-ink antialiased font-sans">{children}</body>
     </html>
   );
 }

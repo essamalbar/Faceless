@@ -73,14 +73,21 @@ export function PromptInput({ appUrl }: { appUrl: string }) {
              style={{
                background: "radial-gradient(ellipse 100% 60% at 50% 50%, rgba(231,181,60,0.08), transparent 70%)",
              }} />
+        <label htmlFor="hero-premise" className="sr-only">
+          One-line story premise
+        </label>
         <textarea
+          id="hero-premise"
           name="premise"
           value={premise}
           onChange={(e) => setPremise(e.target.value)}
           placeholder={placeholder || EXAMPLES[0]}
           rows={2}
           dir="auto"
-          className="relative w-full bg-transparent text-ink placeholder:text-muted/60 px-5 pt-5 pb-3 text-base sm:text-lg leading-relaxed resize-none outline-none font-arabic"
+          // placeholder:text-muted/60 → /80: the lighter placeholder was
+          // failing WCAG contrast inside the inputs (gray on near-black
+          // measured ~2.6:1).
+          className="relative w-full bg-transparent text-ink placeholder:text-muted/80 px-5 pt-5 pb-3 text-base sm:text-lg leading-relaxed resize-none outline-none font-arabic"
         />
         <div className="relative flex items-center justify-between px-3 pb-3 pt-1">
           <div className="flex items-center gap-2 px-2 text-[11px] text-muted/70">

@@ -116,13 +116,20 @@ function Nav() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center">
-        <a href="#" className="flex items-center gap-2.5">
+        <a
+          href="#"
+          aria-label="Faceless Lab — home"
+          className="flex items-center gap-2.5"
+        >
           <SparkleLogo size={28} />
           <span className="font-semibold text-[15px] tracking-tight">
             Faceless Lab
           </span>
         </a>
-        <nav className="hidden md:flex items-center gap-7 ml-12 text-[13px] text-muted">
+        <nav
+          aria-label="Primary"
+          className="hidden md:flex items-center gap-7 ml-12 text-[13px] text-muted"
+        >
           <a href="#why" className="hover:text-ink transition-colors">Why us</a>
           <a href="#showreel" className="hover:text-ink transition-colors">Showreel</a>
           <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
@@ -168,12 +175,21 @@ function Hero() {
     >
       {/* Full-bleed looping video, parallaxed downward at half scroll
           speed for depth */}
-      <motion.div className="absolute inset-0" style={{ y: bgY }}>
+      <motion.div
+        className="absolute inset-0"
+        style={{ y: bgY }}
+        aria-hidden="true"
+      >
+        {/* Decorative hero video. `preload="metadata"` (not "auto") so
+            the browser fetches the keyframe/duration but defers the
+            full payload until the video element actually mounts. With
+            preload="auto" the bytes raced with the H1's text+font for
+            mobile bandwidth and pushed LCP past 2.5s. */}
         <LazyVideo
           src={HERO_VIDEO}
           className="w-full h-full"
           rootMargin="0px"
-          preload="auto"
+          preload="metadata"
         />
       </motion.div>
       {/* Layered overlays for legibility */}
@@ -230,8 +246,12 @@ function Hero() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
-          className="text-base text-muted/80 max-w-xl mb-10 font-arabic"
+          // Bumped from text-muted/80 → text-ink/75 to clear WCAG AA
+          // contrast on this dark gradient overlay (the previous
+          // muted-with-opacity measured ~3.2:1, below the 4.5:1 floor).
+          className="text-base text-ink/75 max-w-xl mb-10 font-arabic"
           dir="rtl"
+          lang="ar"
         >
           استوديو عربي بوضعَين: قصص رعب قصيرة وأغانٍ كاملة — راجع الناتج قبل أن تدفع
         </motion.p>
@@ -318,6 +338,8 @@ function Showreel() {
                 key={f.id}
                 type="button"
                 onClick={() => setFilter(f.id)}
+                aria-pressed={active}
+                aria-label={`Filter showreel by ${f.label}`}
                 className={`text-[12px] font-medium px-3 py-1.5 rounded-full border transition-colors ${
                   active
                     ? "bg-ink text-bg border-ink"
@@ -382,6 +404,7 @@ function ShowreelTile({
   return (
     <motion.a
       href={`${APP_URL}/`}
+      aria-label={`Open Faceless Lab — ${item.category} showreel clip (${item.tag})`}
       initial={{ opacity: 0, y: 36, filter: "blur(8px)", scale: 0.96 }}
       whileInView={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
       viewport={{ once: true, margin: "-30px" }}
@@ -407,11 +430,15 @@ function ShowreelTile({
             <span className="text-[8px] sm:text-[9px] font-bold text-white/80 tracking-[0.15em] sm:tracking-[0.18em] uppercase px-1.5 sm:px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
               {item.category}
             </span>
-            <span className="text-[9px] sm:text-[10px] text-white/55 tracking-wider">
+            <span className="text-[9px] sm:text-[10px] text-white/85 tracking-wider">
               {item.tag}
             </span>
           </div>
-          <div className="text-sm sm:text-lg font-semibold text-white font-arabic tracking-tight leading-snug" dir="rtl">
+          <div
+            className="text-sm sm:text-lg font-semibold text-white font-arabic tracking-tight leading-snug"
+            dir="rtl"
+            lang="ar"
+          >
             {item.caption}
           </div>
         </div>
@@ -501,8 +528,9 @@ function WhyFaceless() {
                 {it.title}
               </h3>
               <div
-                className="text-[13px] text-muted/80 mb-3 font-arabic"
+                className="text-[13px] text-ink/75 mb-3 font-arabic"
                 dir="rtl"
+                lang="ar"
               >
                 {it.ar}
               </div>
@@ -600,16 +628,17 @@ function Templates() {
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
                    style={{ background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(231,181,60,0.18), transparent 60%)" }} />
               <div className="absolute inset-0 p-5 flex flex-col justify-end">
-                <div className="text-[10px] font-medium text-white/65 tracking-[0.18em] uppercase mb-1">
+                <div className="text-[10px] font-medium text-white/85 tracking-[0.18em] uppercase mb-1">
                   {t.en}
                 </div>
                 <div
                   className="text-xl sm:text-2xl font-semibold text-white tracking-tight font-arabic mb-1"
                   dir="rtl"
+                  lang="ar"
                 >
                   {t.ar}
                 </div>
-                <p className="text-[11px] text-white/65 leading-snug line-clamp-2">
+                <p className="text-[11px] text-white/85 leading-snug line-clamp-2">
                   {t.blurb}
                 </p>
               </div>
@@ -811,8 +840,11 @@ function SectionTitle({ en, ar }: { en: string; ar: string }) {
     >
       {en}
       <span
-        className="ml-3 text-muted/60 text-xl sm:text-2xl font-normal font-arabic"
+        // text-muted at full opacity (#B4BAC4) clears 4.5:1 against bg.
+        // The previous /60 modifier dropped it below 3:1.
+        className="ml-3 text-muted text-xl sm:text-2xl font-normal font-arabic"
         dir="rtl"
+        lang="ar"
       >
         {ar}
       </span>
