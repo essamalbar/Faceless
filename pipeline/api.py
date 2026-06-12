@@ -1829,6 +1829,103 @@ def admin_credit_back(
     )
 
 
+# ---------------------------------------------------------------------------
+# /admin/re-assemble-song — service-token-only ffmpeg re-run for one song.
+#
+# Backfills the watermark + container metadata + new lyric-aware ASS into
+# songs that were assembled before those features shipped. One request per
+# song so a 5–10-minute batch doesn't hit Cloud Run's request timeout; the
+# caller loops externally (a small shell script per the share index).
+#
+# Idempotent in the lossy sense — calling it twice on the same song burns
+# ffmpeg cycles but doesn't corrupt anything. The atomic .tmp+replace
+# write semantics inside assemble_song_video keep the served final.mp4
+# valid throughout the operation; readers either see the previous file
+# or the new one, never a torn read.
+# ---------------------------------------------------------------------------
+
+class ReAssembleAck(BaseModel):
+    ok: bool
+    user_id: str
+    run_id: str
+    title: str | None
+    watermark: bool
+    share_token: str | None
+    duration_s: float
+
+
+@app.post(
+    "/admin/re-assemble-song/{user_id}/{run_id}",
+    response_model=ReAssembleAck,
+    dependencies=[Depends(require_user)],
+)
+def admin_re_assemble_song(
+    user_id: str,
+    run_id: str,
+    user: User = Depends(require_user),
+):
+    """Rebuild final.mp4 for a single complete song. Adds the
+    watermark + MP4 metadata that newer assemblies bake in. Service
+    token required — normal users can't trigger ffmpeg jobs against
+    other users' runs."""
+    if user.role != "service":
+        raise HTTPException(
+            403, "admin endpoint — service token required",
+        )
+    from pipeline import song_assemble
+    run_dir = _out_root() / user_id / run_id
+    state_path = run_dir / "state.json"
+    if not state_path.exists():
+        raise HTTPException(404, f"run not found: {user_id}/{run_id}")
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        raise HTTPException(500, f"corrupt state.json: {e}")
+    if state.get("kind") != "song":
+        raise HTTPException(400, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(
+            409, f"status is {state.get('status')!r}, not complete",
+        )
+    cover_path = run_dir / "cover.png"
+    song_mp3 = run_dir / "song.mp3"
+    out_mp4 = run_dir / "final.mp4"
+    lyrics_json = run_dir / "lyrics.json"
+    song_json = run_dir / "song.json"
+    missing = [
+        p.name for p in (cover_path, song_mp3, song_json) if not p.exists()
+    ]
+    if missing:
+        raise HTTPException(
+            409, f"missing inputs: {', '.join(missing)}",
+        )
+    try:
+        script = json.loads(song_json.read_text(encoding="utf-8"))
+        title = script.get("title")
+        share_token = state.get("share_token")
+        t0 = time.time()
+        song_assemble.assemble_song_video(
+            cover_path=cover_path,
+            song_mp3=song_mp3,
+            out_mp4=out_mp4,
+            lyrics_json=lyrics_json if lyrics_json.exists() else None,
+            title=title,
+            share_token=share_token,
+        )
+        dur = time.time() - t0
+    except Exception as e:
+        raise HTTPException(500, f"assembly failed: {type(e).__name__}: {e}")
+    return ReAssembleAck(
+        ok=True,
+        user_id=user_id,
+        run_id=run_id,
+        title=title,
+        watermark=True,
+        share_token=share_token,
+        duration_s=round(dur, 1),
+    )
+
+
 class SpendSummary(BaseModel):
     total_usd: float
     by_run: list[dict]  # [{"run_id": "...", "title": "...", "usd": 8.05}, ...]
