@@ -38,6 +38,7 @@ dependencies:
   cached_network_image: ^3.4.1          # thumbnails with HTTP headers
   supabase_flutter: ^2.5.0              # Supabase auth + client
   url_launcher: ^6.3.0                  # opens Stripe-hosted URLs (Checkout / Portal)
+  shared_preferences: ^2.3.2            # one-time "seen" flag for onboarding carousel
 
 dev_dependencies:
   flutter_test:

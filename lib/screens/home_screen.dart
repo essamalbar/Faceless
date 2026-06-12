@@ -13,6 +13,7 @@ import '../widgets/faceless_logo.dart';
 import 'billing_screen.dart';
 import 'cost_screen.dart';
 import 'new_run_screen.dart';
+import 'onboarding_screen.dart';
 import 'run_detail_screen.dart';
 import 'new_song_screen.dart';
 import 'personas_screen.dart';
@@ -45,6 +46,23 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _client = FacelessApiClient(_settings);
     _loadAndRefresh();
+    _maybeShowOnboarding();
+  }
+
+  /// First-launch carousel. Scheduled after the frame is laid out so
+  /// MaterialApp's overlay has a host context to push the route onto.
+  Future<void> _maybeShowOnboarding() async {
+    final seen = await OnboardingScreen.hasSeen();
+    if (seen || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const OnboardingScreen(),
+          fullscreenDialog: true,
+        ),
+      );
+    });
   }
 
   Future<void> _loadAndRefresh() async {
