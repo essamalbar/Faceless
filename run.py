@@ -1112,7 +1112,12 @@ def _run_song_post_approve(args) -> int:
             share_token=share_token,
         )
 
-        write_state(status="complete")
+        # watermarked=True signals to the API + Flutter UI that this
+        # song's final.mp4 carries the brand-mark PNG overlay + container
+        # metadata from the launch-readiness work. Songs assembled before
+        # this flag was added show watermarked=False (or missing) and
+        # surface a "Apply watermark" button in the song detail UI.
+        write_state(status="complete", watermarked=True)
         return 0
     except Exception as e:
         # Tag the failure with the stage we were in, so the API can

@@ -557,6 +557,19 @@ class FacelessApiClient {
     return _parse(r, (j) => SongSummary.fromJson(j as Map<String, dynamic>));
   }
 
+  /// On-demand watermark backfill. Blocks the caller for ~3-6 minutes
+  /// while ffmpeg re-assembles the song's final.mp4 with the brand
+  /// mark PNG + container metadata. Returns the duration in seconds
+  /// on success. UI should surface a long-wait banner.
+  Future<double> reAssembleSong(String id) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/re-assemble'),
+      headers: await _headers(),
+    );
+    final j = _parse(r, (j) => j as Map<String, dynamic>);
+    return (j['duration_s'] as num?)?.toDouble() ?? 0;
+  }
+
   /// Server-Sent Events stream of song-status updates. Yields one
   /// map per state transition; the stream completes when the run
   /// reaches a terminal status (complete/failed/canceled). Returns

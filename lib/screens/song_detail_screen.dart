@@ -466,6 +466,74 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     return tryNativeWebShare(url: url, title: title);
   }
 
+  Future<void> _applyWatermark(SongSummary s) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Apply Faceless Lab watermark?'),
+        content: const Text(
+          "Re-renders the song's video to burn in the brand mark "
+          "(top-right of the frame) and embed copyright + share-URL "
+          "metadata into the MP4. The original audio and lyrics are "
+          "preserved.\n\n"
+          "Takes about 3–6 minutes. You can keep using the app — the "
+          "watermark will appear once the render completes.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Apply watermark'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(
+        duration: Duration(minutes: 8),
+        content: Row(
+          children: [
+            SizedBox(
+              width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text('Applying watermark — this takes 3–6 minutes…'),
+            ),
+          ],
+        ),
+      ),
+    );
+    try {
+      final duration = await widget.client.reAssembleSong(widget.runId);
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Watermark applied in ${duration.toStringAsFixed(0)} seconds.',
+          ),
+        ),
+      );
+      // Reload song summary so the button hides and any cached
+      // <video> sources pick up the new mtime-fingerprinted URL.
+      final fresh = await widget.client.getSong(widget.runId);
+      if (mounted) setState(() => _summary = fresh);
+    } catch (e) {
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Watermark failed: $e')),
+      );
+    }
+  }
+
   Future<void> _rerollTakes() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -700,6 +768,18 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               label: const Text('Re-roll voice takes'),
               onPressed: _rerollTakes,
             ),
+            const SizedBox(height: 8),
+            // Watermark backfill — only for songs assembled before the
+            // brand-mark feature shipped. Hidden once watermarked=true
+            // so the button doesn't surface forever on already-marked
+            // songs. Long-running (3-6 min) so the handler shows an
+            // explicit busy banner instead of an instant snackbar.
+            if (!s.watermarked)
+              OutlinedButton.icon(
+                icon: const Icon(Icons.verified_outlined),
+                label: const Text('Apply watermark'),
+                onPressed: () => _applyWatermark(s),
+              ),
             const SizedBox(height: 16),
             if (s.chosenTake != null) _buildTakeSwapCard(context, s),
           ],

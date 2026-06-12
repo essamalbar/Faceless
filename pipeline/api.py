@@ -442,6 +442,12 @@ class SongRunSummary(BaseModel):
     # show actionable hints (e.g. "Suno timeout — retry will re-charge"
     # vs "cover failed — retry is free").
     failure_stage: str | None = None
+    # True when the song's final.mp4 was assembled with the brand-mark
+    # PNG overlay + MP4 container metadata. Songs from before the
+    # watermark feature land with watermarked=False (missing key reads
+    # as None → treated as False by the Flutter UI). Drives the
+    # "Apply watermark" CTA on the song detail screen.
+    watermarked: bool = False
 
 
 class RunProgress(BaseModel):
@@ -1912,6 +1918,17 @@ def admin_re_assemble_song(
             share_token=share_token,
         )
         dur = time.time() - t0
+        # Flip the watermarked flag in state.json so the UI knows the
+        # song's final.mp4 now carries the brand mark + container
+        # metadata. Defensive merge with the existing state to avoid
+        # racing with concurrent state writers.
+        try:
+            _write_state(run_dir, watermarked=True)
+        except Exception:
+            # Flag write is best-effort. The watermark itself is already
+            # baked into the MP4 — at worst the UI will keep offering
+            # the button until next pipeline run rewrites state.
+            pass
     except Exception as e:
         raise HTTPException(500, f"assembly failed: {type(e).__name__}: {e}")
     return ReAssembleAck(
@@ -2550,6 +2567,7 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         chosen_take=state.get("chosen_take"),
         last_error=state.get("last_error"),
         failure_stage=state.get("failure_stage"),
+        watermarked=bool(state.get("watermarked", False)),
     )
 
 
@@ -3486,6 +3504,79 @@ def unshare_song(run_id: str, user: User = Depends(require_user)):
     _save_share_index(idx)
     _write_state(run_dir, share_token=None)
     return None
+
+
+@app.post(
+    "/songs/{run_id}/re-assemble",
+    response_model=ReAssembleAck,
+)
+def re_assemble_song_user(
+    run_id: str,
+    user: User = Depends(require_user),
+):
+    """User-facing watermark backfill. Re-runs the ffmpeg assembler so
+    the song's final.mp4 picks up the brand-mark PNG overlay + MP4
+    container metadata that newer assemblies include automatically.
+    Returns 409 if the song is already watermarked, 409 if status
+    isn't complete, or 200 with the timing/title on success.
+
+    Synchronous and blocking — assembly takes 3–6 minutes per song.
+    The Cloud Run service timeout was bumped to 1800s alongside this
+    feature so the request has runway; the Flutter caller should
+    surface a banner during the wait. Owning the run is verified by
+    _resolve_song_dir (raises 404 for someone else's run)."""
+    from pipeline import song_assemble
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(
+            409, f"status is {state.get('status')!r}, not complete",
+        )
+    if state.get("watermarked"):
+        raise HTTPException(409, "song is already watermarked")
+    cover_path = run_dir / "cover.png"
+    song_mp3 = run_dir / "song.mp3"
+    out_mp4 = run_dir / "final.mp4"
+    lyrics_json = run_dir / "lyrics.json"
+    song_json = run_dir / "song.json"
+    missing = [
+        p.name for p in (cover_path, song_mp3, song_json) if not p.exists()
+    ]
+    if missing:
+        raise HTTPException(
+            409, f"missing inputs: {', '.join(missing)}",
+        )
+    try:
+        script = json.loads(song_json.read_text(encoding="utf-8"))
+        title = script.get("title")
+        share_token = state.get("share_token")
+        t0 = time.time()
+        song_assemble.assemble_song_video(
+            cover_path=cover_path,
+            song_mp3=song_mp3,
+            out_mp4=out_mp4,
+            lyrics_json=lyrics_json if lyrics_json.exists() else None,
+            title=title,
+            share_token=share_token,
+        )
+        dur = time.time() - t0
+        try:
+            _write_state(run_dir, watermarked=True)
+        except Exception:
+            pass
+    except Exception as e:
+        raise HTTPException(500, f"assembly failed: {type(e).__name__}: {e}")
+    return ReAssembleAck(
+        ok=True,
+        user_id=user.id,
+        run_id=run_id,
+        title=title,
+        watermark=True,
+        share_token=share_token,
+        duration_s=round(dur, 1),
+    )
 
 
 # ---------------------------------------------------------------------------

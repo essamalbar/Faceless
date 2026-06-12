@@ -209,31 +209,36 @@ def assemble_song_video(
             # rather than fail the whole assembly.
             ass_filter = ""
 
-    # Brand-mark watermark: small "▶ faceless-lab.com" pinned top-right,
-    # white at 55% opacity with a faint shadow for legibility on bright
-    # cover backgrounds. Top-right keeps it clear of the bottom-pinned
-    # lyric captions. Burned into the video so re-uploads anywhere else
-    # carry attribution that can't be stripped without re-cropping the
-    # image.
-    watermark_font = _FONT_DIR / "Inter-Bold.ttf"
-    watermark_filter = ""
-    if watermark_font.exists():
-        wm_text = _ffmpeg_drawtext_escape("▶ faceless-lab.com")
-        watermark_filter = (
-            f",drawtext=text='{wm_text}':"
-            f"fontfile='{_ffmpeg_filter_path(watermark_font)}':"
-            f"fontsize=30:"
-            f"fontcolor=white@0.62:"
-            f"shadowcolor=black@0.55:shadowx=2:shadowy=2:"
-            f"x=w-tw-28:y=28"
-        )
+    # Brand-mark watermark: composited PNG (logo + wordmark pill, see
+    # pipeline/watermark.py) pinned top-right. The PNG ships with the
+    # repo at assets/watermark.png so the Docker image always has it;
+    # if the asset is missing locally (dev / tests) we silently skip
+    # the watermark rather than crash the assembly.
+    watermark_png = _FONT_DIR.parent / "watermark.png"
+    has_watermark = watermark_png.exists()
 
-    filter_complex = (
-        f"[0:v]scale={UPSCALE_SIZE}:{UPSCALE_SIZE},"
-        f"zoompan=z='1+{zoom_step:.10f}*on':"
-        f"d={total_frames}:s={OUTPUT_SIZE}x{OUTPUT_SIZE}:fps={FPS}"
-        f"{ass_filter}{watermark_filter}[v]"
-    )
+    if has_watermark:
+        # Two-input filter graph:
+        #   [0:v] → scale/zoompan → [vbg]
+        #   [vbg] + [ass-rendered subtitles if any] → [vsub]
+        #   [vsub] + [2:v] (watermark) → overlay top-right → [v]
+        # Watermark scaled to 240×55 on the 1080² canvas (~22% of the
+        # frame width). 28px margin from both edges.
+        filter_complex = (
+            f"[0:v]scale={UPSCALE_SIZE}:{UPSCALE_SIZE},"
+            f"zoompan=z='1+{zoom_step:.10f}*on':"
+            f"d={total_frames}:s={OUTPUT_SIZE}x{OUTPUT_SIZE}:fps={FPS}"
+            f"{ass_filter}[vsub];"
+            f"[2:v]scale=240:55[wm];"
+            f"[vsub][wm]overlay=W-w-28:28[v]"
+        )
+    else:
+        filter_complex = (
+            f"[0:v]scale={UPSCALE_SIZE}:{UPSCALE_SIZE},"
+            f"zoompan=z='1+{zoom_step:.10f}*on':"
+            f"d={total_frames}:s={OUTPUT_SIZE}x{OUTPUT_SIZE}:fps={FPS}"
+            f"{ass_filter}[v]"
+        )
 
     # Container metadata. Lives in the MP4's moov atom so tools like
     # ffprobe, ACRCloud and YouTube's manual review can identify the
@@ -267,6 +272,13 @@ def assemble_song_video(
         "ffmpeg", "-y",
         "-loop", "1", "-i", str(cover_path),
         "-i", str(song_mp3),
+    ]
+    if has_watermark:
+        # Third input — watermark PNG. -loop 1 so the still image
+        # decodes as a constant stream that the overlay filter can
+        # composite onto every frame.
+        cmd += ["-loop", "1", "-i", str(watermark_png)]
+    cmd += [
         "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "1:a",
         *metadata_args,

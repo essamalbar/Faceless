@@ -312,6 +312,12 @@ class SongSummary {
   // show an actionable retry hint (e.g. "Suno failed — retry will
   // re-charge" vs "Cover failed — retry is free").
   final String? failureStage;
+  // True when the song's final.mp4 was assembled with the brand-mark
+  // watermark + MP4 metadata. Songs from before that feature land here
+  // as false; the song-detail screen surfaces an "Apply watermark"
+  // CTA in that case so the user can backfill on demand without us
+  // rerunning the whole bucket sweep.
+  final bool watermarked;
 
   SongSummary({
     required this.id,
@@ -323,6 +329,7 @@ class SongSummary {
     required this.chosenTake,
     required this.lastError,
     this.failureStage,
+    this.watermarked = false,
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -335,6 +342,7 @@ class SongSummary {
         chosenTake: j['chosen_take'] as int?,
         lastError: j['last_error'] as String?,
         failureStage: j['failure_stage'] as String?,
+        watermarked: (j['watermarked'] as bool?) ?? false,
       );
 }
 
