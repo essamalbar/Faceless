@@ -900,7 +900,7 @@ def _run_song_post_approve(args) -> int:
     import sys as _sys
     from pathlib import Path as _Path
 
-    from pipeline import song, song_cover, song_assemble, song_align
+    from pipeline import song, song_cover, song_assemble, song_align, song_og
     from pipeline.config import load_config
     from pipeline.kie import KieClient
 
@@ -1049,6 +1049,32 @@ def _run_song_post_approve(args) -> int:
             language=script.get("language", "ar"),
             out_path=final_cover_path,
         )
+
+        # --- Stage 2.1: compose Open Graph card ---
+        # Per-song 1200x630 OG image so social previews (WhatsApp,
+        # Twitter, Instagram, iMessage) show the actual cover + title
+        # rather than the generic Faceless Lab placeholder. Lazy
+        # endpoint at /p/{token}/og will regenerate this on demand if
+        # missing, so failure here is non-blocking — the rest of the
+        # pipeline can continue.
+        try:
+            teaser_lines: list[str] = []
+            for raw in (script.get("lyrics") or "").split("\n"):
+                line = raw.strip()
+                if not line or line.startswith("["):
+                    continue
+                teaser_lines.append(line)
+                if len(teaser_lines) >= 2:
+                    break
+            song_og.compose_og_image(
+                cover_path=final_cover_path,
+                title=script["title"],
+                language=script.get("language", "ar"),
+                teaser=" · ".join(teaser_lines),
+                out_path=run_dir / "og.png",
+            )
+        except Exception as og_err:
+            print(f"[song-post-approve] OG compose failed (non-blocking): {og_err}")
 
         # --- Stage 2.5: align lyrics to audio ---
         # Whisper-as-stopwatch produces lyrics.json with per-line timings.

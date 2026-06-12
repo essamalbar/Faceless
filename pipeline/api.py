@@ -3655,8 +3655,13 @@ def shared_song_page(token: str):
             return 0
     cover_v = _mtime(run_dir / "cover.png")
     video_v = _mtime(run_dir / "final.mp4")
+    # OG card fingerprint follows the cover's mtime so re-renders /
+    # regenerated covers also bust the social-preview cache (WhatsApp,
+    # Twitter, iMessage all hard-cache OG images aggressively).
+    og_v = _mtime(run_dir / "og.png") or cover_v
     video_url = f"{base_url}/p/{token}/video?v={video_v}"
     cover_url = f"{base_url}/p/{token}/cover?v={cover_v}"
+    og_url = f"{base_url}/p/{token}/og?v={og_v}"
 
     def esc(s: str) -> str:
         return (s.replace("&", "&amp;").replace("<", "&lt;")
@@ -3822,10 +3827,10 @@ def shared_song_page(token: str):
 <meta property="og:site_name" content="Faceless Lab">
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(teaser)}">
-<meta property="og:image" content="{cover_url}">
-<meta property="og:image:secure_url" content="{cover_url}">
-<meta property="og:image:width" content="1080">
-<meta property="og:image:height" content="1080">
+<meta property="og:image" content="{og_url}">
+<meta property="og:image:secure_url" content="{og_url}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="{esc(title)}">
 <meta property="og:video" content="{video_url}">
 <meta property="og:video:secure_url" content="{video_url}">
@@ -3840,7 +3845,7 @@ def shared_song_page(token: str):
 <meta name="twitter:site" content="@faceless">
 <meta name="twitter:title" content="{esc(title)}">
 <meta name="twitter:description" content="{esc(teaser)}">
-<meta name="twitter:image" content="{cover_url}">
+<meta name="twitter:image" content="{og_url}">
 <meta name="twitter:image:alt" content="{esc(title)}">
 <meta name="twitter:player" content="{page_url}">
 <meta name="twitter:player:width" content="1080">
@@ -4715,13 +4720,55 @@ def shared_song_video(token: str):
 @app.get("/p/{token}/cover", include_in_schema=False)
 def shared_song_cover(token: str):
     """No-auth cover endpoint for the public share page (used by
-    OG image meta + the <video> poster)."""
+    the <video> poster + thumbnail UIs)."""
     run_dir, _ = _resolve_shared_song(token)
     path = run_dir / "cover.png"
     if not path.exists():
         raise HTTPException(404, "cover not found")
     return FileResponse(
         path, media_type="image/png", headers=_PUBLIC_BINARY_CACHE_HEADERS,
+    )
+
+
+@app.get("/p/{token}/og", include_in_schema=False)
+def shared_song_og(token: str):
+    """No-auth OG card endpoint — 1200×630 composed image used as
+    og:image / twitter:image. Generated lazily on first request if
+    not already cached on disk (covers shares minted before the
+    feature shipped). All future runs pre-compose the card during
+    the song pipeline so this endpoint is cache-hit on the hot path."""
+    run_dir, script = _resolve_shared_song(token)
+    og_path = run_dir / "og.png"
+    cover_path = run_dir / "cover.png"
+    if not og_path.exists():
+        if not cover_path.exists():
+            raise HTTPException(404, "no cover to compose OG from")
+        try:
+            from pipeline.song_og import compose_og_image
+            teaser_lines: list[str] = []
+            for raw in (script.get("lyrics") or "").split("\n"):
+                line = raw.strip()
+                if not line or line.startswith("["):
+                    continue
+                teaser_lines.append(line)
+                if len(teaser_lines) >= 2:
+                    break
+            compose_og_image(
+                cover_path=cover_path,
+                title=script.get("title", "AI song"),
+                language=script.get("language", "ar"),
+                teaser=" · ".join(teaser_lines),
+                out_path=og_path,
+            )
+        except Exception:  # noqa: BLE001  composition is best-effort
+            # If composition fails, fall back to the raw cover so
+            # social previews still show something.
+            return FileResponse(
+                cover_path, media_type="image/png",
+                headers=_PUBLIC_BINARY_CACHE_HEADERS,
+            )
+    return FileResponse(
+        og_path, media_type="image/png", headers=_PUBLIC_BINARY_CACHE_HEADERS,
     )
 
 
