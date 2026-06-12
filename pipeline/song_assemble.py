@@ -298,6 +298,24 @@ def assemble_song_video(
     ]
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = Path(str(out_mp4) + ".tmp")
+    # Pre-delete any stale .tmp from a previous failed attempt. Without
+    # this, GCS Fuse's streaming-writes mode can latch onto the partial
+    # file's existing data, then crash with
+    #   BufferedWriteHandler.OutOfOrderError ... expectedOffset: <N>,
+    #   actualOffset: 40
+    # when ffmpeg seeks back to position 40 to rewrite the moov atom
+    # for +faststart. Atomic unlink before write keeps each run clean.
+    if tmp_path.exists():
+        try:
+            tmp_path.unlink()
+        except OSError:
+            # GCS Fuse occasionally refuses unlink on .tmp paths it
+            # considers in-flight. Truncate as a fallback so ffmpeg's
+            # `-y` starts from offset 0 with no leftover bytes.
+            try:
+                tmp_path.write_bytes(b"")
+            except OSError:
+                pass
     subprocess.run(cmd, check=True, capture_output=True)
     # Atomic rename — POSIX guarantees readers see either the old
     # file or the new one, never a torn read. GCS Fuse supports
