@@ -134,6 +134,7 @@ function Nav() {
           <a href="#showreel" className="hover:text-ink transition-colors">Showreel</a>
           <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
           <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
+          <a href="/about" className="hover:text-ink transition-colors">About</a>
         </nav>
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <a href={`${APP_URL}/`} className="text-[13px] text-muted hover:text-ink px-3 py-2">
@@ -804,10 +805,11 @@ function Footer() {
             Faceless Lab · faceless-lab.com
           </span>
         </div>
-        <div className="sm:ml-auto flex items-center gap-6 text-[13px] text-muted">
-          <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
-          <a href="#showreel" className="hover:text-ink transition-colors">Showreel</a>
+        <div className="sm:ml-auto flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[13px] text-muted">
+          <a href="/about" className="hover:text-ink transition-colors">About</a>
           <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
+          <a href="#showreel" className="hover:text-ink transition-colors">Showreel</a>
+          <a href="/press" className="hover:text-ink transition-colors">Press</a>
           <a href={`${APP_URL}/`} className="hover:text-ink transition-colors">Sign in</a>
         </div>
       </div>
