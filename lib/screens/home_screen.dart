@@ -366,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
           future: _runsFuture,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const _LoadingPlaceholder();
             }
             if (snap.hasError) {
               return _ErrorView(
@@ -442,15 +442,32 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 if (runs.isEmpty)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(
                       child: Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Text(
-                          'No runs match this filter.',
-                          style: TextStyle(
-                              color: FacelessTheme.textSecondary),
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.filter_alt_off_outlined,
+                                size: 48,
+                                color: FacelessTheme.textSecondary
+                                    .withValues(alpha: 0.6)),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'No runs match this filter.',
+                              style: TextStyle(
+                                  color: FacelessTheme.textSecondary),
+                            ),
+                            const SizedBox(height: 16),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  setState(() => _filter = 'all'),
+                              icon: const Icon(Icons.clear),
+                              label: const Text('Show all'),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -2337,6 +2354,105 @@ class _SongsEmptyState extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Branded loading state — three skeleton run cards with a slow shimmer.
+/// Replaces a bare CircularProgressIndicator() because cold-loads of
+/// the runs/songs lists take ~1–3 seconds over a custom domain and
+/// showing the page's shape (vs an empty spinner) feels faster.
+class _LoadingPlaceholder extends StatefulWidget {
+  const _LoadingPlaceholder();
+
+  @override
+  State<_LoadingPlaceholder> createState() => _LoadingPlaceholderState();
+}
+
+class _LoadingPlaceholderState extends State<_LoadingPlaceholder>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 3,
+      itemBuilder: (ctx, i) => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (_, __) {
+            final t = 0.35 + 0.25 * _ctrl.value; // 0.35 → 0.60 → 0.35
+            return Container(
+              height: 96,
+              decoration: BoxDecoration(
+                color: FacelessTheme.surface.withValues(alpha: t),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: FacelessTheme.surface2.withValues(alpha: t),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(14),
+                        bottomLeft: Radius.circular(14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 180,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: FacelessTheme.surface2
+                                .withValues(alpha: t * 1.4),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: 110,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: FacelessTheme.surface2
+                                .withValues(alpha: t),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }
