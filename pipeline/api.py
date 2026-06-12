@@ -4708,7 +4708,10 @@ _PUBLIC_BINARY_CACHE_HEADERS = {
 def _branded_filename(title: str | None, ext: str) -> str:
     """Slugify the song title into a download-safe filename so the
     file lands as faceless-lab-<title>.mp4 instead of final.mp4.
-    Falls back to a generic name when the title is empty/missing."""
+    Falls back to a generic name when the title is empty/missing.
+    The returned slug may contain non-ASCII characters; callers that
+    place it into an HTTP header must use `_content_disposition` below
+    (which handles RFC 5987 percent-encoding)."""
     import re as _re
     if title:
         slug = _re.sub(r"[^\w\-]+", "-", title.strip(), flags=_re.UNICODE)
@@ -4716,6 +4719,27 @@ def _branded_filename(title: str | None, ext: str) -> str:
     else:
         slug = "song"
     return f"faceless-lab-{slug}.{ext}"
+
+
+def _content_disposition(filename: str, disposition: str = "inline") -> str:
+    """Build a Content-Disposition value that handles non-ASCII safely.
+
+    HTTP headers are encoded as latin-1. A filename like
+    `faceless-lab-وَشْمُ.mp4` crashes Starlette's header writer with
+    UnicodeEncodeError if we use a raw `filename=...` parameter.
+
+    RFC 5987 solves this with `filename*=UTF-8''<percent-encoded>`.
+    For backwards compatibility we also include an ASCII-only
+    `filename=...` (any non-ASCII rune is stripped). Modern clients
+    prefer `filename*=` when both are present, legacy clients fall
+    back to the ASCII one."""
+    from urllib.parse import quote
+    ascii_only = "".join(c if ord(c) < 128 else "_" for c in filename) or "song.mp4"
+    encoded = quote(filename, safe="")
+    return (
+        f'{disposition}; filename="{ascii_only}"; '
+        f"filename*=UTF-8''{encoded}"
+    )
 
 
 @app.get("/p/{token}/video", include_in_schema=False)
@@ -4735,7 +4759,7 @@ def shared_song_video(token: str):
         raise HTTPException(404, "video not found")
     fname = _branded_filename(script.get("title"), "mp4")
     headers = dict(_PUBLIC_BINARY_CACHE_HEADERS)
-    headers["Content-Disposition"] = f'inline; filename="{fname}"'
+    headers["Content-Disposition"] = _content_disposition(fname)
     return FileResponse(path, media_type="video/mp4", headers=headers)
 
 
