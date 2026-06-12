@@ -1874,13 +1874,12 @@ def admin_re_assemble_song(
         )
     from pipeline import song_assemble
     run_dir = _out_root() / user_id / run_id
-    state_path = run_dir / "state.json"
-    if not state_path.exists():
+    if not run_dir.exists():
         raise HTTPException(404, f"run not found: {user_id}/{run_id}")
     try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
-        raise HTTPException(500, f"corrupt state.json: {e}")
+        state = _read_state(run_dir)
+    except Exception as e:
+        raise HTTPException(500, f"corrupt api_state.json: {e}")
     if state.get("kind") != "song":
         raise HTTPException(400, "not a song run")
     if state.get("status") != "complete":
