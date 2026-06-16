@@ -36,6 +36,12 @@ def test_filter_complex_appends_ass_and_watermark():
     assert "overlay=W-w-28:28" in fc
 
 
+def test_filter_complex_rejects_too_short_segment():
+    segs = [Segment(0, 0.0, 4.0, "in"), Segment(1, 4.0, 4.2, "out")]  # 0.2s < 0.35
+    with pytest.raises(ValueError):
+        build_filter_complex(segments=segs, n_images=2, ass_filter="", has_watermark=False)
+
+
 def test_assemble_cinematic_produces_playable_mp4(tmp_path):
     # Integration smoke -- real ffmpeg on tiny inputs.
     scene_paths = []

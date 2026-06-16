@@ -37,7 +37,10 @@ def assert_playable(mp4: Path) -> None:
          "stream=codec_type:format=duration", "-of", "json", str(mp4)],
         capture_output=True, text=True, check=True,
     )
-    data = json.loads(probe.stdout)
+    try:
+        data = json.loads(probe.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"ffprobe returned non-JSON output for {mp4}") from exc
     kinds = {s.get("codec_type") for s in data.get("streams", [])}
     duration = float(data.get("format", {}).get("duration", 0.0) or 0.0)
     if "video" not in kinds or "audio" not in kinds or duration <= 0.0:
@@ -56,6 +59,16 @@ def build_filter_complex(
     Inputs are the N pool images ([0:v]..[N-1:v]); audio is a separate
     input mapped later. Each segment trims its image to its duration with
     a zoompan, then segments are xfade-chained in order."""
+    # Caller contract: every segment after the first must be longer than
+    # _XFADE_S so the chained xfade offsets stay monotonically increasing
+    # (ffmpeg treats non-monotonic offsets as undefined). song_scenes'
+    # min_segment_s (default 0.6) satisfies this.
+    if any((s.end - s.start) <= _XFADE_S for s in segments[1:]):
+        raise ValueError(
+            f"all segments after the first must be longer than _XFADE_S={_XFADE_S}s "
+            f"to keep xfade offsets monotonic"
+        )
+
     parts: list[str] = []
     seg_labels: list[str] = []
 
@@ -113,8 +126,8 @@ def assemble_cinematic_song_video(
     share_token: str | None = None,
 ) -> None:
     """Render the beat-synced video in one ffmpeg call. Raises
-    CalledProcessError on ffmpeg failure or RuntimeError if the result
-    fails the playability gate."""
+    RuntimeError on ffmpeg failure (message includes ffmpeg stderr) or if
+    the result fails the playability gate."""
     ass_filter = ""
     if lyrics_json is not None and lyrics_json.exists():
         try:
@@ -160,6 +173,12 @@ def assemble_cinematic_song_video(
                 tmp_path.write_bytes(b"")
             except OSError:
                 pass
-    subprocess.run(cmd, check=True, capture_output=True)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.decode("utf-8", "replace") if exc.stderr else ""
+        raise RuntimeError(
+            f"ffmpeg failed (exit {exc.returncode}): {stderr[-2000:]}"
+        ) from exc
     tmp_path.replace(out_mp4)
     assert_playable(out_mp4)
