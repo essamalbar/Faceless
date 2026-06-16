@@ -80,3 +80,25 @@ def test_default_config_yaml_loads():
     assert isinstance(cfg, Config)
     # Voice depends on current style; just confirm a valid Edge TTS voice loads.
     assert cfg.voice.name.startswith("ar-")
+
+
+def test_song_config_has_cinematic_fields(tmp_path):
+    from pipeline.config import load_config
+    cfg = load_config(Path("config.yaml"))
+    assert cfg.song is not None
+    assert cfg.song.cinematic_credits_per_song == 3
+    assert cfg.song.cinematic_pool_size == 7
+    assert cfg.song.bars_per_cut == 4
+
+
+def test_song_config_cinematic_defaults_when_absent():
+    # Old config blocks without the new keys must still load.
+    from pipeline.config import SongConfig
+    c = SongConfig(
+        suno_model="V5_5", suno_cost_usd=0.05,
+        cover_flux_model="flux-kontext-max", cover_cost_usd=0.03,
+        credits_per_song=1,
+    )
+    assert c.cinematic_credits_per_song == 3
+    assert c.cinematic_pool_size == 7
+    assert c.bars_per_cut == 4
