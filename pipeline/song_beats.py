@@ -12,7 +12,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
+
 from pipeline.align import _audio_duration_s
+
+
+def _to_bpm(tempo) -> float:
+    """librosa.beat.beat_track returns tempo as a 1-element ndarray in
+    0.10+, a scalar in older versions. Coerce either to a float."""
+    return float(np.asarray(tempo).reshape(-1)[0])
 
 
 def _librosa_beat_track(song_mp3: Path) -> tuple[float, list[float]]:
@@ -22,7 +30,7 @@ def _librosa_beat_track(song_mp3: Path) -> tuple[float, list[float]]:
     y, sr = librosa.load(str(song_mp3), mono=True)
     tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)
-    return float(tempo), [float(t) for t in beat_times]
+    return _to_bpm(tempo), [float(t) for t in beat_times]
 
 
 def _write_atomic(path: Path, data: dict) -> None:
@@ -58,6 +66,7 @@ def detect_beats(
         if beats:
             result = {"tempo_bpm": tempo, "beat_times": beats, "source": "librosa"}
         else:
+            print("[song_beats] librosa found no beats; using fixed-BPM fallback")
             result = _fixed_grid(song_mp3, fallback_bpm)
     except Exception as e:  # librosa / audio decode failure -- never fail the run
         print(f"[song_beats] detection failed ({e}); using fixed-BPM fallback")

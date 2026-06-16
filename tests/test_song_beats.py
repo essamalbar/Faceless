@@ -49,3 +49,11 @@ def test_detect_beats_fallback_on_empty(tmp_path, monkeypatch):
     out = tmp_path / "beats.json"
     result = song_beats.detect_beats(tmp_path / "song.mp3", out_json=out)
     assert result["source"] == "fallback"
+
+
+def test_to_bpm_handles_array_and_scalar():
+    import numpy as np
+    from pipeline.song_beats import _to_bpm
+    assert _to_bpm(np.array([161.5])) == 161.5   # librosa 0.10+ shape
+    assert _to_bpm(np.float64(120.0)) == 120.0    # numpy scalar
+    assert _to_bpm(95.0) == 95.0                   # plain float
