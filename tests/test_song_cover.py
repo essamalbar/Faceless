@@ -77,3 +77,50 @@ def test_apply_title_overlay_picks_font_by_language(tmp_path: Path):
     assert song_cover._font_path_for_language("he").name == "Amiri-Regular.ttf"
     assert song_cover._font_path_for_language("en").name == "Inter-Bold.ttf"
     assert song_cover._font_path_for_language("es").name == "Inter-Bold.ttf"
+
+
+class _SceneFakeClient:
+    def __init__(self, fail_indices=()):
+        self.calls = 0
+        self._fail = set(fail_indices)
+
+    def submit_flux_image_job(self, *, prompt, model, aspect_ratio):
+        self.calls += 1
+        return f"task-{self.calls}"
+
+    def wait_for_flux_image(self, task_id, **kw):
+        idx = int(task_id.split("-")[1]) - 1
+        if idx in self._fail:
+            from pipeline.kie import KieError
+            raise KieError("boom")
+        return f"http://x/{task_id}.png"
+
+    def download(self, url, out_path):
+        Image.new("RGB", (16, 16), "blue").save(out_path)
+
+
+def _make_scene_cover(tmp_path):
+    p = tmp_path / "cover.png"
+    Image.new("RGB", (16, 16), "red").save(p)
+    return p
+
+
+def test_generate_scene_images_writes_pool(tmp_path):
+    paths = song_cover.generate_scene_images(
+        client=_SceneFakeClient(), art_direction="moonlit teal",
+        scene_prompts=["a", "b", "c"], out_dir=tmp_path,
+        cover_fallback=_make_scene_cover(tmp_path),
+    )
+    assert [p.name for p in paths] == ["scene_01.png", "scene_02.png", "scene_03.png"]
+    assert all(p.exists() for p in paths)
+
+
+def test_failed_scene_falls_back_to_cover(tmp_path):
+    cover = _make_scene_cover(tmp_path)
+    paths = song_cover.generate_scene_images(
+        client=_SceneFakeClient(fail_indices=[1]),  # second scene fails
+        art_direction="x", scene_prompts=["a", "b", "c"],
+        out_dir=tmp_path, cover_fallback=cover,
+    )
+    assert len(paths) == 3
+    assert Image.open(paths[1]).getpixel((0, 0)) == Image.open(cover).getpixel((0, 0))
