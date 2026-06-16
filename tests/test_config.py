@@ -82,9 +82,9 @@ def test_default_config_yaml_loads():
     assert cfg.voice.name.startswith("ar-")
 
 
-def test_song_config_has_cinematic_fields(tmp_path):
-    from pipeline.config import load_config
-    cfg = load_config(Path("config.yaml"))
+def test_song_config_has_cinematic_fields():
+    root = Path(__file__).parent.parent
+    cfg = load_config(root / "config.yaml")
     assert cfg.song is not None
     assert cfg.song.cinematic_credits_per_song == 3
     assert cfg.song.cinematic_pool_size == 7

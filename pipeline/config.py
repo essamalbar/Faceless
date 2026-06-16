@@ -93,7 +93,7 @@ class SongConfig:
     # Cinematic (beat-synced multi-scene) mode. Defaults keep old config
     # blocks loading unchanged.
     cinematic_credits_per_song: int = 3   # premium price; ~$0.30 ledger vs ~$0.26 raw
-    cinematic_pool_size: int = 7          # # of Flux stills generated for the pool
+    cinematic_pool_size: int = 7          # number of Flux stills generated for the pool
     bars_per_cut: int = 4                 # change image every N bars on the beat grid
 
 
