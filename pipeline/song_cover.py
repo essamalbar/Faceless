@@ -237,14 +237,9 @@ def generate_scene_images(
                 client.download(url, dest)
                 rendered = True
                 break
-            except TransientKieError as e:
-                # Transient: try next model in fallback chain.
-                print(f"[song_cover] scene {i} {model} transient: {e}; next fallback")
+            except (KieError, TransientKieError) as e:
+                print(f"[song_cover] scene {i} {model} failed: {e}; next fallback")
                 continue
-            except KieError as e:
-                # Permanent error: no point trying further models.
-                print(f"[song_cover] scene {i} {model} permanent error: {e}; reusing cover")
-                break
         if not rendered:
             print(f"[song_cover] scene {i} all Flux models failed; reusing cover")
             shutil.copyfile(cover_fallback, dest)
