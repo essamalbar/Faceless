@@ -38,6 +38,9 @@ dependencies = [
     # source override would NOT apply.
     "torch>=2.0",
     "openai-whisper>=20240930",
+    # librosa: beat/tempo tracking for cinematic (beat-synced) song video.
+    # Pulls scipy + numba; torch/numpy already ship for Whisper.
+    "librosa>=0.10",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     # google-cloud-run: REST/gRPC client for triggering Cloud Run Jobs from
