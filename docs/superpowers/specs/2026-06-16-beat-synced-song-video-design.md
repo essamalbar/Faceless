@@ -13,7 +13,7 @@ a **beat-synced multi-scene music video**: a bounded pool of ~6–10 art-directe
 Flux stills, cut and zoom-punched on a tempo/beat grid, with the existing
 karaoke captions and brand watermark composited on top.
 
-Ships as a **premium "Cinematic video" toggle** at song creation — `2` credits
+Ships as a **premium "Cinematic video" toggle** at song creation — `3` credits
 vs the existing `1`-credit static cover. The static path is untouched and stays
 the default.
 
@@ -31,7 +31,7 @@ with disciplined variation reads as one produced music video.
 | 1 | What are the scenes made of? | **Multiple still images** (not AI motion clips). Cheapest, fastest, reuses `zoompan`. |
 | 2 | What drives the cut cadence? | **Beat/bar grid** — detect tempo, cut on the beat. Energetic/modern. |
 | 3 | How many images per song? | **Bounded pool (~6–10), cycled on beats.** Coherent + bounded cost. |
-| 4 | Rollout + price? | **Premium toggle, 2 credits** (static stays 1). Protects margin, keeps the cheap option. |
+| 4 | Rollout + price? | **Premium toggle, 3 credits** (static stays 1). Protects margin, keeps the cheap option. |
 | 5 | Image coherence? | **One art direction, per-section variation** (optional Flux-kontext style-lock). |
 | — | ffmpeg render strategy? | **Approach A: single `filter_complex`, one atomic ffmpeg call** — no intermediate files (GCS-Fuse-safe). |
 
@@ -111,8 +111,8 @@ assembler:
 
 ```
 writing-lyrics      → also emits art_direction + scene_prompts
-awaiting-approval    (review/regen as today; cost shows 2 credits)
-approved             (deduct 2 credits)
+awaiting-approval    (review/regen as today; cost shows 3 credits)
+approved             (deduct 3 credits)
 generating-song      Suno → song.mp3 + takes          ← unchanged
 generating-cover     Flux → cover.png + scenes/*.png  ← extended: render the pool
   └─ align lyrics → lyrics.json                       ← unchanged
@@ -157,9 +157,9 @@ segments cycling an 8-image pool, chorus image recurring on each chorus.
   `"static"` → every existing caller unaffected). Stored in `song.json`.
 - `GET /songs/{id}/script` — cost block branches on `video_mode`: static =
   `suno + cover`; cinematic = `suno + (pool_size × cover_cost)`. Returns **credit
-  count (1 vs 2)** and the **dollar figure** (cost-disclosure rule: real $ shown
+  count (1 vs 3)** and the **dollar figure** (cost-disclosure rule: real $ shown
   before any paid run).
-- `POST /songs/{id}/approve` — deducts `1` or `2` credits via the existing
+- `POST /songs/{id}/approve` — deducts `1` or `3` credits via the existing
   `check_or_deduct` transaction, keyed on `video_mode`. The 402 guard reads the
   right amount.
 - `SongRunSummary` gains `video_mode` so the list/detail UI can badge cinematic
@@ -170,7 +170,7 @@ segments cycling an 8-image pool, chorus image recurring on each chorus.
 ```yaml
 song:
   credits_per_song: 1            # static (unchanged)
-  cinematic_credits_per_song: 2  # NEW
+  cinematic_credits_per_song: 3  # NEW
   cinematic_pool_size: 7         # NEW — caps Flux cost & free-grant burn
   bars_per_cut: 4                # NEW — cadence knob
 ```
@@ -178,22 +178,22 @@ song:
 ### Flutter (`lib/`)
 
 - `new_song_screen.dart` — segmented toggle: **"Static cover · 1 credit"** vs
-  **"Cinematic video · 2 credits"** + a one-line explainer. Passes `video_mode`
+  **"Cinematic video · 3 credits"** + a one-line explainer. Passes `video_mode`
   into the create request.
 - `api/models.dart` — `NewSongRequest` gains `video_mode`; `SongRunSummary` gains
   it too (default `"static"` so older shares deserialize).
 - `api/client.dart` — thread `video_mode` through `createSong(...)`.
-- `song_approve_screen.dart` / `cost_screen.dart` — show the 2-credit + dollar
+- `song_approve_screen.dart` / `cost_screen.dart` — show the 3-credit + dollar
   figure for cinematic before the spend confirm.
 
-### Economics flag (open item for the owner)
+### Economics
 
-A 7-image pool is ~$0.21 Flux + $0.05 Suno ≈ **$0.26 raw**, while 2 credits ≈
-**$0.20** of ledger value — so at 2 credits cinematic is roughly
-**break-even-to-slightly-negative**, and on the 60-credit free signup grant it is
-pure cost. Spec ships **2 credits + pool cap 7** per the Q4 decision; bumping to
-**3 credits** (healthy margin) or lowering the pool cap is a one-line
-`config.yaml` change. Decide before launch.
+A 7-image pool is ~$0.21 Flux + $0.05 Suno ≈ **$0.26 raw**, while 3 credits ≈
+**$0.30** of ledger value — a healthy positive margin. On the 60-credit free
+signup grant, a cinematic song costs the user 3 of their free credits (vs 1 for
+static), which both reflects the higher cost and nudges free users toward static.
+Pool cap stays at 7; raising it is a one-line `config.yaml` change but erodes
+margin (each extra image ≈ $0.03).
 
 ## Error handling & graceful degradation
 
@@ -208,8 +208,9 @@ for a downgrade.** Degradation ladder, top to bottom:
    static behavior).
 3. **Cinematic ffmpeg render fails** → retry once, then **fall back to
    `assemble_song_video` (static path)** so the user still gets a playable file,
-   **and refund the 1-credit surcharge** via the existing `credit-back` infra
-   (effectively charged 1), with a clear `state.note`.
+   **and refund the 2-credit surcharge** (cinematic 3 − static 1) via the
+   existing `credit-back` infra (effectively charged 1), with a clear
+   `state.note`.
 4. **Output-validity gate** — after render, `ffprobe` the result to confirm a
    video stream + audio stream + nonzero duration *before* marking `done`. Cheap
    insurance against the `MEDIA_ERR_SRC_NOT_SUPPORTED` class.
@@ -238,9 +239,9 @@ tiny inputs** (as `test_assemble.py` already does).
 - **Integration smoke** (mirrors `test_run_song_mode.py`): real ffmpeg on 2–3
   tiny PNGs + short sine audio + a 2-line `lyrics.json` → assert a playable mp4,
   correct duration, both streams present (ffprobe).
-- **Credits / API:** `POST /songs video_mode="cinematic"` → `/script` returns 2
-  credits + correct $; approve deducts 2; <2 credits → 402; static still deducts
-  1; **render-failure → static fallback + 1-credit refund recorded in the
+- **Credits / API:** `POST /songs video_mode="cinematic"` → `/script` returns 3
+  credits + correct $; approve deducts 3; <3 credits → 402; static still deducts
+  1; **render-failure → static fallback + 2-credit refund recorded in the
   ledger**.
 - **Degradation:** beat-detection failure still yields a schedule; scene-image
   failure reuses cover and completes.
