@@ -82,6 +82,7 @@ def test_pool_smaller_than_sections_cycles():
         beat_times=[], sections=sections, pool_size=2, audio_duration=25.0,
     )
     assert all(0 <= s.image_idx < 2 for s in sched)
+    assert [s.image_idx for s in sched] == [0, 1, 0, 1, 0]
 
 
 def test_single_section_song():
@@ -106,3 +107,29 @@ def test_segment_cap_enforced():
 def test_pool_size_zero_raises():
     with pytest.raises(ValueError):
         build_cut_schedule(beat_times=[], sections=[], pool_size=0, audio_duration=5.0)
+
+
+def test_zoom_dir_alternates_after_coarsen():
+    # 2000 beats * 0.5s = 1000s of beats; audio_duration=200.0 so ~400 segs survive.
+    # min_segment_s=0.4 < 0.5s beat step, so nothing merges; _coarsen folds to 5.
+    # zoom must alternate by FINAL index, not pre-merge boundary index.
+    sched = build_cut_schedule(
+        beat_times=_beats(2000, step=0.5), sections=[{"label": "V", "start": 0.0}],
+        pool_size=4, audio_duration=200.0, bars_per_cut=1, beats_per_bar=1,
+        min_segment_s=0.4, max_segments=5,
+    )
+    dirs = [s.zoom_dir for s in sched]
+    assert dirs == ["in", "out", "in", "out", "in"]
+
+
+def test_extract_sections_drops_unaligned():
+    data = {"lines": [
+        {"kind": "section", "text": "Verse 1", "start": None},
+        {"kind": "section", "text": "Chorus", "start": 4.0},
+    ]}
+    assert extract_sections(data) == [{"label": "Chorus", "start": 4.0}]
+
+
+def test_non_positive_duration_raises():
+    with pytest.raises(ValueError):
+        build_cut_schedule(beat_times=[], sections=[], pool_size=2, audio_duration=0.0)

@@ -121,6 +121,10 @@ def build_cut_schedule(
     """Build the cinematic cut timeline. See module docstring."""
     if pool_size < 1:
         raise ValueError("pool_size must be >= 1")
+    if audio_duration <= 0:
+        raise ValueError("audio_duration must be > 0")
+
+    sections = sorted(sections, key=lambda s: float(s["start"])) if sections else []
 
     section_starts = [float(s["start"]) for s in sections] if sections else [0.0]
     section_imgs = _assign_section_images(sections, pool_size) if sections else [0]
@@ -144,9 +148,15 @@ def build_cut_schedule(
         if end <= start:
             continue
         img = _image_for_time(start, section_starts, section_imgs)
-        zoom = "in" if i % 2 == 0 else "out"
-        segs.append(Segment(image_idx=img, start=start, end=end, zoom_dir=zoom))
+        segs.append(Segment(image_idx=img, start=start, end=end, zoom_dir="in"))
 
     segs = _merge_short(segs, min_segment_s, audio_duration)
     segs = _coarsen(segs, max_segments)
+
+    # Alternate zoom by FINAL index so merge/coarsen can't create runs of
+    # identical zoom direction (a visual defect in the rendered video).
+    segs = [
+        Segment(s.image_idx, s.start, s.end, "in" if i % 2 == 0 else "out")
+        for i, s in enumerate(segs)
+    ]
     return segs
