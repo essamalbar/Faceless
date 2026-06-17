@@ -1061,3 +1061,58 @@ def test_approve_429_when_another_run_active(app, monkeypatch):
         assert "in progress" in r.text
     finally:
         fastapi_app.dependency_overrides.pop(require_user, None)
+
+
+# ─────────────── Downgrade refund ─────────────────────────────────────────────
+
+def test_downgrade_refunds_surcharge_once(app, monkeypatch):
+    """GET /songs/{id} on a cinematic run that downgraded to static must
+    refund the 2-credit surcharge exactly once, then set surcharge_refunded=True
+    so a second GET is a no-op."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+
+    # Create a song via the API to get a real run dir under the authed user.
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+
+    # Overwrite api_state.json to look like a complete cinematic run
+    # that downgraded to static (video_downgraded=True, no surcharge_refunded).
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    state["video_mode"] = "cinematic"
+    state["video_downgraded"] = True
+    # surcharge_refunded deliberately absent
+    state.pop("surcharge_refunded", None)
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    # Update song.json to reflect cinematic video_mode too.
+    song_data = json.loads((run_dir / "song.json").read_text())
+    song_data["video_mode"] = "cinematic"
+    (run_dir / "song.json").write_text(json.dumps(song_data))
+
+    import pipeline.credits as credits_mod
+    calls = []
+    monkeypatch.setattr(
+        credits_mod, "refund",
+        lambda user, **kw: calls.append(kw["amount"]),
+    )
+
+    # First GET — should trigger refund(amount=2).
+    r1 = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 200, r1.text
+
+    # Second GET — refund must NOT be called again (idempotent).
+    r2 = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 200, r2.text
+
+    # Exactly one refund of 2 credits total.
+    assert calls == [2], f"expected [2] but got {calls}"
+
+    # The flag must be persisted so future GETs are no-ops.
+    final_state = json.loads((run_dir / "api_state.json").read_text())
+    assert final_state.get("surcharge_refunded") is True

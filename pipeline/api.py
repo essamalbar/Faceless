@@ -2465,6 +2465,26 @@ def _song_credit_amount(video_mode: str, cfg) -> int:
     return 3 if video_mode == "cinematic" else 1
 
 
+def _reconcile_downgrade_refund(run_dir: Path, user: "User") -> None:
+    """If a cinematic run downgraded to static, refund the credit
+    surcharge exactly once. Idempotent via the surcharge_refunded flag."""
+    import pipeline.credits as _credits
+    from pipeline.config import load_config
+    state = _read_state(run_dir)
+    if not state.get("video_downgraded") or state.get("surcharge_refunded"):
+        return
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+    if cfg.song:
+        surcharge = cfg.song.cinematic_credits_per_song - cfg.song.credits_per_song
+    else:
+        surcharge = 2
+    if surcharge > 0:
+        _credits.refund(user, amount=surcharge, run_id=run_dir.name,
+                        reason="cinematic-downgrade-refund")
+    _write_state(run_dir, surcharge_refunded=True)
+
+
 def _resolve_song_dir(run_id: str, user: "User") -> Path:
     """Locate the run dir; 404 if missing or owned by someone else."""
     run_dir = _run_dir(run_id, user)
@@ -2585,6 +2605,7 @@ def _enforce_daily_song_limit(user: "User") -> None:
 @app.get("/songs/{run_id}", response_model=SongRunSummary)
 def get_song(run_id: str, user: User = Depends(require_user)):
     run_dir = _resolve_song_dir(run_id, user)
+    _reconcile_downgrade_refund(run_dir, user)
     state = _read_state(run_dir)
     if state.get("kind") != "song":
         raise HTTPException(404, "not a song run")
