@@ -1057,7 +1057,7 @@ def _run_song_post_approve(args) -> int:
             out_path=final_cover_path,
         )
 
-        # --- Stage 2.2: cinematic scene pool ---
+        # --- Stage 2b: cinematic scene pool ---
         # Render the per-section image pool that the beat-synced video
         # cuts between. Style-locked to art_direction; falls back to the
         # cover for any scene that fails to render. Static mode skips this.
@@ -1172,6 +1172,11 @@ def _run_song_post_approve(args) -> int:
                 lyrics_json=lyrics_arg, title=script.get("title"),
                 share_token=share_token,
             )
+            # A cinematic-priced run that reaches the static path (e.g. no
+            # scene pool was produced) owes the surcharge back, same as a
+            # cinematic render failure. The API reconciles the refund.
+            if video_mode == "cinematic":
+                write_state(video_downgraded=True)
 
         # watermarked=True signals to the API + Flutter UI that this
         # song's final.mp4 carries the brand-mark PNG overlay + container

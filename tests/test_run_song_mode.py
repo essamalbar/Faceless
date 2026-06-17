@@ -190,3 +190,35 @@ def test_cinematic_render_failure_downgrades_to_static(tmp_path: Path, monkeypat
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["video_downgraded"] is True
     assert state["status"] == "complete"
+
+
+def test_cinematic_empty_scene_pool_downgrades_to_static(tmp_path: Path, monkeypatch):
+    """When generate_scene_images returns [] the run falls through to the
+    static assembler, but the user was charged the cinematic surcharge.
+    video_downgraded must be set so the API can reconcile the refund."""
+    run_dir = _setup_cinematic_run(tmp_path, monkeypatch)
+
+    # Override the scene-pool stub to return an empty list.
+    monkeypatch.setattr(
+        song_cover,
+        "generate_scene_images",
+        lambda *, client, art_direction, scene_prompts, out_dir, cover_fallback: [],
+    )
+
+    static_called = {}
+
+    def fake_static(*, cover_path, song_mp3, out_mp4,
+                    lyrics_json=None, title=None, share_token=None):
+        static_called["cover_path"] = cover_path
+        out_mp4.write_bytes(b"fake-static-mp4")
+    monkeypatch.setattr(song_assemble, "assemble_song_video", fake_static)
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    assert rc == 0
+    assert static_called, "static assembler was not called for empty scene pool"
+    assert (run_dir / "final.mp4").exists()
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["video_downgraded"] is True
+    assert state["status"] == "complete"
