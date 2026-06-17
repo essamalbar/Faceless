@@ -158,3 +158,31 @@ def test_song_script_missing_scene_fields_default_empty():
     )
     assert s.art_direction == ""
     assert s.scene_prompts == []
+
+
+class _MessyGroqLLM:
+    """Mimics Groq/Llama fallback output: prose wrapper + RAW (unescaped)
+    newlines inside the lyrics string — invalid strict JSON. The literal
+    newlines must reach json.loads (json.dumps would escape them), so the
+    string is built by hand."""
+    def complete(self, user_msg, system):
+        return (
+            "Here is the song you asked for:\n"
+            '{"title": "ليل",\n'
+            ' "lyrics": "[Verse 1]\nسطر\n\n[Chorus]\nهوك",\n'
+            ' "style_prompt": "Arabic pop, 90 BPM, oud, male vocal",\n'
+            ' "cover_prompt": "a moonlit rooftop"}\n'
+            "Hope you like it!"
+        )
+
+
+def test_song_script_tolerates_messy_groq_output():
+    # Reproduces the prod failure: Groq fallback emitted prose + raw newlines
+    # -> "Invalid control character". strict=False + {...} extraction fix it.
+    s = generate_song_script(
+        llm=_MessyGroqLLM(), theme="loneliness",
+        custom_lyrics=None, style_hint=None, language="ar",
+    )
+    assert s.title == "ليل"
+    assert "[Chorus]" in s.lyrics
+    assert "90 BPM" in s.style_prompt

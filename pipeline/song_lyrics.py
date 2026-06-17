@@ -132,7 +132,16 @@ def generate_song_script(
     if raw.startswith("```"):
         # Strip fenced-code wrappers (some models always wrap).
         raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
-    parsed = json.loads(raw)
+    # The Groq/Llama fallback provider sometimes wraps the JSON in prose and
+    # emits raw newlines inside string values — both break strict json.loads.
+    # Extract the outermost {...} and parse non-strict so raw control chars in
+    # the lyrics are tolerated. Anthropic output already satisfies both, so
+    # this is purely additive robustness for the fallback path.
+    if not raw.startswith("{"):
+        start, end = raw.find("{"), raw.rfind("}")
+        if start != -1 and end > start:
+            raw = raw[start:end + 1]
+    parsed = json.loads(raw, strict=False)
 
     lyrics = custom_lyrics if custom_lyrics else parsed["lyrics"]
     validate_section_tags(lyrics)
