@@ -901,6 +901,7 @@ def _run_song_post_approve(args) -> int:
     from pathlib import Path as _Path
 
     from pipeline import song, song_cover, song_assemble, song_align, song_og
+    from pipeline import song_beats, song_cinematic, song_scenes
     from pipeline.config import load_config
     from pipeline.kie import KieClient
 
@@ -949,6 +950,12 @@ def _run_song_post_approve(args) -> int:
         # 1 + 2 + 3 short-circuit (Suno + Flux skipped, only assemble
         # runs).
         current_state = json.loads(state_path.read_text()) if state_path.exists() else {}
+
+        # Cinematic vs static video path. State wins over song.json so a
+        # /resume after an upgrade can flip the mode; defaults to static.
+        video_mode = current_state.get("video_mode") or script.get("video_mode", "static")
+        scene_paths: list[_Path] = []
+
         swap_to = current_state.get("swap_to_take")
         if swap_to in (1, 2):
             print(f"[song-post-approve] swap-to-take {swap_to}")
@@ -1050,6 +1057,19 @@ def _run_song_post_approve(args) -> int:
             out_path=final_cover_path,
         )
 
+        # --- Stage 2b: cinematic scene pool ---
+        # Render the per-section image pool that the beat-synced video
+        # cuts between. Style-locked to art_direction; falls back to the
+        # cover for any scene that fails to render. Static mode skips this.
+        if video_mode == "cinematic":
+            scene_paths = song_cover.generate_scene_images(
+                client=client,
+                art_direction=script.get("art_direction", ""),
+                scene_prompts=script.get("scene_prompts") or [script["cover_prompt"]],
+                out_dir=run_dir,
+                cover_fallback=final_cover_path,
+            )
+
         # --- Stage 2.1: compose Open Graph card ---
         # Per-song 1200x630 OG image so social previews (WhatsApp,
         # Twitter, Instagram, iMessage) show the actual cover + title
@@ -1097,20 +1117,66 @@ def _run_song_post_approve(args) -> int:
             print(f"[song-post-approve] lyrics alignment failed, "
                   f"continuing without captions: {align_err}")
 
+        # --- Stage 2.6: beat detection (cinematic only) ---
+        # New resumable status. detect_beats() never raises (it falls back
+        # to a fixed-BPM grid internally) and caches beats.json, so a
+        # /resume after this point is cheap.
+        beats_data = None
+        if video_mode == "cinematic":
+            write_state(status="detecting_beats")
+            beats_data = song_beats.detect_beats(
+                song_mp3, out_json=run_dir / "beats.json",
+            )
+
         # --- Stage 3: assemble ---
         write_state(status="assembling")
         # share_token may already exist from a prior /songs/{id}/share
         # POST. If not, the watermark MP4 will simply name the project
         # without a deep link (still attributes; just no per-share URL).
         share_token = current_state.get("share_token") or None
-        song_assemble.assemble_song_video(
-            cover_path=final_cover_path,
-            song_mp3=song_mp3,
-            out_mp4=final_mp4,
-            lyrics_json=lyrics_json if lyrics_json.exists() else None,
-            title=script.get("title"),
-            share_token=share_token,
-        )
+        lyrics_arg = lyrics_json if lyrics_json.exists() else None
+
+        if video_mode == "cinematic" and scene_paths:
+            sections = song_scenes.extract_sections(
+                json.loads(lyrics_json.read_text(encoding="utf-8"))
+                if lyrics_json.exists() else {"lines": []}
+            )
+            schedule = song_scenes.build_cut_schedule(
+                beat_times=(beats_data or {}).get("beat_times", []),
+                sections=sections,
+                pool_size=len(scene_paths),
+                audio_duration=song_assemble.ffprobe_duration(song_mp3),
+                bars_per_cut=cfg.song.bars_per_cut if cfg.song else 4,
+            )
+            try:
+                song_cinematic.assemble_cinematic_song_video(
+                    scene_paths=scene_paths, song_mp3=song_mp3, out_mp4=final_mp4,
+                    schedule=schedule, lyrics_json=lyrics_arg,
+                    title=script.get("title"), share_token=share_token,
+                )
+            except Exception as cine_err:
+                # Cinematic render failed — fall back to the static cover
+                # video so the user still gets a playable file. The API
+                # refunds the cinematic surcharge when it sees this flag.
+                print(f"[song-post-approve] cinematic assemble failed ({cine_err}); "
+                      f"falling back to static cover video")
+                song_assemble.assemble_song_video(
+                    cover_path=final_cover_path, song_mp3=song_mp3, out_mp4=final_mp4,
+                    lyrics_json=lyrics_arg, title=script.get("title"),
+                    share_token=share_token,
+                )
+                write_state(video_downgraded=True)
+        else:
+            song_assemble.assemble_song_video(
+                cover_path=final_cover_path, song_mp3=song_mp3, out_mp4=final_mp4,
+                lyrics_json=lyrics_arg, title=script.get("title"),
+                share_token=share_token,
+            )
+            # A cinematic-priced run that reaches the static path (e.g. no
+            # scene pool was produced) owes the surcharge back, same as a
+            # cinematic render failure. The API reconciles the refund.
+            if video_mode == "cinematic":
+                write_state(video_downgraded=True)
 
         # watermarked=True signals to the API + Flutter UI that this
         # song's final.mp4 carries the brand-mark PNG overlay + container

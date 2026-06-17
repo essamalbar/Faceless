@@ -41,7 +41,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from pipeline.auth import User, require_user, require_user_header_or_query
 from pipeline.spawn_backends import LocalSubprocessBackend, select_backend
@@ -390,6 +390,16 @@ class CreateSongRequest(BaseModel):
     # Optional Suno model override. Validated against
     # _ALLOWED_SUNO_MODELS below. None → use config default (V5_5).
     suno_model: str | None = None
+    # Video render mode. "static" = single cover still over audio (1 credit);
+    # "cinematic" = beat-synced multi-scene pool (3 credits).
+    video_mode: str = "static"
+
+    @field_validator("video_mode")
+    @classmethod
+    def _check_video_mode(cls, v: str) -> str:
+        if v not in ("static", "cinematic"):
+            raise ValueError("video_mode must be 'static' or 'cinematic'")
+        return v
 
 
 # Whitelist of Suno model ids the user can pick from. V3_5 is the
@@ -405,6 +415,7 @@ class SongScriptResponse(BaseModel):
     language: str
     cost_credits: int
     cost_usd: float
+    video_mode: str = "static"
 
 
 class CreatePersonaRequest(BaseModel):
@@ -448,6 +459,9 @@ class SongRunSummary(BaseModel):
     # as None → treated as False by the Flutter UI). Drives the
     # "Apply watermark" CTA on the song detail screen.
     watermarked: bool = False
+    # "static" (single cover still) or "cinematic" (beat-synced multi-scene
+    # pool). Older songs without the key read as "static".
+    video_mode: str = "static"
 
 
 class RunProgress(BaseModel):
@@ -2372,7 +2386,8 @@ def create_song(
         "FACELESS_CONFIG",
         str(REPO_ROOT / "config.yaml"),
     )))
-    credits_required = cfg.song.credits_per_song if cfg.song else 1
+    # song.json isn't written yet at this point, so price from the request.
+    credits_required = _song_credit_amount(req.video_mode, cfg)
 
     if user.role != "service" and get_balance(user.id) < credits_required:
         _raise_402_insufficient_credits(get_balance(user.id), credits_required)
@@ -2389,6 +2404,7 @@ def create_song(
         status="writing_lyrics",
         user_id=user.id,
         theme=req.theme,
+        video_mode=req.video_mode,
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
 
@@ -2424,6 +2440,11 @@ def create_song(
                 if req.suno_model in _ALLOWED_SUNO_MODELS
                 else None
             ),
+            # Render mode + cinematic art direction. video_mode drives the
+            # 1-vs-3 credit price and the static-vs-beat-synced render path.
+            "video_mode": req.video_mode,
+            "art_direction": script.art_direction,
+            "scene_prompts": script.scene_prompts,
         }, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
@@ -2431,6 +2452,41 @@ def create_song(
     _write_state(run_dir, status="awaiting_approval", title=script.title)
 
     return {"run_id": run_id, "status": "awaiting_approval"}
+
+
+def _song_credit_amount(video_mode: str, cfg) -> int:
+    """Credit cost for one song render given video_mode. Single source of
+    truth so the create/script/approve/reroll paths can't drift. Falls back
+    to hard-coded defaults only when SongConfig is absent."""
+    if cfg.song:
+        return (cfg.song.cinematic_credits_per_song
+                if video_mode == "cinematic"
+                else cfg.song.credits_per_song)
+    return 3 if video_mode == "cinematic" else 1
+
+
+def _reconcile_downgrade_refund(run_dir: Path, user: "User") -> None:
+    """If a cinematic run downgraded to static, refund the credit
+    surcharge exactly once. Idempotent via the surcharge_refunded flag."""
+    import pipeline.credits as _credits
+    from pipeline.config import load_config
+    state = _read_state(run_dir)
+    if not state.get("video_downgraded") or state.get("surcharge_refunded"):
+        return
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+    if cfg.song:
+        surcharge = cfg.song.cinematic_credits_per_song - cfg.song.credits_per_song
+    else:
+        surcharge = 2
+    if surcharge > 0:
+        # Refund first, then flag. If refund raises, the flag stays unset and the
+        # next GET retries (safe direction). Two simultaneous GETs could double-
+        # refund — accepted for a solo-user app, same non-locking tradeoff as
+        # credits.check_or_deduct.
+        _credits.refund(user, amount=surcharge, run_id=run_dir.name,
+                        reason="cinematic-downgrade-refund")
+    _write_state(run_dir, surcharge_refunded=True)
 
 
 def _resolve_song_dir(run_id: str, user: "User") -> Path:
@@ -2553,6 +2609,7 @@ def _enforce_daily_song_limit(user: "User") -> None:
 @app.get("/songs/{run_id}", response_model=SongRunSummary)
 def get_song(run_id: str, user: User = Depends(require_user)):
     run_dir = _resolve_song_dir(run_id, user)
+    _reconcile_downgrade_refund(run_dir, user)
     state = _read_state(run_dir)
     if state.get("kind") != "song":
         raise HTTPException(404, "not a song run")
@@ -2568,6 +2625,7 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         last_error=state.get("last_error"),
         failure_stage=state.get("failure_stage"),
         watermarked=bool(state.get("watermarked", False)),
+        video_mode=state.get("video_mode", "static"),
     )
 
 
@@ -2581,14 +2639,23 @@ def get_song_script(run_id: str, user: User = Depends(require_user)):
     from pipeline.config import load_config
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
+    video_mode = script.get("video_mode", "static")
+    credits = _song_credit_amount(video_mode, cfg)
+    if cfg.song and video_mode == "cinematic":
+        usd = cfg.song.suno_cost_usd + cfg.song.cinematic_pool_size * cfg.song.cover_cost_usd
+    elif cfg.song:
+        usd = cfg.song.suno_cost_usd + cfg.song.cover_cost_usd
+    else:
+        usd = 0.08
     return SongScriptResponse(
         title=script["title"],
         lyrics=script["lyrics"],
         style_prompt=script["style_prompt"],
         cover_prompt=script["cover_prompt"],
         language=script["language"],
-        cost_credits=cfg.song.credits_per_song if cfg.song else 1,
-        cost_usd=(cfg.song.suno_cost_usd + cfg.song.cover_cost_usd) if cfg.song else 0.08,
+        cost_credits=credits,
+        cost_usd=usd,
+        video_mode=video_mode,
     )
 
 
@@ -2666,6 +2733,7 @@ def list_songs(user: User = Depends(require_user)):
             chosen_take=state.get("chosen_take"),
             last_error=state.get("last_error"),
             failure_stage=state.get("failure_stage"),
+            video_mode=state.get("video_mode", "static"),
         ))
     return out
 
@@ -2820,7 +2888,9 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
 
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
-    amount = cfg.song.credits_per_song if cfg.song else 1
+    script = json.loads((run_dir / "song.json").read_text())
+    video_mode = script.get("video_mode", "static")
+    amount = _song_credit_amount(video_mode, cfg)
 
     if user.role != "service":
         balance = _credits.get_balance(user.id)
@@ -3188,7 +3258,9 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
 
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
-    amount = cfg.song.credits_per_song if cfg.song else 1
+    script = json.loads((run_dir / "song.json").read_text())
+    video_mode = script.get("video_mode", "static")
+    amount = _song_credit_amount(video_mode, cfg)
 
     if user.role != "service":
         balance = _credits.get_balance(user.id)

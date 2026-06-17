@@ -276,6 +276,136 @@ def test_approve_song_deducts_credits_and_spawns(app, monkeypatch):
     assert "--resume" in args
 
 
+def test_approve_cinematic_song_deducts_three_credits(app, monkeypatch):
+    """Approving a song whose song.json has video_mode='cinematic' must
+    charge 3 credits, not the default 1."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod, credits
+
+    api_mod.set_spawn_fn(lambda args, run_dir: 12345)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    captured = {}
+    def _capture(user, *, amount, run_id, reason):
+        captured["amount"] = amount
+        return 100 - amount
+    monkeypatch.setattr(credits, "check_or_deduct", _capture)
+
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+
+    # Inject video_mode=cinematic into the already-written song.json
+    song_data = json.loads((run_dir / "song.json").read_text())
+    song_data["video_mode"] = "cinematic"
+    (run_dir / "song.json").write_text(json.dumps(song_data))
+
+    r = client.post(
+        f"/songs/{run_id}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["amount"] == 3
+    assert r.json()["balance_after"] == 97
+
+
+def test_approve_static_song_deducts_one_credit(app, monkeypatch):
+    """Approving a song with video_mode='static' (or unset) must charge
+    exactly 1 credit."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod, credits
+
+    api_mod.set_spawn_fn(lambda args, run_dir: 12345)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    captured = {}
+    def _capture(user, *, amount, run_id, reason):
+        captured["amount"] = amount
+        return 100 - amount
+    monkeypatch.setattr(credits, "check_or_deduct", _capture)
+
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+
+    # Explicitly set video_mode=static (also covers the default / omitted case)
+    song_data = json.loads((run_dir / "song.json").read_text())
+    song_data["video_mode"] = "static"
+    (run_dir / "song.json").write_text(json.dumps(song_data))
+
+    r = client.post(
+        f"/songs/{run_id}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["amount"] == 1
+    assert r.json()["balance_after"] == 99
+
+
+def test_reroll_cinematic_song_deducts_three_credits(app, monkeypatch):
+    """reroll-takes on a cinematic song must charge 3 credits, not 1."""
+    from pipeline import api as api_mod, credits
+
+    api_mod.set_spawn_fn(lambda args, run_dir: 12345)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    captured = {}
+    def _capture(user, *, amount, run_id, reason):
+        captured["amount"] = amount
+        return 100 - amount
+    monkeypatch.setattr(credits, "check_or_deduct", _capture)
+
+    run_id, run_dir, client, token = _setup_complete_song(app, monkeypatch)
+
+    # Inject video_mode=cinematic into song.json
+    song_data = json.loads((run_dir / "song.json").read_text())
+    song_data["video_mode"] = "cinematic"
+    (run_dir / "song.json").write_text(json.dumps(song_data))
+
+    r = client.post(
+        f"/songs/{run_id}/reroll-takes",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["amount"] == 3
+
+
+def test_reroll_static_song_deducts_one_credit(app, monkeypatch):
+    """reroll-takes on a static song must charge exactly 1 credit, not 3."""
+    from pipeline import api as api_mod, credits
+
+    api_mod.set_spawn_fn(lambda args, run_dir: 12345)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    captured = {}
+    def _capture(user, *, amount, run_id, reason):
+        captured["amount"] = amount
+        return 100 - amount
+    monkeypatch.setattr(credits, "check_or_deduct", _capture)
+
+    run_id, run_dir, client, token = _setup_complete_song(app, monkeypatch)
+
+    # Explicitly set video_mode=static (also covers the default / omitted case)
+    song_data = json.loads((run_dir / "song.json").read_text())
+    song_data["video_mode"] = "static"
+    (run_dir / "song.json").write_text(json.dumps(song_data))
+
+    r = client.post(
+        f"/songs/{run_id}/reroll-takes",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["amount"] == 1
+
+
 def test_approve_song_idempotent_after_first_call(app, monkeypatch):
     fastapi_app, token = app
     client = TestClient(fastapi_app)
@@ -931,3 +1061,97 @@ def test_approve_429_when_another_run_active(app, monkeypatch):
         assert "in progress" in r.text
     finally:
         fastapi_app.dependency_overrides.pop(require_user, None)
+
+
+# ─────────────── Downgrade refund ─────────────────────────────────────────────
+
+def test_downgrade_refunds_surcharge_once(app, monkeypatch):
+    """GET /songs/{id} on a cinematic run that downgraded to static must
+    refund the 2-credit surcharge exactly once, then set surcharge_refunded=True
+    so a second GET is a no-op."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+
+    # Create a song via the API to get a real run dir under the authed user.
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+
+    # Overwrite api_state.json to look like a complete cinematic run
+    # that downgraded to static (video_downgraded=True, no surcharge_refunded).
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    state["video_mode"] = "cinematic"
+    state["video_downgraded"] = True
+    # surcharge_refunded deliberately absent
+    state.pop("surcharge_refunded", None)
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    # Update song.json to reflect cinematic video_mode too.
+    song_data = json.loads((run_dir / "song.json").read_text())
+    song_data["video_mode"] = "cinematic"
+    (run_dir / "song.json").write_text(json.dumps(song_data))
+
+    import pipeline.credits as credits_mod
+    calls = []
+    monkeypatch.setattr(
+        credits_mod, "refund",
+        lambda user, **kw: calls.append(kw["amount"]),
+    )
+
+    # First GET — should trigger refund(amount=2).
+    r1 = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 200, r1.text
+
+    # Second GET — refund must NOT be called again (idempotent).
+    r2 = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 200, r2.text
+
+    # Exactly one refund of 2 credits total.
+    assert calls == [2], f"expected [2] but got {calls}"
+
+    # The flag must be persisted so future GETs are no-ops.
+    final_state = json.loads((run_dir / "api_state.json").read_text())
+    assert final_state.get("surcharge_refunded") is True
+
+
+def test_normal_song_get_does_not_refund(app, monkeypatch):
+    """GET /songs/{id} on a normal complete run (no video_downgraded flag)
+    must never call credits.refund, regardless of how many times it is called."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+
+    # Create a song via the API to get a real run dir under the authed user.
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+
+    # Mark the run complete without any video_downgraded flag — a plain
+    # static or cinematic-success run.
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    # Deliberately omit video_downgraded
+    state.pop("video_downgraded", None)
+    state.pop("surcharge_refunded", None)
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    import pipeline.credits as credits_mod
+    refund_calls = []
+    monkeypatch.setattr(
+        credits_mod, "refund",
+        lambda user, **kw: refund_calls.append(kw["amount"]),
+    )
+
+    r = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+
+    assert refund_calls == [], (
+        f"credits.refund must not be called for a normal (non-downgraded) song, "
+        f"but got calls: {refund_calls}"
+    )

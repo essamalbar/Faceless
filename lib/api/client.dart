@@ -527,6 +527,7 @@ class FacelessApiClient {
     String? personaId,
     String vocalGender = 'm',
     String? sunoModel,
+    String videoMode = 'static',
   }) async {
     final body = <String, dynamic>{
       'theme': theme,
@@ -536,6 +537,7 @@ class FacelessApiClient {
       if (personaId != null && personaId.isNotEmpty) 'persona_id': personaId,
       'vocal_gender': vocalGender,
       if (sunoModel != null) 'suno_model': sunoModel,
+      'video_mode': videoMode,
     };
     final r = await _http.post(
       await _uri('/songs'),

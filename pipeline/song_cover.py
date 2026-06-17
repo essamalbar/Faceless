@@ -194,3 +194,55 @@ def apply_title_overlay(
     thumb.thumbnail((256, 256), Image.LANCZOS)
     thumb.save(out_path.parent / "cover_thumb.jpg",
                format="JPEG", quality=80, optimize=True)
+
+
+def generate_scene_images(
+    *,
+    client: KieClient,
+    art_direction: str,
+    scene_prompts: list[str],
+    out_dir: Path,
+    cover_fallback: Path,
+) -> list[Path]:
+    """Render the cinematic scene pool to out_dir/scenes/scene_NN.png.
+
+    Style-lock v1: the shared `art_direction` is prepended to every
+    scene prompt so the pool reads as one music video. Each image is
+    independent; if Flux fails for a scene (after the model fallback in
+    submit), that slot reuses a copy of `cover_fallback` so the render
+    never loses a frame. Returns the ordered list of scene paths.
+    """
+    import shutil
+
+    scenes_dir = out_dir / "scenes"
+    scenes_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+
+    for i, prompt in enumerate(scene_prompts, start=1):
+        dest = scenes_dir / f"scene_{i:02d}.png"
+        if dest.exists():           # resumable: skip already-rendered scenes
+            paths.append(dest)
+            continue
+        full_prompt = (
+            f"{art_direction}. {prompt}, cinematic lighting, shallow depth "
+            f"of field, high detail, no text, no watermark, square composition"
+        )
+        rendered = False
+        for model in FLUX_MODELS_TRIED:
+            try:
+                task_id = client.submit_flux_image_job(
+                    prompt=full_prompt, model=model, aspect_ratio="1:1",
+                )
+                url = client.wait_for_flux_image(task_id, poll_interval_s=5, timeout_s=180)
+                client.download(url, dest)
+                rendered = True
+                break
+            except (KieError, TransientKieError) as e:
+                print(f"[song_cover] scene {i} {model} failed: {e}; next fallback")
+                continue
+        if not rendered:
+            print(f"[song_cover] scene {i} all Flux models failed; reusing cover")
+            shutil.copyfile(cover_fallback, dest)
+        paths.append(dest)
+
+    return paths

@@ -315,3 +315,18 @@ def test_assemble_shorts_skips_if_output_exists(monkeypatch, tmp_run_dir: Path):
         burn_caption_ass=None,
     )
     assert called["n"] == 0
+
+
+def test_build_metadata_args_includes_share_token():
+    from pipeline.song_assemble import build_metadata_args
+    args = build_metadata_args(title="ليل", share_token="abc123")
+    assert "-metadata" in args
+    assert any("title=ليل" in a for a in args)
+    assert any("abc123" in a for a in args)
+
+
+def test_build_metadata_args_without_token():
+    from pipeline.song_assemble import build_metadata_args
+    args = build_metadata_args(title=None, share_token=None)
+    assert any("artist=Faceless Lab" in a for a in args)
+    assert any("faceless-lab.com" in a for a in args)

@@ -168,6 +168,35 @@ def _escape_ffmpeg_filter_path(p: Path) -> str:
     return s
 
 
+def build_metadata_args(title: str | None, share_token: str | None) -> list[str]:
+    """MP4 container provenance tags — shared by the static and cinematic
+    assemblers. Lives in the moov atom for ffprobe / content-ID tools."""
+    args: list[str] = []
+    if title:
+        args += ["-metadata", f"title={title}"]
+    args += [
+        "-metadata", "artist=Faceless Lab",
+        "-metadata", "encoded_by=Faceless Lab",
+        "-metadata", (
+            "copyright=© Faceless Lab — AI-generated. "
+            "Not for unauthorized commercial reuse."
+        ),
+    ]
+    if share_token:
+        args += ["-metadata",
+                 f"comment=Generated with Faceless Lab — "
+                 f"https://faceless-lab.com/p/{share_token}"]
+    else:
+        args += ["-metadata", "comment=Generated with Faceless Lab — faceless-lab.com"]
+    return args
+
+
+def resolve_watermark() -> tuple[bool, Path]:
+    """(has_watermark, path). Shared by both assemblers."""
+    watermark_png = _FONT_DIR.parent / "watermark.png"
+    return watermark_png.exists(), watermark_png
+
+
 def assemble_song_video(
     *,
     cover_path: Path,
@@ -214,8 +243,7 @@ def assemble_song_video(
     # repo at assets/watermark.png so the Docker image always has it;
     # if the asset is missing locally (dev / tests) we silently skip
     # the watermark rather than crash the assembly.
-    watermark_png = _FONT_DIR.parent / "watermark.png"
-    has_watermark = watermark_png.exists()
+    has_watermark, watermark_png = resolve_watermark()
 
     if has_watermark:
         # Two-input filter graph:
@@ -245,28 +273,7 @@ def assemble_song_video(
     # source. share_token is the load-bearing field — it's a one-way
     # cryptographic fingerprint linking re-uploaded copies back to the
     # original share page on faceless-lab.com.
-    metadata_args: list[str] = []
-    if title:
-        metadata_args += ["-metadata", f"title={title}"]
-    metadata_args += [
-        "-metadata", "artist=Faceless Lab",
-        "-metadata", "encoded_by=Faceless Lab",
-        "-metadata", (
-            "copyright=© Faceless Lab — AI-generated. "
-            "Not for unauthorized commercial reuse."
-        ),
-    ]
-    if share_token:
-        metadata_args += [
-            "-metadata",
-            f"comment=Generated with Faceless Lab — "
-            f"https://faceless-lab.com/p/{share_token}",
-        ]
-    else:
-        metadata_args += [
-            "-metadata",
-            "comment=Generated with Faceless Lab — faceless-lab.com",
-        ]
+    metadata_args = build_metadata_args(title, share_token)
 
     cmd = [
         "ffmpeg", "-y",

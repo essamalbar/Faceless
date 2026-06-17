@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 _SECTION_TAG_RE = re.compile(r"\[(Verse|Pre-Chorus|Chorus|Bridge|Outro)[\s\d]*\]", re.I)
@@ -22,6 +22,10 @@ class SongScript:
     style_prompt: str
     cover_prompt: str
     language: str
+    # Cinematic mode: one shared art direction + per-section scene prompts.
+    # Empty for static-only runs / older payloads.
+    art_direction: str = ""
+    scene_prompts: list = field(default_factory=list)
 
 
 def validate_section_tags(lyrics: str) -> None:
@@ -43,6 +47,8 @@ OUTPUT FORMAT: a JSON object with these keys (no surrounding markdown, no commen
   - lyrics:       the full song with REQUIRED section tags
   - style_prompt: a structured comma-separated descriptor
   - cover_prompt: a prompt for an AI image model to make the album cover
+  - art_direction: one-sentence shared look for the cinematic video
+  - scene_prompts: JSON array of 6–8 per-section image prompts
 
 LYRICS — REQUIRED SHAPE:
 [Verse 1]
@@ -83,6 +89,16 @@ photography or art style. No text in the image (we burn the title on
 separately). Leave space at the top-right corner.
 
 If the user gave a style hint, include it in the style_prompt.
+
+ART DIRECTION + SCENE PROMPTS (for the cinematic music-video mode):
+  - art_direction: ONE sentence fixing the shared visual world for the
+    whole video — palette, film stock/medium, lighting, mood. Every
+    scene below must read as the same world.
+  - scene_prompts: a JSON array of 6–8 image prompts, ONE per song
+    section in order (Verse 1, Pre-Chorus, Chorus, Verse 2, ...). Each
+    describes a distinct moment/angle WITHIN the art_direction (do not
+    repeat the art_direction text in them). No text in any image.
+    Reuse the SAME chorus imagery concept whenever [Chorus] repeats.
 """
 
 
@@ -127,4 +143,6 @@ def generate_song_script(
         style_prompt=parsed["style_prompt"],
         cover_prompt=parsed["cover_prompt"],
         language=language,
+        art_direction=str(parsed.get("art_direction", "")),
+        scene_prompts=list(parsed.get("scene_prompts", []) or []),
     )

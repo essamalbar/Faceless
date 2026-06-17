@@ -2331,3 +2331,52 @@ def test_billing_get_endpoints_bypass_db_for_service_tokens(client_factory, monk
 
     # Critical: the DB was NEVER called with the synthetic "admin" id.
     assert db_was_called == []
+
+
+# ---------------------------------------------------------------------------
+# Song video_mode toggle (static vs cinematic) — Task 8
+# ---------------------------------------------------------------------------
+
+def _stub_song_llm(monkeypatch):
+    """Replace the lyrics LLM with a canned SongScript so /songs never
+    hits a real provider. monkeypatches the module-level
+    generate_song_script (create_song imports it at call-time) and the
+    _build_song_llm builder (so no API key is needed)."""
+    from pipeline.song_lyrics import SongScript
+    import pipeline.api as api
+
+    def fake_script(**kw):
+        return SongScript(
+            title="t", lyrics="[Verse 1]\na\n\n[Chorus]\nb\n",
+            style_prompt="pop, 90 BPM", cover_prompt="c",
+            language=kw.get("language", "ar"),
+            art_direction="moonlit", scene_prompts=["a", "b"],
+        )
+
+    monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_script)
+    monkeypatch.setattr(api, "_build_song_llm", lambda: object())
+
+
+def test_create_cinematic_song_sets_video_mode(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    r = client.post("/songs", json={"theme": "x", "video_mode": "cinematic"},
+                    headers=auth)
+    assert r.status_code == 201
+    run_id = r.json()["run_id"]
+    s = client.get(f"/songs/{run_id}/script", headers=auth).json()
+    assert s["cost_credits"] == 3
+
+
+def test_create_static_song_defaults_one_credit(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    r = client.post("/songs", json={"theme": "x"}, headers=auth)
+    run_id = r.json()["run_id"]
+    s = client.get(f"/songs/{run_id}/script", headers=auth).json()
+    assert s["cost_credits"] == 1
+
+
+def test_invalid_video_mode_rejected(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    r = client.post("/songs", json={"theme": "x", "video_mode": "bogus"},
+                    headers=auth)
+    assert r.status_code == 422

@@ -89,7 +89,12 @@ class SongConfig:
     suno_cost_usd: float           # per-song flat cost on Kie.ai
     cover_flux_model: str          # Kie.ai Flux model id for covers
     cover_cost_usd: float          # per-image flux cost
-    credits_per_song: int          # user-facing price for one song run
+    credits_per_song: int          # user-facing price for one static song
+    # Cinematic (beat-synced multi-scene) mode. Defaults keep old config
+    # blocks loading unchanged.
+    cinematic_credits_per_song: int = 3   # premium price; ~$0.30 ledger vs ~$0.26 raw
+    cinematic_pool_size: int = 7          # number of Flux stills generated for the pool
+    bars_per_cut: int = 4                 # change image every N bars on the beat grid
 
 
 @dataclass(frozen=True)
