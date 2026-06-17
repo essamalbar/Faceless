@@ -1,8 +1,40 @@
-"""Gemini API wrapper. Two operations: complete + embed. Retry with backoff."""
+"""Gemini API wrapper. Two operations: complete + embed. Retry with backoff.
+
+Also hosts FallbackLLM, a tiny wrapper that routes to a secondary provider
+when the primary's complete() raises (e.g. Anthropic out of credits / outage)
+so lyrics/script generation degrades instead of hard-failing.
+"""
 from __future__ import annotations
 
 import os
 import time
+
+
+class FallbackLLM:
+    """Wrap a primary + fallback LLM (each exposing complete(prompt, system)).
+
+    If the primary's complete() raises after its own retries (Anthropic out
+    of credits, 5xx outage, etc.), log and retry on the fallback. This keeps
+    song/script generation available when the preferred provider is down.
+    NOTE: the fallback (Groq) writes lower-quality Arabic than Anthropic — it
+    is a safety net, not a quality equal. Keep the primary's balance funded.
+    """
+
+    def __init__(self, primary, fallback):
+        self._primary = primary
+        self._fallback = fallback
+
+    def complete(self, prompt: str, system: str | None = None) -> str:
+        try:
+            return self._primary.complete(prompt, system=system)
+        except Exception as e:
+            print(f"[llm] primary provider failed ({e}); "
+                  f"falling back to secondary provider")
+            return self._fallback.complete(prompt, system=system)
+
+    def embed(self, text: str) -> list[float]:
+        # Embeddings only have one real provider (Gemini); never fall back.
+        return self._primary.embed(text)
 
 _SLEEP = time.sleep
 _MAX_RETRIES = 3

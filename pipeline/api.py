@@ -647,16 +647,30 @@ def _cost_estimate_usd(beats: list[dict]) -> float:
 
 
 def _build_llm():
-    """Same LLM-selection logic as run.py:_build_gemini. Anthropic → Groq → Gemini.
+    """LLM router: Anthropic (primary) → Groq (fallback) → Gemini.
+
+    When BOTH the Anthropic and Groq keys are set, returns a FallbackLLM so an
+    Anthropic failure (exhausted credits, outage) falls back to Groq instead of
+    hard-failing lyrics/script generation. Groq writes lower-quality Arabic, so
+    it's a safety net — keep the Anthropic balance funded for best results.
     Inlined here so the script-gen call doesn't require importing run.py (which
     pulls every pipeline stage)."""
     import os
+    primary = None
     if os.environ.get("ANTHROPIC_API_KEY"):
         from pipeline.llm_anthropic import AnthropicClient
-        return AnthropicClient()
+        primary = AnthropicClient()
+    fallback = None
     if os.environ.get("GROQ_API_KEY"):
-        from pipeline.llm import GroqClient
-        return GroqClient()
+        from pipeline.llm_groq import GroqClient
+        fallback = GroqClient()
+    if primary and fallback:
+        from pipeline.llm import FallbackLLM
+        return FallbackLLM(primary, fallback)
+    if primary:
+        return primary
+    if fallback:
+        return fallback
     from pipeline.llm import GeminiClient
     return GeminiClient()
 
