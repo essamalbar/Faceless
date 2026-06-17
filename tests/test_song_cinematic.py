@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -7,64 +8,84 @@ import pytest
 from PIL import Image
 
 from pipeline.song_scenes import Segment
-from pipeline.song_cinematic import build_filter_complex, assemble_cinematic_song_video
+from pipeline.song_cinematic import (
+    segment_vf,
+    _final_filter,
+    assemble_cinematic_song_video,
+)
 
 
-def test_filter_complex_references_every_image():
-    segs = [Segment(0, 0.0, 4.0, "in"), Segment(1, 4.0, 8.0, "out")]
-    fc = build_filter_complex(segments=segs, n_images=2, ass_filter="", has_watermark=False)
-    assert "[0:v]" in fc and "[1:v]" in fc   # both pool inputs referenced
-    assert fc.strip().endswith("[v]")        # final label
+def test_segment_vf_in_zooms_up_out_zooms_down():
+    vf_in = segment_vf(Segment(0, 0.0, 4.0, "in"), frames=100)
+    vf_out = segment_vf(Segment(0, 0.0, 4.0, "out"), frames=100)
+    # "in" starts at 1.0 and grows; "out" starts at ZOOM_END and shrinks.
+    assert "zoompan=z='1+" in vf_in
+    assert "zoompan=z='1.13" in vf_out
+    # Both pin SAR + pixel format so the concat demuxer joins clips cleanly.
+    assert "setsar=1" in vf_in and "format=yuv420p" in vf_in
 
 
-def test_filter_complex_xfade_offsets_match_boundaries():
-    segs = [Segment(0, 0.0, 4.0, "in"), Segment(1, 4.0, 9.0, "out")]
-    fc = build_filter_complex(segments=segs, n_images=2, ass_filter="", has_watermark=False)
-    assert "xfade" in fc
-    # The crossfade STARTS _XFADE_S (0.35s) before the 4.0s boundary so the
-    # transition completes on the beat: offset = 4.0 - 0.35 = 3.650.
-    assert "offset=3.650" in fc
-
-
-def test_filter_complex_appends_ass_and_watermark():
-    segs = [Segment(0, 0.0, 4.0, "in")]
-    fc = build_filter_complex(
-        segments=segs, n_images=1,
-        ass_filter=",ass='/tmp/lyrics.ass'", has_watermark=True,
-    )
+def test_final_filter_with_watermark_and_ass():
+    fc = _final_filter(",ass='/tmp/lyrics.ass'", has_watermark=True)
     assert "ass='/tmp/lyrics.ass'" in fc
     assert "overlay=W-w-28:28" in fc
+    assert "[2:v]scale=240:55[wm]" in fc   # watermark is input index 2
+    assert fc.strip().endswith("[v]")
 
 
-def test_filter_complex_rejects_too_short_segment():
-    segs = [Segment(0, 0.0, 4.0, "in"), Segment(1, 4.0, 4.2, "out")]  # 0.2s < 0.35
-    with pytest.raises(ValueError):
-        build_filter_complex(segments=segs, n_images=2, ass_filter="", has_watermark=False)
+def test_final_filter_without_watermark():
+    fc = _final_filter("", has_watermark=False)
+    assert "overlay" not in fc
+    assert fc.strip().endswith("[v]")
 
 
 def test_assemble_cinematic_produces_playable_mp4(tmp_path):
-    # Integration smoke -- real ffmpeg on tiny inputs.
+    # Integration smoke -- real ffmpeg, per-clip render + concat + final mux.
     scene_paths = []
-    for i, color in enumerate(["red", "green"], start=1):
+    for i, color in enumerate(["red", "green", "blue"], start=1):
         p = tmp_path / f"scene_{i:02d}.png"
         Image.new("RGB", (64, 64), color).save(p)
         scene_paths.append(p)
     song = tmp_path / "song.mp3"
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
          "-c:a", "libmp3lame", str(song)],
         check=True, capture_output=True,
     )
     out = tmp_path / "final.mp4"
-    schedule = [Segment(0, 0.0, 2.0, "in"), Segment(1, 2.0, 4.0, "out")]
+    # 3 segments cycling 3 images -> exercises render + concat + final mux.
+    schedule = [
+        Segment(0, 0.0, 2.0, "in"),
+        Segment(1, 2.0, 4.0, "out"),
+        Segment(2, 4.0, 6.0, "in"),
+    ]
     assemble_cinematic_song_video(
         scene_paths=scene_paths, song_mp3=song, out_mp4=out,
         schedule=schedule, lyrics_json=None, title="t", share_token=None,
     )
     assert out.exists()
     probe = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
-         "-of", "csv=p=0", str(out)],
+        ["ffprobe", "-v", "error", "-show_entries",
+         "stream=codec_type:format=duration", "-of", "json", str(out)],
         check=True, capture_output=True, text=True,
     ).stdout
-    assert "video" in probe and "audio" in probe
+    data = json.loads(probe)
+    kinds = {s["codec_type"] for s in data["streams"]}
+    assert "video" in kinds and "audio" in kinds
+    # bounded clips -> ~6s, NOT a runaway (the old looped-zoompan bug
+    # produced multi-hour streams).
+    assert 5.0 <= float(data["format"]["duration"]) <= 7.0
+
+
+def test_assemble_cinematic_rejects_empty_schedule(tmp_path):
+    song = tmp_path / "song.mp3"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+         "-c:a", "libmp3lame", str(song)],
+        check=True, capture_output=True,
+    )
+    with pytest.raises(ValueError):
+        assemble_cinematic_song_video(
+            scene_paths=[tmp_path / "x.png"], song_mp3=song,
+            out_mp4=tmp_path / "o.mp4", schedule=[],
+        )

@@ -1,17 +1,34 @@
-"""Cinematic (beat-synced) song-video assembler -- Approach A.
+"""Cinematic (beat-synced) song-video assembler — robust per-clip pipeline.
 
-ONE ffmpeg invocation: each pool image is scaled + zoompan'd on its
-segment, the segments are chained with xfade, then the existing karaoke
-.ass and brand watermark are composited on top. No intermediate files
-(GCS-Fuse-safe): write to .tmp, then atomic rename -- same pattern as
-song_assemble.assemble_song_video.
+History: the first implementation built ONE giant ffmpeg filtergraph that
+fed each pool image to `zoompan` as an infinite `-loop 1` input and chained
+the segments with `xfade`. That proved fragile in the production ffmpeg
+(Debian 5.1.x): a looped still gives `zoompan` an undefined output frame
+rate (1/0), which `xfade` rejects ("inputs needs to be a constant frame
+rate"), and the looped input also produces a runaway, time-distorted stream.
+Newer ffmpeg (8.x) hides both, so unit tests + a local smoke test passed
+while production fell back to the static cover (a single photo).
+
+This version is deliberately boring and robust:
+
+  1. Render each beat segment as a SELF-CONTAINED, bounded, constant-frame-
+     rate Ken-Burns clip on LOCAL disk (`-loop 1 -i img` + `-t {dur}` so the
+     clip is exactly `dur` seconds — no runaway, defined rate).
+  2. Join the clips with the concat demuxer (`-c copy`) — hard cuts on the
+     beat, the canonical beat-synced look, and far more robust than xfade.
+  3. One final pass muxes audio + burns the karaoke `.ass` + composites the
+     watermark, written to LOCAL disk then copied to the destination. Writing
+     the +faststart output locally avoids GCS-Fuse's backward-seek failure
+     (BufferedWriteHandler.OutOfOrderError) on the moov-atom rewrite.
 
 See docs/superpowers/specs/2026-06-16-beat-synced-song-video-design.md.
 """
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from pipeline.song_assemble import (
@@ -26,7 +43,16 @@ from pipeline.song_assemble import (
 )
 from pipeline.song_scenes import Segment
 
-_XFADE_S = 0.35  # crossfade duration on each cut (matches assemble shot crossfade)
+
+def _run(cmd: list[str]) -> None:
+    """Run ffmpeg, surfacing stderr in the exception for debuggability."""
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.decode("utf-8", "replace") if exc.stderr else ""
+        raise RuntimeError(
+            f"ffmpeg failed (exit {exc.returncode}): {stderr[-2000:]}"
+        ) from exc
 
 
 def assert_playable(mp4: Path) -> None:
@@ -47,72 +73,46 @@ def assert_playable(mp4: Path) -> None:
         raise RuntimeError(f"output not playable: streams={kinds} duration={duration}")
 
 
-def build_filter_complex(
-    *,
-    segments: list[Segment],
-    n_images: int,
-    ass_filter: str,
-    has_watermark: bool,
-) -> str:
-    """Pure: turn a cut schedule into one ffmpeg -filter_complex string.
+def segment_vf(seg: Segment, frames: int) -> str:
+    """Pure: the -vf chain that turns one still into a bounded Ken-Burns clip.
 
-    Inputs are the N pool images ([0:v]..[N-1:v]); audio is a separate
-    input mapped later. Each segment trims its image to its duration with
-    a zoompan, then segments are xfade-chained in order."""
-    # Caller contract: every segment after the first must be longer than
-    # _XFADE_S so the chained xfade offsets stay monotonically increasing
-    # (ffmpeg treats non-monotonic offsets as undefined). song_scenes'
-    # min_segment_s (default 0.6) satisfies this.
-    if any((s.end - s.start) <= _XFADE_S for s in segments[1:]):
-        raise ValueError(
-            f"all segments after the first must be longer than _XFADE_S={_XFADE_S}s "
-            f"to keep xfade offsets monotonic"
-        )
-
-    parts: list[str] = []
-    seg_labels: list[str] = []
-
-    for i, seg in enumerate(segments):
-        dur = max(0.1, seg.end - seg.start)
-        frames = max(1, int(dur * FPS))
-        if seg.zoom_dir == "in":
-            z = f"1+{(ZOOM_END - 1.0):.6f}*on/{frames}"
-        else:
-            z = f"{ZOOM_END:.6f}-{(ZOOM_END - 1.0):.6f}*on/{frames}"
-        label = f"s{i}"
-        parts.append(
-            f"[{seg.image_idx}:v]scale={UPSCALE_SIZE}:{UPSCALE_SIZE},"
-            f"zoompan=z='{z}':d={frames}:s={OUTPUT_SIZE}x{OUTPUT_SIZE}:fps={FPS},"
-            f"trim=duration={dur:.3f},setpts=PTS-STARTPTS[{label}]"
-        )
-        seg_labels.append(label)
-
-    if len(seg_labels) == 1:
-        chain_out = seg_labels[0]
+    `setsar=1` + the fixed `fps` (from the bounded `-loop 1 -t` input) keep the
+    clip constant-frame-rate so the concat demuxer joins clips cleanly."""
+    if seg.zoom_dir == "in":
+        z = f"1+{(ZOOM_END - 1.0):.6f}*on/{frames}"
     else:
-        prev = seg_labels[0]
-        acc = segments[0].end - segments[0].start
-        for i in range(1, len(seg_labels)):
-            out = f"x{i}"
-            offset = max(0.0, acc - _XFADE_S)
-            parts.append(
-                f"[{prev}][{seg_labels[i]}]"
-                f"xfade=transition=fade:duration={_XFADE_S}:offset={offset:.3f}[{out}]"
-            )
-            acc += (segments[i].end - segments[i].start) - _XFADE_S
-            prev = out
-        chain_out = prev
+        z = f"{ZOOM_END:.6f}-{(ZOOM_END - 1.0):.6f}*on/{frames}"
+    return (
+        f"scale={UPSCALE_SIZE}:{UPSCALE_SIZE},"
+        f"zoompan=z='{z}':d={frames}:s={OUTPUT_SIZE}x{OUTPUT_SIZE}:fps={FPS},"
+        f"setsar=1,format=yuv420p"
+    )
 
-    tail = f"[{chain_out}]format=yuv420p{ass_filter}"
+
+def _render_segment(scene_path: Path, seg: Segment, out_clip: Path) -> None:
+    """Render one bounded Ken-Burns clip. `-t {dur}` bounds the looped input
+    so zoompan produces exactly `frames` frames at a defined rate."""
+    frames = max(1, round((seg.end - seg.start) * FPS))
+    dur = frames / FPS
+    _run([
+        "ffmpeg", "-y", "-loop", "1", "-i", str(scene_path),
+        "-vf", segment_vf(seg, frames),
+        "-t", f"{dur:.3f}", "-r", str(FPS),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-f", "mp4", str(out_clip),
+    ])
+
+
+def _final_filter(ass_filter: str, has_watermark: bool) -> str:
+    """Pure: the final-pass filtergraph (input 0 = concatenated video,
+    input 1 = audio, input 2 = watermark if present)."""
     if has_watermark:
-        wm_idx = n_images + 1
         return (
-            ";".join(parts) + ";" +
-            tail + "[vsub];" +
-            f"[{wm_idx}:v]scale=240:55[wm];" +
-            "[vsub][wm]overlay=W-w-28:28[v]"
+            f"[0:v]format=yuv420p{ass_filter}[vs];"
+            "[2:v]scale=240:55[wm];"
+            "[vs][wm]overlay=W-w-28:28[v]"
         )
-    return ";".join(parts) + ";" + tail + "[v]"
+    return f"[0:v]format=yuv420p{ass_filter}[v]"
 
 
 def assemble_cinematic_song_video(
@@ -125,60 +125,77 @@ def assemble_cinematic_song_video(
     title: str | None = None,
     share_token: str | None = None,
 ) -> None:
-    """Render the beat-synced video in one ffmpeg call. Raises
-    RuntimeError on ffmpeg failure (message includes ffmpeg stderr) or if
-    the result fails the playability gate."""
-    ass_filter = ""
-    if lyrics_json is not None and lyrics_json.exists():
-        try:
-            data = json.loads(lyrics_json.read_text(encoding="utf-8"))
-            ass_path = lyrics_json.with_name("lyrics.ass")
-            if _write_ass_subtitles(data, ass_path):
-                ass_filter = f",ass='{_escape_ffmpeg_filter_path(ass_path)}'"
-        except (OSError, json.JSONDecodeError, ValueError):
-            ass_filter = ""
+    """Render the beat-synced video via the per-clip pipeline. Raises
+    RuntimeError on ffmpeg failure (message includes ffmpeg stderr) or if the
+    result fails the playability gate."""
+    if not schedule:
+        raise ValueError("schedule is empty")
 
-    has_watermark, watermark_png = resolve_watermark()
-    filter_complex = build_filter_complex(
-        segments=schedule, n_images=len(scene_paths),
-        ass_filter=ass_filter, has_watermark=has_watermark,
-    )
-
-    cmd = ["ffmpeg", "-y"]
-    for p in scene_paths:                       # inputs 0..N-1 : pool images
-        cmd += ["-loop", "1", "-i", str(p)]
-    cmd += ["-i", str(song_mp3)]                # input N : audio
-    if has_watermark:
-        cmd += ["-loop", "1", "-i", str(watermark_png)]   # input N+1 : watermark
-    cmd += [
-        "-filter_complex", filter_complex,
-        "-map", "[v]", "-map", f"{len(scene_paths)}:a",
-        *build_metadata_args(title, share_token),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-        "-c:a", "aac", "-b:a", "192k",
-        "-pix_fmt", "yuv420p",
-        "-shortest",
-        "-movflags", "+faststart",
-        "-threads", "0",
-        "-f", "mp4",
-        str(out_mp4) + ".tmp",
-    ]
-    out_mp4.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = Path(str(out_mp4) + ".tmp")
-    if tmp_path.exists():
-        try:
-            tmp_path.unlink()
-        except OSError:
-            try:
-                tmp_path.write_bytes(b"")
-            except OSError:
-                pass
+    work = Path(tempfile.mkdtemp(prefix="cine-"))
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
-    except subprocess.CalledProcessError as exc:
-        stderr = exc.stderr.decode("utf-8", "replace") if exc.stderr else ""
-        raise RuntimeError(
-            f"ffmpeg failed (exit {exc.returncode}): {stderr[-2000:]}"
-        ) from exc
-    tmp_path.replace(out_mp4)
-    assert_playable(out_mp4)
+        # 1) one bounded CFR clip per segment (local disk)
+        clips: list[Path] = []
+        for i, seg in enumerate(schedule):
+            clip = work / f"seg_{i:04d}.mp4"
+            _render_segment(scene_paths[seg.image_idx], seg, clip)
+            clips.append(clip)
+
+        # 2) concat (stream copy) — hard cuts on the beat
+        list_file = work / "concat.txt"
+        list_file.write_text(
+            "".join(f"file '{c.as_posix()}'\n" for c in clips), encoding="utf-8"
+        )
+        video = work / "video.mp4"
+        _run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
+            "-c", "copy", "-f", "mp4", str(video),
+        ])
+
+        # 3) final pass: karaoke + watermark + audio, +faststart, LOCAL disk
+        ass_filter = ""
+        if lyrics_json is not None and lyrics_json.exists():
+            try:
+                data = json.loads(lyrics_json.read_text(encoding="utf-8"))
+                ass_path = work / "lyrics.ass"
+                if _write_ass_subtitles(data, ass_path):
+                    ass_filter = f",ass='{_escape_ffmpeg_filter_path(ass_path)}'"
+            except (OSError, json.JSONDecodeError, ValueError):
+                ass_filter = ""
+
+        has_watermark, watermark_png = resolve_watermark()
+        final_local = work / "final.mp4"
+        cmd = ["ffmpeg", "-y", "-i", str(video), "-i", str(song_mp3)]
+        if has_watermark:
+            cmd += ["-loop", "1", "-i", str(watermark_png)]
+        cmd += [
+            "-filter_complex", _final_filter(ass_filter, has_watermark),
+            "-map", "[v]", "-map", "1:a",
+            *build_metadata_args(title, share_token),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:a", "aac", "-b:a", "192k",
+            "-pix_fmt", "yuv420p",
+            "-shortest",
+            "-movflags", "+faststart",
+            "-threads", "0",
+            "-f", "mp4", str(final_local),
+        ]
+        _run(cmd)
+        assert_playable(final_local)
+
+        # 4) publish: copy local result to the destination. A plain sequential
+        # copy (no backward seeks) is GCS-Fuse-safe, unlike ffmpeg's in-place
+        # +faststart write.
+        out_mp4.parent.mkdir(parents=True, exist_ok=True)
+        tmp_dest = Path(str(out_mp4) + ".tmp")
+        if tmp_dest.exists():
+            try:
+                tmp_dest.unlink()
+            except OSError:
+                try:
+                    tmp_dest.write_bytes(b"")
+                except OSError:
+                    pass
+        shutil.copyfile(final_local, tmp_dest)
+        tmp_dest.replace(out_mp4)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
