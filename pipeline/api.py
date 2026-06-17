@@ -2480,6 +2480,10 @@ def _reconcile_downgrade_refund(run_dir: Path, user: "User") -> None:
     else:
         surcharge = 2
     if surcharge > 0:
+        # Refund first, then flag. If refund raises, the flag stays unset and the
+        # next GET retries (safe direction). Two simultaneous GETs could double-
+        # refund — accepted for a solo-user app, same non-locking tradeoff as
+        # credits.check_or_deduct.
         _credits.refund(user, amount=surcharge, run_id=run_dir.name,
                         reason="cinematic-downgrade-refund")
     _write_state(run_dir, surcharge_refunded=True)

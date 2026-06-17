@@ -1116,3 +1116,42 @@ def test_downgrade_refunds_surcharge_once(app, monkeypatch):
     # The flag must be persisted so future GETs are no-ops.
     final_state = json.loads((run_dir / "api_state.json").read_text())
     assert final_state.get("surcharge_refunded") is True
+
+
+def test_normal_song_get_does_not_refund(app, monkeypatch):
+    """GET /songs/{id} on a normal complete run (no video_downgraded flag)
+    must never call credits.refund, regardless of how many times it is called."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+
+    # Create a song via the API to get a real run dir under the authed user.
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+
+    # Mark the run complete without any video_downgraded flag — a plain
+    # static or cinematic-success run.
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state["status"] = "complete"
+    # Deliberately omit video_downgraded
+    state.pop("video_downgraded", None)
+    state.pop("surcharge_refunded", None)
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    import pipeline.credits as credits_mod
+    refund_calls = []
+    monkeypatch.setattr(
+        credits_mod, "refund",
+        lambda user, **kw: refund_calls.append(kw["amount"]),
+    )
+
+    r = client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+
+    assert refund_calls == [], (
+        f"credits.refund must not be called for a normal (non-downgraded) song, "
+        f"but got calls: {refund_calls}"
+    )
