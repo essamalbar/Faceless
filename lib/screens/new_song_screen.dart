@@ -76,6 +76,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
   final _lyricsCtrl = TextEditingController();
   final _styleCtrl = TextEditingController();
   String _language = 'ar';
+  String _videoMode = 'static'; // 'static' | 'cinematic'
   String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
   String? _sunoModel;          // null = use server default (V5_5)
   String? _personaId;          // null = no persona (let Suno pick)
@@ -140,6 +141,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
         personaId: _personaId,
         vocalGender: _vocalGender,
         sunoModel: _sunoModel,
+        videoMode: _videoMode,
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
@@ -293,6 +295,27 @@ class _NewSongScreenState extends State<NewSongScreen> {
                 DropdownMenuItem(value: 'V4', child: Text('V4 (legacy)')),
               ],
               onChanged: (v) => setState(() => _sunoModel = v),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Video type',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'static',
+                  label: Text('Static cover · 1 credit'),
+                ),
+                ButtonSegment(
+                  value: 'cinematic',
+                  label: Text('Cinematic video · 3 credits'),
+                ),
+              ],
+              selected: {_videoMode},
+              onSelectionChanged: (s) =>
+                  setState(() => _videoMode = s.first),
             ),
             const SizedBox(height: 16),
             // Voice picker — only shows once user has saved at least

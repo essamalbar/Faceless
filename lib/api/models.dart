@@ -318,6 +318,7 @@ class SongSummary {
   // CTA in that case so the user can backfill on demand without us
   // rerunning the whole bucket sweep.
   final bool watermarked;
+  final String videoMode;
 
   SongSummary({
     required this.id,
@@ -330,6 +331,7 @@ class SongSummary {
     required this.lastError,
     this.failureStage,
     this.watermarked = false,
+    this.videoMode = 'static',
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -343,6 +345,7 @@ class SongSummary {
         lastError: j['last_error'] as String?,
         failureStage: j['failure_stage'] as String?,
         watermarked: (j['watermarked'] as bool?) ?? false,
+        videoMode: (j['video_mode'] as String?) ?? 'static',
       );
 }
 
@@ -354,6 +357,7 @@ class SongScript {
   final String language;
   final int costCredits;
   final double costUsd;
+  final String videoMode;
 
   SongScript({
     required this.title,
@@ -363,6 +367,7 @@ class SongScript {
     required this.language,
     required this.costCredits,
     required this.costUsd,
+    this.videoMode = 'static',
   });
 
   factory SongScript.fromJson(Map<String, dynamic> j) => SongScript(
@@ -373,6 +378,7 @@ class SongScript {
         language: j['language'] as String,
         costCredits: j['cost_credits'] as int,
         costUsd: (j['cost_usd'] as num).toDouble(),
+        videoMode: (j['video_mode'] as String?) ?? 'static',
       );
 }
 
