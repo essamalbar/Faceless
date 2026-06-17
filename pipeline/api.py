@@ -2386,11 +2386,8 @@ def create_song(
         "FACELESS_CONFIG",
         str(REPO_ROOT / "config.yaml"),
     )))
-    credits_required = (
-        (cfg.song.cinematic_credits_per_song if req.video_mode == "cinematic"
-         else cfg.song.credits_per_song)
-        if cfg.song else (3 if req.video_mode == "cinematic" else 1)
-    )
+    # song.json isn't written yet at this point, so price from the request.
+    credits_required = _song_credit_amount(req.video_mode, cfg)
 
     if user.role != "service" and get_balance(user.id) < credits_required:
         _raise_402_insufficient_credits(get_balance(user.id), credits_required)
@@ -2455,6 +2452,17 @@ def create_song(
     _write_state(run_dir, status="awaiting_approval", title=script.title)
 
     return {"run_id": run_id, "status": "awaiting_approval"}
+
+
+def _song_credit_amount(video_mode: str, cfg) -> int:
+    """Credit cost for one song render given video_mode. Single source of
+    truth so the create/script/approve/reroll paths can't drift. Falls back
+    to hard-coded defaults only when SongConfig is absent."""
+    if cfg.song:
+        return (cfg.song.cinematic_credits_per_song
+                if video_mode == "cinematic"
+                else cfg.song.credits_per_song)
+    return 3 if video_mode == "cinematic" else 1
 
 
 def _resolve_song_dir(run_id: str, user: "User") -> Path:
@@ -2607,14 +2615,13 @@ def get_song_script(run_id: str, user: User = Depends(require_user)):
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
     video_mode = script.get("video_mode", "static")
+    credits = _song_credit_amount(video_mode, cfg)
     if cfg.song and video_mode == "cinematic":
-        credits = cfg.song.cinematic_credits_per_song
         usd = cfg.song.suno_cost_usd + cfg.song.cinematic_pool_size * cfg.song.cover_cost_usd
     elif cfg.song:
-        credits = cfg.song.credits_per_song
         usd = cfg.song.suno_cost_usd + cfg.song.cover_cost_usd
     else:
-        credits, usd = (3 if video_mode == "cinematic" else 1), 0.08
+        usd = 0.08
     return SongScriptResponse(
         title=script["title"],
         lyrics=script["lyrics"],
@@ -2858,12 +2865,7 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     cfg = load_config(cfg_path)
     script = json.loads((run_dir / "song.json").read_text())
     video_mode = script.get("video_mode", "static")
-    if cfg.song and video_mode == "cinematic":
-        amount = cfg.song.cinematic_credits_per_song
-    elif cfg.song:
-        amount = cfg.song.credits_per_song
-    else:
-        amount = 3 if video_mode == "cinematic" else 1
+    amount = _song_credit_amount(video_mode, cfg)
 
     if user.role != "service":
         balance = _credits.get_balance(user.id)
@@ -3233,12 +3235,7 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
     cfg = load_config(cfg_path)
     script = json.loads((run_dir / "song.json").read_text())
     video_mode = script.get("video_mode", "static")
-    if cfg.song and video_mode == "cinematic":
-        amount = cfg.song.cinematic_credits_per_song
-    elif cfg.song:
-        amount = cfg.song.credits_per_song
-    else:
-        amount = 3 if video_mode == "cinematic" else 1
+    amount = _song_credit_amount(video_mode, cfg)
 
     if user.role != "service":
         balance = _credits.get_balance(user.id)

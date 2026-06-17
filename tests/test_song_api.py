@@ -378,6 +378,34 @@ def test_reroll_cinematic_song_deducts_three_credits(app, monkeypatch):
     assert captured["amount"] == 3
 
 
+def test_reroll_static_song_deducts_one_credit(app, monkeypatch):
+    """reroll-takes on a static song must charge exactly 1 credit, not 3."""
+    from pipeline import api as api_mod, credits
+
+    api_mod.set_spawn_fn(lambda args, run_dir: 12345)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    captured = {}
+    def _capture(user, *, amount, run_id, reason):
+        captured["amount"] = amount
+        return 100 - amount
+    monkeypatch.setattr(credits, "check_or_deduct", _capture)
+
+    run_id, run_dir, client, token = _setup_complete_song(app, monkeypatch)
+
+    # Explicitly set video_mode=static (also covers the default / omitted case)
+    song_data = json.loads((run_dir / "song.json").read_text())
+    song_data["video_mode"] = "static"
+    (run_dir / "song.json").write_text(json.dumps(song_data))
+
+    r = client.post(
+        f"/songs/{run_id}/reroll-takes",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["amount"] == 1
+
+
 def test_approve_song_idempotent_after_first_call(app, monkeypatch):
     fastapi_app, token = app
     client = TestClient(fastapi_app)
