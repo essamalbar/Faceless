@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   PlanInfo? _plan;
   String _mode = 'horror';  // horror | song
   Future<List<SongSummary>>? _songsFuture;
+  String _songQuery = '';   // live search filter for the song list
 
   @override
   void initState() {
@@ -525,6 +527,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openSong(SongSummary s) {
+    final screen = s.status == 'awaiting_approval'
+        ? SongApproveScreen(client: _client, runId: s.id)
+        : SongDetailScreen(client: _client, runId: s.id);
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => screen));
+  }
+
   Widget _buildSongsList() {
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -541,53 +551,102 @@ class _HomeScreenState extends State<HomeScreen> {
               onRetry: _refresh,
             );
           }
-          final songs = snap.data ?? [];
-          if (songs.isEmpty) {
+          final all = snap.data ?? [];
+          if (all.isEmpty) {
             return _SongsEmptyState(
               onCreate: _openNewSong,
               onTrySample: (theme, presetLabel) =>
                   _openNewSongWithSample(theme, presetLabel),
             );
           }
-          // itemCount = songs + 1 header row that holds the "New song"
-          // button. Without this row the user is stuck after their first
-          // run (the empty-state CTA disappears once songs.isNotEmpty).
-          return ListView.builder(
-            itemCount: songs.length + 1,
-            itemBuilder: (context, i) {
-              if (i == 0) {
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _openNewSong,
-                      icon: const Icon(Icons.add),
-                      label: const Text('New song'),
-                    ),
-                  ),
+
+          final q = _songQuery.trim().toLowerCase();
+          final searching = q.isNotEmpty;
+          final filtered = searching
+              ? all
+                  .where((s) =>
+                      (s.title ?? '').toLowerCase().contains(q) ||
+                      (s.theme ?? '').toLowerCase().contains(q))
+                  .toList()
+              : all;
+          // Hero = newest playable song (fall back to the newest overall).
+          final SongSummary? hero = searching
+              ? null
+              : all.firstWhere(
+                  (s) => s.status == 'complete' && s.hasVideo,
+                  orElse: () => all.first,
                 );
-              }
-              final s = songs[i - 1];
-              return _SongRow(
-                title: s.title ?? s.theme ?? '(untitled)',
-                status: s.status,
-                coverUrlFuture: _client.songCoverUrl(s.id, thumb: true),
-                onTap: () {
-                  if (s.status == 'awaiting_approval') {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) =>
-                          SongApproveScreen(client: _client, runId: s.id),
-                    ));
-                  } else {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) =>
-                          SongDetailScreen(client: _client, runId: s.id),
-                    ));
-                  }
-                },
-              );
-            },
+          final recent =
+              searching ? const <SongSummary>[] : all.where((s) => s != hero).take(10).toList();
+
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 28),
+            children: [
+              _SongSearchBar(
+                initial: _songQuery,
+                onChanged: (v) => setState(() => _songQuery = v),
+              ),
+              if (hero != null)
+                _SongHero(
+                  title: hero.title ?? hero.theme ?? '(untitled)',
+                  status: hero.status,
+                  coverUrlFuture: _client.songCoverUrl(hero.id, thumb: false),
+                  onTap: () => _openSong(hero),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _openNewSong,
+                    icon: const Icon(Icons.add),
+                    label: const Text('New Song'),
+                  ),
+                ),
+              ),
+              if (recent.isNotEmpty) ...[
+                _SongSectionTitle(
+                    title: 'Recent', trailing: '${all.length} tracks'),
+                SizedBox(
+                  height: 172,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: recent.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
+                    itemBuilder: (ctx, i) {
+                      final s = recent[i];
+                      return _RecentTile(
+                        title: s.title ?? s.theme ?? '(untitled)',
+                        status: s.status,
+                        coverUrlFuture:
+                            _client.songCoverUrl(s.id, thumb: true),
+                        onTap: () => _openSong(s),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              _SongSectionTitle(
+                title: searching ? 'Results' : 'Your songs',
+                trailing:
+                    searching ? '${filtered.length}' : '${all.length} tracks',
+              ),
+              if (filtered.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 24, 16, 24),
+                  child: Center(
+                    child: Text('No songs match your search',
+                        style: TextStyle(color: FacelessTheme.textSecondary)),
+                  ),
+                ),
+              ...filtered.map((s) => _SongCardC(
+                    title: s.title ?? s.theme ?? '(untitled)',
+                    status: s.status,
+                    coverUrlFuture: _client.songCoverUrl(s.id, thumb: true),
+                    onTap: () => _openSong(s),
+                  )),
+            ],
           );
         },
       ),
@@ -1461,14 +1520,18 @@ _SongStatusStyle _songStatusStyle(String status) {
 
 class _SongStatusPill extends StatelessWidget {
   final _SongStatusStyle style;
-  const _SongStatusPill({required this.style});
+  final bool compact; // smaller chip for overlay use (e.g. recent tiles)
+  const _SongStatusPill({required this.style, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
+    final glyph = compact ? 11.0 : 13.0;
+    final spin = compact ? 9.0 : 11.0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      padding: EdgeInsets.symmetric(
+          horizontal: compact ? 7 : 9, vertical: compact ? 3 : 4),
       decoration: BoxDecoration(
-        color: style.color.withValues(alpha: 0.14),
+        color: (compact ? Colors.black.withValues(alpha: 0.45) : style.color.withValues(alpha: 0.14)),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -1476,19 +1539,19 @@ class _SongStatusPill extends StatelessWidget {
         children: [
           if (style.working)
             SizedBox(
-              width: 11,
-              height: 11,
+              width: spin,
+              height: spin,
               child: CircularProgressIndicator(
                   strokeWidth: 2,
                   valueColor: AlwaysStoppedAnimation<Color>(style.color)),
             )
           else
-            Icon(style.icon, size: 13, color: style.color),
-          const SizedBox(width: 6),
+            Icon(style.icon, size: glyph, color: style.color),
+          SizedBox(width: compact ? 4 : 6),
           Text(style.label,
               style: TextStyle(
                   color: style.color,
-                  fontSize: 12,
+                  fontSize: compact ? 11 : 12,
                   fontWeight: FontWeight.w600)),
         ],
       ),
@@ -1506,12 +1569,171 @@ class _SongThumbPlaceholder extends StatelessWidget {
       );
 }
 
-class _SongRow extends StatelessWidget {
+/// Cover image loaded from the token-bearing cover-URL future, with a
+/// branded placeholder while loading / on error.
+class _SongCover extends StatelessWidget {
+  final Future<Uri> future;
+  final BoxFit fit;
+  const _SongCover({required this.future, this.fit = BoxFit.cover});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Uri>(
+      future: future,
+      builder: (ctx, snap) {
+        if (!snap.hasData) return const _SongThumbPlaceholder();
+        return CachedNetworkImage(
+          imageUrl: snap.data!.toString(),
+          fit: fit,
+          fadeInDuration: const Duration(milliseconds: 180),
+          placeholder: (_, _) => const _SongThumbPlaceholder(),
+          errorWidget: (_, _, _) => const _SongThumbPlaceholder(),
+        );
+      },
+    );
+  }
+}
+
+class _PlayButton extends StatelessWidget {
+  final double size;
+  const _PlayButton({this.size = 44});
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(colors: [Color(0xFFF6D27A), Color(0xFFE7B53C)]),
+          boxShadow: [
+            BoxShadow(
+                color: Color(0x73E7B53C), blurRadius: 16, offset: Offset(0, 6))
+          ],
+        ),
+        child: Icon(Icons.play_arrow_rounded,
+            color: const Color(0xFF1A1205), size: size * 0.52),
+      );
+}
+
+class _EqBars extends StatelessWidget {
+  const _EqBars();
+  @override
+  Widget build(BuildContext context) {
+    const heights = [6.0, 13.0, 8.0, 15.0, 7.0, 11.0];
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final h in heights)
+          Padding(
+            padding: const EdgeInsets.only(right: 3),
+            child: Container(
+              width: 3,
+              height: h,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(2),
+                gradient: const LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Color(0xFFE7B53C), Color(0xFFF6D27A)]),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SongSectionTitle extends StatelessWidget {
+  final String title;
+  final String trailing;
+  const _SongSectionTitle({required this.title, required this.trailing});
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(title,
+                style: const TextStyle(
+                    color: FacelessTheme.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700)),
+            Text(trailing,
+                style: const TextStyle(
+                    color: FacelessTheme.textSecondary, fontSize: 13)),
+          ],
+        ),
+      );
+}
+
+class _SongSearchBar extends StatefulWidget {
+  final String initial;
+  final ValueChanged<String> onChanged;
+  const _SongSearchBar({required this.initial, required this.onChanged});
+  @override
+  State<_SongSearchBar> createState() => _SongSearchBarState();
+}
+
+class _SongSearchBarState extends State<_SongSearchBar> {
+  late final TextEditingController _c =
+      TextEditingController(text: widget.initial);
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+      child: TextField(
+        controller: _c,
+        onChanged: (v) {
+          widget.onChanged(v);
+          setState(() {}); // toggle the clear button
+        },
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(color: FacelessTheme.textPrimary, fontSize: 14),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Search your songs…',
+          hintStyle:
+              const TextStyle(color: FacelessTheme.textSecondary, fontSize: 14),
+          prefixIcon: const Icon(Icons.search,
+              color: FacelessTheme.textSecondary, size: 20),
+          suffixIcon: _c.text.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close,
+                      size: 18, color: FacelessTheme.textSecondary),
+                  onPressed: () {
+                    _c.clear();
+                    widget.onChanged('');
+                    setState(() {});
+                  },
+                ),
+          filled: true,
+          fillColor: FacelessTheme.surface,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
+          focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide:
+                  const BorderSide(color: FacelessTheme.accent, width: 1.5)),
+        ),
+      ),
+    );
+  }
+}
+
+class _SongHero extends StatelessWidget {
   final String title;
   final String status;
   final Future<Uri> coverUrlFuture;
   final VoidCallback onTap;
-  const _SongRow({
+  const _SongHero({
     required this.title,
     required this.status,
     required this.coverUrlFuture,
@@ -1522,58 +1744,216 @@ class _SongRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final st = _songStatusStyle(status);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 5, 16, 5),
-      child: Material(
-        color: FacelessTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: SizedBox(
+            height: 212,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    width: 58,
-                    height: 58,
-                    child: FutureBuilder<Uri>(
-                      future: coverUrlFuture,
-                      builder: (ctx, snap) => snap.hasData
-                          ? Image.network(
-                              snap.data!.toString(),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) =>
-                                  const _SongThumbPlaceholder(),
-                            )
-                          : const _SongThumbPlaceholder(),
+                _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Color(0xCC0A0E1A), Color(0xF20A0E1A)],
+                      stops: [0.35, 0.72, 1.0],
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                const Positioned(
+                  left: 16,
+                  top: 14,
+                  child: Text('◆  LATEST RELEASE',
+                      style: TextStyle(
+                          color: FacelessTheme.accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.4)),
+                ),
+                Positioned(
+                  left: 18,
+                  right: 18,
+                  bottom: 16,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: FacelessTheme.textPrimary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 7),
-                      _SongStatusPill(style: st),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 9),
+                            _SongStatusPill(style: st),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const _PlayButton(size: 50),
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                Icon(Icons.chevron_right,
-                    color: FacelessTheme.textSecondary.withValues(alpha: 0.6)),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentTile extends StatelessWidget {
+  final String title;
+  final String status;
+  final Future<Uri> coverUrlFuture;
+  final VoidCallback onTap;
+  const _RecentTile({
+    required this.title,
+    required this.status,
+    required this.coverUrlFuture,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final st = _songStatusStyle(status);
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          width: 150,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Color(0xB30A0E1A), Color(0xF00A0E1A)],
+                    stops: [0.4, 0.72, 1.0],
+                  ),
+                ),
+              ),
+              Positioned(top: 8, right: 8, child: _SongStatusPill(style: st, compact: true)),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 9,
+                child: Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SongCardC extends StatelessWidget {
+  final String title;
+  final String status;
+  final Future<Uri> coverUrlFuture;
+  final VoidCallback onTap;
+  const _SongCardC({
+    required this.title,
+    required this.status,
+    required this.coverUrlFuture,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final st = _songStatusStyle(status);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      child: Material(
+        color: FacelessTheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Stack(
+            children: [
+              // Blurred cover wash behind the content.
+              Positioned.fill(
+                child: Opacity(
+                  opacity: 0.30,
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                    child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
+                  ),
+                ),
+              ),
+              const Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [Color(0xD1141A2A), Color(0x99141A2A)],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(13),
+                      child: SizedBox(
+                        width: 70,
+                        height: 70,
+                        child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
+                      ),
+                    ),
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: FacelessTheme.textPrimary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 8),
+                          const _EqBars(),
+                          const SizedBox(height: 8),
+                          _SongStatusPill(style: st),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const _PlayButton(size: 44),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
