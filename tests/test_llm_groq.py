@@ -64,3 +64,21 @@ def test_complete_raises_after_max_retries(monkeypatch):
 def test_embed_raises_not_implemented():
     with pytest.raises(NotImplementedError):
         GroqClient(api_key="k").embed("text")
+
+
+def test_json_mode_enabled_when_prompt_mentions_json(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(GroqClient, "_post",
+                        lambda self, path, body: captured.update(body=body) or
+                        {"choices": [{"message": {"content": "{}"}}]})
+    GroqClient(api_key="k").complete("hi", system="Output a JSON object with keys")
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+
+
+def test_json_mode_off_for_prose(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(GroqClient, "_post",
+                        lambda self, path, body: captured.update(body=body) or
+                        {"choices": [{"message": {"content": "a story"}}]})
+    GroqClient(api_key="k").complete("hi", system="Write a short story")
+    assert "response_format" not in captured["body"]

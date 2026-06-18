@@ -52,6 +52,16 @@ class GroqClient:
             "messages": messages,
             "temperature": 0.8,  # Stories benefit from some creativity
         }
+        # Groq/Llama emits invalid JSON freely (raw newlines, trailing commas,
+        # single quotes) — the cause of intermittent "lyrics generation failed"
+        # parse errors on the fallback path. When the caller asks for JSON,
+        # switch on Groq's json_object response_format, which constrains output
+        # to strictly-valid JSON. Groq requires the literal word "json" to
+        # appear in the prompt for this mode; that's guaranteed because we only
+        # enable it when the system prompt already mentions JSON. Prose tasks
+        # (no "json" in the prompt) are unaffected.
+        if system and "json" in system.lower():
+            body["response_format"] = {"type": "json_object"}
 
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
