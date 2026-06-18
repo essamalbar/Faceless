@@ -3060,28 +3060,81 @@ def get_song_cover(run_id: str,
     return FileResponse(path, media_type="image/png")
 
 
+# Cloud Run caps a single buffered HTTP response at ~32 MiB. A song's
+# final.mp4 can exceed that (cinematic videos run ~38 MB), so FileResponse —
+# which sets Content-Length for the whole file — makes Cloud Run 500 on the
+# full-file GET the browser issues (Range: bytes=0-). The streamer below keeps
+# every Range response well under the cap; the <video> element fetches the
+# rest via follow-up ranges. A no-Range request (e.g. ?download=1) streams the
+# whole file with chunked transfer (no Content-Length), which is not subject
+# to the buffered-response limit.
+_VIDEO_RANGE_CAP = 8 * 1024 * 1024  # max bytes per Range response (< 32 MiB)
+
+
+def _serve_video(path: Path, request: Request, *, download_name: str | None = None):
+    file_size = path.stat().st_size
+    range_header = request.headers.get("range")
+
+    if not range_header:
+        # No Range (direct hit / download): stream the whole file chunked.
+        def _iter_all():
+            with open(path, "rb") as f:
+                while True:
+                    data = f.read(1024 * 1024)
+                    if not data:
+                        break
+                    yield data
+        headers = {"Accept-Ranges": "bytes"}
+        if download_name:
+            headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
+        return StreamingResponse(_iter_all(), media_type="video/mp4", headers=headers)
+
+    m = re.match(r"bytes=(\d+)-(\d*)", range_header.strip())
+    start = int(m.group(1)) if m else 0
+    end = int(m.group(2)) if (m and m.group(2)) else file_size - 1
+    end = min(end, file_size - 1, start + _VIDEO_RANGE_CAP - 1)
+    if start >= file_size or start > end:
+        return Response(
+            status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+    length = end - start + 1
+
+    def _iter_range():
+        with open(path, "rb") as f:
+            f.seek(start)
+            remaining = length
+            while remaining > 0:
+                data = f.read(min(1024 * 1024, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+                yield data
+
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Content-Length": str(length),
+    }
+    return StreamingResponse(
+        _iter_range(), status_code=206, media_type="video/mp4", headers=headers)
+
+
 @app.get("/songs/{run_id}/video")
 def get_song_video(
     run_id: str,
+    request: Request,
     download: bool = False,
     user: User = Depends(require_user_header_or_query),
 ):
-    """Stream the final.mp4. With `?download=1` the server sets
-    Content-Disposition: attachment so the browser saves the file
+    """Stream the final.mp4 with HTTP Range support. With `?download=1` the
+    server sets Content-Disposition: attachment so the browser saves the file
     instead of playing it inline."""
     run_dir = _resolve_song_dir(run_id, user)
     path = run_dir / "final.mp4"
     if not path.exists():
         raise HTTPException(404, "final.mp4 not yet assembled")
-    headers = {}
-    if download:
-        # Filename uses the run_id; the song's title would be nicer but
-        # contains Arabic characters that need RFC 5987 encoding to be
-        # safe in the header. run_id is ASCII timestamp — keep it simple.
-        headers["Content-Disposition"] = (
-            f'attachment; filename="faceless-song-{run_id}.mp4"'
-        )
-    return FileResponse(path, media_type="video/mp4", headers=headers)
+    # run_id is an ASCII timestamp; the Arabic title would need RFC 5987.
+    name = f"faceless-song-{run_id}.mp4" if download else None
+    return _serve_video(path, request, download_name=name)
 
 
 @app.get("/songs/{run_id}/log")
