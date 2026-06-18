@@ -2177,21 +2177,16 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
 
 @app.get("/runs/{run_id}/video",
          dependencies=[Depends(require_user_header_or_query)])
-def get_video(run_id: str, user: User = Depends(require_user_header_or_query)):
+def get_video(run_id: str, request: Request,
+              user: User = Depends(require_user_header_or_query)):
     run_dir = _run_dir(run_id, user)
     p = run_dir / "final.mp4"
     if not p.exists():
         raise HTTPException(404, "final.mp4 not produced yet")
-    # no-store so that the Repair-playback flow actually surfaces the
-    # newly re-muxed bytes. Without it, Chrome was caching the broken
-    # pre-faststart file and serving it back to the <video> element
-    # even after the API replaced the bytes on disk.
-    return FileResponse(
-        path=str(p),
-        media_type="video/mp4",
-        filename=f"{run_id}.mp4",
-        headers={"Cache-Control": "no-store"},
-    )
+    # Range-aware (see _serve_video) so videos over Cloud Run's ~32 MiB
+    # response cap still play. no-store so the Repair-playback flow surfaces
+    # newly re-muxed bytes instead of Chrome's cached pre-faststart file.
+    return _serve_video(p, request, extra_headers={"Cache-Control": "no-store"})
 
 
 class RepairAck(BaseModel):
@@ -3071,9 +3066,16 @@ def get_song_cover(run_id: str,
 _VIDEO_RANGE_CAP = 8 * 1024 * 1024  # max bytes per Range response (< 32 MiB)
 
 
-def _serve_video(path: Path, request: Request, *, download_name: str | None = None):
+def _serve_video(
+    path: Path,
+    request: Request,
+    *,
+    download_name: str | None = None,
+    extra_headers: dict | None = None,
+):
     file_size = path.stat().st_size
     range_header = request.headers.get("range")
+    base = dict(extra_headers or {})
 
     if not range_header:
         # No Range (direct hit / download): stream the whole file chunked.
@@ -3084,7 +3086,7 @@ def _serve_video(path: Path, request: Request, *, download_name: str | None = No
                     if not data:
                         break
                     yield data
-        headers = {"Accept-Ranges": "bytes"}
+        headers = {**base, "Accept-Ranges": "bytes"}
         if download_name:
             headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
         return StreamingResponse(_iter_all(), media_type="video/mp4", headers=headers)
@@ -3110,10 +3112,13 @@ def _serve_video(path: Path, request: Request, *, download_name: str | None = No
                 yield data
 
     headers = {
+        **base,
         "Accept-Ranges": "bytes",
         "Content-Range": f"bytes {start}-{end}/{file_size}",
         "Content-Length": str(length),
     }
+    if download_name:
+        headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
     return StreamingResponse(
         _iter_range(), status_code=206, media_type="video/mp4", headers=headers)
 
@@ -5069,16 +5074,17 @@ def _content_disposition(filename: str, disposition: str = "inline") -> str:
 
 
 @app.get("/p/{token}/video", include_in_schema=False)
-def shared_song_video(token: str):
+def shared_song_video(token: str, request: Request):
     """No-auth video endpoint for the public share page.
+
+    Range-aware (see _serve_video): a cinematic final.mp4 can exceed
+    Cloud Run's ~32 MiB buffered-response cap, which 500'd the full-file
+    GET browsers issue and broke playback on the share page.
 
     `Content-Disposition: inline; filename=...` lets browsers stream
     the video in-place while supplying a branded filename to "Save
-    video as…" downloads. Without this, every saved file is
-    `final.mp4` regardless of source song — confusing in a library
-    and worthless for downstream attribution. The filename slug is
-    `faceless-lab-<title>.mp4` so re-uploaded copies on disk still
-    advertise the product."""
+    video as…" downloads. The slug is `faceless-lab-<title>.mp4` so
+    re-uploaded copies on disk still advertise the product."""
     run_dir, script = _resolve_shared_song(token)
     path = run_dir / "final.mp4"
     if not path.exists():
@@ -5086,7 +5092,7 @@ def shared_song_video(token: str):
     fname = _branded_filename(script.get("title"), "mp4")
     headers = dict(_PUBLIC_BINARY_CACHE_HEADERS)
     headers["Content-Disposition"] = _content_disposition(fname)
-    return FileResponse(path, media_type="video/mp4", headers=headers)
+    return _serve_video(path, request, extra_headers=headers)
 
 
 @app.get("/p/{token}/cover", include_in_schema=False)
