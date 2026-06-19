@@ -9,7 +9,9 @@ docs/superpowers/specs/2026-06-19-youtube-song-import-design.md.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 
 from pipeline.song_lyrics import SongScript, generate_song_script
@@ -20,11 +22,12 @@ class ImportFetchError(RuntimeError):
     locked, age-restricted, network, or a datacenter-IP block)."""
 
 
-def _ytdlp_download(url: str, out_template: str) -> str:
-    """Download bestaudio to out_template via yt-dlp. Isolated so tests can
-    monkeypatch it without invoking the network/binary."""
-    import yt_dlp
-    opts = {
+def _ytdlp_opts(out_template: str, *, cookiefile: str | None = None) -> dict:
+    """Build the yt-dlp options dict. Adds a residential proxy (YTDLP_PROXY)
+    and/or a cookies file when configured — YouTube blocks datacenter IPs and
+    increasingly requires session cookies, so without these the download fails
+    from Cloud Run. Pure + testable (no network)."""
+    opts: dict = {
         "format": "bestaudio/best",
         "outtmpl": out_template,
         "quiet": True,
@@ -33,8 +36,42 @@ def _ytdlp_download(url: str, out_template: str) -> str:
             {"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}
         ],
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
+    proxy = os.environ.get("YTDLP_PROXY")
+    if proxy:
+        opts["proxy"] = proxy
+    if cookiefile:
+        opts["cookiefile"] = cookiefile
+    return opts
+
+
+def _ytdlp_download(url: str, out_template: str) -> str:
+    """Download bestaudio to out_template via yt-dlp. Isolated so tests can
+    monkeypatch it without invoking the network/binary.
+
+    Honors YTDLP_PROXY (a residential proxy URL, e.g. http://user:pass@host:port
+    or socks5://...) and YTDLP_COOKIES (the body of a Netscape cookies.txt from
+    a logged-in YouTube session). The cookies body is written to a temp file for
+    yt-dlp's cookiefile and removed afterwards."""
+    import yt_dlp
+    cookiefile = None
+    cookies_body = os.environ.get("YTDLP_COOKIES")
+    tmp = None
+    if cookies_body:
+        tmp = tempfile.NamedTemporaryFile(
+            "w", suffix=".txt", delete=False, encoding="utf-8")
+        tmp.write(cookies_body)
+        tmp.close()
+        cookiefile = tmp.name
+    try:
+        opts = _ytdlp_opts(out_template, cookiefile=cookiefile)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([url])
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
     return out_template
 
 
