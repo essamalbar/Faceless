@@ -280,3 +280,39 @@ def test_import_analyze_stage_writes_script(tmp_path: Path, monkeypatch):
     assert "synthetic reference transcript" not in (run_dir / "song.json").read_text()
     if (run_dir / "analysis.json").exists():
         assert "synthetic reference transcript" not in (run_dir / "analysis.json").read_text()
+
+
+def test_import_analyze_fetch_error_fails_run(tmp_path: Path, monkeypatch):
+    """YouTube-import pre-stage: when download_audio raises ImportFetchError
+    the run must transition to status='failed', failure_stage='analyzing',
+    exit with rc=1, and NOT write song.json."""
+    run_dir = tmp_path / "song-run-import"
+    run_dir.mkdir()
+
+    # Import-mode run dir: api_state.json only — NO song.json.
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song",
+        "status": "analyzing",
+        "youtube_url": "https://youtu.be/abc123",
+        "import_instruction": "make it sadder",
+        "video_mode": "static",
+        "language": "ar",
+    }))
+
+    import pipeline.song_import as si
+    import pipeline.api as api
+
+    monkeypatch.setattr(api, "_build_song_llm", lambda: object())
+
+    def boom(url, d):
+        raise si.ImportFetchError("Couldn't fetch that link")
+
+    monkeypatch.setattr(si, "download_audio", boom)
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert rc == 1
+    assert state["status"] == "failed"
+    assert state["failure_stage"] == "analyzing"
+    assert not (run_dir / "song.json").exists()

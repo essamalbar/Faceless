@@ -949,7 +949,10 @@ def _run_song_post_approve(args) -> int:
             write_state(status="analyzing")
             try:
                 _llm = _build_song_llm()
-                audio = song_import.download_audio(current_state["youtube_url"], run_dir)
+                url = current_state.get("youtube_url")
+                if not url:
+                    raise song_import.ImportFetchError("run is missing a youtube_url")
+                audio = song_import.download_audio(url, run_dir)
                 analysis, transcript = song_import.analyze_reference(
                     audio, llm=_llm, language=current_state.get("language", "ar"))
                 script = song_import.build_inspired_script(
@@ -958,7 +961,7 @@ def _run_song_post_approve(args) -> int:
                     language=current_state.get("language", "ar"),
                     transcript=transcript,
                 )
-            except song_import.ImportFetchError as e:
+            except Exception as e:
                 write_state(status="failed", failure_stage="analyzing", last_error=str(e))
                 return 1
             (run_dir / "analysis.json").write_text(
