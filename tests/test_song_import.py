@@ -188,3 +188,79 @@ def test_ytdlp_download_writes_cookies_to_tempfile(tmp_path, monkeypatch):
     assert captured["opts"]["proxy"] == "socks5://h:1"
     assert captured["cookiefile_existed"] is True
     assert "synthetic-cookie-line" in captured["cookiefile_body"]
+
+
+# --- metadata fallback ------------------------------------------------------
+
+class _MetaFakeLLM:
+    def __init__(self, payload):
+        self._payload = payload
+    def complete(self, prompt, system=None):
+        import json
+        return json.dumps(self._payload, ensure_ascii=False)
+
+
+_META_DESC = {
+    "genre": "Arabic pop", "mood": "nostalgic", "instrumentation": "oud, strings",
+    "language": "ar", "one_line_theme": "missing an old friend",
+    "section_structure": "Verse, Chorus, Verse, Chorus",
+}
+
+
+def test_yt_video_id_parses_url_shapes():
+    from pipeline.song_import import _yt_video_id
+    assert _yt_video_id("https://www.youtube.com/watch?v=abc123def") == "abc123def"
+    assert _yt_video_id("https://youtu.be/abc123def") == "abc123def"
+    assert _yt_video_id("https://youtube.com/shorts/abc123def") == "abc123def"
+    assert _yt_video_id("https://example.com/nope") is None
+
+
+def test_fetch_youtube_metadata_needs_api_key(monkeypatch):
+    from pipeline.song_import import fetch_youtube_metadata, ImportFetchError
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+    with pytest.raises(ImportFetchError):
+        fetch_youtube_metadata("https://youtu.be/abc123def")
+
+
+def test_fetch_youtube_metadata_returns_title_desc(monkeypatch):
+    from pipeline.song_import import fetch_youtube_metadata
+    monkeypatch.setenv("YOUTUBE_API_KEY", "k")
+    monkeypatch.setattr(si, "_youtube_api_metadata",
+                        lambda vid, key: {"title": "A Song", "description": "desc"})
+    meta = fetch_youtube_metadata("https://youtu.be/abc123def")
+    assert meta == {"title": "A Song", "description": "desc"}
+
+
+def test_analyze_from_metadata_distills_descriptors_no_transcript():
+    from pipeline.song_import import analyze_from_metadata
+    desc, transcript = analyze_from_metadata(
+        {"title": "A Song", "description": "about an old friend"},
+        llm=_MetaFakeLLM(_META_DESC), language="ar")
+    assert desc["one_line_theme"] == "missing an old friend"
+    assert desc["bpm"] == 0.0
+    assert transcript == ""   # metadata path never has a transcript
+
+
+def test_analyze_youtube_uses_audio_when_download_succeeds(tmp_path, monkeypatch):
+    monkeypatch.setattr(si, "download_audio", lambda url, d: d / "reference.m4a")
+    monkeypatch.setattr(si, "analyze_reference",
+                        lambda audio, *, llm, language: ({"src": "audio"}, "transcript"))
+    monkeypatch.setattr(si, "fetch_youtube_metadata",
+                        lambda url: (_ for _ in ()).throw(AssertionError("should not fall back")))
+    desc, transcript = si.analyze_youtube("https://youtu.be/abc123def", tmp_path,
+                                          llm=object(), language="ar")
+    assert desc == {"src": "audio"} and transcript == "transcript"
+
+
+def test_analyze_youtube_falls_back_to_metadata_when_blocked(tmp_path, monkeypatch):
+    from pipeline.song_import import ImportFetchError
+    def blocked(url, d):
+        raise ImportFetchError("blocked")
+    monkeypatch.setattr(si, "download_audio", blocked)
+    monkeypatch.setattr(si, "fetch_youtube_metadata",
+                        lambda url: {"title": "A Song", "description": "d"})
+    monkeypatch.setattr(si, "analyze_from_metadata",
+                        lambda meta, *, llm, language: ({"src": "metadata"}, ""))
+    desc, transcript = si.analyze_youtube("https://youtu.be/abc123def", tmp_path,
+                                          llm=object(), language="ar")
+    assert desc == {"src": "metadata"} and transcript == ""

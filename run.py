@@ -952,9 +952,10 @@ def _run_song_post_approve(args) -> int:
                 url = current_state.get("youtube_url")
                 if not url:
                     raise song_import.ImportFetchError("run is missing a youtube_url")
-                audio = song_import.download_audio(url, run_dir)
-                analysis, transcript = song_import.analyze_reference(
-                    audio, llm=_llm, language=current_state.get("language", "ar"))
+                # Audio-first; on a blocked download, falls back to free
+                # YouTube Data API metadata (title + description).
+                analysis, transcript = song_import.analyze_youtube(
+                    url, run_dir, llm=_llm, language=current_state.get("language", "ar"))
                 script = song_import.build_inspired_script(
                     llm=_llm, analysis=analysis,
                     instruction=current_state.get("import_instruction"),

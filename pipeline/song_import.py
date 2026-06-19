@@ -139,10 +139,29 @@ def _transcribe(audio: Path, language: str) -> str:
     return str(result.get("text", "")).strip()
 
 
+def _llm_descriptors(llm, user_msg: str, *, bpm: float, language: str) -> dict:
+    """Run the analysis LLM call and parse it into the descriptors dict.
+    Shared by the audio path (analyze_reference) and the metadata path
+    (analyze_from_metadata)."""
+    raw = llm.complete(user_msg, system=_ANALYZE_SYSTEM).strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
+    parsed = json.loads(raw, strict=False)
+    return {
+        "bpm": bpm,
+        "genre": str(parsed.get("genre", "")),
+        "mood": str(parsed.get("mood", "")),
+        "instrumentation": str(parsed.get("instrumentation", "")),
+        "language": str(parsed.get("language", language)),
+        "one_line_theme": parsed.get("one_line_theme"),
+        "section_structure": str(parsed.get("section_structure", "")),
+    }
+
+
 def analyze_reference(audio: Path, *, llm, language: str) -> tuple[dict, str]:
-    """Return ({bpm, genre, mood, instrumentation, language, one_line_theme,
-    section_structure}, transcript). The transcript is returned for the
-    caller's transient overlap check only — it must NOT be persisted."""
+    """Audio path: detect tempo + transcribe (internal), distill descriptors.
+    Returns (descriptors, transcript) — transcript for the transient overlap
+    check only; it must NOT be persisted."""
     bpm = _detect_bpm(audio)
     try:
         transcript = _transcribe(audio, language)
@@ -156,21 +175,78 @@ def analyze_reference(audio: Path, *, llm, language: str) -> tuple[dict, str]:
     else:
         user_msg += "\n(No transcript available — infer style from tempo + language.)"
 
-    raw = llm.complete(user_msg, system=_ANALYZE_SYSTEM).strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
-    parsed = json.loads(raw, strict=False)
+    return _llm_descriptors(llm, user_msg, bpm=bpm, language=language), transcript
 
-    descriptors = {
-        "bpm": bpm,
-        "genre": str(parsed.get("genre", "")),
-        "mood": str(parsed.get("mood", "")),
-        "instrumentation": str(parsed.get("instrumentation", "")),
-        "language": str(parsed.get("language", language)),
-        "one_line_theme": parsed.get("one_line_theme"),
-        "section_structure": str(parsed.get("section_structure", "")),
-    }
-    return descriptors, transcript
+
+# --- Free metadata fallback: YouTube Data API (no audio download) -----------
+# Used when the audio download is blocked (the common Cloud Run case). Reads
+# only the public title + description and produces an original song from them —
+# never the source lyrics, so it's the safest path for originality too.
+
+_YT_ID_RE = re.compile(r"(?:[?&]v=|youtu\.be/|/shorts/)([\w-]{6,})")
+_YT_API_URL = "https://www.googleapis.com/youtube/v3/videos"
+
+
+def _yt_video_id(url: str) -> str | None:
+    m = _YT_ID_RE.search(url)
+    return m.group(1) if m else None
+
+
+def _youtube_api_metadata(video_id: str, api_key: str) -> dict:
+    """Call YouTube Data API videos.list(snippet). Isolated for tests."""
+    import requests
+    r = requests.get(
+        _YT_API_URL,
+        params={"part": "snippet", "id": video_id, "key": api_key},
+        timeout=30,
+    )
+    if r.status_code >= 400:
+        raise ImportFetchError(
+            f"YouTube Data API error {r.status_code}: {r.text[:200]}")
+    items = r.json().get("items") or []
+    if not items:
+        raise ImportFetchError("video not found via YouTube Data API")
+    snippet = items[0].get("snippet", {})
+    return {"title": snippet.get("title", ""),
+            "description": snippet.get("description", "")}
+
+
+def fetch_youtube_metadata(url: str) -> dict:
+    """Free, ToS-clean metadata (title + description) via the YouTube Data API.
+    Requires YOUTUBE_API_KEY. Raises ImportFetchError when unavailable."""
+    api_key = os.environ.get("YOUTUBE_API_KEY")
+    if not api_key:
+        raise ImportFetchError("metadata fallback unavailable (set YOUTUBE_API_KEY)")
+    video_id = _yt_video_id(url)
+    if not video_id:
+        raise ImportFetchError("couldn't read a YouTube video id from the link")
+    return _youtube_api_metadata(video_id, api_key)
+
+
+def analyze_from_metadata(meta: dict, *, llm, language: str) -> tuple[dict, str]:
+    """Metadata path: distill descriptors from the video title + description
+    (no audio). Returns (descriptors, "") — no transcript, so the overlap guard
+    is a no-op and no source lyrics are ever involved."""
+    user_msg = (
+        f"YouTube title: {meta.get('title', '')}\n"
+        f"Description (context only):\n{(meta.get('description') or '')[:2000]}\n"
+        f"Language hint: {language}\n"
+        "(No audio available — infer genre/mood/theme from the title + description.)"
+    )
+    return _llm_descriptors(llm, user_msg, bpm=0.0, language=language), ""
+
+
+def analyze_youtube(url: str, out_dir: Path, *, llm, language: str) -> tuple[dict, str]:
+    """Audio-first, metadata-fallback. Tries to download + analyse the audio
+    (works locally / through YTDLP_PROXY); if the download is blocked (the
+    common Cloud Run case), falls back to free YouTube Data API metadata."""
+    try:
+        audio = download_audio(url, out_dir)
+        return analyze_reference(audio, llm=llm, language=language)
+    except ImportFetchError as e:
+        print(f"[song_import] audio fetch failed ({e}); trying metadata fallback")
+        meta = fetch_youtube_metadata(url)  # raises ImportFetchError if no key
+        return analyze_from_metadata(meta, llm=llm, language=language)
 
 
 OVERLAP_THRESHOLD = 0.15  # regenerate if >15% of 4-grams echo the reference
