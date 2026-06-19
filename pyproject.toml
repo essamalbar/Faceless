@@ -41,6 +41,10 @@ dependencies = [
     # librosa: beat/tempo tracking for cinematic (beat-synced) song video.
     # Pulls scipy + numba; torch/numpy already ship for Whisper.
     "librosa>=0.10",
+    # yt-dlp: fetch reference audio for YouTube song import. Uses the ffmpeg
+    # already in the image to extract audio. NOTE: YouTube blocks datacenter
+    # IPs, so this may fail from Cloud Run — handled gracefully downstream.
+    "yt-dlp>=2024.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     # google-cloud-run: REST/gRPC client for triggering Cloud Run Jobs from
