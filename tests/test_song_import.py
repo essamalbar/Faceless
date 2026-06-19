@@ -88,3 +88,54 @@ def test_analyze_reference_degrades_when_transcription_fails(tmp_path, monkeypat
     desc, transcript = analyze_reference(audio, llm=_FakeLLM(payload), language="ar")
     assert transcript == ""
     assert desc["one_line_theme"] is None
+
+
+from pipeline.song_import import build_inspired_script, OVERLAP_THRESHOLD
+import pipeline.song_import as si2
+from pipeline.song_lyrics import SongScript
+
+
+def _script(lyrics):
+    return SongScript(title="t", lyrics=lyrics, style_prompt="pop, 90 BPM",
+                      cover_prompt="c", language="ar",
+                      art_direction="moonlit", scene_prompts=["a", "b"])
+
+
+def test_build_inspired_script_passes_clean_output(monkeypatch):
+    calls = {"n": 0}
+    def fake_gen(**kw):
+        calls["n"] += 1
+        return _script("[Verse 1]\nfresh original words\n\n[Chorus]\nbrand new hook\n")
+    monkeypatch.setattr(si2, "generate_song_script", fake_gen)
+    s = build_inspired_script(
+        llm=object(),
+        analysis={"genre": "pop", "bpm": 90, "mood": "sad",
+                  "instrumentation": "oud", "one_line_theme": "loss"},
+        instruction="make it Gulf dialect",
+        language="ar",
+        transcript="totally different reference words here please",
+    )
+    assert "[Chorus]" in s.lyrics
+    assert calls["n"] == 1   # no regeneration needed
+
+
+def test_build_inspired_script_regenerates_on_near_copy(monkeypatch):
+    src = "one two three four five six seven eight nine ten"
+    outputs = [
+        _script("one two three four five six seven eight nine ten"),  # near-copy
+        _script("[Verse 1]\nwholly distinct alpha bravo charlie\n[Chorus]\ndelta echo\n"),
+    ]
+    calls = {"n": 0}
+    def fake_gen(**kw):
+        out = outputs[min(calls["n"], len(outputs) - 1)]
+        calls["n"] += 1
+        return out
+    monkeypatch.setattr(si2, "generate_song_script", fake_gen)
+    s = build_inspired_script(
+        llm=object(),
+        analysis={"genre": "pop", "bpm": 90, "mood": "sad",
+                  "instrumentation": "oud", "one_line_theme": "loss"},
+        instruction=None, language="ar", transcript=src,
+    )
+    assert calls["n"] == 2          # regenerated once after the near-copy
+    assert "alpha bravo charlie" in s.lyrics

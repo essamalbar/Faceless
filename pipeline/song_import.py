@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+from pipeline.song_lyrics import SongScript, generate_song_script
+
 
 class ImportFetchError(RuntimeError):
     """Raised when the reference audio can't be fetched (private, region-
@@ -132,3 +134,46 @@ def analyze_reference(audio: Path, *, llm, language: str) -> tuple[dict, str]:
         "section_structure": str(parsed.get("section_structure", "")),
     }
     return descriptors, transcript
+
+
+OVERLAP_THRESHOLD = 0.15  # regenerate if >15% of 4-grams echo the reference
+
+
+def _theme_and_style(analysis: dict, instruction: str | None) -> tuple[str, str]:
+    theme = analysis.get("one_line_theme") or "an original song"
+    if instruction:
+        theme = f"{theme}. Direction: {instruction}"
+    bpm = round(analysis.get("bpm") or 0) or "moderate"
+    style = ", ".join(
+        x for x in (
+            analysis.get("genre"),
+            f"{bpm} BPM" if bpm else None,
+            analysis.get("instrumentation"),
+            analysis.get("mood"),
+        ) if x
+    )
+    return theme, style
+
+
+def build_inspired_script(*, llm, analysis: dict, instruction: str | None,
+                          language: str, transcript: str = "") -> SongScript:
+    """Generate an ORIGINAL song inspired by the analysed descriptors. The
+    reference's words never reach the generator — only the derived theme +
+    style do. If the result echoes the transcript too closely, regenerate once
+    with a stronger originality nudge."""
+    theme, style = _theme_and_style(analysis, instruction)
+
+    def gen(extra: str = "") -> SongScript:
+        return generate_song_script(
+            llm=llm, theme=theme + extra, custom_lyrics=None,
+            style_hint=style, language=language,
+        )
+
+    script = gen()
+    if transcript and _ngram_overlap(script.lyrics, transcript) > OVERLAP_THRESHOLD:
+        script = gen(". Write ENTIRELY ORIGINAL lyrics — do not echo any "
+                     "existing song's words or lines.")
+        if _ngram_overlap(script.lyrics, transcript) > OVERLAP_THRESHOLD:
+            print("[song_import] WARN: generated lyrics still overlap the "
+                  "reference; shipping but flagged for review")
+    return script
