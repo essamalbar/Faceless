@@ -139,3 +139,52 @@ def test_build_inspired_script_regenerates_on_near_copy(monkeypatch):
     )
     assert calls["n"] == 2          # regenerated once after the near-copy
     assert "alpha bravo charlie" in s.lyrics
+
+
+def test_ytdlp_opts_adds_proxy_when_env_set(monkeypatch):
+    from pipeline.song_import import _ytdlp_opts
+    monkeypatch.setenv("YTDLP_PROXY", "http://u:p@host:1080")
+    opts = _ytdlp_opts("/tmp/out.m4a")
+    assert opts["proxy"] == "http://u:p@host:1080"
+
+
+def test_ytdlp_opts_no_proxy_when_unset(monkeypatch):
+    from pipeline.song_import import _ytdlp_opts
+    monkeypatch.delenv("YTDLP_PROXY", raising=False)
+    opts = _ytdlp_opts("/tmp/out.m4a")
+    assert "proxy" not in opts
+
+
+def test_ytdlp_opts_cookiefile_only_when_provided():
+    from pipeline.song_import import _ytdlp_opts
+    assert _ytdlp_opts("/tmp/o.m4a", cookiefile="/tmp/c.txt")["cookiefile"] == "/tmp/c.txt"
+    assert "cookiefile" not in _ytdlp_opts("/tmp/o.m4a")
+
+
+def test_ytdlp_download_writes_cookies_to_tempfile(tmp_path, monkeypatch):
+    # YTDLP_COOKIES body must be written to a temp cookiefile that exists at
+    # download time, and proxy must be wired — without invoking real yt-dlp.
+    import os
+    import sys
+    import types
+    captured = {}
+
+    class _FakeYDL:
+        def __init__(self, opts):
+            captured["opts"] = opts
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def download(self, urls):
+            cf = captured["opts"].get("cookiefile")
+            captured["cookiefile_existed"] = bool(cf) and os.path.exists(cf)
+            captured["cookiefile_body"] = open(cf, encoding="utf-8").read() if cf else None
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=_FakeYDL))
+    monkeypatch.setenv("YTDLP_PROXY", "socks5://h:1")
+    monkeypatch.setenv("YTDLP_COOKIES", "# Netscape HTTP Cookie File\nsynthetic-cookie-line")
+    si._ytdlp_download("https://youtu.be/x", str(tmp_path / "o.m4a"))
+    assert captured["opts"]["proxy"] == "socks5://h:1"
+    assert captured["cookiefile_existed"] is True
+    assert "synthetic-cookie-line" in captured["cookiefile_body"]
