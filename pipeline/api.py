@@ -407,7 +407,7 @@ class CreateSongRequest(BaseModel):
 _ALLOWED_SUNO_MODELS = frozenset({"V5_5", "V5", "V4_5", "V4"})
 
 _YOUTUBE_RE = re.compile(
-    r"^https?://(www\.)?(youtube\.com/watch\?[\w=&%-]*v=|youtu\.be/|"
+    r"^https?://((?:www|m|music)\.)?(youtube\.com/watch\?[\w=&%-]*v=|youtu\.be/|"
     r"youtube\.com/shorts/)[\w-]{6,}", re.IGNORECASE)
 
 
@@ -2501,8 +2501,10 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
     cfg = load_config(Path(os.environ.get(
         "FACELESS_CONFIG", str(REPO_ROOT / "config.yaml"))))
     credits_required = _song_credit_amount(req.video_mode, cfg)
-    if user.role != "service" and get_balance(user.id) < credits_required:
-        _raise_402_insufficient_credits(get_balance(user.id), credits_required)
+    if user.role != "service":
+        balance = get_balance(user.id)
+        if balance < credits_required:
+            _raise_402_insufficient_credits(balance, credits_required)
 
     user_root = _user_runs_root(user)
     user_root.mkdir(parents=True, exist_ok=True)
