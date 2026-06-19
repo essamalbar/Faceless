@@ -2380,3 +2380,57 @@ def test_invalid_video_mode_rejected(client, auth, monkeypatch):
     r = client.post("/songs", json={"theme": "x", "video_mode": "bogus"},
                     headers=auth)
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# YouTube song import — Task 6
+# ---------------------------------------------------------------------------
+
+def test_import_song_creates_analyzing_run(client, auth, monkeypatch):
+    import pipeline.api as api
+    monkeypatch.setattr(api, "_SPAWN_FN", lambda args, run_dir: 4242)
+    r = client.post("/songs/import",
+                    json={"youtube_url": "https://www.youtube.com/watch?v=abc123",
+                          "instruction": "make it Gulf dialect"},
+                    headers=auth)
+    assert r.status_code == 201
+    body = r.json()
+    assert body["status"] == "analyzing"
+    assert body["run_id"]
+
+
+def test_import_song_rejects_non_youtube_url(client, auth):
+    r = client.post("/songs/import",
+                    json={"youtube_url": "https://example.com/not-youtube"},
+                    headers=auth)
+    assert r.status_code == 422
+
+
+def test_import_song_user_with_credits_starts_run(client_factory, monkeypatch, tmp_path):
+    """A regular user with sufficient balance gets a 201 + status 'analyzing'."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    monkeypatch.setattr("pipeline.api._SPAWN_FN", lambda args, run_dir: 4242)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/songs/import", json={
+        "youtube_url": "https://www.youtube.com/watch?v=abc123",
+        "instruction": "Gulf dialect",
+    })
+    assert r.status_code == 201, f"expected 201, got {r.status_code} {r.text}"
+    body = r.json()
+    assert body["status"] == "analyzing"
+    assert body["run_id"]
+
+
+def test_import_song_user_without_credits_402(client_factory, monkeypatch, tmp_path):
+    """A regular user with 0 credits and video_mode='cinematic' (3 credits required) gets 402."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 0)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/songs/import", json={
+        "youtube_url": "https://www.youtube.com/watch?v=abc123",
+        "video_mode": "cinematic",
+    })
+    assert r.status_code == 402, f"expected 402, got {r.status_code} {r.text}"
+    detail = r.json()["detail"]
+    assert detail["code"] == "insufficient_credits"

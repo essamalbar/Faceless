@@ -75,6 +75,8 @@ class _NewSongScreenState extends State<NewSongScreen> {
   final _themeCtrl = TextEditingController();
   final _lyricsCtrl = TextEditingController();
   final _styleCtrl = TextEditingController();
+  final _youtubeCtrl = TextEditingController();
+  String _createMode = 'theme'; // 'theme' | 'youtube'
   String _language = 'ar';
   String _videoMode = 'static'; // 'static' | 'cinematic'
   String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
@@ -119,30 +121,49 @@ class _NewSongScreenState extends State<NewSongScreen> {
     _themeCtrl.dispose();
     _lyricsCtrl.dispose();
     _styleCtrl.dispose();
+    _youtubeCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    if (_themeCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Theme is required');
-      return;
+    if (_createMode == 'youtube') {
+      if (_youtubeCtrl.text.trim().isEmpty) {
+        setState(() => _error = 'YouTube link is required');
+        return;
+      }
+    } else {
+      if (_themeCtrl.text.trim().isEmpty) {
+        setState(() => _error = 'Theme is required');
+        return;
+      }
     }
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
-      final runId = await widget.client.createSong(
-        theme: _themeCtrl.text.trim(),
-        customLyrics:
-            _lyricsCtrl.text.trim().isEmpty ? null : _lyricsCtrl.text,
-        styleHint: _styleCtrl.text.trim().isEmpty ? null : _styleCtrl.text,
-        language: _language,
-        personaId: _personaId,
-        vocalGender: _vocalGender,
-        sunoModel: _sunoModel,
-        videoMode: _videoMode,
-      );
+      final String runId;
+      if (_createMode == 'youtube') {
+        runId = await widget.client.importSong(
+          youtubeUrl: _youtubeCtrl.text.trim(),
+          instruction: _styleCtrl.text.trim().isEmpty ? null : _styleCtrl.text,
+          language: _language,
+          videoMode: _videoMode,
+          vocalGender: _vocalGender,
+        );
+      } else {
+        runId = await widget.client.createSong(
+          theme: _themeCtrl.text.trim(),
+          customLyrics:
+              _lyricsCtrl.text.trim().isEmpty ? null : _lyricsCtrl.text,
+          styleHint: _styleCtrl.text.trim().isEmpty ? null : _styleCtrl.text,
+          language: _language,
+          personaId: _personaId,
+          vocalGender: _vocalGender,
+          sunoModel: _sunoModel,
+          videoMode: _videoMode,
+        );
+      }
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (_) =>
@@ -166,70 +187,114 @@ class _NewSongScreenState extends State<NewSongScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Mode selector — Write a theme vs Import from YouTube.
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'theme',
+                  label: Text('Write a theme'),
+                  icon: Icon(Icons.edit_note),
+                ),
+                ButtonSegment(
+                  value: 'youtube',
+                  label: Text('Import from YouTube'),
+                  icon: Icon(Icons.video_call),
+                ),
+              ],
+              selected: {_createMode},
+              onSelectionChanged: (s) =>
+                  setState(() => _createMode = s.first),
+            ),
+            const SizedBox(height: 16),
             Card(
               color: FacelessTheme.surface2,
-              child: const Padding(
-                padding: EdgeInsets.all(16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
                 child: Text(
-                  'The AI will write lyrics and a cover image prompt. '
-                  'You can review and edit both before any credit is spent.',
+                  _createMode == 'youtube'
+                      ? 'The AI will analyze the YouTube song and re-create it in a new style. '
+                          'You can review lyrics and cover before any credit is spent.'
+                      : 'The AI will write lyrics and a cover image prompt. '
+                          'You can review and edit both before any credit is spent.',
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _themeCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Theme',
-                hintText: 'أغنية حزينة عن القمر',
-                border: OutlineInputBorder(),
+            if (_createMode == 'youtube') ...[
+              // YouTube import path: URL field + optional "your touch" hint.
+              TextField(
+                controller: _youtubeCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'YouTube link',
+                  hintText: 'https://www.youtube.com/watch?v=...',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.url,
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _lyricsCtrl,
-              maxLines: 6,
-              decoration: const InputDecoration(
-                labelText: 'Custom lyrics (optional)',
-                hintText: 'Leave empty for AI',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
+              const SizedBox(height: 16),
+            ] else ...[
+              // Theme path: theme + custom lyrics fields.
+              TextField(
+                controller: _themeCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Theme',
+                  hintText: 'أغنية حزينة عن القمر',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            // Style presets — quick fillers. Tap to stamp a vetted
-            // style string into the textfield below; user can edit.
-            Text(
-              'Quick styles',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final (label, preset) in _kStylePresets)
-                  FilterChip(
-                    label: Text(label),
-                    selected: _selectedPreset == label,
-                    onSelected: (_) {
-                      setState(() {
-                        _styleCtrl.text = preset;
-                        _selectedPreset = label;
-                      });
-                    },
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _lyricsCtrl,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  labelText: 'Custom lyrics (optional)',
+                  hintText: 'Leave empty for AI',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Style presets — quick fillers. Tap to stamp a vetted
+              // style string into the textfield below; user can edit.
+              Text(
+                'Quick styles',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (label, preset) in _kStylePresets)
+                    FilterChip(
+                      label: Text(label),
+                      selected: _selectedPreset == label,
+                      onSelected: (_) {
+                        setState(() {
+                          _styleCtrl.text = preset;
+                          _selectedPreset = label;
+                        });
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            // Style hint / "your touch" — shown in both modes.
+            // In theme mode: style hint for Suno. In YouTube mode: optional
+            // instruction to give the re-creation its own character.
             TextField(
               controller: _styleCtrl,
               maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Style hint',
-                hintText: 'Pick a Quick style above, or type your own. '
-                    'Leave empty for AI to auto-pick.',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: _createMode == 'youtube'
+                    ? 'Your touch (optional)'
+                    : 'Style hint',
+                hintText: _createMode == 'youtube'
+                    ? 'e.g. make it more upbeat, add oud, slower tempo…'
+                    : 'Pick a Quick style above, or type your own. '
+                        'Leave empty for AI to auto-pick.',
+                border: const OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
               onChanged: (_) {

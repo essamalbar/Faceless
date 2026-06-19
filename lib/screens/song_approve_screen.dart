@@ -19,6 +19,10 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
   bool _busy = true;
   bool _approving = false;
 
+  /// Non-null while the run is in the `analyzing` state (import flow).
+  /// Drives the "Analyzing the song…" UI instead of a plain spinner.
+  String? _analyzingStatus;
+
   @override
   void initState() {
     super.initState();
@@ -26,7 +30,11 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
   }
 
   Future<void> _pollUntilReady() async {
-    for (int i = 0; i < 30; i++) {
+    // 150 polls × 2 s = 5 minutes — generous enough for cold-start +
+    // yt-dlp download + Whisper transcription + 2 LLM calls (import path).
+    // Normal (non-import) runs reach `awaiting_approval` in a few seconds
+    // and exit the loop early, so they are unaffected.
+    for (int i = 0; i < 150; i++) {
       try {
         final s = await widget.client.getSong(widget.runId);
         if (s.status == 'awaiting_approval') {
@@ -34,6 +42,7 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
           if (!mounted) return;
           setState(() {
             _script = script;
+            _analyzingStatus = null;
             _busy = false;
           });
           return;
@@ -41,19 +50,28 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
         if (s.status == 'failed') {
           if (!mounted) return;
           setState(() {
-            _error = s.lastError ?? 'lyrics generation failed';
+            _error = s.lastError ?? 'Analysis failed — please try again';
+            _analyzingStatus = null;
             _busy = false;
           });
           return;
         }
-      } catch (e) {
-        // Keep polling — may be a transient 404 while disk write settles
+        // Show a richer "Analyzing…" state for import runs so the user
+        // knows the app is working, not frozen.
+        if (s.status == 'analyzing' && _analyzingStatus != s.status) {
+          if (!mounted) return;
+          setState(() => _analyzingStatus = s.status);
+        }
+      } catch (_) {
+        // Keep polling — transient 404 while song.json hasn't been written
+        // yet (normal during the early seconds of an import run).
       }
-      await Future.delayed(const Duration(seconds: 1));
+      await Future.delayed(const Duration(seconds: 2));
     }
     if (!mounted) return;
     setState(() {
-      _error = 'Timed out waiting for lyrics';
+      _error = 'Timed out waiting for lyrics (exceeded 5 minutes)';
+      _analyzingStatus = null;
       _busy = false;
     });
   }
@@ -184,9 +202,26 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
   @override
   Widget build(BuildContext context) {
     if (_busy && _script == null) {
+      // Import runs linger in `analyzing` for minutes — show richer feedback.
+      final label = _analyzingStatus == 'analyzing'
+          ? 'Analyzing the song…\nThis can take a few minutes for imports.'
+          : 'Preparing…';
       return Scaffold(
         appBar: AppBar(title: const Text('Review draft')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 20),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ),
+        ),
       );
     }
     if (_error != null && _script == null) {

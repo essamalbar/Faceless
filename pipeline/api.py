@@ -406,6 +406,33 @@ class CreateSongRequest(BaseModel):
 # obvious-AI sound and explicitly excluded per spec quality gate.
 _ALLOWED_SUNO_MODELS = frozenset({"V5_5", "V5", "V4_5", "V4"})
 
+_YOUTUBE_RE = re.compile(
+    r"^https?://((?:www|m|music)\.)?(youtube\.com/watch\?[\w=&%-]*v=|youtu\.be/|"
+    r"youtube\.com/shorts/)[\w-]{6,}", re.IGNORECASE)
+
+
+class CreateSongImportRequest(BaseModel):
+    youtube_url: str
+    instruction: str | None = None
+    language: str = "ar"
+    video_mode: str = "static"
+    vocal_gender: str | None = "m"
+    suno_model: str | None = None
+
+    @field_validator("youtube_url")
+    @classmethod
+    def _check_url(cls, v: str) -> str:
+        if not _YOUTUBE_RE.match(v.strip()):
+            raise ValueError("youtube_url must be a YouTube watch/share/shorts URL")
+        return v.strip()
+
+    @field_validator("video_mode")
+    @classmethod
+    def _check_video_mode(cls, v: str) -> str:
+        if v not in ("static", "cinematic"):
+            raise ValueError("video_mode must be 'static' or 'cinematic'")
+        return v
+
 
 class SongScriptResponse(BaseModel):
     title: str
@@ -2461,6 +2488,48 @@ def create_song(
     _write_state(run_dir, status="awaiting_approval", title=script.title)
 
     return {"run_id": run_id, "status": "awaiting_approval"}
+
+
+@app.post("/songs/import", status_code=201)
+def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)):
+    """Start a YouTube-import song run. Writes a draft run and spawns the
+    worker for the `analyzing` pre-stage (download + analyse + write an
+    original script). No spend until the user approves the result."""
+    from pipeline.config import load_config
+    from pipeline.db import get_balance
+
+    cfg = load_config(Path(os.environ.get(
+        "FACELESS_CONFIG", str(REPO_ROOT / "config.yaml"))))
+    credits_required = _song_credit_amount(req.video_mode, cfg)
+    if user.role != "service":
+        balance = get_balance(user.id)
+        if balance < credits_required:
+            _raise_402_insufficient_credits(balance, credits_required)
+
+    user_root = _user_runs_root(user)
+    user_root.mkdir(parents=True, exist_ok=True)
+    run_id = _make_run_id(root=user_root)
+    run_dir = user_root / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    _write_state(
+        run_dir,
+        kind="song",
+        status="analyzing",
+        user_id=user.id,
+        theme="(importing from YouTube…)",
+        youtube_url=req.youtube_url,
+        import_instruction=req.instruction,
+        video_mode=req.video_mode,
+        language=req.language,
+        vocal_gender=req.vocal_gender,
+        suno_model=(req.suno_model if req.suno_model in _ALLOWED_SUNO_MODELS else None),
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid)
+    return {"run_id": run_id, "status": "analyzing"}
 
 
 def _song_credit_amount(video_mode: str, cfg) -> int:

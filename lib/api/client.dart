@@ -547,6 +547,28 @@ class FacelessApiClient {
     return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
   }
 
+  Future<String> importSong({
+    required String youtubeUrl,
+    String? instruction,
+    String language = 'ar',
+    String videoMode = 'static',
+    String vocalGender = 'm',
+  }) async {
+    final body = <String, dynamic>{
+      'youtube_url': youtubeUrl,
+      if (instruction != null && instruction.isNotEmpty) 'instruction': instruction,
+      'language': language,
+      'video_mode': videoMode,
+      'vocal_gender': vocalGender,
+    };
+    final r = await _http.post(
+      await _uri('/songs/import'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
+  }
+
   Future<List<SongSummary>> listSongs() async {
     final r = await _http.get(await _uri('/songs'), headers: await _headers());
     return _parse(r, (j) => (j as List)
