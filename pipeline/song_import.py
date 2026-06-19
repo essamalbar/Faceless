@@ -8,6 +8,7 @@ docs/superpowers/specs/2026-06-19-youtube-song-import-design.md.
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -64,3 +65,70 @@ def _ngram_overlap(generated: str, source: str, n: int = 4) -> float:
     if not g:
         return 0.0
     return len(g & grams(source)) / len(g)
+
+
+_ANALYZE_SYSTEM = """You analyze a reference song to seed an ORIGINAL new song.
+You are given the detected tempo and (optionally) a rough transcript.
+
+Return ONLY a JSON object (no markdown) with these keys:
+  genre:            short genre/sub-genre descriptor
+  mood:             one or two mood words
+  instrumentation:  comma-separated instruments
+  language:         BCP-ish language code of the song
+  one_line_theme:   ONE short sentence describing the THEME (not the lyrics).
+                    null if no transcript was provided.
+  section_structure: e.g. "Verse, Pre-Chorus, Chorus, Verse, Chorus, Bridge"
+
+Describe the THEME and STYLE only. Do NOT copy or quote the transcript text."""
+
+
+def _detect_bpm(audio: Path) -> float:
+    """Tempo via librosa; 0.0 if detection fails. Isolated for tests."""
+    try:
+        from pipeline.song_beats import _librosa_beat_track
+        tempo, _ = _librosa_beat_track(audio)
+        return float(tempo)
+    except Exception:
+        return 0.0
+
+
+def _transcribe(audio: Path, language: str) -> str:
+    """Whisper transcript (internal use only). Isolated for tests."""
+    from pipeline.align import _load_whisper
+    model = _load_whisper("base")
+    result = model.transcribe(str(audio), language=language or None)
+    return str(result.get("text", "")).strip()
+
+
+def analyze_reference(audio: Path, *, llm, language: str) -> tuple[dict, str]:
+    """Return ({bpm, genre, mood, instrumentation, language, one_line_theme,
+    section_structure}, transcript). The transcript is returned for the
+    caller's transient overlap check only — it must NOT be persisted."""
+    bpm = _detect_bpm(audio)
+    try:
+        transcript = _transcribe(audio, language)
+    except Exception as e:
+        print(f"[song_import] transcription failed ({e}); style-only analysis")
+        transcript = ""
+
+    user_msg = f"Detected tempo: {round(bpm) or 'unknown'} BPM\nLanguage hint: {language}"
+    if transcript:
+        user_msg += f"\nRough transcript (context only):\n{transcript[:4000]}"
+    else:
+        user_msg += "\n(No transcript available — infer style from tempo + language.)"
+
+    raw = llm.complete(user_msg, system=_ANALYZE_SYSTEM).strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
+    parsed = json.loads(raw, strict=False)
+
+    descriptors = {
+        "bpm": bpm,
+        "genre": str(parsed.get("genre", "")),
+        "mood": str(parsed.get("mood", "")),
+        "instrumentation": str(parsed.get("instrumentation", "")),
+        "language": str(parsed.get("language", language)),
+        "one_line_theme": parsed.get("one_line_theme"),
+        "section_structure": str(parsed.get("section_structure", "")),
+    }
+    return descriptors, transcript

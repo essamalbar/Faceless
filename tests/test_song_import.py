@@ -43,3 +43,48 @@ def test_ngram_overlap_distinct_is_low():
 def test_ngram_overlap_empty_is_zero():
     assert _ngram_overlap("", "anything here at all") == 0.0
     assert _ngram_overlap("too short", "x y z a b c", n=4) == 0.0
+
+
+from pipeline.song_import import analyze_reference
+
+
+class _FakeLLM:
+    def __init__(self, payload):
+        self._payload = payload
+    def complete(self, prompt, system=None):
+        import json
+        return json.dumps(self._payload, ensure_ascii=False)
+
+
+_DESC = {
+    "genre": "Arabic pop ballad",
+    "mood": "melancholic",
+    "instrumentation": "oud, strings, light percussion",
+    "language": "ar",
+    "one_line_theme": "longing for a distant home",
+    "section_structure": "Verse, Pre-Chorus, Chorus, Verse, Chorus, Bridge, Chorus",
+}
+
+
+def test_analyze_reference_returns_descriptors_and_transcript(tmp_path, monkeypatch):
+    import pipeline.song_import as si
+    audio = tmp_path / "reference.m4a"; audio.write_bytes(b"\x00")
+    monkeypatch.setattr(si, "_detect_bpm", lambda p: 92.0)
+    monkeypatch.setattr(si, "_transcribe", lambda p, language: "la la la one two three")
+    desc, transcript = analyze_reference(audio, llm=_FakeLLM(_DESC), language="ar")
+    assert desc["bpm"] == 92.0
+    assert desc["one_line_theme"] == "longing for a distant home"
+    assert transcript == "la la la one two three"
+
+
+def test_analyze_reference_degrades_when_transcription_fails(tmp_path, monkeypatch):
+    import pipeline.song_import as si
+    audio = tmp_path / "reference.m4a"; audio.write_bytes(b"\x00")
+    monkeypatch.setattr(si, "_detect_bpm", lambda p: 0.0)
+    def boom(p, language):
+        raise RuntimeError("whisper failed")
+    monkeypatch.setattr(si, "_transcribe", boom)
+    payload = dict(_DESC); payload["one_line_theme"] = None
+    desc, transcript = analyze_reference(audio, llm=_FakeLLM(payload), language="ar")
+    assert transcript == ""
+    assert desc["one_line_theme"] is None
