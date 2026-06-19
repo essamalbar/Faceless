@@ -902,6 +902,8 @@ def _run_song_post_approve(args) -> int:
 
     from pipeline import song, song_cover, song_assemble, song_align, song_og
     from pipeline import song_beats, song_cinematic, song_scenes
+    from pipeline import song_import
+    from pipeline.api import _build_song_llm  # Anthropic→Groq fallback router
     from pipeline.config import load_config
     from pipeline.kie import KieClient
 
@@ -935,6 +937,46 @@ def _run_song_post_approve(args) -> int:
         tmp.replace(state_path)
 
     try:
+        # --- Import pre-stage: download + analyse a YouTube reference, then
+        # write an ORIGINAL song.json and pause for approval. Import-mode only;
+        # exits before the normal generation path. ---
+        # NOTE: in this function song.json is normally read FIRST (below), and
+        # current_state is loaded later. The import pre-stage runs when there is
+        # no song.json yet, so we load current_state here at the top of the try
+        # body, guard on it, and exit before the song.json read can crash.
+        current_state = json.loads(state_path.read_text()) if state_path.exists() else {}
+        if current_state.get("status") == "analyzing" and not (run_dir / "song.json").exists():
+            write_state(status="analyzing")
+            try:
+                _llm = _build_song_llm()
+                audio = song_import.download_audio(current_state["youtube_url"], run_dir)
+                analysis, transcript = song_import.analyze_reference(
+                    audio, llm=_llm, language=current_state.get("language", "ar"))
+                script = song_import.build_inspired_script(
+                    llm=_llm, analysis=analysis,
+                    instruction=current_state.get("import_instruction"),
+                    language=current_state.get("language", "ar"),
+                    transcript=transcript,
+                )
+            except song_import.ImportFetchError as e:
+                write_state(status="failed", failure_stage="analyzing", last_error=str(e))
+                return 1
+            (run_dir / "analysis.json").write_text(
+                json.dumps(analysis, ensure_ascii=False, indent=2), encoding="utf-8")
+            (run_dir / "song.json").write_text(json.dumps({
+                "title": script.title, "lyrics": script.lyrics,
+                "style_prompt": script.style_prompt, "cover_prompt": script.cover_prompt,
+                "language": script.language, "art_direction": script.art_direction,
+                "scene_prompts": script.scene_prompts,
+                "vocal_gender": current_state.get("vocal_gender"),
+                "persona_id": None,
+                "suno_model": current_state.get("suno_model"),
+                "video_mode": current_state.get("video_mode", "static"),
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            (run_dir / "lyrics.txt").write_text(script.lyrics, encoding="utf-8")
+            write_state(status="awaiting_approval", title=script.title)
+            return 0
+
         script = json.loads(script_path.read_text())
         client = KieClient()
         takes_dir = run_dir / "takes"

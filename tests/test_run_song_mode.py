@@ -222,3 +222,61 @@ def test_cinematic_empty_scene_pool_downgrades_to_static(tmp_path: Path, monkeyp
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["video_downgraded"] is True
     assert state["status"] == "complete"
+
+
+def test_import_analyze_stage_writes_script(tmp_path: Path, monkeypatch):
+    """YouTube-import pre-stage: a run in status 'analyzing' with a
+    youtube_url and NO song.json yet must download + analyse the reference,
+    write an ORIGINAL song.json, transition to awaiting_approval, and EXIT
+    before any Suno generation. The reference transcript must never touch
+    disk."""
+    run_dir = tmp_path / "song-run-import"
+    run_dir.mkdir()
+
+    # Import-mode run dir: api_state.json only — NO song.json.
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song",
+        "status": "analyzing",
+        "youtube_url": "https://youtu.be/abc123",
+        "import_instruction": "make it sadder",
+        "video_mode": "static",
+        "language": "ar",
+    }))
+
+    import pipeline.song_import as si
+    from pipeline.song_lyrics import SongScript
+
+    monkeypatch.setattr(si, "download_audio", lambda url, d: d / "reference.m4a")
+    monkeypatch.setattr(
+        si, "analyze_reference",
+        lambda audio, *, llm, language: (
+            {"bpm": 90, "genre": "pop", "mood": "sad",
+             "instrumentation": "oud", "language": "ar",
+             "one_line_theme": "loss", "section_structure": "V,C"},
+            "synthetic reference transcript"),
+    )
+    monkeypatch.setattr(
+        si, "build_inspired_script",
+        lambda **kw: SongScript(
+            title="ليل", lyrics="[Verse 1]\nx\n\n[Chorus]\ny\n",
+            style_prompt="pop, 90 BPM", cover_prompt="c",
+            language="ar", art_direction="moonlit",
+            scene_prompts=["a", "b"]),
+    )
+
+    # Stub the LLM builder so _build_song_llm() doesn't reach for real keys.
+    import pipeline.api as api
+    monkeypatch.setattr(api, "_build_song_llm", lambda: object())
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    assert rc == 0
+    assert (run_dir / "song.json").exists()
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "awaiting_approval"
+    assert state["title"] == "ليل"
+
+    # The reference transcript must NOT be persisted anywhere.
+    assert "synthetic reference transcript" not in (run_dir / "song.json").read_text()
+    if (run_dir / "analysis.json").exists():
+        assert "synthetic reference transcript" not in (run_dir / "analysis.json").read_text()
