@@ -569,6 +569,30 @@ class FacelessApiClient {
     return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
   }
 
+  /// Faithful cover from an UPLOADED audio file. Multipart POST — Suno's
+  /// upload-cover endpoint keeps the source's melody and sings the (reviewed)
+  /// words. Returns the new run id (status `analyzing`).
+  Future<String> uploadCoverSong({
+    required List<int> bytes,
+    required String filename,
+    String? instruction,
+    String language = 'ar',
+    String videoMode = 'static',
+    String vocalGender = 'm',
+  }) async {
+    final req = http.MultipartRequest('POST', await _uri('/songs/upload-cover'));
+    req.headers.addAll(await _headers()); // Authorization + Accept (no Content-Type)
+    req.fields['language'] = language;
+    req.fields['video_mode'] = videoMode;
+    req.fields['vocal_gender'] = vocalGender;
+    if (instruction != null && instruction.isNotEmpty) {
+      req.fields['instruction'] = instruction;
+    }
+    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final r = await http.Response.fromStream(await _http.send(req));
+    return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
+  }
+
   Future<List<SongSummary>> listSongs() async {
     final r = await _http.get(await _uri('/songs'), headers: await _headers());
     return _parse(r, (j) => (j as List)

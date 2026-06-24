@@ -39,6 +39,7 @@ dependencies:
   supabase_flutter: ^2.5.0              # Supabase auth + client
   url_launcher: ^6.3.0                  # opens Stripe-hosted URLs (Checkout / Portal)
   shared_preferences: ^2.3.2            # one-time "seen" flag for onboarding carousel
+  file_picker: ^8.1.2                    # pick an audio file for upload-&-cover
 
 dev_dependencies:
   flutter_test:
