@@ -290,3 +290,59 @@ def build_inspired_script(*, llm, analysis: dict, instruction: str | None,
             print("[song_import] WARN: generated lyrics still overlap the "
                   "reference; shipping but flagged for review")
     return script
+
+
+# --- Faithful cover: KEEP the source's words (opposite of inspired) ----------
+# The cover engine retains the melody; here we keep the words too, so the only
+# LLM job is to structure the transcript into Suno section tags WITHOUT
+# rewriting it. Used by the upload-cover path. See
+# docs/superpowers/specs/2026-06-24-song-upload-cover-design.md.
+
+_SECTION_SYSTEM = """You are given the raw transcribed words of one song.
+Insert Suno section tags to structure it for performance.
+
+RULES:
+- Use tags: [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Outro].
+- The repeated lines are the [Chorus] — there MUST be at least one [Chorus].
+- Do NOT change, add, remove, translate, reorder, or rewrite ANY words.
+  Only group the EXISTING lines under section tags.
+- Output ONLY the tagged lyrics — no commentary, no markdown."""
+
+
+def section_transcript(llm, transcript: str, language: str) -> str:
+    """Insert Suno section tags into a transcript without changing the words.
+    Returns tagged lyrics intended to satisfy validate_section_tags."""
+    user_msg = f"Language: {language}\nTranscribed words:\n{transcript[:6000]}"
+    raw = llm.complete(user_msg, system=_SECTION_SYSTEM).strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
+    return raw
+
+
+def build_cover_script(*, llm, analysis: dict, transcript: str,
+                       instruction: str | None, language: str) -> SongScript:
+    """Generate a FAITHFUL cover script — keeps the source's words (sectioned
+    from the transcript) and derives title/style/cover/scene prompts from the
+    analysed descriptors. If there is no usable transcript, or the sectioned
+    lyrics fail Suno's tag validation, degrade to build_inspired_script (the
+    cover engine still keeps the melody; only the words become original)."""
+    from pipeline.song_lyrics import validate_section_tags
+
+    theme, style = _theme_and_style(analysis, instruction)
+    if not transcript.strip():
+        print("[song_import] no transcript for cover — degrading to inspired words")
+        return build_inspired_script(llm=llm, analysis=analysis,
+                                     instruction=instruction, language=language)
+
+    tagged = section_transcript(llm, transcript, language)
+    try:
+        validate_section_tags(tagged)
+        return generate_song_script(
+            llm=llm, theme=theme, custom_lyrics=tagged,
+            style_hint=style, language=language,
+        )
+    except (ValueError, KeyError) as e:
+        print(f"[song_import] cover sectioning unusable ({e}); "
+              "degrading to inspired words")
+        return build_inspired_script(llm=llm, analysis=analysis,
+                                     instruction=instruction, language=language)

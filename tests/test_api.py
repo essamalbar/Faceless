@@ -2434,3 +2434,75 @@ def test_import_song_user_without_credits_402(client_factory, monkeypatch, tmp_p
     assert r.status_code == 402, f"expected 402, got {r.status_code} {r.text}"
     detail = r.json()["detail"]
     assert detail["code"] == "insufficient_credits"
+
+
+# ---------------------------------------------------------------------------
+# POST /songs/upload-cover — faithful cover from an uploaded audio file
+# ---------------------------------------------------------------------------
+
+def test_upload_cover_creates_analyzing_run(client_factory, monkeypatch, tmp_path):
+    """Uploading audio writes a draft run in cover mode, status=analyzing,
+    saves the reference file, and spawns the worker — no spend yet."""
+    import json as _json
+    from pipeline import api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    spawned = []
+    api_mod.set_spawn_fn(lambda args, run_dir: spawned.append(args) or 7)
+
+    c = client_factory(user_id="alice", role="user")
+    r = c.post(
+        "/songs/upload-cover",
+        files={"file": ("my song.mp3", b"\x00\x01\x02\x03", "audio/mpeg")},
+        data={"language": "ar", "video_mode": "cinematic",
+              "vocal_gender": "f", "instruction": "make it warmer"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "analyzing"
+    run_dir = tmp_path / "alice" / body["run_id"]
+    state = _json.loads((run_dir / "api_state.json").read_text())
+    assert state["mode"] == "cover"
+    assert state["reference_filename"] == "reference.mp3"
+    assert state["video_mode"] == "cinematic"
+    assert state["import_instruction"] == "make it warmer"
+    assert (run_dir / "reference.mp3").read_bytes() == b"\x00\x01\x02\x03"
+    assert spawned and spawned[0][:2] == ["--mode", "song"]
+
+
+def test_upload_cover_rejects_non_audio(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post(
+        "/songs/upload-cover",
+        files={"file": ("notes.txt", b"hello", "text/plain")},
+        data={"language": "ar"},
+    )
+    assert r.status_code == 422
+
+
+def test_upload_cover_paywalls_insufficient_credits(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 0)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post(
+        "/songs/upload-cover",
+        files={"file": ("s.mp3", b"\x00\x00", "audio/mpeg")},
+        data={"language": "ar", "video_mode": "static"},
+    )
+    assert r.status_code == 402
+
+
+def test_upload_cover_service_token_bypasses_paywall(client_factory, monkeypatch, tmp_path):
+    from pipeline import api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 0)
+    api_mod.set_spawn_fn(lambda args, run_dir: 7)
+    c = client_factory(user_id="admin", role="service")
+    r = c.post(
+        "/songs/upload-cover",
+        files={"file": ("s.mp3", b"\x00\x00", "audio/mpeg")},
+        data={"language": "ar", "video_mode": "static"},
+    )
+    assert r.status_code == 201

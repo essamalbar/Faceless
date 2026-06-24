@@ -1,3 +1,5 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../api/client.dart';
@@ -76,7 +78,9 @@ class _NewSongScreenState extends State<NewSongScreen> {
   final _lyricsCtrl = TextEditingController();
   final _styleCtrl = TextEditingController();
   final _youtubeCtrl = TextEditingController();
-  String _createMode = 'theme'; // 'theme' | 'youtube'
+  String _createMode = 'theme'; // 'theme' | 'youtube' | 'upload'
+  Uint8List? _pickedBytes; // upload mode: the chosen audio file
+  String? _pickedName;
   String _language = 'ar';
   String _videoMode = 'static'; // 'static' | 'cinematic'
   String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
@@ -125,10 +129,33 @@ class _NewSongScreenState extends State<NewSongScreen> {
     super.dispose();
   }
 
+  Future<void> _pickAudio() async {
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.audio,
+      withData: true, // load bytes (works on web + mobile)
+    );
+    if (res == null || res.files.isEmpty) return;
+    final f = res.files.first;
+    if (f.bytes == null) {
+      setState(() => _error = "Couldn't read that file — try another.");
+      return;
+    }
+    setState(() {
+      _pickedBytes = f.bytes;
+      _pickedName = f.name;
+      _error = null;
+    });
+  }
+
   Future<void> _submit() async {
     if (_createMode == 'youtube') {
       if (_youtubeCtrl.text.trim().isEmpty) {
         setState(() => _error = 'YouTube link is required');
+        return;
+      }
+    } else if (_createMode == 'upload') {
+      if (_pickedBytes == null) {
+        setState(() => _error = 'Choose an audio file to cover');
         return;
       }
     } else {
@@ -146,6 +173,15 @@ class _NewSongScreenState extends State<NewSongScreen> {
       if (_createMode == 'youtube') {
         runId = await widget.client.importSong(
           youtubeUrl: _youtubeCtrl.text.trim(),
+          instruction: _styleCtrl.text.trim().isEmpty ? null : _styleCtrl.text,
+          language: _language,
+          videoMode: _videoMode,
+          vocalGender: _vocalGender,
+        );
+      } else if (_createMode == 'upload') {
+        runId = await widget.client.uploadCoverSong(
+          bytes: _pickedBytes!,
+          filename: _pickedName ?? 'reference.mp3',
           instruction: _styleCtrl.text.trim().isEmpty ? null : _styleCtrl.text,
           language: _language,
           videoMode: _videoMode,
@@ -200,6 +236,11 @@ class _NewSongScreenState extends State<NewSongScreen> {
                   label: Text('Import from YouTube'),
                   icon: Icon(Icons.video_call),
                 ),
+                ButtonSegment(
+                  value: 'upload',
+                  label: Text('Upload a song'),
+                  icon: Icon(Icons.upload_file),
+                ),
               ],
               selected: {_createMode},
               onSelectionChanged: (s) =>
@@ -211,16 +252,38 @@ class _NewSongScreenState extends State<NewSongScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  _createMode == 'youtube'
-                      ? 'The AI will analyze the YouTube song and re-create it in a new style. '
-                          'You can review lyrics and cover before any credit is spent.'
-                      : 'The AI will write lyrics and a cover image prompt. '
-                          'You can review and edit both before any credit is spent.',
+                  switch (_createMode) {
+                    'youtube' =>
+                      'The AI will analyze the YouTube song and re-create it in a new style. '
+                          'You can review lyrics and cover before any credit is spent.',
+                    'upload' =>
+                      'Upload a song and the AI makes a faithful cover — it keeps the '
+                          'melody and words, performed by a new voice. The voice will differ '
+                          'from the original. Review and edit the words before any credit is spent.',
+                    _ => 'The AI will write lyrics and a cover image prompt. '
+                        'You can review and edit both before any credit is spent.',
+                  },
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            if (_createMode == 'youtube') ...[
+            if (_createMode == 'upload') ...[
+              // Upload-&-cover path: pick an audio file + optional "your touch".
+              OutlinedButton.icon(
+                onPressed: _submitting ? null : _pickAudio,
+                icon: const Icon(Icons.audiotrack),
+                label: Text(_pickedName ?? 'Choose audio file (mp3, m4a, wav…)'),
+              ),
+              if (_pickedName != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Selected: $_pickedName',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              const SizedBox(height: 16),
+            ] else if (_createMode == 'youtube') ...[
               // YouTube import path: URL field + optional "your touch" hint.
               TextField(
                 controller: _youtubeCtrl,
@@ -287,13 +350,13 @@ class _NewSongScreenState extends State<NewSongScreen> {
               controller: _styleCtrl,
               maxLines: 3,
               decoration: InputDecoration(
-                labelText: _createMode == 'youtube'
-                    ? 'Your touch (optional)'
-                    : 'Style hint',
-                hintText: _createMode == 'youtube'
-                    ? 'e.g. make it more upbeat, add oud, slower tempo…'
-                    : 'Pick a Quick style above, or type your own. '
-                        'Leave empty for AI to auto-pick.',
+                labelText: _createMode == 'theme'
+                    ? 'Style hint'
+                    : 'Your touch (optional)',
+                hintText: _createMode == 'theme'
+                    ? 'Pick a Quick style above, or type your own. '
+                        'Leave empty for AI to auto-pick.'
+                    : 'e.g. make it more upbeat, add oud, slower tempo…',
                 border: const OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),

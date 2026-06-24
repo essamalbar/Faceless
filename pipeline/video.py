@@ -549,26 +549,25 @@ _UPLOAD_MAX_RETRIES = 4
 _UPLOAD_BACKOFFS_S = (3, 10, 30, 60)
 
 
-def _upload_image_get_url(local_path: Path) -> str:
-    """Upload a local image to uguu.se (free, anonymous, 24h retention) and
-    return the public URL so Kie.ai's Veo can fetch it.
+def _upload_file_get_url(local_path: Path, *, content_type: str) -> str:
+    """Upload any local file to uguu.se (free, anonymous, 24h retention) and
+    return the public URL so Kie.ai can fetch it (Veo images, Suno cover audio).
 
-    Files stay for 24 hours; we only need them for a few minutes (one Veo
+    Files stay for 24 hours; we only need them for a few minutes (one Kie
     job), so this fits. 0x0.st was the previous choice but is currently
     disabled ("AI botnet spam"); uguu.se is the de-facto replacement.
 
     Retries on read-timeout and connection errors — uguu.se has been
     intermittently slow during this project, and a single 60s timeout
-    aborts a run that's already several dollars deep into Veo. Tests
-    monkeypatch this function.
-    """
+    aborts a run that's already several dollars deep. Tests monkeypatch this
+    function (and the _upload_image_get_url wrapper below)."""
     last_exc: Exception | None = None
     for attempt in range(_UPLOAD_MAX_RETRIES):
         try:
             with local_path.open("rb") as f:
                 resp = requests.post(
                     "https://uguu.se/upload",
-                    files={"files[]": (local_path.name, f, "image/png")},
+                    files={"files[]": (local_path.name, f, content_type)},
                     headers={"User-Agent": "Mozilla/5.0 (faceless-pipeline)"},
                     timeout=_UPLOAD_TIMEOUT_S,
                 )
@@ -593,6 +592,13 @@ def _upload_image_get_url(local_path: Path) -> str:
     raise RuntimeError(
         f"uguu.se upload failed after {_UPLOAD_MAX_RETRIES} attempts: {last_exc}"
     )
+
+
+def _upload_image_get_url(local_path: Path) -> str:
+    """Upload a PNG image to uguu.se and return the public URL (Veo fetch).
+    Thin wrapper over _upload_file_get_url; kept as the image-specific entry
+    point existing callers + tests already monkeypatch."""
+    return _upload_file_get_url(local_path, content_type="image/png")
 
 
 def generate_clips_chained(
