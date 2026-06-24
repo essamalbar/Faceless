@@ -39,7 +39,9 @@ dependencies:
   supabase_flutter: ^2.5.0              # Supabase auth + client
   url_launcher: ^6.3.0                  # opens Stripe-hosted URLs (Checkout / Portal)
   shared_preferences: ^2.3.2            # one-time "seen" flag for onboarding carousel
-  file_picker: ^8.1.2                    # pick an audio file for upload-&-cover
+  file_picker: ^10.3.10                  # pick an audio file for upload-&-cover
+  # NOTE: 8.x had a release-web bug (LateInitializationError: Field '_instance'
+  # has not been initialized) from faulty web plugin registration. Fixed in 10.x.
 
 dev_dependencies:
   flutter_test:
