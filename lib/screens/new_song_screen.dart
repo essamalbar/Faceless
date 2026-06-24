@@ -130,21 +130,33 @@ class _NewSongScreenState extends State<NewSongScreen> {
   }
 
   Future<void> _pickAudio() async {
-    final res = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
-      withData: true, // load bytes (works on web + mobile)
-    );
-    if (res == null || res.files.isEmpty) return;
-    final f = res.files.first;
-    if (f.bytes == null) {
-      setState(() => _error = "Couldn't read that file — try another.");
-      return;
+    try {
+      // FileType.custom + explicit extensions is more reliable across
+      // Android OEM file providers than FileType.audio (which silently
+      // no-ops on some devices). withData loads bytes for the upload.
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'opus'
+        ],
+        withData: true,
+      );
+      if (res == null || res.files.isEmpty) return; // user cancelled
+      final f = res.files.first;
+      if (f.bytes == null) {
+        setState(() => _error = "Couldn't read that file — try another.");
+        return;
+      }
+      setState(() {
+        _pickedBytes = f.bytes;
+        _pickedName = f.name;
+        _error = null;
+      });
+    } catch (e) {
+      // Surface the failure instead of doing nothing (e.g. a stale build
+      // without the plugin throws MissingPluginException here).
+      setState(() => _error = 'Could not open the file picker: $e');
     }
-    setState(() {
-      _pickedBytes = f.bytes;
-      _pickedName = f.name;
-      _error = null;
-    });
   }
 
   Future<void> _submit() async {
