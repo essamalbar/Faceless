@@ -39,6 +39,38 @@ def test_submit_song_job_returns_task_id():
     assert isinstance(body.get("callBackUrl"), str) and len(body["callBackUrl"]) > 0
 
 
+def test_submit_cover_job_posts_to_cover_path_with_upload_url():
+    c = _stub_client(post_resp={"code": 200, "data": {"taskId": "cov-9"}})
+    task_id = song.submit_cover_job(
+        c,
+        upload_url="https://uguu.se/x.mp3",
+        lyrics="[Verse 1]\nhello\n[Chorus]\nworld",
+        style_prompt="Arabic pop, 100 BPM",
+        title="Cover",
+        vocal_gender="m",
+    )
+    assert task_id == "cov-9"
+    args, _ = c._post_json.call_args
+    path, body = args[0], args[1]
+    assert path == song.SUNO_COVER_PATH
+    assert body["uploadUrl"] == "https://uguu.se/x.mp3"
+    assert body["prompt"] == "[Verse 1]\nhello\n[Chorus]\nworld"
+    assert body["style"] == "Arabic pop, 100 BPM"
+    assert body["title"] == "Cover"
+    assert body["customMode"] is True
+    assert body["instrumental"] is False
+    assert body["vocalGender"] == "m"
+
+
+def test_submit_cover_job_raises_without_task_id():
+    from pipeline.kie import KieError
+    c = _stub_client(post_resp={"code": 200, "data": {}})
+    with pytest.raises(KieError):
+        song.submit_cover_job(
+            c, upload_url="https://uguu.se/x.mp3",
+            lyrics="[Chorus]\nx", style_prompt="s", title="t")
+
+
 def test_wait_for_song_returns_both_take_urls():
     success_resp = {
         "code": 200,

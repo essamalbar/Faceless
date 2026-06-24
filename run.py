@@ -949,19 +949,37 @@ def _run_song_post_approve(args) -> int:
             write_state(status="analyzing")
             try:
                 _llm = _build_song_llm()
-                url = current_state.get("youtube_url")
-                if not url:
-                    raise song_import.ImportFetchError("run is missing a youtube_url")
-                # Audio-first; on a blocked download, falls back to free
-                # YouTube Data API metadata (title + description).
-                analysis, transcript = song_import.analyze_youtube(
-                    url, run_dir, llm=_llm, language=current_state.get("language", "ar"))
-                script = song_import.build_inspired_script(
-                    llm=_llm, analysis=analysis,
-                    instruction=current_state.get("import_instruction"),
-                    language=current_state.get("language", "ar"),
-                    transcript=transcript,
-                )
+                lang = current_state.get("language", "ar")
+                if current_state.get("mode") == "cover":
+                    # Upload-cover path: analyse the user's uploaded audio
+                    # (real tempo + transcript) and KEEP its words. No
+                    # download — the file is already on disk.
+                    ref_name = current_state.get("reference_filename")
+                    ref = run_dir / ref_name if ref_name else None
+                    if not ref or not ref.exists():
+                        raise RuntimeError(
+                            "run is missing the uploaded reference audio")
+                    analysis, transcript = song_import.analyze_reference(
+                        ref, llm=_llm, language=lang)
+                    script = song_import.build_cover_script(
+                        llm=_llm, analysis=analysis, transcript=transcript,
+                        instruction=current_state.get("import_instruction"),
+                        language=lang,
+                    )
+                else:
+                    url = current_state.get("youtube_url")
+                    if not url:
+                        raise song_import.ImportFetchError(
+                            "run is missing a youtube_url")
+                    # Audio-first; on a blocked download, falls back to free
+                    # YouTube Data API metadata (title + description).
+                    analysis, transcript = song_import.analyze_youtube(
+                        url, run_dir, llm=_llm, language=lang)
+                    script = song_import.build_inspired_script(
+                        llm=_llm, analysis=analysis,
+                        instruction=current_state.get("import_instruction"),
+                        language=lang, transcript=transcript,
+                    )
             except Exception as e:
                 write_state(status="failed", failure_stage="analyzing", last_error=str(e))
                 return 1
@@ -976,6 +994,10 @@ def _run_song_post_approve(args) -> int:
                 "persona_id": None,
                 "suno_model": current_state.get("suno_model"),
                 "video_mode": current_state.get("video_mode", "static"),
+                # Cover mode carries through so the post-approve submit branch
+                # picks the upload-cover endpoint + finds the reference audio.
+                "mode": current_state.get("mode"),
+                "reference_filename": current_state.get("reference_filename"),
             }, ensure_ascii=False, indent=2), encoding="utf-8")
             (run_dir / "lyrics.txt").write_text(script.lyrics, encoding="utf-8")
             write_state(status="awaiting_approval", title=script.title)
@@ -1030,20 +1052,46 @@ def _run_song_post_approve(args) -> int:
             #   vocal_gender: 'm' / 'f' — increases probability of gender
             #   persona_id:   pins specific singer voice across runs
             # See pipeline/song.py submit_song_job docstring.
-            task_id = song.submit_song_job(
-                client,
-                lyrics=script["lyrics"],
-                style_prompt=script["style_prompt"],
-                title=script["title"],
-                # Per-song model override (set by POST /songs) wins
-                # over config default, falling back to V5_5 baseline.
-                model=(
-                    script.get("suno_model")
-                    or (cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID)
-                ),
-                vocal_gender=script.get("vocal_gender"),
-                persona_id=script.get("persona_id"),
+            _model = (
+                script.get("suno_model")
+                or (cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID)
             )
+            is_cover = (current_state.get("mode") == "cover"
+                        or script.get("mode") == "cover")
+            if is_cover:
+                # Faithful cover: hand Suno the uploaded reference so it keeps
+                # the source's core melody, singing the reviewed words.
+                from pipeline import video as _video
+                ref_name = (current_state.get("reference_filename")
+                            or script.get("reference_filename"))
+                ref_path = run_dir / ref_name if ref_name else None
+                if not ref_path or not ref_path.exists():
+                    raise FileNotFoundError(
+                        f"cover run missing reference audio: {ref_name!r}")
+                upload_url = _video._upload_file_get_url(
+                    ref_path, content_type="audio/mpeg")
+                print(f"[song-post-approve] cover mode — uploaded reference to {upload_url}")
+                task_id = song.submit_cover_job(
+                    client,
+                    upload_url=upload_url,
+                    lyrics=script["lyrics"],
+                    style_prompt=script["style_prompt"],
+                    title=script["title"],
+                    model=_model,
+                    vocal_gender=script.get("vocal_gender"),
+                )
+            else:
+                task_id = song.submit_song_job(
+                    client,
+                    lyrics=script["lyrics"],
+                    style_prompt=script["style_prompt"],
+                    title=script["title"],
+                    # Per-song model override (set by POST /songs) wins
+                    # over config default, falling back to V5_5 baseline.
+                    model=_model,
+                    vocal_gender=script.get("vocal_gender"),
+                    persona_id=script.get("persona_id"),
+                )
             takes = song.wait_for_song(client, task_id)
             takes_dir.mkdir(exist_ok=True)
             for i, take in enumerate(takes, start=1):

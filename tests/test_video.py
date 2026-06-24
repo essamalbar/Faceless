@@ -982,3 +982,50 @@ def test_continuity_header_handles_missing_prev_action():
     line = p[recap_idx:nl if nl != -1 else len(p)]
     # The line shouldn't include a stale "ended with" tag
     assert "ended with" not in line.lower()
+
+
+# --- file uploader (uguu.se) used for Veo images + Suno cover audio ---------
+
+class _Resp:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+        self.text = str(payload)
+    def json(self):
+        return self._payload
+
+
+def test_upload_file_get_url_returns_url(monkeypatch, tmp_path):
+    f = tmp_path / "reference.mp3"
+    f.write_bytes(b"\x00\x01\x02")
+    captured = {}
+    def fake_post(url, files=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["ctype"] = files["files[]"][2]
+        return _Resp(200, {"success": True, "files": [{"url": "https://uguu.se/abc.mp3"}]})
+    monkeypatch.setattr(video_mod.requests, "post", fake_post)
+    out = video_mod._upload_file_get_url(f, content_type="audio/mpeg")
+    assert out == "https://uguu.se/abc.mp3"
+    assert captured["ctype"] == "audio/mpeg"
+
+
+def test_upload_image_get_url_uses_png_content_type(monkeypatch, tmp_path):
+    f = tmp_path / "cover.png"
+    f.write_bytes(b"\x89PNG")
+    captured = {}
+    def fake_post(url, files=None, headers=None, timeout=None):
+        captured["ctype"] = files["files[]"][2]
+        return _Resp(200, {"success": True, "files": [{"url": "https://uguu.se/c.png"}]})
+    monkeypatch.setattr(video_mod.requests, "post", fake_post)
+    assert video_mod._upload_image_get_url(f) == "https://uguu.se/c.png"
+    assert captured["ctype"] == "image/png"
+
+
+def test_upload_file_get_url_raises_after_retries(monkeypatch, tmp_path):
+    f = tmp_path / "r.mp3"; f.write_bytes(b"\x00")
+    monkeypatch.setattr(video_mod, "_UPLOAD_BACKOFFS_S", (0, 0, 0, 0))
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    monkeypatch.setattr(video_mod.requests, "post",
+                        lambda *a, **k: _Resp(500, "boom"))
+    with pytest.raises(RuntimeError):
+        video_mod._upload_file_get_url(f, content_type="audio/mpeg")

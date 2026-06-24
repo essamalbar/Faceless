@@ -46,6 +46,9 @@ dependencies = [
     # IPs, so this may fail from Cloud Run — handled gracefully downstream.
     "yt-dlp>=2024.0",
     "fastapi>=0.115",
+    # python-multipart: required by FastAPI to parse multipart/form-data, used
+    # by POST /songs/upload-cover (audio file upload for faithful covers).
+    "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.32",
     # google-cloud-run: REST/gRPC client for triggering Cloud Run Jobs from
     # the API container. Cleaner than shelling out to `gcloud` (which isn't

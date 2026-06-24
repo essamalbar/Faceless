@@ -141,6 +141,74 @@ def test_build_inspired_script_regenerates_on_near_copy(monkeypatch):
     assert "alpha bravo charlie" in s.lyrics
 
 
+# --- faithful cover: keep the words --------------------------------------
+
+class _TextLLM:
+    """LLM stub whose complete() returns a fixed string (for sectioning)."""
+    def __init__(self, text):
+        self._text = text
+    def complete(self, prompt, system=None):
+        return self._text
+
+
+def test_section_transcript_inserts_tags_and_strips_fences():
+    from pipeline.song_import import section_transcript
+    tagged = "[Verse 1]\nسطر اول\n[Chorus]\nلازمة"
+    out = section_transcript(_TextLLM("```\n" + tagged + "\n```"),
+                             "سطر اول لازمة", "ar")
+    assert out == tagged
+
+
+_COVER_ANALYSIS = {"genre": "pop", "bpm": 100, "mood": "warm",
+                   "instrumentation": "oud", "one_line_theme": "home"}
+
+
+def test_build_cover_script_keeps_the_words(monkeypatch):
+    tagged = "[Verse 1]\noriginal line one two\n[Chorus]\nkeep these exact words"
+    monkeypatch.setattr(si2, "section_transcript", lambda llm, t, lang: tagged)
+
+    captured = {}
+    def fake_gen(*, llm, theme, custom_lyrics, style_hint, language):
+        captured["custom_lyrics"] = custom_lyrics
+        return _script(custom_lyrics)   # custom_lyrics passthrough, like the real fn
+    monkeypatch.setattr(si2, "generate_song_script", fake_gen)
+
+    s = build_inspired_script  # noqa: F841  (ensure import side stays valid)
+    from pipeline.song_import import build_cover_script
+    out = build_cover_script(llm=object(), analysis=_COVER_ANALYSIS,
+                             transcript="some sung words here",
+                             instruction=None, language="ar")
+    # The source words were kept verbatim (sectioned), not rewritten.
+    assert captured["custom_lyrics"] == tagged
+    assert out.lyrics == tagged
+
+
+def test_build_cover_script_degrades_without_transcript(monkeypatch):
+    from pipeline.song_import import build_cover_script
+    called = {"inspired": 0, "section": 0}
+    monkeypatch.setattr(si2, "section_transcript",
+                        lambda *a, **k: called.__setitem__("section", called["section"] + 1) or "x")
+    monkeypatch.setattr(si2, "build_inspired_script",
+                        lambda **k: called.__setitem__("inspired", called["inspired"] + 1) or _script("[Chorus]\nz"))
+    build_cover_script(llm=object(), analysis=_COVER_ANALYSIS,
+                       transcript="   ", instruction=None, language="ar")
+    assert called["inspired"] == 1 and called["section"] == 0
+
+
+def test_build_cover_script_degrades_on_untaggable_lyrics(monkeypatch):
+    from pipeline.song_import import build_cover_script
+    # Sectioning returns lyrics with NO [Chorus] -> validate_section_tags fails
+    # -> fall back to inspired words (melody still kept by the cover engine).
+    monkeypatch.setattr(si2, "section_transcript",
+                        lambda llm, t, lang: "just words no tags at all")
+    used = {"inspired": 0}
+    monkeypatch.setattr(si2, "build_inspired_script",
+                        lambda **k: used.__setitem__("inspired", 1) or _script("[Chorus]\nz"))
+    build_cover_script(llm=object(), analysis=_COVER_ANALYSIS,
+                       transcript="real words", instruction=None, language="ar")
+    assert used["inspired"] == 1
+
+
 def test_ytdlp_opts_adds_proxy_when_env_set(monkeypatch):
     from pipeline.song_import import _ytdlp_opts
     monkeypatch.setenv("YTDLP_PROXY", "http://u:p@host:1080")

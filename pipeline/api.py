@@ -34,8 +34,11 @@ from typing import Literal
 from fastapi import (
     Depends,
     FastAPI,
+    File,
+    Form,
     HTTPException,
     Request,
+    UploadFile,
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
@@ -2524,6 +2527,97 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
         language=req.language,
         vocal_gender=req.vocal_gender,
         suno_model=(req.suno_model if req.suno_model in _ALLOWED_SUNO_MODELS else None),
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
+    args = ["--mode", "song", "--resume", str(run_dir)]
+    pid = _SPAWN_FN(args, run_dir)
+    _write_state(run_dir, pid=pid)
+    return {"run_id": run_id, "status": "analyzing"}
+
+
+# Cloud Run buffers the whole request (~32 MiB cap); a typical song MP3 is far
+# under this, but reject early with a clear hint rather than a 500.
+_UPLOAD_AUDIO_MAX_BYTES = 30 * 1024 * 1024
+_AUDIO_EXTS = (".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".webm")
+
+
+@app.post("/songs/upload-cover", status_code=201)
+def upload_cover_song(
+    file: UploadFile = File(...),
+    instruction: str | None = Form(None),
+    language: str = Form("ar"),
+    video_mode: str = Form("static"),
+    vocal_gender: str | None = Form("m"),
+    suno_model: str | None = Form(None),
+    user: User = Depends(require_user),
+):
+    """Start a faithful-cover run from an UPLOADED audio file. Writes a draft
+    run and spawns the worker for the `analyzing` pre-stage (detect tempo +
+    transcribe, then build a cover script that keeps the words). The melody is
+    retained by Suno's upload-cover endpoint at generate time. No spend until
+    the user approves. See the song-upload-cover design spec."""
+    from pipeline.config import load_config
+    from pipeline.db import get_balance
+
+    ext = Path(file.filename or "").suffix.lower()
+    ctype = (file.content_type or "").lower()
+    if not (ctype.startswith("audio/") or ctype == "application/octet-stream"
+            or ext in _AUDIO_EXTS):
+        raise HTTPException(
+            status_code=422,
+            detail="Upload must be an audio file (mp3, m4a, wav, …).",
+        )
+    if ext not in _AUDIO_EXTS:
+        ext = ".mp3"  # trust content-type; default extension for the saved file
+
+    cfg = load_config(Path(os.environ.get(
+        "FACELESS_CONFIG", str(REPO_ROOT / "config.yaml"))))
+    credits_required = _song_credit_amount(video_mode, cfg)
+    if user.role != "service":
+        balance = get_balance(user.id)
+        if balance < credits_required:
+            _raise_402_insufficient_credits(balance, credits_required)
+
+    user_root = _user_runs_root(user)
+    user_root.mkdir(parents=True, exist_ok=True)
+    run_id = _make_run_id(root=user_root)
+    run_dir = user_root / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Stream the upload to disk with a hard size cap (Cloud Run request limit).
+    reference_filename = f"reference{ext}"
+    dest = run_dir / reference_filename
+    total = 0
+    with dest.open("wb") as out:
+        while chunk := file.file.read(1 << 20):
+            total += len(chunk)
+            if total > _UPLOAD_AUDIO_MAX_BYTES:
+                out.close()
+                try:
+                    dest.unlink()
+                except OSError:
+                    pass
+                raise HTTPException(
+                    status_code=413,
+                    detail="Audio too large (max ~30 MB). Compress or trim to ≤8 min.",
+                )
+            out.write(chunk)
+    if total == 0:
+        raise HTTPException(status_code=422, detail="Uploaded file was empty.")
+
+    _write_state(
+        run_dir,
+        kind="song",
+        mode="cover",
+        status="analyzing",
+        user_id=user.id,
+        theme="(cover from uploaded audio…)",
+        reference_filename=reference_filename,
+        import_instruction=instruction,
+        video_mode=video_mode,
+        language=language,
+        vocal_gender=vocal_gender,
+        suno_model=(suno_model if suno_model in _ALLOWED_SUNO_MODELS else None),
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
     args = ["--mode", "song", "--resume", str(run_dir)]

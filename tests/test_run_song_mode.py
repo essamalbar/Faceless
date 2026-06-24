@@ -316,3 +316,110 @@ def test_import_analyze_fetch_error_fails_run(tmp_path: Path, monkeypatch):
     assert state["status"] == "failed"
     assert state["failure_stage"] == "analyzing"
     assert not (run_dir / "song.json").exists()
+
+
+def test_cover_analyze_stage_writes_script(tmp_path: Path, monkeypatch):
+    """Upload-cover pre-stage: a run in status 'analyzing' with mode='cover'
+    and an uploaded reference on disk (NO song.json) must analyse the audio,
+    build a cover script that KEEPS the words, write song.json carrying
+    mode='cover' + reference_filename, and transition to awaiting_approval."""
+    run_dir = tmp_path / "song-run-cover"
+    run_dir.mkdir()
+    (run_dir / "reference.mp3").write_bytes(b"\x00\x01\x02")
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "analyzing", "mode": "cover",
+        "reference_filename": "reference.mp3",
+        "import_instruction": "warmer", "video_mode": "static", "language": "ar",
+    }))
+
+    import pipeline.song_import as si
+    from pipeline.song_lyrics import SongScript
+
+    seen = {}
+    def fake_analyze(audio, *, llm, language):
+        seen["audio"] = Path(audio).name
+        return ({"bpm": 100, "genre": "pop", "mood": "warm",
+                 "instrumentation": "oud", "language": "ar",
+                 "one_line_theme": "home", "section_structure": "V,C"},
+                "the original sung words")
+    monkeypatch.setattr(si, "analyze_reference", fake_analyze)
+    def fake_cover_script(*, llm, analysis, transcript, instruction, language):
+        seen["transcript"] = transcript
+        return SongScript(
+            title="عودة", lyrics="[Verse 1]\nthe original sung words\n[Chorus]\nhome\n",
+            style_prompt="pop, 100 BPM", cover_prompt="c",
+            language="ar", art_direction="", scene_prompts=[])
+    monkeypatch.setattr(si, "build_cover_script", fake_cover_script)
+
+    import pipeline.api as api
+    monkeypatch.setattr(api, "_build_song_llm", lambda: object())
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    assert rc == 0
+    assert seen["audio"] == "reference.mp3"   # analysed the uploaded file
+    song_json = json.loads((run_dir / "song.json").read_text())
+    assert song_json["mode"] == "cover"
+    assert song_json["reference_filename"] == "reference.mp3"
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "awaiting_approval"
+    assert state["title"] == "عودة"
+    # Transcript (raw words) must NOT be persisted to analysis.json.
+    if (run_dir / "analysis.json").exists():
+        assert "the original sung words" not in (run_dir / "analysis.json").read_text()
+
+
+def test_cover_post_approve_uses_cover_endpoint(tmp_path: Path, monkeypatch):
+    """Cover-mode post-approve must route to submit_cover_job (upload-cover),
+    upload the reference, and NEVER call the text→song submit_song_job."""
+    run_dir = tmp_path / "song-run-cover2"
+    run_dir.mkdir()
+    (run_dir / "reference.mp3").write_bytes(b"\x00\x01")
+    (run_dir / "song.json").write_text(json.dumps({
+        "title": "Cover", "lyrics": "[Verse 1]\nhi\n[Chorus]\nworld",
+        "style_prompt": "Arabic pop, 100 BPM", "cover_prompt": "moonlight",
+        "language": "ar", "mode": "cover", "reference_filename": "reference.mp3",
+        "vocal_gender": "f",
+    }))
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "generating_song", "mode": "cover",
+        "reference_filename": "reference.mp3",
+    }))
+
+    calls = {"cover": 0, "song": 0, "upload": 0}
+    def fake_cover_submit(client, *, upload_url, lyrics, style_prompt, title,
+                          model=song.SUNO_MODEL_ID, **_extra):
+        calls["cover"] += 1
+        assert upload_url == "https://uguu.se/ref.mp3"
+        return "cover-task"
+    def fake_song_submit(client, **kw):
+        calls["song"] += 1
+        return "song-task"
+    def fake_wait(client, task_id, *, poll_interval_s=5, timeout_s=600):
+        return [song.SongTake(url="https://kie.ai/t1.mp3", duration_s=3.0),
+                song.SongTake(url="https://kie.ai/t2.mp3", duration_s=2.8)]
+    def fake_download(client, url, out_path):
+        shutil.copy(FIXTURE_SONG, out_path)
+    def fake_cover_img(*, client, cover_prompt, out_dir):
+        out = out_dir / "cover_raw.png"; shutil.copy(FIXTURE_COVER, out); return out
+
+    monkeypatch.setattr(song, "submit_cover_job", fake_cover_submit)
+    monkeypatch.setattr(song, "submit_song_job", fake_song_submit)
+    monkeypatch.setattr(song, "wait_for_song", fake_wait)
+    monkeypatch.setattr(song, "download_take", fake_download)
+    monkeypatch.setattr(song_cover, "generate_cover_image", fake_cover_img)
+    from pipeline import video as video_mod
+    def fake_upload(path, *, content_type):
+        calls["upload"] += 1
+        return "https://uguu.se/ref.mp3"
+    monkeypatch.setattr(video_mod, "_upload_file_get_url", fake_upload)
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    assert rc == 0
+    assert calls["cover"] == 1 and calls["song"] == 0  # cover endpoint, not generate
+    assert calls["upload"] == 1                         # reference uploaded
+    assert (run_dir / "final.mp4").exists()
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "complete"

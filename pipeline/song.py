@@ -26,6 +26,12 @@ from pipeline.kie import (
 )
 
 SUNO_GENERATE_PATH = os.environ.get("KIE_SUNO_GENERATE_PATH", "/api/v1/generate")
+# Cover mode: takes an uploaded reference audio and returns a new performance
+# that RETAINS the source's core melody. Same task/record-info system as
+# generate, so wait_for_song + download_take are reused unchanged.
+SUNO_COVER_PATH = os.environ.get(
+    "KIE_SUNO_COVER_PATH", "/api/v1/generate/upload-cover"
+)
 SUNO_RECORD_INFO_PATH_TPL = os.environ.get(
     "KIE_SUNO_RECORD_INFO_PATH_TPL", "/api/v1/generate/record-info?taskId={task_id}"
 )
@@ -100,6 +106,51 @@ def submit_song_job(
     task_id = data.get("taskId") or resp.get("taskId")
     if not task_id:
         raise KieError(f"suno submit response missing taskId: {resp}")
+    return str(task_id)
+
+
+def submit_cover_job(
+    client: KieClient,
+    *,
+    upload_url: str,
+    lyrics: str,
+    style_prompt: str,
+    title: str,
+    model: str = SUNO_MODEL_ID,
+    callback_url: str = DEFAULT_CALLBACK_URL,
+    vocal_gender: str | None = None,
+    negative_tags: str | None = None,
+) -> str:
+    """Submit a Suno upload-cover job; return taskId.
+
+    Unlike submit_song_job (text→song), this hands Suno an uploaded reference
+    track (`upload_url`, ≤8 min, publicly fetchable) and Suno produces a NEW
+    performance that RETAINS the source's core melody — the closest thing to a
+    faithful cover the engine offers. The voice is still Suno's own (no singer
+    cloning); vocal_gender only biases the gender.
+
+    customMode + instrumental=False + lyrics-in-prompt are load-bearing for the
+    same reason as submit_song_job: without customMode Suno rewrites the prompt
+    and quality drops, and we want it to sing the provided (reviewed) words."""
+    body = {
+        "uploadUrl": upload_url,
+        "prompt": lyrics,
+        "customMode": True,
+        "instrumental": False,
+        "model": model,
+        "callBackUrl": callback_url,
+        "style": style_prompt,
+        "title": title,
+    }
+    if vocal_gender in ("m", "f"):
+        body["vocalGender"] = vocal_gender
+    if negative_tags:
+        body["negativeTags"] = negative_tags
+    resp = client._post_json(SUNO_COVER_PATH, body)
+    data = resp.get("data") or {}
+    task_id = data.get("taskId") or resp.get("taskId")
+    if not task_id:
+        raise KieError(f"suno cover submit response missing taskId: {resp}")
     return str(task_id)
 
 
