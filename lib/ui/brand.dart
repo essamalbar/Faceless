@@ -1,6 +1,6 @@
-/// Shared brand UI widgets for the Faceless "dark glass + gradient" look:
-/// a global mesh-gradient background, glassmorphic cards, gradient buttons,
-/// gradient text, and small accent chips. Used across every screen.
+/// Shared brand UI widgets for the Faceless light look: a soft pastel
+/// gradient background, frosted white cards, a charcoal primary button,
+/// green accent text, and pastel cover art. Used across every screen.
 library;
 
 import 'dart:ui';
@@ -8,20 +8,22 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Full-bleed mesh-gradient backdrop (deep base + soft violet/pink/cyan
-/// glows). Wrapped around the whole app in main.dart so every screen sits
-/// on it; individual scaffolds are transparent.
+/// Full-bleed soft pastel backdrop (warm cream → cool lavender → light) with
+/// a couple of gentle glows. Wrapped around the whole app in main.dart so
+/// every screen sits on it; individual scaffolds are transparent.
 class MeshBackground extends StatelessWidget {
   final Widget child;
   const MeshBackground({super.key, required this.child});
 
-  Widget _blob(Color c, double size) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [c.withValues(alpha: 0.55), c.withValues(alpha: 0.0)],
+  Widget _blob(Color c, double size) => IgnorePointer(
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [c.withValues(alpha: 0.9), c.withValues(alpha: 0.0)],
+            ),
           ),
         ),
       );
@@ -29,16 +31,22 @@ class MeshBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
-    final s = (w * 0.9).clamp(360.0, 900.0);
+    final s = (w * 0.9).clamp(360.0, 820.0);
     return DecoratedBox(
-      decoration: const BoxDecoration(color: FacelessTheme.bg),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFBF6EE), Color(0xFFF2EFF7), Color(0xFFE9EBF2)],
+          stops: [0.0, 0.5, 1.0],
+        ),
+      ),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Positioned(left: -s * 0.35, top: -s * 0.4, child: _blob(const Color(0xFF7C5CFF), s)),
-          Positioned(right: -s * 0.4, top: -s * 0.55, child: _blob(const Color(0xFFFF5C9A), s * 0.9)),
-          Positioned(right: -s * 0.3, bottom: -s * 0.4, child: _blob(const Color(0xFF54E6FF), s * 0.7)),
-          Positioned(left: -s * 0.35, bottom: -s * 0.45, child: _blob(const Color(0xFFB14BF4), s * 0.8)),
+          Positioned(left: -s * 0.3, top: -s * 0.35, child: _blob(const Color(0xFFF8ECD7), s)),
+          Positioned(right: -s * 0.35, top: -s * 0.4, child: _blob(const Color(0xFFEBE7F7), s * 0.95)),
+          Positioned(right: -s * 0.25, bottom: -s * 0.35, child: _blob(const Color(0xFFE4EEF0), s * 0.8)),
           child,
         ],
       ),
@@ -46,7 +54,8 @@ class MeshBackground extends StatelessWidget {
   }
 }
 
-/// Glassmorphic surface: translucent white + blur + hairline border.
+/// Frosted-white surface: translucent white + blur + hairline border + soft
+/// shadow. The "glass" over the pastel background.
 class GlassCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -65,18 +74,21 @@ class GlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = BorderRadius.circular(radius);
-    Widget card = ClipRRect(
-      borderRadius: r,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: tint ?? FacelessTheme.glass,
-            borderRadius: r,
-            border: Border.all(color: FacelessTheme.border),
+    Widget card = DecoratedBox(
+      decoration: BoxDecoration(borderRadius: r, boxShadow: FacelessTheme.softShadow),
+      child: ClipRRect(
+        borderRadius: r,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: tint ?? FacelessTheme.glass,
+              borderRadius: r,
+              border: Border.all(color: FacelessTheme.border),
+            ),
+            child: child,
           ),
-          child: child,
         ),
       ),
     );
@@ -87,7 +99,7 @@ class GlassCard extends StatelessWidget {
   }
 }
 
-/// Primary CTA — brand-gradient fill with a soft glow.
+/// Primary CTA — charcoal ink fill with white text and a soft shadow.
 class GradientButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -117,7 +129,8 @@ class GradientButton extends StatelessWidget {
               width: 18,
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-        else if (icon != null) ...[Icon(icon, size: 19, color: Colors.white)],
+        else if (icon != null)
+          Icon(icon, size: 19, color: Colors.white),
         if (!loading && icon != null) const SizedBox(width: 9),
         Text(label,
             style: const TextStyle(
@@ -125,18 +138,18 @@ class GradientButton extends StatelessWidget {
       ],
     );
     return Opacity(
-      opacity: disabled ? 0.55 : 1,
+      opacity: disabled ? 0.5 : 1,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: FacelessTheme.brandGradient,
+          color: FacelessTheme.ink,
           borderRadius: BorderRadius.circular(13),
           boxShadow: disabled
               ? null
               : [
                   BoxShadow(
-                    color: const Color(0xFF7C5CFF).withValues(alpha: 0.45),
-                    blurRadius: 32,
-                    offset: const Offset(0, 14),
+                    color: FacelessTheme.ink.withValues(alpha: 0.28),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
                   ),
                 ],
         ),
@@ -153,7 +166,7 @@ class GradientButton extends StatelessWidget {
   }
 }
 
-/// Paints its text with the brand gradient (for headlines / accents).
+/// Paints text with the green→teal brand gradient (accent headline words).
 class GradientText extends StatelessWidget {
   final String text;
   final TextStyle style;
@@ -170,32 +183,35 @@ class GradientText extends StatelessWidget {
   }
 }
 
-/// Small glass pill (credits, status, tags). Optional leading gradient dot.
+/// Small white pill (credits, status, tags) with a soft shadow. Optional
+/// leading dot.
 class BrandPill extends StatelessWidget {
   final String label;
   final IconData? icon;
   final bool dot;
-  const BrandPill(this.label, {super.key, this.icon, this.dot = false});
+  final Color? dotColor;
+  const BrandPill(this.label, {super.key, this.icon, this.dot = false, this.dotColor});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: FacelessTheme.glassStrong,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: FacelessTheme.border),
+        boxShadow: FacelessTheme.softShadow,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (dot)
             Container(
-              width: 7,
-              height: 7,
-              margin: const EdgeInsets.only(right: 7),
-              decoration: const BoxDecoration(
-                  gradient: FacelessTheme.brandGradient, shape: BoxShape.circle),
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                  color: dotColor ?? FacelessTheme.accent, shape: BoxShape.circle),
             ),
           if (icon != null) ...[Icon(icon, size: 14, color: FacelessTheme.accent), const SizedBox(width: 6)],
           Text(label,
@@ -207,17 +223,16 @@ class BrandPill extends StatelessWidget {
   }
 }
 
-/// Deterministic gradient for a cover placeholder, seeded by a string
-/// (so the same song always gets the same art). Keeps the music identity
-/// even without a real cover image.
+/// Deterministic SOFT PASTEL gradient for a cover placeholder, seeded by a
+/// string so the same song always gets the same tasteful art.
 LinearGradient coverGradient(String seed) {
   const palettes = [
-    [Color(0xFF7C5CFF), Color(0xFFFF5C9A)],
-    [Color(0xFF5A3FD6), Color(0xFFC24BF4)],
-    [Color(0xFF0E7C86), Color(0xFF54E6FF)],
-    [Color(0xFFB14BF4), Color(0xFFFF5C9A)],
-    [Color(0xFFC9852B), Color(0xFFFFC24B)],
-    [Color(0xFF2A1E5C), Color(0xFF7C5CFF)],
+    [Color(0xFFE7E1F4), Color(0xFFDCEBE6)], // lavender → mint
+    [Color(0xFFF3E7D3), Color(0xFFF0D9DE)], // cream → blush
+    [Color(0xFFDCEBE6), Color(0xFFD6E6F0)], // mint → sky
+    [Color(0xFFEDE3F5), Color(0xFFF3E7D3)], // lilac → cream
+    [Color(0xFFF0D9DE), Color(0xFFE7E1F4)], // blush → lavender
+    [Color(0xFFD6E6F0), Color(0xFFDDEFE4)], // sky → mint
   ];
   final h = seed.codeUnits.fold<int>(0, (a, b) => a + b);
   final p = palettes[h % palettes.length];
