@@ -547,28 +547,6 @@ class FacelessApiClient {
     return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
   }
 
-  Future<String> importSong({
-    required String youtubeUrl,
-    String? instruction,
-    String language = 'ar',
-    String videoMode = 'static',
-    String vocalGender = 'm',
-  }) async {
-    final body = <String, dynamic>{
-      'youtube_url': youtubeUrl,
-      if (instruction != null && instruction.isNotEmpty) 'instruction': instruction,
-      'language': language,
-      'video_mode': videoMode,
-      'vocal_gender': vocalGender,
-    };
-    final r = await _http.post(
-      await _uri('/songs/import'),
-      headers: {...await _headers(), 'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
-    return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
-  }
-
   /// Faithful cover from an UPLOADED audio file. Multipart POST — Suno's
   /// upload-cover endpoint keeps the source's melody and sings the (reviewed)
   /// words. Returns the new run id (status `analyzing`).
