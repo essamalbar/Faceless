@@ -77,7 +77,10 @@ class FacelessTheme {
       canvasColor: Colors.transparent,
       textTheme: textTheme,
       cardTheme: CardThemeData(
-        color: glass,
+        // Solid, readable surface (NOT the translucent `glass` — plain Cards
+        // have no blur, so a near-transparent fill lets the mesh bleed
+        // through and drowns the content). GlassCard opts into real glass.
+        color: surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
