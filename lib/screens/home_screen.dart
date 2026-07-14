@@ -297,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // AppBar, occluding the refresh/settings icon hit-targets. Keep them
       // in separate vertical bands so the user can always tap the icons.
       appBar: AppBar(
-        backgroundColor: FacelessTheme.bg,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         title: Row(

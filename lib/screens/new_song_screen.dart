@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../theme.dart';
+import '../ui/brand.dart';
 import 'song_approve_screen.dart';
 
 class NewSongScreen extends StatefulWidget {
@@ -452,15 +453,12 @@ class _NewSongScreenState extends State<NewSongScreen> {
                       color: Theme.of(context).colorScheme.error),
                 ),
               ),
-            FilledButton.icon(
+            GradientButton(
+              label: _submitting ? 'Generating…' : 'Generate my song',
+              icon: Icons.auto_awesome,
+              loading: _submitting,
+              expand: true,
               onPressed: _submitting ? null : _submit,
-              icon: _submitting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.music_note),
-              label: Text(_submitting ? 'Generating…' : 'Generate draft'),
             ),
             const SizedBox(height: 8),
             const Text(

@@ -1,22 +1,55 @@
-/// Shahid-style dark theme — deep navy backgrounds, accent gold for premium
-/// feel, Cairo Arabic font, generous spacing, soft elevation.
+/// Faceless brand theme — modern dark "glass" surface with a violet→pink
+/// signature gradient, Space Grotesk (display) + Inter (body) type, Cairo
+/// fallback for Arabic. A global mesh-gradient background sits behind every
+/// screen (see main.dart's MaterialApp.builder + ui/brand.dart MeshBackground).
 library;
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class FacelessTheme {
-  // Palette — inspired by Shahid VIP / Netflix dark
-  static const bg = Color(0xFF0A0E1A);          // near-black navy
-  static const surface = Color(0xFF141A2A);     // card / chip
-  static const surface2 = Color(0xFF1E2638);    // raised
-  static const accent = Color(0xFFE7B53C);      // warm gold
-  static const accent2 = Color(0xFF8B5CF6);     // violet
-  static const textPrimary = Color(0xFFEDEEF3);
-  static const textSecondary = Color(0xFF9AA3B7);
-  static const danger = Color(0xFFEF4444);
-  static const success = Color(0xFF10B981);
-  static const warning = Color(0xFFF59E0B);
-  static const info = Color(0xFF3B82F6);
+  // --- Palette ----------------------------------------------------------
+  static const bg = Color(0xFF07070C); // deep near-black
+  static const surface = Color(0xFF14141E); // card / chip fill
+  static const surface2 = Color(0xFF1C1C2A); // raised
+  static const accent = Color(0xFF8B7CFF); // violet (primary)
+  static const accent2 = Color(0xFFFF5C9A); // pink (secondary)
+  static const accentMid = Color(0xFFB14BF4); // purple (gradient middle)
+  static const textPrimary = Color(0xFFF5F6FA);
+  static const textSecondary = Color(0xFF9AA0B4);
+  static const faint = Color(0xFF6B7085);
+  static const danger = Color(0xFFFF5C6C);
+  static const success = Color(0xFF34D399);
+  static const warning = Color(0xFFFBBF24);
+  static const info = Color(0xFF54E6FF);
+
+  // Signature gradient — logo, headlines, primary buttons, accents.
+  static const brandGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF7C5CFF), accentMid, accent2],
+  );
+
+  // Glass fill/border used by cards, chips, inputs over the mesh.
+  static Color get glass => Colors.white.withValues(alpha: 0.045);
+  static Color get glassStrong => Colors.white.withValues(alpha: 0.07);
+  static Color get border => Colors.white.withValues(alpha: 0.09);
+
+  /// Space Grotesk display/heading style (with Arabic Cairo fallback).
+  static TextStyle display({
+    double size = 28,
+    FontWeight weight = FontWeight.w700,
+    Color? color,
+    double height = 1.05,
+    double letterSpacing = -0.5,
+  }) =>
+      GoogleFonts.spaceGrotesk(
+        fontSize: size,
+        fontWeight: weight,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color ?? textPrimary,
+      ).copyWith(fontFamilyFallback: const ['Cairo']);
 
   static ThemeData build() {
     final base = ThemeData.dark(useMaterial3: true);
@@ -27,17 +60,29 @@ class FacelessTheme {
       primary: accent,
       secondary: accent2,
       error: danger,
-    ).copyWith(
-      surfaceContainerHighest: surface2,
+    ).copyWith(surfaceContainerHighest: surface2);
+
+    // Body type = Inter, Arabic falls back to Cairo (loaded by google_fonts).
+    final cairo = GoogleFonts.cairo().fontFamily;
+    final textTheme = GoogleFonts.interTextTheme(base.textTheme).apply(
+      bodyColor: textPrimary,
+      displayColor: textPrimary,
+      fontFamilyFallback: [if (cairo != null) cairo],
     );
+
     return base.copyWith(
       colorScheme: scheme,
-      scaffoldBackgroundColor: bg,
-      canvasColor: bg,
+      // Transparent so the global MeshBackground (main.dart) shows through.
+      scaffoldBackgroundColor: Colors.transparent,
+      canvasColor: Colors.transparent,
+      textTheme: textTheme,
       cardTheme: CardThemeData(
-        color: surface,
+        color: glass,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: border),
+        ),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -45,66 +90,93 @@ class FacelessTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
       ),
+      dividerTheme: DividerThemeData(color: border, thickness: 1),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: accent,
-          foregroundColor: Colors.black,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: textPrimary,
-          side: BorderSide(color: textSecondary.withValues(alpha: 0.3)),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          backgroundColor: Colors.white.withValues(alpha: 0.05),
+          side: BorderSide(color: border),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: accent),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: glassStrong,
+        side: BorderSide(color: border),
+        labelStyle: const TextStyle(color: textPrimary, fontSize: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected)
+                ? accent.withValues(alpha: 0.22)
+                : Colors.transparent,
+          ),
+          side: WidgetStateProperty.all(BorderSide(color: border)),
+          shape: WidgetStateProperty.all(RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12))),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surface,
+        fillColor: Colors.black.withValues(alpha: 0.25),
+        hintStyle: const TextStyle(color: faint),
+        labelStyle: const TextStyle(color: textSecondary),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(13),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: textSecondary.withValues(alpha: 0.2)),
+          borderRadius: BorderRadius.circular(13),
+          borderSide: BorderSide(color: border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: accent, width: 2),
+          borderRadius: BorderRadius.circular(13),
+          borderSide: const BorderSide(color: accent, width: 1.6),
         ),
       ),
-      // System default Arabic-capable font on each platform. Adding the
-      // Cairo TTF as a bundled asset is a future improvement.
-      textTheme: base.textTheme
-          .apply(
-            bodyColor: textPrimary,
-            displayColor: textPrimary,
-            fontFamily: 'system-ui',
-          ),
     );
   }
 
+  // --- Legacy helpers kept for existing screens -------------------------
   static LinearGradient get heroGradient => const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Colors.transparent, Color(0xCC0A0E1A), bg],
+        colors: [Colors.transparent, Color(0xCC07070C), bg],
         stops: [0.0, 0.7, 1.0],
       );
 
   static BoxDecoration cardGradient({Color? tint}) => BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            (tint ?? accent2).withValues(alpha: 0.18),
-            surface,
-          ],
+          colors: [(tint ?? accentMid).withValues(alpha: 0.20), surface],
         ),
+        border: Border.all(color: border),
       );
 }

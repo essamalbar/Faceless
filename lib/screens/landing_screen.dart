@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../ui/brand.dart';
 import '../widgets/faceless_logo.dart';
 import 'login_screen.dart';
 
@@ -20,7 +21,7 @@ class LandingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: FacelessTheme.bg,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
@@ -45,24 +46,35 @@ class _TopNav extends StatelessWidget {
   const _TopNav();
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Row(
-        children: [
-          const FacelessLogo(size: 28),
-          const SizedBox(width: 10),
-          const Text('Faceless Lab',
-              style: TextStyle(
-                color: FacelessTheme.textPrimary,
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-              )),
-          const Spacer(),
-          TextButton(
-            onPressed: () => _goLogin(context, signUp: false),
-            child: const Text('Sign in'),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1120),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+          child: Row(
+            children: [
+              const FacelessLogo(size: 30),
+              const SizedBox(width: 10),
+              Text('Faceless',
+                  style: FacelessTheme.display(size: 18, weight: FontWeight.w700)),
+              Text('Lab',
+                  style: FacelessTheme.display(
+                      size: 18, weight: FontWeight.w400, color: FacelessTheme.faint)),
+              const Spacer(),
+              TextButton(
+                onPressed: () => _goLogin(context, signUp: false),
+                child: const Text('Sign in'),
+              ),
+              const SizedBox(width: 10),
+              GradientButton(
+                label: 'Get started',
+                icon: Icons.arrow_forward,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                onPressed: () => _goLogin(context, signUp: true),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -74,133 +86,175 @@ class _TopNav extends StatelessWidget {
 
 class _Hero extends StatelessWidget {
   const _Hero();
+
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final copy = Column(
+      crossAxisAlignment:
+          wide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.0,
-                  colors: [Color(0x44E7B53C), Color(0x000A0E1A)],
+        const BrandPill('AI Music Studio · Arabic & beyond', dot: true),
+        const SizedBox(height: 22),
+        DefaultTextStyle(
+          style: FacelessTheme.display(size: wide ? 56 : 40, height: 1.04),
+          textAlign: wide ? TextAlign.start : TextAlign.center,
+          child: Wrap(
+            alignment: wide ? WrapAlignment.start : WrapAlignment.center,
+            children: [
+              Text('Turn any idea into a ',
+                  textAlign: wide ? TextAlign.start : TextAlign.center,
+                  style: FacelessTheme.display(size: wide ? 56 : 40, height: 1.04)),
+              GradientText('finished song.',
+                  style: FacelessTheme.display(size: wide ? 56 : 40, height: 1.04)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Text(
+            'Write a theme, or upload a track for a faithful cover. Faceless '
+            'composes the lyrics, voices it, designs the cover, and cuts a '
+            'cinematic video — you approve before a single credit is spent.',
+            textAlign: wide ? TextAlign.start : TextAlign.center,
+            style: const TextStyle(
+                color: FacelessTheme.textSecondary, fontSize: 17, height: 1.6),
+          ),
+        ),
+        const SizedBox(height: 30),
+        Wrap(
+          spacing: 14,
+          runSpacing: 12,
+          alignment: wide ? WrapAlignment.start : WrapAlignment.center,
+          children: [
+            GradientButton(
+              label: 'Start creating',
+              icon: Icons.auto_awesome,
+              onPressed: () => _goLogin(context, signUp: true),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _goLogin(context, signUp: false),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Sign in'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Text('★★★★★   Loved by creators · 60 free credits to start',
+            style: TextStyle(color: FacelessTheme.faint, fontSize: 13)),
+      ],
+    );
+
+    final card = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: const _NowPlayingCard(),
+    );
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1120),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 56, 24, 48),
+          child: wide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(flex: 6, child: copy),
+                    const SizedBox(width: 44),
+                    Expanded(flex: 5, child: card),
+                  ],
+                )
+              : Column(children: [copy, const SizedBox(height: 40), card]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hero showpiece — a glassy "now generating" song card with a waveform.
+class _NowPlayingCard extends StatelessWidget {
+  const _NowPlayingCard();
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: coverGradient('حلم في الليل'),
+            ),
+            child: const Stack(
+              children: [
+                Positioned(top: 12, left: 12, child: BrandPill('Now generating', dot: true)),
+                Center(child: Text('🌙', style: TextStyle(fontSize: 64))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('حلم في الليل',
+                        style: FacelessTheme.display(size: 20, weight: FontWeight.w600)),
+                    const SizedBox(height: 3),
+                    Text('Cinematic · 92 BPM · Arabic pop',
+                        style: TextStyle(color: FacelessTheme.textSecondary, fontSize: 13)),
+                  ],
+                ),
+              ),
+              Container(
+                width: 50,
+                height: 50,
+                decoration: const BoxDecoration(
+                    gradient: FacelessTheme.brandGradient, shape: BoxShape.circle),
+                child: const Icon(Icons.play_arrow_rounded, color: Colors.white),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const _Waveform(),
+        ],
+      ),
+    );
+  }
+}
+
+class _Waveform extends StatelessWidget {
+  const _Waveform();
+  @override
+  Widget build(BuildContext context) {
+    const heights = [0.4, 0.7, 0.95, 0.55, 0.8, 0.35, 0.65, 1.0, 0.5, 0.75,
+      0.45, 0.85, 0.6, 0.3, 0.9, 0.55, 0.7, 0.4];
+    return SizedBox(
+      height: 40,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final h in heights)
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                height: 40 * h,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(3),
+                  gradient: const LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [FacelessTheme.accent, FacelessTheme.accent2],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 60, 20, 60),
-              child: Column(
-                children: [
-                  Container(
-                    width: 96,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color:
-                              FacelessTheme.accent.withValues(alpha: 0.4),
-                          blurRadius: 32,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: const FacelessLogo(size: 96),
-                  ),
-                  const SizedBox(height: 28),
-                  Text(
-                    'Faceless Lab',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .displaySmall!
-                        .copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                          color: FacelessTheme.textPrimary,
-                        ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'AI-generated horror shorts and Arabic songs.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: FacelessTheme.textSecondary.withValues(alpha: 0.9),
-                      fontSize: 16,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'قصص قصيرة وأغانٍ بالذكاء الاصطناعي',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: FacelessTheme.textSecondary,
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  // Dual-CTA: two large feature chips so visitors
-                  // immediately see both modes exist. Both route to
-                  // signup; the home screen's segmented selector
-                  // chooses Horror vs Song after auth.
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _ModeChip(
-                        icon: Icons.movie_filter_outlined,
-                        title: 'Horror shorts',
-                        ar: 'قصص رعب',
-                        onTap: () => _goLogin(context, signUp: true),
-                      ),
-                      const SizedBox(width: 12),
-                      _ModeChip(
-                        icon: Icons.music_note_outlined,
-                        title: 'AI songs',
-                        ar: 'أغاني',
-                        onTap: () => _goLogin(context, signUp: true),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: 280,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: () => _goLogin(context, signUp: true),
-                      icon: const Icon(Icons.auto_awesome, size: 20),
-                      label: const Text(
-                        'Start free',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Free to draft · pay only when you generate',
-                    style: TextStyle(
-                      color:
-                          FacelessTheme.textSecondary.withValues(alpha: 0.7),
-                      fontSize: 12,
-                      letterSpacing: 0.3,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -795,64 +849,4 @@ void _goLogin(BuildContext context, {required bool signUp}) {
       builder: (_) => LoginScreen(startInSignUpMode: signUp),
     ),
   );
-}
-
-
-/// Dual-CTA mode chip used in the hero. Two of these sit side-by-side
-/// so visitors see immediately that the product does both Horror and
-/// Songs without scrolling. Both tap-targets go to signup.
-class _ModeChip extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String ar;
-  final VoidCallback onTap;
-  const _ModeChip({
-    required this.icon,
-    required this.title,
-    required this.ar,
-    required this.onTap,
-  });
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: BoxDecoration(
-            color: FacelessTheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: FacelessTheme.accent.withValues(alpha: 0.30),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: FacelessTheme.accent, size: 28),
-              const SizedBox(height: 6),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: FacelessTheme.textPrimary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                ar,
-                style: TextStyle(
-                  color: FacelessTheme.textSecondary.withValues(alpha: 0.75),
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

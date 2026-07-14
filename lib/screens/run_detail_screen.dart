@@ -381,9 +381,9 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final t = _run?.title;
     final hasTitle = t != null && t.trim().isNotEmpty;
     return Scaffold(
-      backgroundColor: FacelessTheme.bg,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: FacelessTheme.bg,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         title: hasTitle

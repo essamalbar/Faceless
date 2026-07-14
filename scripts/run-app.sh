@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Zero-config launcher. Reads .env, makes sure the API + Cloudflare Tunnel are
+
 # running, captures the live tunnel URL, and starts Flutter with all secrets
 # baked in via --dart-define so the app skips the Settings screen.
 #

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/home_screen.dart';
 import 'screens/landing_screen.dart';
 import 'theme.dart';
+import 'ui/brand.dart';
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
@@ -28,6 +29,9 @@ class FacelessApp extends StatelessWidget {
       title: 'Faceless',
       debugShowCheckedModeBanner: false,
       theme: FacelessTheme.build(),
+      // Global mesh-gradient backdrop behind every route (scaffolds are
+      // transparent), so the whole app shares the brand background.
+      builder: (context, child) => MeshBackground(child: child ?? const SizedBox()),
       home: Builder(
         builder: (context) {
           try {
