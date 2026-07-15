@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -912,7 +911,7 @@ class _YourStoriesHeader extends StatelessWidget {
           const SizedBox(width: 10),
           const Text('Your stories',
               style: TextStyle(
-                color: Colors.white,
+                color: FacelessTheme.textPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 18,
               )),
@@ -1296,7 +1295,7 @@ class _StandaloneRow extends StatelessWidget {
                 const SizedBox(width: 10),
                 Text(title,
                     style: const TextStyle(
-                        color: Colors.white,
+                        color: FacelessTheme.textPrimary,
                         fontWeight: FontWeight.w700,
                         fontSize: 18)),
                 const Spacer(),
@@ -1531,7 +1530,7 @@ class _SongStatusPill extends StatelessWidget {
       padding: EdgeInsets.symmetric(
           horizontal: compact ? 7 : 9, vertical: compact ? 3 : 4),
       decoration: BoxDecoration(
-        color: (compact ? Colors.black.withValues(alpha: 0.45) : style.color.withValues(alpha: 0.14)),
+        color: style.color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -1747,66 +1746,67 @@ class _SongHero extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
       child: GestureDetector(
         onTap: onTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: SizedBox(
-            height: 212,
-            width: double.infinity,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Color(0xCC0A0E1A), Color(0xF20A0E1A)],
-                      stops: [0.35, 0.72, 1.0],
-                    ),
-                  ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: FacelessTheme.surface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: FacelessTheme.border),
+            boxShadow: FacelessTheme.softShadow,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  height: 168,
+                  width: double.infinity,
+                  child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
                 ),
-                const Positioned(
-                  left: 16,
-                  top: 14,
-                  child: Text('◆  LATEST RELEASE',
-                      style: TextStyle(
-                          color: FacelessTheme.accent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.4)),
-                ),
-                Positioned(
-                  left: 18,
-                  right: 18,
-                  bottom: 16,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w800)),
-                            const SizedBox(height: 9),
-                            _SongStatusPill(style: st),
-                          ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('◆  LATEST RELEASE',
+                        style: TextStyle(
+                            color: FacelessTheme.accent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.4)),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: FacelessTheme.textPrimary,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 9),
+                              _SongStatusPill(style: st),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      const _PlayButton(size: 50),
-                    ],
-                  ),
+                        const SizedBox(width: 12),
+                        const _PlayButton(size: 50),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1831,39 +1831,46 @@ class _RecentTile extends StatelessWidget {
     final st = _songStatusStyle(status);
     return GestureDetector(
       onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          width: 150,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Color(0xB30A0E1A), Color(0xF00A0E1A)],
-                    stops: [0.4, 0.72, 1.0],
-                  ),
-                ),
+      child: Container(
+        width: 150,
+        decoration: BoxDecoration(
+          color: FacelessTheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: FacelessTheme.border),
+          boxShadow: FacelessTheme.softShadow,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: double.infinity,
+                height: 110,
+                child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
               ),
-              Positioned(top: 8, right: 8, child: _SongStatusPill(style: st, compact: true)),
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 9,
-                child: Text(title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: FacelessTheme.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 7),
+                  _SongStatusPill(style: st, compact: true),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1887,73 +1894,55 @@ class _SongCardC extends StatelessWidget {
     final st = _songStatusStyle(status);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-      child: Material(
-        color: FacelessTheme.surface,
-        borderRadius: BorderRadius.circular(18),
+      child: Container(
+        decoration: BoxDecoration(
+          color: FacelessTheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: FacelessTheme.border),
+          boxShadow: FacelessTheme.softShadow,
+        ),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Stack(
-            children: [
-              // Blurred cover wash behind the content.
-              Positioned.fill(
-                child: Opacity(
-                  opacity: 0.30,
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                    child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
-                  ),
-                ),
-              ),
-              const Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xD1141A2A), Color(0x99141A2A)],
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: SizedBox(
+                      width: 70,
+                      height: 70,
+                      child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
                     ),
                   ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(13),
-                      child: SizedBox(
-                        width: 70,
-                        height: 70,
-                        child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
-                      ),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: FacelessTheme.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        const _EqBars(),
+                        const SizedBox(height: 8),
+                        _SongStatusPill(style: st),
+                      ],
                     ),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: FacelessTheme.textPrimary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 8),
-                          const _EqBars(),
-                          const SizedBox(height: 8),
-                          _SongStatusPill(style: st),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const _PlayButton(size: 44),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 10),
+                  const _PlayButton(size: 44),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -2140,14 +2129,9 @@ class _Hero extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(28, 32, 28, 32),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1A2238), Color(0xFF0A0E1A)],
-        ),
-        border: Border.all(
-          color: FacelessTheme.accent.withValues(alpha: 0.20),
-        ),
+        color: FacelessTheme.surface,
+        border: Border.all(color: FacelessTheme.border),
+        boxShadow: FacelessTheme.softShadow,
       ),
       child: Column(
         children: [

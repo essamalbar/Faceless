@@ -367,14 +367,9 @@ class _AccountCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1A2238), Color(0xFF0A0E1A)],
-        ),
-        border: Border.all(
-          color: FacelessTheme.accent.withValues(alpha: 0.18),
-        ),
+        color: FacelessTheme.surface,
+        border: Border.all(color: FacelessTheme.border),
+        boxShadow: FacelessTheme.softShadow,
       ),
       child: Row(
         children: [
