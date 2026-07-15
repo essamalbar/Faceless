@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../l10n/l10n.dart';
 import 'song_detail_screen.dart';
 
 class SongApproveScreen extends StatefulWidget {
@@ -50,7 +51,7 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
         if (s.status == 'failed') {
           if (!mounted) return;
           setState(() {
-            _error = s.lastError ?? 'Analysis failed — please try again';
+            _error = s.lastError ?? context.l10n.approveAnalysisFailed;
             _analyzingStatus = null;
             _busy = false;
           });
@@ -70,7 +71,7 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _error = 'Timed out waiting for lyrics (exceeded 5 minutes)';
+      _error = context.l10n.approveTimedOut;
       _analyzingStatus = null;
       _busy = false;
     });
@@ -81,17 +82,15 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit lyrics'),
+        title: Text(ctx.l10n.approveEditLyrics),
         content: SizedBox(
           width: 560,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Keep Suno section tags ([Verse 1], [Chorus]) intact — '
-                'Suno uses them to structure the arrangement. Dropping '
-                'them gives a formless song.',
-                style: TextStyle(fontSize: 12),
+              Text(
+                ctx.l10n.approveKeepSectionTags,
+                style: const TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 12),
               Directionality(
@@ -114,16 +113,16 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(ctx.l10n.commonCancel)),
           FilledButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
+              child: Text(ctx.l10n.commonSave)),
         ],
       ),
     );
     if (saved != true || !mounted) return;
     if (ctrl.text.length > 4000) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Lyrics exceed 4000 chars'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(context.l10n.approveLyricsTooLong),
       ));
       return;
     }
@@ -204,10 +203,10 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
     if (_busy && _script == null) {
       // Import runs linger in `analyzing` for minutes — show richer feedback.
       final label = _analyzingStatus == 'analyzing'
-          ? 'Analyzing the song…\nThis can take a few minutes for imports.'
-          : 'Preparing…';
+          ? context.l10n.approveAnalyzing
+          : context.l10n.approvePreparing;
       return Scaffold(
-        appBar: AppBar(title: const Text('Review draft')),
+        appBar: AppBar(title: Text(context.l10n.approveReviewDraft)),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -226,7 +225,7 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
     }
     if (_error != null && _script == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Review draft')),
+        appBar: AppBar(title: Text(context.l10n.approveReviewDraft)),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -240,6 +239,7 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
       );
     }
     final s = _script!;
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(title: Text(s.title)),
       body: Stack(children: [
@@ -248,7 +248,7 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
           child: ListView(
             children: [
               _SectionCard(
-                title: 'Lyrics',
+                title: l10n.approveLyricsSection,
                 body: _LyricsPreview(
                   lyrics: s.lyrics,
                   language: s.language,
@@ -256,27 +256,27 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                 actions: [
                   TextButton.icon(
                     icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Edit'),
+                    label: Text(l10n.approveEdit),
                     onPressed: _busy ? null : () => _editLyrics(s),
                   ),
                   TextButton.icon(
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Re-roll'),
+                    label: Text(l10n.approveReroll),
                     onPressed: _busy ? null : _regenLyrics,
                   ),
                 ],
               ),
               _SectionCard(
-                title: 'Style',
+                title: l10n.approveStyleSection,
                 body: Text(s.stylePrompt),
               ),
               _SectionCard(
-                title: 'Cover prompt',
+                title: l10n.approveCoverPromptSection,
                 body: Text(s.coverPrompt),
                 actions: [
                   TextButton.icon(
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Re-roll'),
+                    label: Text(l10n.approveReroll),
                     onPressed: _busy ? null : _regenCover,
                   ),
                 ],
@@ -292,9 +292,10 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Cost: ${s.costCredits} credit'
-                          '${s.costCredits == 1 ? '' : 's'} '
-                          '(~\$${s.costUsd.toStringAsFixed(2)})',
+                          l10n.approveCost(
+                            s.costCredits,
+                            '\$${s.costUsd.toStringAsFixed(2)}',
+                          ),
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
@@ -308,7 +309,7 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.delete_outline),
-                      label: const Text('Discard'),
+                      label: Text(l10n.approveDiscard),
                       onPressed: _approving ? null : _discard,
                     ),
                   ),
@@ -323,7 +324,7 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                                   CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.check),
-                      label: const Text('Approve & generate'),
+                      label: Text(l10n.approveApproveGenerate),
                       onPressed: _approving ? null : _approve,
                     ),
                   ),

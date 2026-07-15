@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/brand.dart';
 import 'song_approve_screen.dart';
@@ -73,6 +74,17 @@ const _kStylePresets = <(String, String)>[
   ),
 ];
 
+/// Localized display label for a preset. Lookups/selection stay keyed by the
+/// original English constant so `initialPresetLabel` entry points keep working.
+String _presetLabel(AppLocalizations l10n, String key) => switch (key) {
+      'Romantic Arabic (reference)' => l10n.newSongPresetRomanticArabic,
+      'Sad Arabic Ballad' => l10n.newSongPresetSadArabicBallad,
+      'Khaleeji Romantic' => l10n.newSongPresetKhaleejiRomantic,
+      'Upbeat Arabic Pop' => l10n.newSongPresetUpbeatArabicPop,
+      'Acoustic Slow' => l10n.newSongPresetAcousticSlow,
+      'English Pop Ballad' => l10n.newSongPresetEnglishPopBallad,
+      _ => key,
+    };
 
 class _NewSongScreenState extends State<NewSongScreen> {
   final _themeCtrl = TextEditingController();
@@ -129,6 +141,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
   }
 
   Future<void> _pickAudio() async {
+    final l10n = context.l10n;
     try {
       // FileType.custom + explicit extensions is more reliable across
       // Android OEM file providers than FileType.audio (which silently
@@ -143,7 +156,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
       if (res == null || res.files.isEmpty) return; // user cancelled
       final f = res.files.first;
       if (f.bytes == null) {
-        setState(() => _error = "Couldn't read that file — try another.");
+        setState(() => _error = l10n.newSongFileReadError);
         return;
       }
       setState(() {
@@ -154,19 +167,19 @@ class _NewSongScreenState extends State<NewSongScreen> {
     } catch (e) {
       // Surface the failure instead of doing nothing (e.g. a stale build
       // without the plugin throws MissingPluginException here).
-      setState(() => _error = 'Could not open the file picker: $e');
+      setState(() => _error = l10n.newSongFilePickerError('$e'));
     }
   }
 
   Future<void> _submit() async {
     if (_createMode == 'upload') {
       if (_pickedBytes == null) {
-        setState(() => _error = 'Choose an audio file to cover');
+        setState(() => _error = context.l10n.newSongChooseAudioError);
         return;
       }
     } else {
       if (_themeCtrl.text.trim().isEmpty) {
-        setState(() => _error = 'Theme is required');
+        setState(() => _error = context.l10n.newSongThemeRequired);
         return;
       }
     }
@@ -214,8 +227,9 @@ class _NewSongScreenState extends State<NewSongScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('New song')),
+      appBar: AppBar(title: Text(l10n.newSongTitle)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -223,16 +237,16 @@ class _NewSongScreenState extends State<NewSongScreen> {
           children: [
             // Mode selector — Write a theme vs Upload a song (cover).
             SegmentedButton<String>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: 'theme',
-                  label: Text('Write a theme'),
-                  icon: Icon(Icons.edit_note),
+                  label: Text(l10n.newSongModeTheme),
+                  icon: const Icon(Icons.edit_note),
                 ),
                 ButtonSegment(
                   value: 'upload',
-                  label: Text('Upload a song'),
-                  icon: Icon(Icons.upload_file),
+                  label: Text(l10n.newSongModeUpload),
+                  icon: const Icon(Icons.upload_file),
                 ),
               ],
               selected: {_createMode},
@@ -246,11 +260,8 @@ class _NewSongScreenState extends State<NewSongScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   _createMode == 'upload'
-                      ? 'Upload a song and the AI makes a faithful cover — it keeps the '
-                          'melody and words, performed by a new voice. The voice will differ '
-                          'from the original. Review and edit the words before any credit is spent.'
-                      : 'The AI will write lyrics and a cover image prompt. '
-                          'You can review and edit both before any credit is spent.',
+                      ? l10n.newSongUploadExplainer
+                      : l10n.newSongThemeExplainer,
                 ),
               ),
             ),
@@ -260,13 +271,13 @@ class _NewSongScreenState extends State<NewSongScreen> {
               OutlinedButton.icon(
                 onPressed: _submitting ? null : _pickAudio,
                 icon: const Icon(Icons.audiotrack),
-                label: Text(_pickedName ?? 'Choose audio file (mp3, m4a, wav…)'),
+                label: Text(_pickedName ?? l10n.newSongChooseAudioFile),
               ),
               if (_pickedName != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    'Selected: $_pickedName',
+                    l10n.newSongSelectedFile(_pickedName!),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -275,20 +286,20 @@ class _NewSongScreenState extends State<NewSongScreen> {
               // Theme path: theme + custom lyrics fields.
               TextField(
                 controller: _themeCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Theme',
-                  hintText: 'أغنية حزينة عن القمر',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.newSongThemeLabel,
+                  hintText: l10n.newSongThemeHint,
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _lyricsCtrl,
                 maxLines: 6,
-                decoration: const InputDecoration(
-                  labelText: 'Custom lyrics (optional)',
-                  hintText: 'Leave empty for AI',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.newSongCustomLyricsLabel,
+                  hintText: l10n.newSongCustomLyricsHint,
+                  border: const OutlineInputBorder(),
                   alignLabelWithHint: true,
                 ),
               ),
@@ -296,7 +307,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
               // Style presets — quick fillers. Tap to stamp a vetted
               // style string into the textfield below; user can edit.
               Text(
-                'Quick styles',
+                l10n.newSongQuickStyles,
                 style: Theme.of(context).textTheme.labelLarge,
               ),
               const SizedBox(height: 8),
@@ -306,7 +317,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
                 children: [
                   for (final (label, preset) in _kStylePresets)
                     FilterChip(
-                      label: Text(label),
+                      label: Text(_presetLabel(l10n, label)),
                       selected: _selectedPreset == label,
                       onSelected: (_) {
                         setState(() {
@@ -327,12 +338,11 @@ class _NewSongScreenState extends State<NewSongScreen> {
               maxLines: 3,
               decoration: InputDecoration(
                 labelText: _createMode == 'theme'
-                    ? 'Style hint'
-                    : 'Your touch (optional)',
+                    ? l10n.newSongStyleHintLabel
+                    : l10n.newSongYourTouchLabel,
                 hintText: _createMode == 'theme'
-                    ? 'Pick a Quick style above, or type your own. '
-                        'Leave empty for AI to auto-pick.'
-                    : 'e.g. make it more upbeat, add oud, slower tempo…',
+                    ? l10n.newSongStyleHintHint
+                    : l10n.newSongYourTouchHint,
                 border: const OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
@@ -347,16 +357,21 @@ class _NewSongScreenState extends State<NewSongScreen> {
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _language,
-              decoration: const InputDecoration(
-                labelText: 'Language',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.newSongLanguageLabel,
+                border: const OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: 'ar', child: Text('Arabic')),
-                DropdownMenuItem(value: 'en', child: Text('English')),
-                DropdownMenuItem(value: 'es', child: Text('Spanish')),
-                DropdownMenuItem(value: 'fr', child: Text('French')),
-                DropdownMenuItem(value: 'tr', child: Text('Turkish')),
+              items: [
+                DropdownMenuItem(
+                    value: 'ar', child: Text(l10n.newSongLanguageArabic)),
+                DropdownMenuItem(
+                    value: 'en', child: Text(l10n.newSongLanguageEnglish)),
+                DropdownMenuItem(
+                    value: 'es', child: Text(l10n.newSongLanguageSpanish)),
+                DropdownMenuItem(
+                    value: 'fr', child: Text(l10n.newSongLanguageFrench)),
+                DropdownMenuItem(
+                    value: 'tr', child: Text(l10n.newSongLanguageTurkish)),
               ],
               onChanged: (v) => setState(() => _language = v ?? 'ar'),
             ),
@@ -366,14 +381,17 @@ class _NewSongScreenState extends State<NewSongScreen> {
             // doesn't guarantee (per Suno docs).
             DropdownButtonFormField<String>(
               initialValue: _vocalGender,
-              decoration: const InputDecoration(
-                labelText: 'Vocal',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.newSongVocalLabel,
+                border: const OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: 'm', child: Text('Male')),
-                DropdownMenuItem(value: 'f', child: Text('Female')),
-                DropdownMenuItem(value: 'auto', child: Text('Auto (Suno picks)')),
+              items: [
+                DropdownMenuItem(
+                    value: 'm', child: Text(l10n.newSongVocalMale)),
+                DropdownMenuItem(
+                    value: 'f', child: Text(l10n.newSongVocalFemale)),
+                DropdownMenuItem(
+                    value: 'auto', child: Text(l10n.newSongVocalAuto)),
               ],
               onChanged: (v) => setState(() => _vocalGender = v ?? 'm'),
             ),
@@ -384,37 +402,38 @@ class _NewSongScreenState extends State<NewSongScreen> {
             // fallback for users on the cheaper tier.
             DropdownButtonFormField<String?>(
               initialValue: _sunoModel,
-              decoration: const InputDecoration(
-                labelText: 'Suno model',
-                helperText: 'Newer = better quality. V3_5 is excluded '
-                    '(obvious-AI sound).',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.newSongSunoModelLabel,
+                helperText: l10n.newSongSunoModelHelper,
+                border: const OutlineInputBorder(),
               ),
-              items: const [
+              items: [
                 DropdownMenuItem(value: null,
-                    child: Text('Default (V5_5)')),
-                DropdownMenuItem(value: 'V5_5', child: Text('V5_5 (latest)')),
-                DropdownMenuItem(value: 'V5', child: Text('V5')),
-                DropdownMenuItem(value: 'V4_5', child: Text('V4_5')),
-                DropdownMenuItem(value: 'V4', child: Text('V4 (legacy)')),
+                    child: Text(l10n.newSongSunoModelDefault)),
+                DropdownMenuItem(
+                    value: 'V5_5', child: Text(l10n.newSongSunoModelLatest)),
+                const DropdownMenuItem(value: 'V5', child: Text('V5')),
+                const DropdownMenuItem(value: 'V4_5', child: Text('V4_5')),
+                DropdownMenuItem(
+                    value: 'V4', child: Text(l10n.newSongSunoModelLegacy)),
               ],
               onChanged: (v) => setState(() => _sunoModel = v),
             ),
             const SizedBox(height: 16),
             Text(
-              'Video type',
+              l10n.newSongVideoTypeLabel,
               style: Theme.of(context).textTheme.labelLarge,
             ),
             const SizedBox(height: 8),
             SegmentedButton<String>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: 'static',
-                  label: Text('Static cover · 1 credit'),
+                  label: Text(l10n.newSongVideoStatic),
                 ),
                 ButtonSegment(
                   value: 'cinematic',
-                  label: Text('Cinematic video · 3 credits'),
+                  label: Text(l10n.newSongVideoCinematic),
                 ),
               ],
               selected: {_videoMode},
@@ -427,15 +446,15 @@ class _NewSongScreenState extends State<NewSongScreen> {
             if (_personas.isNotEmpty)
               DropdownButtonFormField<String?>(
                 initialValue: _personaId,
-                decoration: const InputDecoration(
-                  labelText: 'Voice',
-                  helperText: 'Reuse a saved singer voice from a previous song',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.newSongVoiceLabel,
+                  helperText: l10n.newSongVoiceHelper,
+                  border: const OutlineInputBorder(),
                 ),
                 items: <DropdownMenuItem<String?>>[
-                  const DropdownMenuItem(
+                  DropdownMenuItem(
                     value: null,
-                    child: Text('Auto (let Suno pick)'),
+                    child: Text(l10n.newSongVoiceAuto),
                   ),
                   for (final p in _personas)
                     DropdownMenuItem(value: p.id, child: Text(p.name)),
@@ -454,16 +473,19 @@ class _NewSongScreenState extends State<NewSongScreen> {
                 ),
               ),
             GradientButton(
-              label: _submitting ? 'Generating…' : 'Generate my song',
+              label: _submitting
+                  ? l10n.newSongGenerating
+                  : l10n.newSongGenerateButton,
               icon: Icons.auto_awesome,
               loading: _submitting,
               expand: true,
               onPressed: _submitting ? null : _submit,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'You will review lyrics + cover prompt before any credit is spent.',
-              style: TextStyle(fontSize: 12, color: FacelessTheme.textSecondary),
+            Text(
+              l10n.newSongReviewNotice,
+              style: const TextStyle(
+                  fontSize: 12, color: FacelessTheme.textSecondary),
               textAlign: TextAlign.center,
             ),
           ],

@@ -10,6 +10,7 @@ import '../web_share_stub.dart' if (dart.library.js_interop) '../web_share_web.d
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 
 class SongDetailScreen extends StatefulWidget {
@@ -36,15 +37,19 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
 
   static const _terminalStatuses = {'complete', 'failed', 'canceled'};
 
-  static const _stageLabels = <String, String>{
-    'awaiting_approval': 'Waiting for approval',
-    'generating_song': 'Generating song (Suno ~30 s)…',
-    'generating_cover': 'Generating cover (~15 s)…',
-    'assembling': 'Assembling video…',
-    'complete': 'Done',
-    'failed': 'Failed',
-    'canceled': 'Canceled',
-  };
+  /// Localized progress label per backend status. Richer than the generic
+  /// [statusLabel] wording where the extra context (timings) helps; falls
+  /// back to [statusLabel] for anything else.
+  static String _stageLabel(AppLocalizations l10n, String status) =>
+      switch (status) {
+        'awaiting_approval' => l10n.songDetailStatusWaitingApproval,
+        'generating_song' => l10n.songDetailStatusGeneratingSong,
+        'generating_cover' => l10n.songDetailStatusGeneratingCover,
+        'assembling' => l10n.songDetailStatusAssembling,
+        'complete' => l10n.songDetailStatusDone,
+        'canceled' => l10n.statusCancelled,
+        _ => statusLabel(l10n, status),
+      };
 
   @override
   void initState() {
@@ -162,7 +167,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       setState(() => _summary = s);
       if (s.status == 'assembling') {
         messenger.showSnackBar(SnackBar(
-          content: Text('Switching to Take $take — ready in ~1 min'),
+          content: Text(context.l10n.songDetailSwitchingTake(take)),
           duration: const Duration(seconds: 4),
         ));
         // Resume polling so the UI auto-updates when assemble completes.
@@ -175,12 +180,12 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     } on FacelessApiException catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('Swap failed: ${e.message}')),
+        SnackBar(content: Text(context.l10n.songDetailSwapFailed(e.message))),
       );
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('Swap failed: $e')),
+        SnackBar(content: Text(context.l10n.songDetailSwapFailed('$e'))),
       );
     } finally {
       if (mounted) setState(() => _swapping = false);
@@ -198,19 +203,16 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Retry will re-charge'),
-          content: const Text(
-            'The song generation failed. Retrying will spawn a new Suno '
-            'job and deduct credits again. Continue?',
-          ),
+          title: Text(ctx.l10n.songDetailRetryTitle),
+          content: Text(ctx.l10n.songDetailRetryBody),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text(ctx.l10n.commonCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Retry'),
+              child: Text(ctx.l10n.commonRetry),
             ),
           ],
         ),
@@ -225,12 +227,12 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     } on FacelessApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Retry failed: ${e.message}')),
+        SnackBar(content: Text(context.l10n.songDetailRetryFailed(e.message))),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Retry failed: $e')),
+        SnackBar(content: Text(context.l10n.songDetailRetryFailed('$e'))),
       );
     }
   }
@@ -248,7 +250,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(
-          SnackBar(content: Text('Download failed: $e')),
+          SnackBar(content: Text(context.l10n.songDetailDownloadFailed('$e'))),
         );
       }
     }
@@ -258,21 +260,20 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this song?'),
+        title: Text(ctx.l10n.songDetailDeleteTitle),
         content: Text(
-          'This permanently removes the song, cover, takes, and final '
-          'video for "${s.title ?? s.theme ?? 'this run'}". '
-          'Credits already spent on Suno + Flux are not refunded.',
+          ctx.l10n.songDetailDeleteBody(
+              s.title ?? s.theme ?? ctx.l10n.songDetailThisRun),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(ctx.l10n.commonCancel)),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(ctx.l10n.commonDelete),
           ),
         ],
       ),
@@ -283,14 +284,16 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     try {
       await widget.client.deleteSong(widget.runId);
       if (mounted) {
-        messenger.showSnackBar(const SnackBar(content: Text('Song deleted')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.songDetailSongDeleted)));
         // Pop back to the songs list so the deleted run isn't still
         // showing on screen.
         nav.pop();
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.songDetailDeleteFailed('$e'))));
       }
     }
   }
@@ -316,40 +319,39 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Save this voice'),
+        title: Text(ctx.l10n.songDetailSaveVoiceTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Locks the singer\'s voice from this song so you can reuse '
-              'it on future generations.',
-              style: TextStyle(fontSize: 13),
+            Text(
+              ctx.l10n.songDetailSaveVoiceBody,
+              style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Voice name',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: ctx.l10n.songDetailVoiceNameLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: descCtrl,
               maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                helperText: 'Genre, mood, vocal qualities',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: ctx.l10n.songDetailDescriptionLabel,
+                helperText: ctx.l10n.songDetailDescriptionHelper,
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(ctx.l10n.commonCancel)),
           FilledButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save')),
+              child: Text(ctx.l10n.commonSave)),
         ],
       ),
     );
@@ -363,14 +365,14 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       );
       if (mounted) {
         messenger.showSnackBar(SnackBar(
-          content: Text('Voice "${persona.name}" saved. Use it on '
-              'the next song from the New Song form.'),
+          content: Text(context.l10n.songDetailVoiceSaved(persona.name)),
           duration: const Duration(seconds: 5),
         ));
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Save failed: $e')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.songDetailSaveFailed('$e'))));
       }
     }
   }
@@ -382,7 +384,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       await launchUrl(uri, webOnlyWindowName: '_blank');
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Download failed: $e')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.songDetailDownloadFailed('$e'))));
       }
     }
   }
@@ -397,21 +400,21 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       // pops the OS share UI (WhatsApp, Telegram, Mail, etc).
       // Falls through to the copy-link dialog if unsupported
       // (desktop Chrome on most platforms, Firefox).
-      if (await _tryNativeShare(info.url, _summary?.title ?? 'AI song')) {
+      if (await _tryNativeShare(
+          info.url, _summary?.title ?? context.l10n.songDetailAiSongFallback)) {
         return;
       }
+      if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Share this song'),
+          title: Text(ctx.l10n.songDetailShareTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Anyone with this link can play the song — no sign-in '
-                'needed. Paste it in WhatsApp, Twitter, or anywhere; '
-                'the preview shows the cover.',
-                style: TextStyle(fontSize: 13),
+              Text(
+                ctx.l10n.songDetailShareBody,
+                style: const TextStyle(fontSize: 13),
               ),
               const SizedBox(height: 12),
               SelectableText(
@@ -426,11 +429,11 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
+              child: Text(ctx.l10n.commonClose),
             ),
             TextButton.icon(
               icon: const Icon(Icons.open_in_new),
-              label: const Text('Open'),
+              label: Text(ctx.l10n.songDetailOpen),
               onPressed: () {
                 Navigator.pop(ctx);
                 launchUrl(Uri.parse(info.url),
@@ -439,12 +442,13 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             ),
             FilledButton.icon(
               icon: const Icon(Icons.copy),
-              label: const Text('Copy link'),
+              label: Text(ctx.l10n.songDetailCopyLink),
               onPressed: () async {
+                final copied = ctx.l10n.songDetailLinkCopied;
                 await Clipboard.setData(ClipboardData(text: info.url));
                 if (ctx.mounted) Navigator.pop(ctx);
                 messenger.showSnackBar(
-                  const SnackBar(content: Text('Link copied to clipboard')),
+                  SnackBar(content: Text(copied)),
                 );
               },
             ),
@@ -453,7 +457,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       );
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Share failed: $e')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.songDetailShareFailed('$e'))));
       }
     }
   }
@@ -470,23 +475,16 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Apply Faceless Lab watermark?'),
-        content: const Text(
-          "Re-renders the song's video to burn in the brand mark "
-          "(top-right of the frame) and embed copyright + share-URL "
-          "metadata into the MP4. The original audio and lyrics are "
-          "preserved.\n\n"
-          "Takes about 3–6 minutes. You can keep using the app — the "
-          "watermark will appear once the render completes.",
-        ),
+        title: Text(ctx.l10n.songDetailWatermarkTitle),
+        content: Text(ctx.l10n.songDetailWatermarkBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(ctx.l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Apply watermark'),
+            child: Text(ctx.l10n.songDetailApplyWatermark),
           ),
         ],
       ),
@@ -494,17 +492,17 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     if (confirmed != true || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(
-        duration: Duration(minutes: 8),
+      SnackBar(
+        duration: const Duration(minutes: 8),
         content: Row(
           children: [
-            SizedBox(
+            const SizedBox(
               width: 16, height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
-              child: Text('Applying watermark — this takes 3–6 minutes…'),
+              child: Text(context.l10n.songDetailApplyingWatermark),
             ),
           ],
         ),
@@ -517,7 +515,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            'Watermark applied in ${duration.toStringAsFixed(0)} seconds.',
+            context.l10n
+                .songDetailWatermarkApplied(duration.toStringAsFixed(0)),
           ),
         ),
       );
@@ -529,7 +528,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       if (!mounted) return;
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
-        SnackBar(content: Text('Watermark failed: $e')),
+        SnackBar(content: Text(context.l10n.songDetailWatermarkFailed('$e'))),
       );
     }
   }
@@ -538,17 +537,13 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Re-roll voice takes?'),
-        content: const Text(
-          'Generates two fresh Suno vocal takes (~\$0.05). Lyrics, '
-          'style, and cover are preserved. Use this when both '
-          'current takes missed the mood.',
-        ),
+        title: Text(ctx.l10n.songDetailRerollTitle),
+        content: Text(ctx.l10n.songDetailRerollBody),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(ctx.l10n.commonCancel)),
           FilledButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Re-roll')),
+              child: Text(ctx.l10n.songDetailReroll)),
         ],
       ),
     );
@@ -557,8 +552,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     try {
       await widget.client.rerollSongTakes(widget.runId);
       if (mounted) {
-        messenger.showSnackBar(const SnackBar(
-          content: Text('Re-rolling Suno takes — ready in ~2 min'),
+        messenger.showSnackBar(SnackBar(
+          content: Text(context.l10n.songDetailRerolling),
         ));
         setState(() {
           _summary = null;
@@ -567,7 +562,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Re-roll failed: $e')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.songDetailRerollFailed('$e'))));
       }
     }
   }
@@ -576,17 +572,13 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Regenerate cover?'),
-        content: const Text(
-          'Calls Flux for a fresh cover image (~\$0.03) and re-assembles '
-          'the video with the new cover. Suno output is preserved. '
-          'Takes ~2 minutes.',
-        ),
+        title: Text(ctx.l10n.songDetailRegenCoverTitle),
+        content: Text(ctx.l10n.songDetailRegenCoverBody),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(ctx.l10n.commonCancel)),
           FilledButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Regenerate')),
+              child: Text(ctx.l10n.songDetailRegenerate)),
         ],
       ),
     );
@@ -595,8 +587,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     try {
       await widget.client.regenerateSongCover(widget.runId);
       if (mounted) {
-        messenger.showSnackBar(const SnackBar(
-          content: Text('Regenerating cover — refresh in ~2 min'),
+        messenger.showSnackBar(SnackBar(
+          content: Text(context.l10n.songDetailRegeneratingCover),
         ));
         // Re-poll to show the new "generating_cover" status
         setState(() {
@@ -606,7 +598,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Failed: $e')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.songDetailFailed('$e'))));
       }
     }
   }
@@ -672,10 +665,11 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final s = _summary;
     if (s == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Song')),
+        appBar: AppBar(title: Text(l10n.songDetailTitleFallback)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -683,7 +677,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          s.title ?? 'Song',
+          s.title ?? l10n.songDetailTitleFallback,
           textDirection: TextDirection.rtl,
         ),
         actions: [
@@ -694,7 +688,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               && s.status != 'generating_cover'
               && s.status != 'assembling')
             IconButton(
-              tooltip: 'Delete this song',
+              tooltip: l10n.songDetailDeleteTooltip,
               icon: const Icon(Icons.delete_outline),
               onPressed: () => _showDeleteDialog(s),
             ),
@@ -717,7 +711,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.download),
-                    label: const Text('Download MP4'),
+                    label: Text(l10n.songDetailDownloadMp4),
                     onPressed: _downloadVideo,
                   ),
                 ),
@@ -725,7 +719,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.music_note),
-                    label: const Text('Download MP3'),
+                    label: Text(l10n.songDetailDownloadMp3),
                     onPressed: _downloadAudio,
                   ),
                 ),
@@ -737,7 +731,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             // cloning across generations.
             OutlinedButton.icon(
               icon: const Icon(Icons.record_voice_over),
-              label: const Text('Save this voice'),
+              label: Text(l10n.songDetailSaveVoiceTitle),
               onPressed: () => _showSavePersonaDialog(s),
             ),
             const SizedBox(height: 8),
@@ -746,7 +740,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.share),
-                    label: const Text('Share'),
+                    label: Text(l10n.songDetailShare),
                     onPressed: _shareSong,
                   ),
                 ),
@@ -754,7 +748,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Regenerate cover'),
+                    label: Text(l10n.songDetailRegenCoverButton),
                     onPressed: _regenerateCover,
                   ),
                 ),
@@ -765,7 +759,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             // missed the mark — lyrics + cover are preserved.
             OutlinedButton.icon(
               icon: const Icon(Icons.shuffle),
-              label: const Text('Re-roll voice takes'),
+              label: Text(l10n.songDetailRerollTakesButton),
               onPressed: _rerollTakes,
             ),
             const SizedBox(height: 8),
@@ -777,7 +771,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             if (!s.watermarked)
               OutlinedButton.icon(
                 icon: const Icon(Icons.verified_outlined),
-                label: const Text('Apply watermark'),
+                label: Text(l10n.songDetailApplyWatermark),
                 onPressed: () => _applyWatermark(s),
               ),
             const SizedBox(height: 16),
@@ -789,7 +783,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              label: Text(l10n.commonRetry),
               onPressed: _retry,
             ),
           ],
@@ -858,7 +852,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                _stageLabels[s.status] ?? s.status,
+                _stageLabel(context.l10n, s.status),
                 style: const TextStyle(fontWeight: FontWeight.w500),
               ),
             ),
@@ -880,14 +874,14 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           Expanded(
             child: FilledButton.icon(
               icon: const Icon(Icons.play_arrow),
-              label: const Text('Play video'),
+              label: Text(context.l10n.songDetailPlayVideo),
               onPressed: _initVideo,
             ),
           ),
           const SizedBox(width: 12),
           OutlinedButton.icon(
             icon: const Icon(Icons.download),
-            label: const Text('Download'),
+            label: Text(context.l10n.songDetailDownload),
             onPressed: _downloadVideo,
           ),
         ],
@@ -907,13 +901,13 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Could not load video: $_videoError',
+          Text(context.l10n.songDetailVideoLoadError(_videoError!),
               style: TextStyle(
                   color: Theme.of(context).colorScheme.error)),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
+            label: Text(context.l10n.commonRetry),
             onPressed: _initVideo,
           ),
         ],
@@ -1038,7 +1032,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Active take',
+            Text(context.l10n.songDetailActiveTake,
                 style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 8),
             Row(
@@ -1047,7 +1041,9 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                   child: OutlinedButton(
                     onPressed:
                         _swapping || s.chosenTake == 1 ? null : () => _swap(1),
-                    child: Text(s.chosenTake == 1 ? 'Take 1 ✓' : 'Use Take 1'),
+                    child: Text(s.chosenTake == 1
+                        ? context.l10n.songDetailTakeChosen(1)
+                        : context.l10n.songDetailUseTake(1)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1055,7 +1051,9 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                   child: OutlinedButton(
                     onPressed:
                         _swapping || s.chosenTake == 2 ? null : () => _swap(2),
-                    child: Text(s.chosenTake == 2 ? 'Take 2 ✓' : 'Use Take 2'),
+                    child: Text(s.chosenTake == 2
+                        ? context.l10n.songDetailTakeChosen(2)
+                        : context.l10n.songDetailUseTake(2)),
                   ),
                 ),
               ],
@@ -1074,21 +1072,20 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   // ─── error card ─────────────────────────────────────────────────────────────
 
   // Maps the worker's failure_stage to a human title + retry hint.
-  static const _stageInfo = <String, (String, String)>{
-    'generating_song':
-        ('Song generation failed',
-         'Retry will spawn a fresh Suno job — this re-charges credits.'),
-    'generating_cover':
-        ('Cover image failed',
-         'Suno output is saved. Retry only re-runs Flux + ffmpeg (~\$0.03).'),
-    'assembling':
-        ('Video assembly failed',
-         'Suno + cover are saved. Retry only re-runs ffmpeg (free).'),
-  };
+  static (String, String)? _stageInfo(AppLocalizations l10n, String? stage) =>
+      switch (stage) {
+        'generating_song' =>
+          (l10n.songDetailFailSongTitle, l10n.songDetailFailSongHint),
+        'generating_cover' =>
+          (l10n.songDetailFailCoverTitle, l10n.songDetailFailCoverHint),
+        'assembling' =>
+          (l10n.songDetailFailAssembleTitle, l10n.songDetailFailAssembleHint),
+        _ => null,
+      };
 
   Widget _buildErrorCard(BuildContext context, SongSummary s) {
-    final info = _stageInfo[s.failureStage ?? ''];
-    final title = info?.$1 ?? 'Error';
+    final info = _stageInfo(context.l10n, s.failureStage);
+    final title = info?.$1 ?? context.l10n.songDetailErrorFallback;
     final hint = info?.$2;
     final colors = Theme.of(context).colorScheme;
     return Card(
@@ -1107,7 +1104,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              s.lastError ?? 'Unknown error',
+              s.lastError ?? context.l10n.songDetailUnknownError,
               style: TextStyle(color: colors.onErrorContainer),
             ),
             if (hint != null) ...[

@@ -751,6 +751,804 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Offices, shops, after-hours'**
   String get homeThemeWorkplaceDesc;
+
+  /// No description provided for @newSongTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New song'**
+  String get newSongTitle;
+
+  /// No description provided for @newSongModeTheme.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a theme'**
+  String get newSongModeTheme;
+
+  /// No description provided for @newSongModeUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload a song'**
+  String get newSongModeUpload;
+
+  /// No description provided for @newSongUploadExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload a song and the AI makes a faithful cover — it keeps the melody and words, performed by a new voice. The voice will differ from the original. Review and edit the words before any credit is spent.'**
+  String get newSongUploadExplainer;
+
+  /// No description provided for @newSongThemeExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'The AI will write lyrics and a cover image prompt. You can review and edit both before any credit is spent.'**
+  String get newSongThemeExplainer;
+
+  /// No description provided for @newSongFileReadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read that file — try another.'**
+  String get newSongFileReadError;
+
+  /// No description provided for @newSongFilePickerError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the file picker: {error}'**
+  String newSongFilePickerError(String error);
+
+  /// No description provided for @newSongChooseAudioError.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose an audio file to cover'**
+  String get newSongChooseAudioError;
+
+  /// No description provided for @newSongThemeRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme is required'**
+  String get newSongThemeRequired;
+
+  /// No description provided for @newSongChooseAudioFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose audio file (mp3, m4a, wav…)'**
+  String get newSongChooseAudioFile;
+
+  /// No description provided for @newSongSelectedFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Selected: {name}'**
+  String newSongSelectedFile(String name);
+
+  /// No description provided for @newSongThemeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get newSongThemeLabel;
+
+  /// No description provided for @newSongThemeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A sad song about the moon'**
+  String get newSongThemeHint;
+
+  /// No description provided for @newSongCustomLyricsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom lyrics (optional)'**
+  String get newSongCustomLyricsLabel;
+
+  /// No description provided for @newSongCustomLyricsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave empty for AI'**
+  String get newSongCustomLyricsHint;
+
+  /// No description provided for @newSongQuickStyles.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick styles'**
+  String get newSongQuickStyles;
+
+  /// No description provided for @newSongPresetRomanticArabic.
+  ///
+  /// In en, this message translates to:
+  /// **'Romantic Arabic (reference)'**
+  String get newSongPresetRomanticArabic;
+
+  /// No description provided for @newSongPresetSadArabicBallad.
+  ///
+  /// In en, this message translates to:
+  /// **'Sad Arabic Ballad'**
+  String get newSongPresetSadArabicBallad;
+
+  /// No description provided for @newSongPresetKhaleejiRomantic.
+  ///
+  /// In en, this message translates to:
+  /// **'Khaleeji Romantic'**
+  String get newSongPresetKhaleejiRomantic;
+
+  /// No description provided for @newSongPresetUpbeatArabicPop.
+  ///
+  /// In en, this message translates to:
+  /// **'Upbeat Arabic Pop'**
+  String get newSongPresetUpbeatArabicPop;
+
+  /// No description provided for @newSongPresetAcousticSlow.
+  ///
+  /// In en, this message translates to:
+  /// **'Acoustic Slow'**
+  String get newSongPresetAcousticSlow;
+
+  /// No description provided for @newSongPresetEnglishPopBallad.
+  ///
+  /// In en, this message translates to:
+  /// **'English Pop Ballad'**
+  String get newSongPresetEnglishPopBallad;
+
+  /// No description provided for @newSongStyleHintLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Style hint'**
+  String get newSongStyleHintLabel;
+
+  /// No description provided for @newSongYourTouchLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Your touch (optional)'**
+  String get newSongYourTouchLabel;
+
+  /// No description provided for @newSongStyleHintHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a Quick style above, or type your own. Leave empty for AI to auto-pick.'**
+  String get newSongStyleHintHint;
+
+  /// No description provided for @newSongYourTouchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. make it more upbeat, add oud, slower tempo…'**
+  String get newSongYourTouchHint;
+
+  /// No description provided for @newSongLanguageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get newSongLanguageLabel;
+
+  /// No description provided for @newSongLanguageArabic.
+  ///
+  /// In en, this message translates to:
+  /// **'Arabic'**
+  String get newSongLanguageArabic;
+
+  /// No description provided for @newSongLanguageEnglish.
+  ///
+  /// In en, this message translates to:
+  /// **'English'**
+  String get newSongLanguageEnglish;
+
+  /// No description provided for @newSongLanguageSpanish.
+  ///
+  /// In en, this message translates to:
+  /// **'Spanish'**
+  String get newSongLanguageSpanish;
+
+  /// No description provided for @newSongLanguageFrench.
+  ///
+  /// In en, this message translates to:
+  /// **'French'**
+  String get newSongLanguageFrench;
+
+  /// No description provided for @newSongLanguageTurkish.
+  ///
+  /// In en, this message translates to:
+  /// **'Turkish'**
+  String get newSongLanguageTurkish;
+
+  /// No description provided for @newSongVocalLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Vocal'**
+  String get newSongVocalLabel;
+
+  /// No description provided for @newSongVocalMale.
+  ///
+  /// In en, this message translates to:
+  /// **'Male'**
+  String get newSongVocalMale;
+
+  /// No description provided for @newSongVocalFemale.
+  ///
+  /// In en, this message translates to:
+  /// **'Female'**
+  String get newSongVocalFemale;
+
+  /// No description provided for @newSongVocalAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto (Suno picks)'**
+  String get newSongVocalAuto;
+
+  /// No description provided for @newSongSunoModelLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Suno model'**
+  String get newSongSunoModelLabel;
+
+  /// No description provided for @newSongSunoModelHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Newer = better quality. V3_5 is excluded (obvious-AI sound).'**
+  String get newSongSunoModelHelper;
+
+  /// No description provided for @newSongSunoModelDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'Default (V5_5)'**
+  String get newSongSunoModelDefault;
+
+  /// No description provided for @newSongSunoModelLatest.
+  ///
+  /// In en, this message translates to:
+  /// **'V5_5 (latest)'**
+  String get newSongSunoModelLatest;
+
+  /// No description provided for @newSongSunoModelLegacy.
+  ///
+  /// In en, this message translates to:
+  /// **'V4 (legacy)'**
+  String get newSongSunoModelLegacy;
+
+  /// No description provided for @newSongVideoTypeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Video type'**
+  String get newSongVideoTypeLabel;
+
+  /// No description provided for @newSongVideoStatic.
+  ///
+  /// In en, this message translates to:
+  /// **'Static cover · 1 credit'**
+  String get newSongVideoStatic;
+
+  /// No description provided for @newSongVideoCinematic.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinematic video · 3 credits'**
+  String get newSongVideoCinematic;
+
+  /// No description provided for @newSongVoiceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice'**
+  String get newSongVoiceLabel;
+
+  /// No description provided for @newSongVoiceHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Reuse a saved singer voice from a previous song'**
+  String get newSongVoiceHelper;
+
+  /// No description provided for @newSongVoiceAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto (let Suno pick)'**
+  String get newSongVoiceAuto;
+
+  /// No description provided for @newSongGenerating.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating…'**
+  String get newSongGenerating;
+
+  /// No description provided for @newSongGenerateButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate my song'**
+  String get newSongGenerateButton;
+
+  /// No description provided for @newSongReviewNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'You will review lyrics + cover prompt before any credit is spent.'**
+  String get newSongReviewNotice;
+
+  /// No description provided for @approveReviewDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Review draft'**
+  String get approveReviewDraft;
+
+  /// No description provided for @approveAnalyzing.
+  ///
+  /// In en, this message translates to:
+  /// **'Analyzing the song…\nThis can take a few minutes for imports.'**
+  String get approveAnalyzing;
+
+  /// No description provided for @approvePreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing…'**
+  String get approvePreparing;
+
+  /// No description provided for @approveAnalysisFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Analysis failed — please try again'**
+  String get approveAnalysisFailed;
+
+  /// No description provided for @approveTimedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Timed out waiting for lyrics (exceeded 5 minutes)'**
+  String get approveTimedOut;
+
+  /// No description provided for @approveEditLyrics.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit lyrics'**
+  String get approveEditLyrics;
+
+  /// No description provided for @approveKeepSectionTags.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep Suno section tags ([Verse 1], [Chorus]) intact — Suno uses them to structure the arrangement. Dropping them gives a formless song.'**
+  String get approveKeepSectionTags;
+
+  /// No description provided for @approveLyricsTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'Lyrics exceed 4000 chars'**
+  String get approveLyricsTooLong;
+
+  /// No description provided for @approveLyricsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Lyrics'**
+  String get approveLyricsSection;
+
+  /// No description provided for @approveEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get approveEdit;
+
+  /// No description provided for @approveReroll.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-roll'**
+  String get approveReroll;
+
+  /// No description provided for @approveStyleSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Style'**
+  String get approveStyleSection;
+
+  /// No description provided for @approveCoverPromptSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Cover prompt'**
+  String get approveCoverPromptSection;
+
+  /// No description provided for @approveCost.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Cost: 1 credit (~{usd})} other{Cost: {count} credits (~{usd})}}'**
+  String approveCost(int count, String usd);
+
+  /// No description provided for @approveDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get approveDiscard;
+
+  /// No description provided for @approveApproveGenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve & generate'**
+  String get approveApproveGenerate;
+
+  /// No description provided for @songDetailTitleFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Song'**
+  String get songDetailTitleFallback;
+
+  /// No description provided for @songDetailStatusWaitingApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for approval'**
+  String get songDetailStatusWaitingApproval;
+
+  /// No description provided for @songDetailStatusGeneratingSong.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating song (Suno ~30 s)…'**
+  String get songDetailStatusGeneratingSong;
+
+  /// No description provided for @songDetailStatusGeneratingCover.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating cover (~15 s)…'**
+  String get songDetailStatusGeneratingCover;
+
+  /// No description provided for @songDetailStatusAssembling.
+  ///
+  /// In en, this message translates to:
+  /// **'Assembling video…'**
+  String get songDetailStatusAssembling;
+
+  /// No description provided for @songDetailStatusDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get songDetailStatusDone;
+
+  /// No description provided for @songDetailSwitchingTake.
+  ///
+  /// In en, this message translates to:
+  /// **'Switching to Take {take} — ready in ~1 min'**
+  String songDetailSwitchingTake(int take);
+
+  /// No description provided for @songDetailSwapFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Swap failed: {error}'**
+  String songDetailSwapFailed(String error);
+
+  /// No description provided for @songDetailRetryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry will re-charge'**
+  String get songDetailRetryTitle;
+
+  /// No description provided for @songDetailRetryBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The song generation failed. Retrying will spawn a new Suno job and deduct credits again. Continue?'**
+  String get songDetailRetryBody;
+
+  /// No description provided for @songDetailRetryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry failed: {error}'**
+  String songDetailRetryFailed(String error);
+
+  /// No description provided for @songDetailDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Download failed: {error}'**
+  String songDetailDownloadFailed(String error);
+
+  /// No description provided for @songDetailDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this song?'**
+  String get songDetailDeleteTitle;
+
+  /// No description provided for @songDetailDeleteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently removes the song, cover, takes, and final video for \"{title}\". Credits already spent on Suno + Flux are not refunded.'**
+  String songDetailDeleteBody(String title);
+
+  /// No description provided for @songDetailThisRun.
+  ///
+  /// In en, this message translates to:
+  /// **'this run'**
+  String get songDetailThisRun;
+
+  /// No description provided for @songDetailSongDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Song deleted'**
+  String get songDetailSongDeleted;
+
+  /// No description provided for @songDetailDeleteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete failed: {error}'**
+  String songDetailDeleteFailed(String error);
+
+  /// No description provided for @songDetailSaveVoiceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Save this voice'**
+  String get songDetailSaveVoiceTitle;
+
+  /// No description provided for @songDetailSaveVoiceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Locks the singer\'s voice from this song so you can reuse it on future generations.'**
+  String get songDetailSaveVoiceBody;
+
+  /// No description provided for @songDetailVoiceNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice name'**
+  String get songDetailVoiceNameLabel;
+
+  /// No description provided for @songDetailDescriptionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get songDetailDescriptionLabel;
+
+  /// No description provided for @songDetailDescriptionHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Genre, mood, vocal qualities'**
+  String get songDetailDescriptionHelper;
+
+  /// No description provided for @songDetailVoiceSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice \"{name}\" saved. Use it on the next song from the New Song form.'**
+  String songDetailVoiceSaved(String name);
+
+  /// No description provided for @songDetailSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Save failed: {error}'**
+  String songDetailSaveFailed(String error);
+
+  /// No description provided for @songDetailShareTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this song'**
+  String get songDetailShareTitle;
+
+  /// No description provided for @songDetailShareBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with this link can play the song — no sign-in needed. Paste it in WhatsApp, Twitter, or anywhere; the preview shows the cover.'**
+  String get songDetailShareBody;
+
+  /// No description provided for @songDetailOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get songDetailOpen;
+
+  /// No description provided for @songDetailCopyLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get songDetailCopyLink;
+
+  /// No description provided for @songDetailLinkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied to clipboard'**
+  String get songDetailLinkCopied;
+
+  /// No description provided for @songDetailShareFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Share failed: {error}'**
+  String songDetailShareFailed(String error);
+
+  /// No description provided for @songDetailAiSongFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'AI song'**
+  String get songDetailAiSongFallback;
+
+  /// No description provided for @songDetailWatermarkTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply Faceless Lab watermark?'**
+  String get songDetailWatermarkTitle;
+
+  /// No description provided for @songDetailWatermarkBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-renders the song\'s video to burn in the brand mark (top-right of the frame) and embed copyright + share-URL metadata into the MP4. The original audio and lyrics are preserved.\n\nTakes about 3–6 minutes. You can keep using the app — the watermark will appear once the render completes.'**
+  String get songDetailWatermarkBody;
+
+  /// No description provided for @songDetailApplyWatermark.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply watermark'**
+  String get songDetailApplyWatermark;
+
+  /// No description provided for @songDetailApplyingWatermark.
+  ///
+  /// In en, this message translates to:
+  /// **'Applying watermark — this takes 3–6 minutes…'**
+  String get songDetailApplyingWatermark;
+
+  /// No description provided for @songDetailWatermarkApplied.
+  ///
+  /// In en, this message translates to:
+  /// **'Watermark applied in {seconds} seconds.'**
+  String songDetailWatermarkApplied(String seconds);
+
+  /// No description provided for @songDetailWatermarkFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Watermark failed: {error}'**
+  String songDetailWatermarkFailed(String error);
+
+  /// No description provided for @songDetailRerollTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-roll voice takes?'**
+  String get songDetailRerollTitle;
+
+  /// No description provided for @songDetailRerollBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Generates two fresh Suno vocal takes (~\$0.05). Lyrics, style, and cover are preserved. Use this when both current takes missed the mood.'**
+  String get songDetailRerollBody;
+
+  /// No description provided for @songDetailReroll.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-roll'**
+  String get songDetailReroll;
+
+  /// No description provided for @songDetailRerolling.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-rolling Suno takes — ready in ~2 min'**
+  String get songDetailRerolling;
+
+  /// No description provided for @songDetailRerollFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-roll failed: {error}'**
+  String songDetailRerollFailed(String error);
+
+  /// No description provided for @songDetailRegenCoverTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Regenerate cover?'**
+  String get songDetailRegenCoverTitle;
+
+  /// No description provided for @songDetailRegenCoverBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls Flux for a fresh cover image (~\$0.03) and re-assembles the video with the new cover. Suno output is preserved. Takes ~2 minutes.'**
+  String get songDetailRegenCoverBody;
+
+  /// No description provided for @songDetailRegenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Regenerate'**
+  String get songDetailRegenerate;
+
+  /// No description provided for @songDetailRegeneratingCover.
+  ///
+  /// In en, this message translates to:
+  /// **'Regenerating cover — refresh in ~2 min'**
+  String get songDetailRegeneratingCover;
+
+  /// No description provided for @songDetailFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed: {error}'**
+  String songDetailFailed(String error);
+
+  /// No description provided for @songDetailDeleteTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this song'**
+  String get songDetailDeleteTooltip;
+
+  /// No description provided for @songDetailDownloadMp4.
+  ///
+  /// In en, this message translates to:
+  /// **'Download MP4'**
+  String get songDetailDownloadMp4;
+
+  /// No description provided for @songDetailDownloadMp3.
+  ///
+  /// In en, this message translates to:
+  /// **'Download MP3'**
+  String get songDetailDownloadMp3;
+
+  /// No description provided for @songDetailShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get songDetailShare;
+
+  /// No description provided for @songDetailRegenCoverButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Regenerate cover'**
+  String get songDetailRegenCoverButton;
+
+  /// No description provided for @songDetailRerollTakesButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-roll voice takes'**
+  String get songDetailRerollTakesButton;
+
+  /// No description provided for @songDetailPlayVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Play video'**
+  String get songDetailPlayVideo;
+
+  /// No description provided for @songDetailDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get songDetailDownload;
+
+  /// No description provided for @songDetailVideoLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load video: {error}'**
+  String songDetailVideoLoadError(String error);
+
+  /// No description provided for @songDetailActiveTake.
+  ///
+  /// In en, this message translates to:
+  /// **'Active take'**
+  String get songDetailActiveTake;
+
+  /// No description provided for @songDetailTakeChosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Take {take} ✓'**
+  String songDetailTakeChosen(int take);
+
+  /// No description provided for @songDetailUseTake.
+  ///
+  /// In en, this message translates to:
+  /// **'Use Take {take}'**
+  String songDetailUseTake(int take);
+
+  /// No description provided for @songDetailFailSongTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Song generation failed'**
+  String get songDetailFailSongTitle;
+
+  /// No description provided for @songDetailFailSongHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry will spawn a fresh Suno job — this re-charges credits.'**
+  String get songDetailFailSongHint;
+
+  /// No description provided for @songDetailFailCoverTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cover image failed'**
+  String get songDetailFailCoverTitle;
+
+  /// No description provided for @songDetailFailCoverHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Suno output is saved. Retry only re-runs Flux + ffmpeg (~\$0.03).'**
+  String get songDetailFailCoverHint;
+
+  /// No description provided for @songDetailFailAssembleTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Video assembly failed'**
+  String get songDetailFailAssembleTitle;
+
+  /// No description provided for @songDetailFailAssembleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Suno + cover are saved. Retry only re-runs ffmpeg (free).'**
+  String get songDetailFailAssembleHint;
+
+  /// No description provided for @songDetailErrorFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get songDetailErrorFallback;
+
+  /// No description provided for @songDetailUnknownError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown error'**
+  String get songDetailUnknownError;
 }
 
 class _AppLocalizationsDelegate
