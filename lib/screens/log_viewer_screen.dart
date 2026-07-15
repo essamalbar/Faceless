@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api/client.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 
 /// Tail of the run's subprocess log. Critical for diagnosing safety-filter
@@ -50,7 +51,7 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
     await Clipboard.setData(ClipboardData(text: _log));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Log copied')),
+      SnackBar(content: Text(context.l10n.logViewerCopied)),
     );
   }
 
@@ -58,13 +59,17 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Log — ${widget.runId}',
+        title: Text(context.l10n.logViewerTitle(widget.runId),
             style: const TextStyle(fontSize: 14)),
         actions: [
           IconButton(
               icon: const Icon(Icons.copy),
+              tooltip: context.l10n.logViewerCopyTooltip,
               onPressed: _log.isEmpty ? null : _copy),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
+          IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: context.l10n.homeRefresh,
+              onPressed: _refresh),
         ],
       ),
       body: _error != null
@@ -85,7 +90,7 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
                     reverse: true, // show tail by default
                     padding: const EdgeInsets.all(12),
                     child: SelectableText(
-                      _log.isEmpty ? '(empty)' : _log,
+                      _log.isEmpty ? context.l10n.logViewerEmpty : _log,
                       style: const TextStyle(
                         color: FacelessTheme.textPrimary,
                         fontFamily: 'monospace',

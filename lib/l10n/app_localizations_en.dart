@@ -1783,4 +1783,65 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get costFootnote =>
       'Counts Veo (\$0.10/sec) + Flux character sheet (\$0.05/run). Doesn\'t include ElevenLabs (~\$0.30/episode if used) or Anthropic / Groq script generation (<\$0.05/episode).';
+
+  @override
+  String videoPlayerClipTitle(String number) {
+    return 'Clip $number';
+  }
+
+  @override
+  String get videoPlayerUrlCopied => 'Video URL copied — paste anywhere';
+
+  @override
+  String get videoPlayerOpenLinkToDownload =>
+      'Open the link in a new tab to download';
+
+  @override
+  String get videoPlayerPlaybackError => 'playback error';
+
+  @override
+  String get videoPlayerCantRepairBody =>
+      'This video can\'t be repaired.\n\nThe mp4 file is corrupt at a level we can\'t fix without re-rendering. Use the Reroll button on the run page to regenerate the affected clips.';
+
+  @override
+  String get videoPlayerBackToRun => 'Back to run';
+
+  @override
+  String get videoPlayerRepairing => 'Repairing playback…';
+
+  @override
+  String logViewerTitle(String runId) {
+    return 'Log — $runId';
+  }
+
+  @override
+  String get logViewerCopyTooltip => 'Copy log';
+
+  @override
+  String get logViewerCopied => 'Log copied';
+
+  @override
+  String get logViewerEmpty => '(empty)';
+
+  @override
+  String get paywallOutOfCredits => 'Out of credits';
+
+  @override
+  String paywallNeedCredits(int needed, int balance, int missing) {
+    return 'This video needs $needed credits. You have $balance — $missing more to go. Top up to keep generating.';
+  }
+
+  @override
+  String get paywallSavedNotice =>
+      'Your script and characters are saved. After topping up, tap Resume on this run to continue.';
+
+  @override
+  String get paywallTopUp => 'Top up';
+
+  @override
+  String get misconfiguredTitle => 'Backend not configured.';
+
+  @override
+  String get misconfiguredBody =>
+      'Restart via scripts/run-app.sh so the Supabase + API URLs are baked into the build.';
 }

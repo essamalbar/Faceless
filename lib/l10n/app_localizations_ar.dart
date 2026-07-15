@@ -1818,4 +1818,65 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get costFootnote =>
       'يشمل Veo ‏(\$0.10/ثانية) + ورقة شخصيات Flux ‏(\$0.05/عملية). لا يشمل ElevenLabs ‏(~\$0.30/حلقة إن استُخدم) ولا توليد النصوص عبر Anthropic / Groq ‏(أقل من \$0.05/حلقة).';
+
+  @override
+  String videoPlayerClipTitle(String number) {
+    return 'مقطع $number';
+  }
+
+  @override
+  String get videoPlayerUrlCopied => 'تم نسخ رابط الفيديو — الصقه في أي مكان';
+
+  @override
+  String get videoPlayerOpenLinkToDownload =>
+      'افتح الرابط في تبويب جديد للتنزيل';
+
+  @override
+  String get videoPlayerPlaybackError => 'خطأ في التشغيل';
+
+  @override
+  String get videoPlayerCantRepairBody =>
+      'يتعذر إصلاح هذا الفيديو.\n\nملف mp4 تالف إلى درجة لا يمكن إصلاحها دون إعادة الرندرة. استخدم زر «إعادة التوليد» في صفحة العملية لإعادة توليد المقاطع المتأثرة.';
+
+  @override
+  String get videoPlayerBackToRun => 'العودة إلى العملية';
+
+  @override
+  String get videoPlayerRepairing => 'جارٍ إصلاح التشغيل…';
+
+  @override
+  String logViewerTitle(String runId) {
+    return 'السجل — $runId';
+  }
+
+  @override
+  String get logViewerCopyTooltip => 'نسخ السجل';
+
+  @override
+  String get logViewerCopied => 'تم نسخ السجل';
+
+  @override
+  String get logViewerEmpty => '(فارغ)';
+
+  @override
+  String get paywallOutOfCredits => 'نفد الرصيد';
+
+  @override
+  String paywallNeedCredits(int needed, int balance, int missing) {
+    return 'يحتاج هذا الفيديو إلى $needed من الأرصدة. لديك $balance — ينقصك $missing. عبّئ رصيدك لمواصلة التوليد.';
+  }
+
+  @override
+  String get paywallSavedNotice =>
+      'نصّك وشخصياتك محفوظة. بعد تعبئة الرصيد، انقر «استئناف» على هذه العملية للمتابعة.';
+
+  @override
+  String get paywallTopUp => 'تعبئة الرصيد';
+
+  @override
+  String get misconfiguredTitle => 'الخادم غير مُهيّأ.';
+
+  @override
+  String get misconfiguredBody =>
+      'أعد التشغيل عبر scripts/run-app.sh حتى تُدمَج روابط Supabase وواجهة API في البناء.';
 }

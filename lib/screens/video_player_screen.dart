@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../api/client.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -106,7 +107,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() {
           _isRepairing = false;
-          _error = 'Repair failed: ${e.message}';
+          _error = context.l10n.runDetailRepairFailed(e.message);
         });
       }
       return;
@@ -114,7 +115,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() {
           _isRepairing = false;
-          _error = 'Repair failed: $e';
+          _error = context.l10n.runDetailRepairFailed(e.toString());
         });
       }
       return;
@@ -134,7 +135,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // Tear it down and run the same auto-repair path as the init
       // failure. Don't fall through to setState — _tryAutoRepair will
       // rebuild once it's done.
-      final msg = c.value.errorDescription ?? 'playback error';
+      final msg = c.value.errorDescription ?? context.l10n.videoPlayerPlaybackError;
       _controller = null;
       c.removeListener(_onTick);
       c.dispose();
@@ -149,7 +150,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     await Clipboard.setData(ClipboardData(text: url.toString()));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Video URL copied — paste anywhere')),
+      SnackBar(content: Text(context.l10n.videoPlayerUrlCopied)),
     );
   }
 
@@ -161,9 +162,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final url = await _resolveUrl();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Open the link in a new tab to download'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text(context.l10n.videoPlayerOpenLinkToDownload),
+        duration: const Duration(seconds: 2),
       ),
     );
     // copy to clipboard so user can paste into a new tab if window-open is blocked
@@ -185,19 +186,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         title: Text(
           widget.clipIndex == null
               ? (widget.title ?? widget.runId)
-              : 'Clip ${widget.clipIndex.toString().padLeft(2, "0")}'
+              : '${context.l10n.videoPlayerClipTitle(widget.clipIndex.toString().padLeft(2, "0"))}'
                 '${widget.title != null ? " — ${widget.title}" : ""}',
           textDirection: TextDirection.rtl,
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.link),
-            tooltip: 'Copy link',
+            tooltip: context.l10n.songDetailCopyLink,
             onPressed: _copyLink,
           ),
           IconButton(
             icon: const Icon(Icons.download),
-            tooltip: 'Download',
+            tooltip: context.l10n.songDetailDownload,
             onPressed: _download,
           ),
         ],
@@ -218,31 +219,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             const Icon(Icons.movie_filter_outlined,
                 color: Colors.white70, size: 56),
             const SizedBox(height: 16),
-            const Text(
-              'This video can\'t be repaired.\n\n'
-              'The mp4 file is corrupt at a level we can\'t fix without '
-              're-rendering. Use the Reroll button on the run page to '
-              'regenerate the affected clips.',
-              style: TextStyle(color: Colors.white),
+            Text(
+              context.l10n.videoPlayerCantRepairBody,
+              style: const TextStyle(color: Colors.white),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Back to run'),
+              child: Text(context.l10n.videoPlayerBackToRun),
             ),
           ],
         ),
       );
     }
     if (_isRepairing) {
-      return const Column(
+      return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 12),
-          Text('Repairing playback…',
-              style: TextStyle(color: Colors.white)),
+          const CircularProgressIndicator(),
+          const SizedBox(height: 12),
+          Text(context.l10n.videoPlayerRepairing,
+              style: const TextStyle(color: Colors.white)),
         ],
       );
     }

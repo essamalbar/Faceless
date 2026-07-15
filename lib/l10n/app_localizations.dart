@@ -3169,6 +3169,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Counts Veo (\$0.10/sec) + Flux character sheet (\$0.05/run). Doesn\'t include ElevenLabs (~\$0.30/episode if used) or Anthropic / Groq script generation (<\$0.05/episode).'**
   String get costFootnote;
+
+  /// No description provided for @videoPlayerClipTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clip {number}'**
+  String videoPlayerClipTitle(String number);
+
+  /// No description provided for @videoPlayerUrlCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Video URL copied — paste anywhere'**
+  String get videoPlayerUrlCopied;
+
+  /// No description provided for @videoPlayerOpenLinkToDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the link in a new tab to download'**
+  String get videoPlayerOpenLinkToDownload;
+
+  /// No description provided for @videoPlayerPlaybackError.
+  ///
+  /// In en, this message translates to:
+  /// **'playback error'**
+  String get videoPlayerPlaybackError;
+
+  /// No description provided for @videoPlayerCantRepairBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This video can\'t be repaired.\n\nThe mp4 file is corrupt at a level we can\'t fix without re-rendering. Use the Reroll button on the run page to regenerate the affected clips.'**
+  String get videoPlayerCantRepairBody;
+
+  /// No description provided for @videoPlayerBackToRun.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to run'**
+  String get videoPlayerBackToRun;
+
+  /// No description provided for @videoPlayerRepairing.
+  ///
+  /// In en, this message translates to:
+  /// **'Repairing playback…'**
+  String get videoPlayerRepairing;
+
+  /// No description provided for @logViewerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Log — {runId}'**
+  String logViewerTitle(String runId);
+
+  /// No description provided for @logViewerCopyTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy log'**
+  String get logViewerCopyTooltip;
+
+  /// No description provided for @logViewerCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Log copied'**
+  String get logViewerCopied;
+
+  /// No description provided for @logViewerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'(empty)'**
+  String get logViewerEmpty;
+
+  /// No description provided for @paywallOutOfCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'Out of credits'**
+  String get paywallOutOfCredits;
+
+  /// No description provided for @paywallNeedCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'This video needs {needed} credits. You have {balance} — {missing} more to go. Top up to keep generating.'**
+  String paywallNeedCredits(int needed, int balance, int missing);
+
+  /// No description provided for @paywallSavedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Your script and characters are saved. After topping up, tap Resume on this run to continue.'**
+  String get paywallSavedNotice;
+
+  /// No description provided for @paywallTopUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Top up'**
+  String get paywallTopUp;
+
+  /// No description provided for @misconfiguredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backend not configured.'**
+  String get misconfiguredTitle;
+
+  /// No description provided for @misconfiguredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Restart via scripts/run-app.sh so the Supabase + API URLs are baked into the build.'**
+  String get misconfiguredBody;
 }
 
 class _AppLocalizationsDelegate

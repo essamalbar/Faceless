@@ -81,14 +81,13 @@ class _MisconfiguredScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       body: Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text(
-            'Backend not configured.\n\n'
-            'Restart via scripts/run-app.sh so the Supabase + API URLs are '
-            'baked into the build.',
+            '${context.l10n.misconfiguredTitle}\n\n'
+            '${context.l10n.misconfiguredBody}',
             textAlign: TextAlign.center,
           ),
         ),
