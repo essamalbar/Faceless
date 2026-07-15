@@ -1,0 +1,22 @@
+{
+  "@@locale": "en",
+  "appTitle": "Faceless Lab",
+  "commonCancel": "Cancel",
+  "commonSave": "Save",
+  "commonRetry": "Retry",
+  "commonClose": "Close",
+  "commonDelete": "Delete",
+  "commonSignIn": "Sign in",
+  "commonGetStarted": "Get started",
+  "settingsLanguage": "Language",
+  "settingsLanguageAuto": "Auto (device)",
+  "statusAnalyzing": "Analyzing",
+  "statusAwaitingApproval": "Awaiting approval",
+  "statusGeneratingSong": "Generating song",
+  "statusGeneratingCover": "Generating cover",
+  "statusAssembling": "Assembling",
+  "statusComplete": "Complete",
+  "statusFailed": "Failed",
+  "statusRunning": "Running",
+  "statusCancelled": "Cancelled"
+}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'l10n/l10n.dart';
 import 'screens/home_screen.dart';
 import 'screens/landing_screen.dart';
 import 'theme.dart';
@@ -11,6 +12,7 @@ const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LocaleController.load(); // restore persisted AR/EN choice
   if (_supabaseUrl.isNotEmpty && _supabaseAnonKey.isNotEmpty) {
     await Supabase.initialize(
       url: _supabaseUrl,
@@ -25,10 +27,17 @@ class FacelessApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return ValueListenableBuilder<Locale?>(
+      valueListenable: LocaleController.instance,
+      builder: (context, locale, _) => MaterialApp(
       title: 'Faceless',
       debugShowCheckedModeBanner: false,
-      theme: FacelessTheme.build(),
+      theme: FacelessTheme.build(locale: locale),
+      // AR/EN localization: null locale = follow device; switching the
+      // controller rebuilds the whole app instantly.
+      locale: locale,
+      supportedLocales: const [Locale('en'), Locale('ar')],
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
       // Global mesh-gradient backdrop behind every route (scaffolds are
       // transparent), so the whole app shares the brand background.
       builder: (context, child) => MeshBackground(child: child ?? const SizedBox()),
@@ -61,6 +70,7 @@ class FacelessApp extends StatelessWidget {
             },
           );
         },
+      ),
       ),
     );
   }

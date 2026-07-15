@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
   http: ^1.2.2                          # API client
   flutter_secure_storage: ^9.2.2        # encrypted store for token + base URL
@@ -60,6 +62,7 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  generate: true # gen-l10n: build AppLocalizations from lib/l10n/*.arb
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

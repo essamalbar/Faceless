@@ -1,0 +1,22 @@
+{
+  "@@locale": "ar",
+  "appTitle": "فيسلس لاب",
+  "commonCancel": "إلغاء",
+  "commonSave": "حفظ",
+  "commonRetry": "إعادة المحاولة",
+  "commonClose": "إغلاق",
+  "commonDelete": "حذف",
+  "commonSignIn": "تسجيل الدخول",
+  "commonGetStarted": "ابدأ الآن",
+  "settingsLanguage": "اللغة",
+  "settingsLanguageAuto": "تلقائي (لغة الجهاز)",
+  "statusAnalyzing": "جارٍ التحليل",
+  "statusAwaitingApproval": "بانتظار الموافقة",
+  "statusGeneratingSong": "جارٍ توليد الأغنية",
+  "statusGeneratingCover": "جارٍ توليد الغلاف",
+  "statusAssembling": "جارٍ التجميع",
+  "statusComplete": "مكتملة",
+  "statusFailed": "فشلت",
+  "statusRunning": "قيد التشغيل",
+  "statusCancelled": "أُلغيت"
+}
