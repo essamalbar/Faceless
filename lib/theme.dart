@@ -91,8 +91,29 @@ class FacelessTheme {
     return base.copyWith(
       colorScheme: scheme,
       // Transparent so the global MeshBackground (main.dart) shows through.
+      // canvasColor must stay SOLID: dropdown/popup menus paint on it — a
+      // transparent canvas makes open dropdowns overlap the page behind
+      // them (drop.png bug).
       scaffoldBackgroundColor: Colors.transparent,
-      canvasColor: Colors.transparent,
+      canvasColor: surface,
+      popupMenuTheme: PopupMenuThemeData(
+        color: surface,
+        elevation: 6,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: border),
+        ),
+      ),
+      dropdownMenuTheme: DropdownMenuThemeData(
+        menuStyle: MenuStyle(
+          backgroundColor: WidgetStateProperty.all(surface),
+          elevation: WidgetStateProperty.all(6),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+      ),
       textTheme: textTheme,
       cardTheme: CardThemeData(
         color: surface,
