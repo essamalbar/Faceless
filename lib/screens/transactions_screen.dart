@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 
 /// Recent credit-ledger transactions for the current user. Powered
@@ -31,17 +32,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     await _future;
   }
 
-  // Per-kind icon + sign-color. Falls back to a neutral icon for
-  // any unknown kind so a future schema change doesn't crash the UI.
-  static const _kindLabels = <String, String>{
-    'run_charge': 'Song spend',
-    'song-spend': 'Song spend',
-    'run_refund': 'Refund',
-    'admin_credit': 'Admin credit',
-    'signup_grant': 'Welcome credit',
-    'subscription_renewal': 'Subscription',
-    'topup': 'Top-up',
-  };
+  // Per-kind label. Falls back to the raw kind for any unknown value so a
+  // future schema change doesn't crash the UI.
+  static String _kindLabel(AppLocalizations l10n, String kind) =>
+      switch (kind) {
+        'run_charge' || 'song-spend' => l10n.transactionsKindSongSpend,
+        'run_refund' => l10n.transactionsKindRefund,
+        'admin_credit' => l10n.transactionsKindAdminCredit,
+        'signup_grant' => l10n.transactionsKindWelcomeCredit,
+        'subscription_renewal' => l10n.transactionsKindSubscription,
+        'topup' => l10n.transactionsKindTopup,
+        _ => kind,
+      };
 
   IconData _iconFor(String kind, int amount) {
     if (amount > 0) return Icons.add_circle_outline;
@@ -66,8 +68,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('Transactions')),
+      appBar: AppBar(title: Text(l10n.transactionsTitle)),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: FutureBuilder<List<CreditTx>>(
@@ -81,7 +84,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    'Failed to load: ${snap.error}',
+                    l10n.transactionsLoadFailed('${snap.error}'),
                     style: TextStyle(
                         color: Theme.of(context).colorScheme.error),
                     textAlign: TextAlign.center,
@@ -92,18 +95,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             final txs = snap.data ?? [];
             if (txs.isEmpty) {
               return ListView(
-                children: const [
-                  SizedBox(height: 80),
-                  Icon(Icons.receipt_long,
+                children: [
+                  const SizedBox(height: 80),
+                  const Icon(Icons.receipt_long,
                       size: 64, color: FacelessTheme.textSecondary),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
                     child: Text(
-                      'No transactions yet.\n'
-                      'Generate a song or buy credits to see activity here.',
+                      l10n.transactionsEmpty,
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: FacelessTheme.textSecondary),
+                      style: const TextStyle(
+                          color: FacelessTheme.textSecondary),
                     ),
                   ),
                 ],
@@ -116,7 +119,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               itemBuilder: (ctx, i) {
                 final t = txs[i];
                 final amount = t.amount;
-                final label = _kindLabels[t.kind] ?? t.kind;
+                final label = _kindLabel(l10n, t.kind);
                 final sign = amount > 0 ? '+' : '';
                 return ListTile(
                   leading: Icon(_iconFor(t.kind, amount),

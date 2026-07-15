@@ -1044,4 +1044,220 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get onboardingSlide4Body =>
       'انقر أدناه واكتب جملة واحدة. سينتج النظام نصًا عربيًا كاملًا أو كلمات أغنية لتراجعها — كل ذلك قبل إنفاق أي رصيد.';
+
+  @override
+  String get settingsResetDefaultsTitle =>
+      'إعادة الضبط إلى إعدادات المشغّل الافتراضية؟';
+
+  @override
+  String get settingsResetDefaultsBody =>
+      'يمسح هذا عنوان الخادم المحفوظ من الجهاز. سيعود التطبيق عند التشغيل التالي إلى القيمة التي ضمّنها سكربت التشغيل (run-app.sh) عبر ‎--dart-define. استخدم هذا عندما يتغيّر عنوان النفق وتصبح القيمة المحفوظة قديمة.';
+
+  @override
+  String get settingsReset => 'إعادة الضبط';
+
+  @override
+  String get settingsSignOutTitle => 'تسجيل الخروج؟';
+
+  @override
+  String get settingsSignOutBody =>
+      'ستحتاج إلى تسجيل الدخول مجددًا للوصول إلى مكتبتك ورصيدك.';
+
+  @override
+  String get settingsSignOut => 'تسجيل الخروج';
+
+  @override
+  String get settingsSectionSubscription => 'الاشتراك';
+
+  @override
+  String get settingsPlanCredits => 'الخطة والرصيد';
+
+  @override
+  String get settingsPlanCreditsSubtitle => 'اعرض الخطط وأدر اشتراكك';
+
+  @override
+  String get settingsFreePlanSubtitle =>
+      'أنت على الخطة المجانية — اشترك لإخراج الفيديوهات';
+
+  @override
+  String settingsManagePlanSubtitle(String plan) {
+    return 'أدر خطة $plan الخاصة بك';
+  }
+
+  @override
+  String get settingsSectionAdvanced => 'متقدم';
+
+  @override
+  String get settingsSectionAbout => 'حول التطبيق';
+
+  @override
+  String get settingsTestConnected => '✓ تم الاتصال';
+
+  @override
+  String settingsTestFailed(String error) {
+    return '✗ $error';
+  }
+
+  @override
+  String get settingsResetDone =>
+      '✓ تمت إعادة الضبط — تُستخدم إعدادات المشغّل الافتراضية';
+
+  @override
+  String get settingsNotSignedIn => 'لم يتم تسجيل الدخول';
+
+  @override
+  String get settingsFreePlan => 'الخطة المجانية';
+
+  @override
+  String settingsPlanName(String plan) {
+    return 'خطة $plan';
+  }
+
+  @override
+  String get settingsServerConnection => 'الاتصال بالخادم';
+
+  @override
+  String get settingsServerConnectionSubtitle =>
+      'تجاوز عنوان API — للاستضافة الذاتية وتصحيح الأخطاء';
+
+  @override
+  String get settingsFirstTimeSetup =>
+      'الإعداد لأول مرة. الصق عنوان API الذي يطبعه run-app.sh، ثم انقر «اختبار» ثم «حفظ».';
+
+  @override
+  String get settingsServerUrlLabel => 'عنوان الخادم';
+
+  @override
+  String get settingsUrlRequired => 'مطلوب';
+
+  @override
+  String get settingsUrlMustStartWithHttp =>
+      'يجب أن يبدأ بـ http:// أو https://';
+
+  @override
+  String get settingsTest => 'اختبار';
+
+  @override
+  String get settingsResetToLauncherDefaults =>
+      'إعادة الضبط إلى إعدادات المشغّل الافتراضية';
+
+  @override
+  String get settingsAboutApp => 'التطبيق';
+
+  @override
+  String get settingsAboutVersion => 'الإصدار';
+
+  @override
+  String get settingsAboutMadeFor => 'صُنع من أجل';
+
+  @override
+  String get settingsAboutMadeForValue => 'القصص العربية القصيرة';
+
+  @override
+  String get billingTitle => 'الفوترة';
+
+  @override
+  String get billingSubscriptions => 'الاشتراكات';
+
+  @override
+  String billingPricePerMonth(String price) {
+    return '$price / شهريًا';
+  }
+
+  @override
+  String get billingManageSubscription => 'إدارة الاشتراك (Stripe)';
+
+  @override
+  String get billingRecentTransactions => 'أحدث المعاملات';
+
+  @override
+  String get billingNoTransactions => 'لا توجد معاملات بعد.';
+
+  @override
+  String get billingBalance => 'الرصيد';
+
+  @override
+  String billingPlanLabel(String plan) {
+    return 'الخطة: $plan';
+  }
+
+  @override
+  String get billingPlanFree => 'مجانية';
+
+  @override
+  String billingCancelsOn(String date) {
+    return 'يُلغى في $date';
+  }
+
+  @override
+  String billingRenewsOn(String date) {
+    return 'يتجدد في $date';
+  }
+
+  @override
+  String get billingCurrentPlanChip => 'الحالية';
+
+  @override
+  String get billingSubscribe => 'اشترك';
+
+  @override
+  String get transactionsTitle => 'المعاملات';
+
+  @override
+  String get transactionsKindSongSpend => 'إنفاق أغنية';
+
+  @override
+  String get transactionsKindRefund => 'استرداد';
+
+  @override
+  String get transactionsKindAdminCredit => 'رصيد إداري';
+
+  @override
+  String get transactionsKindWelcomeCredit => 'رصيد ترحيبي';
+
+  @override
+  String get transactionsKindSubscription => 'اشتراك';
+
+  @override
+  String get transactionsKindTopup => 'تعبئة رصيد';
+
+  @override
+  String transactionsLoadFailed(String error) {
+    return 'فشل التحميل: $error';
+  }
+
+  @override
+  String get transactionsEmpty =>
+      'لا توجد معاملات بعد.\nأنشئ أغنية أو اشترِ رصيدًا لترى النشاط هنا.';
+
+  @override
+  String personasDeleteTitle(String name) {
+    return 'حذف \"$name\"؟';
+  }
+
+  @override
+  String get personasDeleteBody =>
+      'يزيل هذا الصوت المحفوظ. الأغاني التي أنشأتها به سابقًا تحتفظ بصوتها — الإنشاءات المستقبلية فقط هي التي تفقد التثبيت على هذا الصوت.';
+
+  @override
+  String personasRemoved(String name) {
+    return 'تمت إزالة \"$name\"';
+  }
+
+  @override
+  String personasLoadFailed(String error) {
+    return 'فشل تحميل الأصوات: $error';
+  }
+
+  @override
+  String get personasEmpty =>
+      'لا توجد أصوات محفوظة بعد.\n\nأنشئ أغنية، ثم انقر «حفظ هذا الصوت» في شاشة تفاصيلها لتثبيت المغني للأغاني القادمة.';
+
+  @override
+  String personasFromSong(String runId, int take) {
+    return 'من الأغنية $runId · اللقطة $take';
+  }
+
+  @override
+  String get personasDeleteTooltip => 'حذف هذا الصوت';
 }

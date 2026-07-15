@@ -1927,6 +1927,366 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tap below and write a sentence. The system will produce a full Arabic script or song lyrics for you to review — all before any credit is spent.'**
   String get onboardingSlide4Body;
+
+  /// No description provided for @settingsResetDefaultsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to launcher defaults?'**
+  String get settingsResetDefaultsTitle;
+
+  /// No description provided for @settingsResetDefaultsBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This clears your saved Server URL from the device. The app will fall back to whatever the launcher script (run-app.sh) baked in via --dart-define on the next launch. Use this when the tunnel URL has changed and the saved value is stale.'**
+  String get settingsResetDefaultsBody;
+
+  /// No description provided for @settingsReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get settingsReset;
+
+  /// No description provided for @settingsSignOutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out?'**
+  String get settingsSignOutTitle;
+
+  /// No description provided for @settingsSignOutBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ll need to sign in again to access your library and credits.'**
+  String get settingsSignOutBody;
+
+  /// No description provided for @settingsSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get settingsSignOut;
+
+  /// No description provided for @settingsSectionSubscription.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscription'**
+  String get settingsSectionSubscription;
+
+  /// No description provided for @settingsPlanCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan & credits'**
+  String get settingsPlanCredits;
+
+  /// No description provided for @settingsPlanCreditsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'View plans, manage your subscription'**
+  String get settingsPlanCreditsSubtitle;
+
+  /// No description provided for @settingsFreePlanSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'You are on the Free plan — subscribe to render videos'**
+  String get settingsFreePlanSubtitle;
+
+  /// No description provided for @settingsManagePlanSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage your {plan} plan'**
+  String settingsManagePlanSubtitle(String plan);
+
+  /// No description provided for @settingsSectionAdvanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced'**
+  String get settingsSectionAdvanced;
+
+  /// No description provided for @settingsSectionAbout.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsSectionAbout;
+
+  /// No description provided for @settingsTestConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'✓ Connected'**
+  String get settingsTestConnected;
+
+  /// No description provided for @settingsTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'✗ {error}'**
+  String settingsTestFailed(String error);
+
+  /// No description provided for @settingsResetDone.
+  ///
+  /// In en, this message translates to:
+  /// **'✓ Reset — using launcher defaults'**
+  String get settingsResetDone;
+
+  /// No description provided for @settingsNotSignedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Not signed in'**
+  String get settingsNotSignedIn;
+
+  /// No description provided for @settingsFreePlan.
+  ///
+  /// In en, this message translates to:
+  /// **'Free plan'**
+  String get settingsFreePlan;
+
+  /// No description provided for @settingsPlanName.
+  ///
+  /// In en, this message translates to:
+  /// **'{plan} plan'**
+  String settingsPlanName(String plan);
+
+  /// No description provided for @settingsServerConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Server connection'**
+  String get settingsServerConnection;
+
+  /// No description provided for @settingsServerConnectionSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Override the API URL — for self-hosters and debugging'**
+  String get settingsServerConnectionSubtitle;
+
+  /// No description provided for @settingsFirstTimeSetup.
+  ///
+  /// In en, this message translates to:
+  /// **'First-time setup. Paste the API URL printed by run-app.sh, then tap Test → Save.'**
+  String get settingsFirstTimeSetup;
+
+  /// No description provided for @settingsServerUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Server URL'**
+  String get settingsServerUrlLabel;
+
+  /// No description provided for @settingsUrlRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'required'**
+  String get settingsUrlRequired;
+
+  /// No description provided for @settingsUrlMustStartWithHttp.
+  ///
+  /// In en, this message translates to:
+  /// **'must start with http:// or https://'**
+  String get settingsUrlMustStartWithHttp;
+
+  /// No description provided for @settingsTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get settingsTest;
+
+  /// No description provided for @settingsResetToLauncherDefaults.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to launcher defaults'**
+  String get settingsResetToLauncherDefaults;
+
+  /// No description provided for @settingsAboutApp.
+  ///
+  /// In en, this message translates to:
+  /// **'App'**
+  String get settingsAboutApp;
+
+  /// No description provided for @settingsAboutVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get settingsAboutVersion;
+
+  /// No description provided for @settingsAboutMadeFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Made for'**
+  String get settingsAboutMadeFor;
+
+  /// No description provided for @settingsAboutMadeForValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Arabic short-form storytelling'**
+  String get settingsAboutMadeForValue;
+
+  /// No description provided for @billingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Billing'**
+  String get billingTitle;
+
+  /// No description provided for @billingSubscriptions.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscriptions'**
+  String get billingSubscriptions;
+
+  /// No description provided for @billingPricePerMonth.
+  ///
+  /// In en, this message translates to:
+  /// **'{price} / month'**
+  String billingPricePerMonth(String price);
+
+  /// No description provided for @billingManageSubscription.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage subscription (Stripe)'**
+  String get billingManageSubscription;
+
+  /// No description provided for @billingRecentTransactions.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent transactions'**
+  String get billingRecentTransactions;
+
+  /// No description provided for @billingNoTransactions.
+  ///
+  /// In en, this message translates to:
+  /// **'No transactions yet.'**
+  String get billingNoTransactions;
+
+  /// No description provided for @billingBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Balance'**
+  String get billingBalance;
+
+  /// No description provided for @billingPlanLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan: {plan}'**
+  String billingPlanLabel(String plan);
+
+  /// No description provided for @billingPlanFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Free'**
+  String get billingPlanFree;
+
+  /// No description provided for @billingCancelsOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancels {date}'**
+  String billingCancelsOn(String date);
+
+  /// No description provided for @billingRenewsOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Renews {date}'**
+  String billingRenewsOn(String date);
+
+  /// No description provided for @billingCurrentPlanChip.
+  ///
+  /// In en, this message translates to:
+  /// **'current'**
+  String get billingCurrentPlanChip;
+
+  /// No description provided for @billingSubscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscribe'**
+  String get billingSubscribe;
+
+  /// No description provided for @transactionsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transactions'**
+  String get transactionsTitle;
+
+  /// No description provided for @transactionsKindSongSpend.
+  ///
+  /// In en, this message translates to:
+  /// **'Song spend'**
+  String get transactionsKindSongSpend;
+
+  /// No description provided for @transactionsKindRefund.
+  ///
+  /// In en, this message translates to:
+  /// **'Refund'**
+  String get transactionsKindRefund;
+
+  /// No description provided for @transactionsKindAdminCredit.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin credit'**
+  String get transactionsKindAdminCredit;
+
+  /// No description provided for @transactionsKindWelcomeCredit.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome credit'**
+  String get transactionsKindWelcomeCredit;
+
+  /// No description provided for @transactionsKindSubscription.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscription'**
+  String get transactionsKindSubscription;
+
+  /// No description provided for @transactionsKindTopup.
+  ///
+  /// In en, this message translates to:
+  /// **'Top-up'**
+  String get transactionsKindTopup;
+
+  /// No description provided for @transactionsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load: {error}'**
+  String transactionsLoadFailed(String error);
+
+  /// No description provided for @transactionsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No transactions yet.\nGenerate a song or buy credits to see activity here.'**
+  String get transactionsEmpty;
+
+  /// No description provided for @personasDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"{name}\"?'**
+  String personasDeleteTitle(String name);
+
+  /// No description provided for @personasDeleteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes the saved voice. Songs you already generated with it keep their audio — only future generations lose the lock to this voice.'**
+  String get personasDeleteBody;
+
+  /// No description provided for @personasRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{name}\" removed'**
+  String personasRemoved(String name);
+
+  /// No description provided for @personasLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load voices: {error}'**
+  String personasLoadFailed(String error);
+
+  /// No description provided for @personasEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No saved voices yet.\n\nGenerate a song, then tap \"Save this voice\" on its detail screen to pin the singer for future songs.'**
+  String get personasEmpty;
+
+  /// No description provided for @personasFromSong.
+  ///
+  /// In en, this message translates to:
+  /// **'From song {runId} · take {take}'**
+  String personasFromSong(String runId, int take);
+
+  /// No description provided for @personasDeleteTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this voice'**
+  String get personasDeleteTooltip;
 }
 
 class _AppLocalizationsDelegate

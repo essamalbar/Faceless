@@ -1030,4 +1030,218 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get onboardingSlide4Body =>
       'Tap below and write a sentence. The system will produce a full Arabic script or song lyrics for you to review — all before any credit is spent.';
+
+  @override
+  String get settingsResetDefaultsTitle => 'Reset to launcher defaults?';
+
+  @override
+  String get settingsResetDefaultsBody =>
+      'This clears your saved Server URL from the device. The app will fall back to whatever the launcher script (run-app.sh) baked in via --dart-define on the next launch. Use this when the tunnel URL has changed and the saved value is stale.';
+
+  @override
+  String get settingsReset => 'Reset';
+
+  @override
+  String get settingsSignOutTitle => 'Sign out?';
+
+  @override
+  String get settingsSignOutBody =>
+      'You\'ll need to sign in again to access your library and credits.';
+
+  @override
+  String get settingsSignOut => 'Sign out';
+
+  @override
+  String get settingsSectionSubscription => 'Subscription';
+
+  @override
+  String get settingsPlanCredits => 'Plan & credits';
+
+  @override
+  String get settingsPlanCreditsSubtitle =>
+      'View plans, manage your subscription';
+
+  @override
+  String get settingsFreePlanSubtitle =>
+      'You are on the Free plan — subscribe to render videos';
+
+  @override
+  String settingsManagePlanSubtitle(String plan) {
+    return 'Manage your $plan plan';
+  }
+
+  @override
+  String get settingsSectionAdvanced => 'Advanced';
+
+  @override
+  String get settingsSectionAbout => 'About';
+
+  @override
+  String get settingsTestConnected => '✓ Connected';
+
+  @override
+  String settingsTestFailed(String error) {
+    return '✗ $error';
+  }
+
+  @override
+  String get settingsResetDone => '✓ Reset — using launcher defaults';
+
+  @override
+  String get settingsNotSignedIn => 'Not signed in';
+
+  @override
+  String get settingsFreePlan => 'Free plan';
+
+  @override
+  String settingsPlanName(String plan) {
+    return '$plan plan';
+  }
+
+  @override
+  String get settingsServerConnection => 'Server connection';
+
+  @override
+  String get settingsServerConnectionSubtitle =>
+      'Override the API URL — for self-hosters and debugging';
+
+  @override
+  String get settingsFirstTimeSetup =>
+      'First-time setup. Paste the API URL printed by run-app.sh, then tap Test → Save.';
+
+  @override
+  String get settingsServerUrlLabel => 'Server URL';
+
+  @override
+  String get settingsUrlRequired => 'required';
+
+  @override
+  String get settingsUrlMustStartWithHttp =>
+      'must start with http:// or https://';
+
+  @override
+  String get settingsTest => 'Test';
+
+  @override
+  String get settingsResetToLauncherDefaults => 'Reset to launcher defaults';
+
+  @override
+  String get settingsAboutApp => 'App';
+
+  @override
+  String get settingsAboutVersion => 'Version';
+
+  @override
+  String get settingsAboutMadeFor => 'Made for';
+
+  @override
+  String get settingsAboutMadeForValue => 'Arabic short-form storytelling';
+
+  @override
+  String get billingTitle => 'Billing';
+
+  @override
+  String get billingSubscriptions => 'Subscriptions';
+
+  @override
+  String billingPricePerMonth(String price) {
+    return '$price / month';
+  }
+
+  @override
+  String get billingManageSubscription => 'Manage subscription (Stripe)';
+
+  @override
+  String get billingRecentTransactions => 'Recent transactions';
+
+  @override
+  String get billingNoTransactions => 'No transactions yet.';
+
+  @override
+  String get billingBalance => 'Balance';
+
+  @override
+  String billingPlanLabel(String plan) {
+    return 'Plan: $plan';
+  }
+
+  @override
+  String get billingPlanFree => 'Free';
+
+  @override
+  String billingCancelsOn(String date) {
+    return 'Cancels $date';
+  }
+
+  @override
+  String billingRenewsOn(String date) {
+    return 'Renews $date';
+  }
+
+  @override
+  String get billingCurrentPlanChip => 'current';
+
+  @override
+  String get billingSubscribe => 'Subscribe';
+
+  @override
+  String get transactionsTitle => 'Transactions';
+
+  @override
+  String get transactionsKindSongSpend => 'Song spend';
+
+  @override
+  String get transactionsKindRefund => 'Refund';
+
+  @override
+  String get transactionsKindAdminCredit => 'Admin credit';
+
+  @override
+  String get transactionsKindWelcomeCredit => 'Welcome credit';
+
+  @override
+  String get transactionsKindSubscription => 'Subscription';
+
+  @override
+  String get transactionsKindTopup => 'Top-up';
+
+  @override
+  String transactionsLoadFailed(String error) {
+    return 'Failed to load: $error';
+  }
+
+  @override
+  String get transactionsEmpty =>
+      'No transactions yet.\nGenerate a song or buy credits to see activity here.';
+
+  @override
+  String personasDeleteTitle(String name) {
+    return 'Delete \"$name\"?';
+  }
+
+  @override
+  String get personasDeleteBody =>
+      'This removes the saved voice. Songs you already generated with it keep their audio — only future generations lose the lock to this voice.';
+
+  @override
+  String personasRemoved(String name) {
+    return '\"$name\" removed';
+  }
+
+  @override
+  String personasLoadFailed(String error) {
+    return 'Failed to load voices: $error';
+  }
+
+  @override
+  String get personasEmpty =>
+      'No saved voices yet.\n\nGenerate a song, then tap \"Save this voice\" on its detail screen to pin the singer for future songs.';
+
+  @override
+  String personasFromSong(String runId, int take) {
+    return 'From song $runId · take $take';
+  }
+
+  @override
+  String get personasDeleteTooltip => 'Delete this voice';
 }

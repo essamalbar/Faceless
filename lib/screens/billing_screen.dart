@@ -4,8 +4,18 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../api/settings.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 import 'transactions_screen.dart';
+
+/// Localized display name for a plan id. Unknown ids render raw.
+String _planDisplayName(AppLocalizations l10n, String plan) => switch (plan) {
+      'free' => l10n.billingPlanFree,
+      'starter' => l10n.homePlanStarter,
+      'creator' => l10n.homePlanCreator,
+      'pro' => l10n.homePlanPro,
+      _ => plan,
+    };
 
 class BillingScreen extends StatefulWidget {
   const BillingScreen({super.key});
@@ -23,11 +33,14 @@ class _BillingScreenState extends State<BillingScreen> {
 
   // Subscription tiers — match the prices configured in Stripe.
   // 1 credit = 1 video clip. Pricing rework 2026-05-13.
-  static const _plans = [
-    ('starter', 'Starter', r'$9 / month', '12 credits / month'),
-    ('creator', 'Creator', r'$29 / month', '60 credits / month'),
-    ('pro',     'Pro',     r'$79 / month', '200 credits / month'),
-  ];
+  static List<(String, String, String, String)> _plans(AppLocalizations l10n) => [
+        ('starter', l10n.homePlanStarter, l10n.billingPricePerMonth(r'$9'),
+            l10n.landingCreditsPerMonth(12)),
+        ('creator', l10n.homePlanCreator, l10n.billingPricePerMonth(r'$29'),
+            l10n.landingCreditsPerMonth(60)),
+        ('pro', l10n.homePlanPro, l10n.billingPricePerMonth(r'$79'),
+            l10n.landingCreditsPerMonth(200)),
+      ];
 
   @override
   void initState() {
@@ -76,20 +89,21 @@ class _BillingScreenState extends State<BillingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Billing'),
+        title: Text(l10n.billingTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.receipt_long),
-            tooltip: 'Transactions',
+            tooltip: l10n.transactionsTitle,
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => TransactionsScreen(client: _api),
             )),
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
+            tooltip: l10n.homeRefresh,
             onPressed: _loading ? null : _load,
           ),
         ],
@@ -110,10 +124,10 @@ class _BillingScreenState extends State<BillingScreen> {
                   children: [
                     _BalanceCard(plan: _plan!),
                     const SizedBox(height: 24),
-                    Text('Subscriptions',
+                    Text(l10n.billingSubscriptions,
                          style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 8),
-                    for (final p in _plans)
+                    for (final p in _plans(l10n))
                       _PlanCard(
                         id: p.$1, title: p.$2, price: p.$3, credits: p.$4,
                         current: _plan!.plan == p.$1,
@@ -123,19 +137,20 @@ class _BillingScreenState extends State<BillingScreen> {
                     if (_plan!.plan != 'free')
                       OutlinedButton.icon(
                         icon: const Icon(Icons.open_in_new),
-                        label: const Text('Manage subscription (Stripe)'),
+                        label: Text(l10n.billingManageSubscription),
                         onPressed: _portal,
                       ),
                     const SizedBox(height: 24),
-                    Text('Recent transactions',
+                    Text(l10n.billingRecentTransactions,
                          style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 8),
                     if (_txs.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Text(
-                          'No transactions yet.',
-                          style: TextStyle(color: FacelessTheme.textSecondary),
+                          l10n.billingNoTransactions,
+                          style: const TextStyle(
+                              color: FacelessTheme.textSecondary),
                         ),
                       ),
                     for (final t in _txs) _TxRow(tx: t),
@@ -150,6 +165,7 @@ class _BalanceCard extends StatelessWidget {
   const _BalanceCard({required this.plan});
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: FacelessTheme.cardGradient(),
@@ -159,22 +175,25 @@ class _BalanceCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Balance',
-                         style: TextStyle(color: FacelessTheme.textSecondary)),
+              Text(l10n.billingBalance,
+                   style:
+                       const TextStyle(color: FacelessTheme.textSecondary)),
               const SizedBox(height: 4),
-              Text('${plan.balance} credits',
+              Text(l10n.homeCreditsCount(plan.balance),
                    style: const TextStyle(
                      color: FacelessTheme.accent,
                      fontSize: 28, fontWeight: FontWeight.w700,
                    )),
               const SizedBox(height: 4),
-              Text('Plan: ${plan.plan}',
+              Text(l10n.billingPlanLabel(_planDisplayName(l10n, plan.plan)),
                    style: const TextStyle(color: FacelessTheme.textPrimary)),
               if (plan.currentPeriodEnd != null)
                 Text(
                   plan.cancelAtPeriodEnd
-                      ? 'Cancels ${plan.currentPeriodEnd!.substring(0, 10)}'
-                      : 'Renews ${plan.currentPeriodEnd!.substring(0, 10)}',
+                      ? l10n.billingCancelsOn(
+                          plan.currentPeriodEnd!.substring(0, 10))
+                      : l10n.billingRenewsOn(
+                          plan.currentPeriodEnd!.substring(0, 10)),
                   style: TextStyle(
                     color: plan.cancelAtPeriodEnd
                         ? FacelessTheme.danger
@@ -218,13 +237,13 @@ class _PlanCard extends StatelessWidget {
         title: Text('$title — $price'),
         subtitle: Text(credits),
         trailing: current
-            ? const Chip(
-                label: Text('current'),
+            ? Chip(
+                label: Text(context.l10n.billingCurrentPlanChip),
                 backgroundColor: FacelessTheme.surface2,
               )
             : FilledButton(
                 onPressed: onSubscribe,
-                child: const Text('Subscribe'),
+                child: Text(context.l10n.billingSubscribe),
               ),
       ),
     );
