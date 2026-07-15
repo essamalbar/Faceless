@@ -487,7 +487,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
             ),
             const SizedBox(height: 8),
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -806,7 +806,7 @@ class _ScriptPanel extends StatelessWidget {
         if (onDownloadPdf != null) ...[
           const SizedBox(height: 8),
           Align(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             child: OutlinedButton.icon(
               onPressed: onDownloadPdf,
               icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
@@ -1020,7 +1020,7 @@ class _ApprovalBar extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Padding(
-            padding: const EdgeInsets.only(left: 28),
+            padding: const EdgeInsetsDirectional.only(start: 28),
             child: Text(
               isVeoGate
                   ? context.l10n.runDetailVeoGateHint

@@ -206,6 +206,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    // Language — instant AR/EN switch, persisted. null = device.
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.language),
+                        title: Text(l10n.settingsLanguage),
+                        trailing: DropdownButton<String>(
+                          value: LocaleController
+                                  .instance.value?.languageCode ??
+                              'auto',
+                          underline: const SizedBox.shrink(),
+                          items: [
+                            DropdownMenuItem(
+                                value: 'auto',
+                                child: Text(l10n.settingsLanguageAuto)),
+                            const DropdownMenuItem(
+                                value: 'ar', child: Text('العربية')),
+                            const DropdownMenuItem(
+                                value: 'en', child: Text('English')),
+                          ],
+                          onChanged: (v) => LocaleController.instance
+                              .set(v == null || v == 'auto'
+                                  ? null
+                                  : Locale(v)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                     _SectionLabel(text: l10n.settingsSectionAdvanced),
                     const SizedBox(height: 8),
                     _AdvancedCard(
@@ -665,7 +692,7 @@ class _AdvancedCard extends StatelessWidget {
                   if (onReset != null) ...[
                     const SizedBox(height: 10),
                     Align(
-                      alignment: Alignment.centerLeft,
+                      alignment: AlignmentDirectional.centerStart,
                       child: TextButton.icon(
                         onPressed: loading ? null : onReset,
                         icon: const Icon(Icons.restart_alt,

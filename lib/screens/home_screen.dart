@@ -305,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           const Padding(
-            padding: EdgeInsets.only(right: 4),
+            padding: EdgeInsetsDirectional.only(end: 4),
             child: Center(child: _BalanceBadge()),
           ),
           IconButton(
@@ -848,7 +848,7 @@ class _FilterChip extends StatelessWidget {
     final bg = selected ? c.withValues(alpha: 0.25) : FacelessTheme.surface;
     final border = selected ? c : FacelessTheme.textSecondary.withValues(alpha: 0.25);
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsetsDirectional.only(end: 8),
       child: Material(
         color: bg,
         shape: RoundedRectangleBorder(
@@ -1633,7 +1633,7 @@ class _EqBars extends StatelessWidget {
       children: [
         for (final h in heights)
           Padding(
-            padding: const EdgeInsets.only(right: 3),
+            padding: const EdgeInsetsDirectional.only(end: 3),
             child: Container(
               width: 3,
               height: h,
@@ -2656,7 +2656,7 @@ class _StepDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 16),
+      padding: const EdgeInsetsDirectional.only(start: 16),
       child: Divider(
         height: 1,
         color: FacelessTheme.textSecondary.withValues(alpha: 0.08),
@@ -2827,7 +2827,7 @@ class _SongsEmptyState extends StatelessWidget {
               onPressed: () => onTrySample(theme, preset),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
               ),
               child: Row(
                 children: [

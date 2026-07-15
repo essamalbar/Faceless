@@ -62,6 +62,20 @@ class _TopNav extends StatelessWidget {
                   style: FacelessTheme.display(
                       size: 18, weight: FontWeight.w400, color: FacelessTheme.faint)),
               const Spacer(),
+              // AR ⇄ EN toggle for pre-auth visitors; label shows the
+              // language you'd switch TO.
+              TextButton.icon(
+                icon: const Icon(Icons.language, size: 18),
+                label: Text(
+                    Localizations.localeOf(context).languageCode == 'ar'
+                        ? 'EN'
+                        : 'العربية'),
+                onPressed: () {
+                  final cur = Localizations.localeOf(context).languageCode;
+                  LocaleController.instance
+                      .set(Locale(cur == 'ar' ? 'en' : 'ar'));
+                },
+              ),
               TextButton(
                 onPressed: () => _goLogin(context, signUp: false),
                 child: Text(context.l10n.commonSignIn),
