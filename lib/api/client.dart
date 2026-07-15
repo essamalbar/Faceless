@@ -528,6 +528,7 @@ class FacelessApiClient {
     String vocalGender = 'm',
     String? sunoModel,
     String videoMode = 'static',
+    String? artistId,
   }) async {
     final body = <String, dynamic>{
       'theme': theme,
@@ -538,6 +539,7 @@ class FacelessApiClient {
       'vocal_gender': vocalGender,
       if (sunoModel != null) 'suno_model': sunoModel,
       'video_mode': videoMode,
+      if (artistId != null) 'artist_id': artistId,
     };
     final r = await _http.post(
       await _uri('/songs'),
@@ -557,6 +559,7 @@ class FacelessApiClient {
     String language = 'ar',
     String videoMode = 'static',
     String vocalGender = 'm',
+    String? artistId,
   }) async {
     final req = http.MultipartRequest('POST', await _uri('/songs/upload-cover'));
     req.headers.addAll(await _headers()); // Authorization + Accept (no Content-Type)
@@ -566,9 +569,107 @@ class FacelessApiClient {
     if (instruction != null && instruction.isNotEmpty) {
       req.fields['instruction'] = instruction;
     }
+    if (artistId != null) req.fields['artist_id'] = artistId;
     req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     final r = await http.Response.fromStream(await _http.send(req));
     return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
+  }
+
+  // --- Artists (Artist Core) ---------------------------------------------
+
+  Future<List<Artist>> listArtists() async {
+    final r = await _http.get(await _uri('/artists'), headers: await _headers());
+    return _parse(r, (j) => (j as List)
+        .map((x) => Artist.fromJson(x as Map<String, dynamic>))
+        .toList());
+  }
+
+  Future<Artist> createArtist({
+    required String name,
+    String? handle,
+    String bio = '',
+    String defaultStyle = '',
+    String defaultLanguage = 'ar',
+    String defaultVocalGender = 'm',
+  }) async {
+    final r = await _http.post(
+      await _uri('/artists'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'name': name,
+        if (handle != null && handle.isNotEmpty) 'handle': handle,
+        'bio': bio,
+        'default_style': defaultStyle,
+        'default_language': defaultLanguage,
+        'default_vocal_gender': defaultVocalGender,
+      }),
+    );
+    return _parse(r, (j) => Artist.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<Artist> patchArtist(String id, Map<String, dynamic> fields) async {
+    final r = await _http.patch(
+      await _uri('/artists/$id'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode(fields),
+    );
+    return _parse(r, (j) => Artist.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<void> deleteArtist(String id) async {
+    final r = await _http.delete(await _uri('/artists/$id'),
+        headers: await _headers());
+    if (r.statusCode != 204) {
+      throw FacelessApiException('delete artist failed: ${r.body}',
+          status: r.statusCode);
+    }
+  }
+
+  /// One-step door: save the song take's voice as a persona AND create the
+  /// artist wrapping it. The source song joins the discography.
+  Future<Artist> createArtistFromSong({
+    required String runId,
+    required String name,
+    String? handle,
+    int? take,
+  }) async {
+    final r = await _http.post(
+      await _uri('/artists/from-song'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'run_id': runId,
+        'name': name,
+        if (handle != null && handle.isNotEmpty) 'handle': handle,
+        if (take != null) 'take': take,
+      }),
+    );
+    return _parse(r, (j) => Artist.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<Artist> uploadArtistAvatar({
+    required String artistId,
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final req =
+        http.MultipartRequest('POST', await _uri('/artists/$artistId/avatar'));
+    req.headers.addAll(await _headers());
+    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final r = await http.Response.fromStream(await _http.send(req));
+    return _parse(r, (j) => Artist.fromJson(j as Map<String, dynamic>));
+  }
+
+  Future<Uri> artistAvatarUrl(String artistId) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    return Uri.parse(
+        '${_stripTrailing(base ?? '')}/artists/$artistId/avatar?token=$token');
+  }
+
+  /// Public artist page URL (shareable, no auth).
+  Future<Uri> publicArtistUrl(String handle) async {
+    final base = await _settings.baseUrl();
+    return Uri.parse('${_stripTrailing(base ?? '')}/a/$handle');
   }
 
   Future<List<SongSummary>> listSongs() async {

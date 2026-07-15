@@ -4028,9 +4028,13 @@ def upload_artist_avatar(
 
 
 @app.get("/artists/{artist_id}/avatar")
-def get_artist_avatar(artist_id: str, user: User = Depends(require_user)):
+def get_artist_avatar(
+    artist_id: str,
+    user: User = Depends(require_user_header_or_query),
+):
     """Uploaded avatar, else the avatar run's cover.png, else 404 (the client
-    falls back to a generated gradient)."""
+    falls back to a generated gradient). Query-token auth so <img> widgets
+    (which can't set headers on web) can load it."""
     from pipeline import artists as artists_mod
     root = _user_runs_root(user)
     artist = artists_mod.find_by_id(artists_mod.load_artists(root), artist_id)
