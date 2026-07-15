@@ -339,15 +339,19 @@ class _HomeScreenState extends State<HomeScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: SegmentedButton<String>(
+              // No selection checkmark — it steals width and wraps the
+              // label ("Horror" → "Horro/r"). The segment's own icon +
+              // the ink/white theme already show which is selected.
+              showSelectedIcon: false,
               segments: const [
                 ButtonSegment(
                     value: 'horror',
-                    label: Text('Horror'),
-                    icon: Icon(Icons.movie)),
+                    label: Text('Horror', maxLines: 1),
+                    icon: Icon(Icons.movie_outlined, size: 18)),
                 ButtonSegment(
                     value: 'song',
-                    label: Text('Song'),
-                    icon: Icon(Icons.music_note)),
+                    label: Text('Song', maxLines: 1),
+                    icon: Icon(Icons.music_note, size: 18)),
               ],
               selected: {_mode},
               onSelectionChanged: (s) => setState(() {
