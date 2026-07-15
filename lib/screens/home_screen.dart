@@ -8,6 +8,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../api/settings.dart';
 import '../config.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../widgets/faceless_logo.dart';
 import 'billing_screen.dart';
@@ -130,21 +131,18 @@ class _HomeScreenState extends State<HomeScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clean up failed runs?'),
-        content: const Text(
-          'This permanently deletes every run currently in Failed status. '
-          'Running and complete runs are not touched.',
-        ),
+        title: Text(ctx.l10n.homeCleanupFailedTitle),
+        content: Text(ctx.l10n.homeCleanupFailedBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(ctx.l10n.commonCancel)),
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: FacelessTheme.danger,
                   foregroundColor: Colors.white),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete all failed')),
+              child: Text(ctx.l10n.homeDeleteAllFailed)),
         ],
       ),
     );
@@ -154,11 +152,12 @@ class _HomeScreenState extends State<HomeScreen> {
       final deleted = await _client.cleanupFailedRuns();
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(
-          content: Text('Removed ${deleted.length} failed run(s)')));
+          content: Text(context.l10n.homeRemovedFailedRuns(deleted.length))));
       _refresh();
     } catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('Cleanup failed: $e')));
+      messenger.showSnackBar(
+          SnackBar(content: Text(context.l10n.homeCleanupError('$e'))));
     }
   }
 
@@ -238,21 +237,18 @@ class _HomeScreenState extends State<HomeScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this run?'),
-        content: Text(
-          'This permanently removes the run dir, including any generated '
-          'clips and final.mp4. ${run.title ?? run.id}',
-        ),
+        title: Text(ctx.l10n.homeDeleteRunTitle),
+        content: Text(ctx.l10n.homeDeleteRunBody(run.title ?? run.id)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(ctx.l10n.commonCancel)),
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: FacelessTheme.danger,
                   foregroundColor: Colors.white),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete')),
+              child: Text(ctx.l10n.commonDelete)),
         ],
       ),
     );
@@ -265,13 +261,13 @@ class _HomeScreenState extends State<HomeScreen> {
       await _client.deleteRun(run.id);
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('Deleted ${run.title ?? run.id}')),
+        SnackBar(content: Text(context.l10n.homeDeletedItem(run.title ?? run.id))),
       );
       _refresh();
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('Delete failed: $e')),
+        SnackBar(content: Text(context.l10n.homeDeleteError('$e'))),
       );
     }
   }
@@ -303,8 +299,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const FacelessLogo(size: 30),
             const SizedBox(width: 10),
-            const Text('Faceless Lab',
-                style: TextStyle(fontWeight: FontWeight.w700)),
+            Text(context.l10n.appTitle,
+                style: const TextStyle(fontWeight: FontWeight.w700)),
           ],
         ),
         actions: [
@@ -314,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
+            tooltip: context.l10n.homeRefresh,
             onPressed: _refresh,
           ),
           // Only show the saved-voices entry when on the Song tab —
@@ -322,14 +318,14 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_mode == 'song')
             IconButton(
               icon: const Icon(Icons.record_voice_over),
-              tooltip: 'Saved voices',
+              tooltip: context.l10n.homeSavedVoices,
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => PersonasScreen(client: _client),
               )),
             ),
           IconButton(
             icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
+            tooltip: context.l10n.homeSettings,
             onPressed: _openSettings,
           ),
         ],
@@ -343,15 +339,15 @@ class _HomeScreenState extends State<HomeScreen> {
               // label ("Horror" → "Horro/r"). The segment's own icon +
               // the ink/white theme already show which is selected.
               showSelectedIcon: false,
-              segments: const [
+              segments: [
                 ButtonSegment(
                     value: 'horror',
-                    label: Text('Horror', maxLines: 1),
-                    icon: Icon(Icons.movie_outlined, size: 18)),
+                    label: Text(context.l10n.homeTabHorror, maxLines: 1),
+                    icon: const Icon(Icons.movie_outlined, size: 18)),
                 ButtonSegment(
                     value: 'song',
-                    label: Text('Song', maxLines: 1),
-                    icon: Icon(Icons.music_note, size: 18)),
+                    label: Text(context.l10n.homeTabSong, maxLines: 1),
+                    icon: const Icon(Icons.music_note, size: 18)),
               ],
               selected: {_mode},
               onSelectionChanged: (s) => setState(() {
@@ -460,9 +456,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: FacelessTheme.textSecondary
                                     .withValues(alpha: 0.6)),
                             const SizedBox(height: 12),
-                            const Text(
-                              'No runs match this filter.',
-                              style: TextStyle(
+                            Text(
+                              context.l10n.homeNoRunsMatchFilter,
+                              style: const TextStyle(
                                   color: FacelessTheme.textSecondary),
                             ),
                             const SizedBox(height: 16),
@@ -470,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               onPressed: () =>
                                   setState(() => _filter = 'all'),
                               icon: const Icon(Icons.clear),
-                              label: const Text('Show all'),
+                              label: Text(context.l10n.homeShowAll),
                             ),
                           ],
                         ),
@@ -510,7 +506,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (standalone.isNotEmpty)
                   SliverToBoxAdapter(
                     child: _StandaloneRow(
-                      title: 'All Runs',
+                      title: context.l10n.homeAllRuns,
                       runs: standalone,
                       baseUrl: _baseUrl,
                       token: _token,
@@ -591,7 +587,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               if (hero != null)
                 _SongHero(
-                  title: hero.title ?? hero.theme ?? '(untitled)',
+                  title: hero.title ?? hero.theme ?? context.l10n.homeUntitled,
                   status: hero.status,
                   coverUrlFuture: _client.songCoverUrl(hero.id, thumb: false),
                   onTap: () => _openSong(hero),
@@ -603,13 +599,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: FilledButton.icon(
                     onPressed: _openNewSong,
                     icon: const Icon(Icons.add),
-                    label: const Text('New Song'),
+                    label: Text(context.l10n.homeNewSong),
                   ),
                 ),
               ),
               if (recent.isNotEmpty) ...[
                 _SongSectionTitle(
-                    title: 'Recent', trailing: '${all.length} tracks'),
+                    title: context.l10n.homeRecent,
+                    trailing: context.l10n.homeTracksCount(all.length)),
                 SizedBox(
                   height: 172,
                   child: ListView.separated(
@@ -620,7 +617,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemBuilder: (ctx, i) {
                       final s = recent[i];
                       return _RecentTile(
-                        title: s.title ?? s.theme ?? '(untitled)',
+                        title: s.title ?? s.theme ?? context.l10n.homeUntitled,
                         status: s.status,
                         coverUrlFuture:
                             _client.songCoverUrl(s.id, thumb: true),
@@ -631,20 +628,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
               _SongSectionTitle(
-                title: searching ? 'Results' : 'Your songs',
-                trailing:
-                    searching ? '${filtered.length}' : '${all.length} tracks',
+                title: searching
+                    ? context.l10n.homeResults
+                    : context.l10n.homeYourSongs,
+                trailing: searching
+                    ? '${filtered.length}'
+                    : context.l10n.homeTracksCount(all.length),
               ),
               if (filtered.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 24, 16, 24),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
                   child: Center(
-                    child: Text('No songs match your search',
-                        style: TextStyle(color: FacelessTheme.textSecondary)),
+                    child: Text(context.l10n.homeNoSongsMatchSearch,
+                        style: const TextStyle(
+                            color: FacelessTheme.textSecondary)),
                   ),
                 ),
               ...filtered.map((s) => _SongCardC(
-                    title: s.title ?? s.theme ?? '(untitled)',
+                    title: s.title ?? s.theme ?? context.l10n.homeUntitled,
                     status: s.status,
                     coverUrlFuture: _client.songCoverUrl(s.id, thumb: true),
                     onTap: () => _openSong(s),
@@ -755,7 +756,7 @@ class _TopBar extends StatelessWidget {
                                 fontWeight: FontWeight.w700, fontSize: 13),
                           ),
                           const SizedBox(width: 6),
-                          Text('(${spend!.runCount} runs)',
+                          Text(context.l10n.homeRunsCount(spend!.runCount),
                               style: const TextStyle(
                                   color: FacelessTheme.textSecondary,
                                   fontSize: 11)),
@@ -774,7 +775,7 @@ class _TopBar extends StatelessWidget {
                   onPressed: onCleanup,
                   icon: const Icon(Icons.cleaning_services_outlined,
                       size: 16),
-                  label: Text('Clean $failedCount failed',
+                  label: Text(context.l10n.homeCleanFailed(failedCount),
                       style: const TextStyle(fontSize: 12)),
                   style: TextButton.styleFrom(
                     foregroundColor: FacelessTheme.danger,
@@ -790,30 +791,30 @@ class _TopBar extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               children: [
                 _FilterChip(
-                    label: 'All',
+                    label: context.l10n.homeFilterAll,
                     count: counts['all'] ?? 0,
                     selected: filter == 'all',
                     onTap: () => onFilter('all')),
                 _FilterChip(
-                    label: 'Complete',
+                    label: context.l10n.homeFilterComplete,
                     count: counts['complete'] ?? 0,
                     selected: filter == 'complete',
                     onTap: () => onFilter('complete'),
                     color: FacelessTheme.success),
                 _FilterChip(
-                    label: 'Awaiting',
+                    label: context.l10n.homeFilterAwaiting,
                     count: counts['awaiting'] ?? 0,
                     selected: filter == 'awaiting',
                     onTap: () => onFilter('awaiting'),
                     color: FacelessTheme.warning),
                 _FilterChip(
-                    label: 'Running',
+                    label: context.l10n.homeFilterRunning,
                     count: counts['running'] ?? 0,
                     selected: filter == 'running',
                     onTap: () => onFilter('running'),
                     color: FacelessTheme.info),
                 _FilterChip(
-                    label: 'Failed',
+                    label: context.l10n.homeFilterFailed,
                     count: counts['failed'] ?? 0,
                     selected: filter == 'failed',
                     onTap: () => onFilter('failed'),
@@ -913,17 +914,11 @@ class _YourStoriesHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          const Text('Your stories',
-              style: TextStyle(
+          Text(context.l10n.homeYourStories,
+              style: const TextStyle(
                 color: FacelessTheme.textPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 18,
-              )),
-          const SizedBox(width: 8),
-          Text('قصصك',
-              style: TextStyle(
-                color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
-                fontSize: 13,
               )),
           const Spacer(),
           if (count > 0)
@@ -964,20 +959,20 @@ class _LibraryEmptyCard extends StatelessWidget {
                   color: FacelessTheme.accent, size: 28),
             ),
             const SizedBox(width: 16),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('No rendered videos yet',
-                      style: TextStyle(
+                  Text(context.l10n.homeNoRenderedVideos,
+                      style: const TextStyle(
                         color: FacelessTheme.textPrimary,
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
                       )),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    'Approve a script and your video will show up here.',
-                    style: TextStyle(
+                    context.l10n.homeApproveScriptHint,
+                    style: const TextStyle(
                       color: FacelessTheme.textSecondary,
                       fontSize: 12,
                       height: 1.35,
@@ -1129,7 +1124,7 @@ class _HeroCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    run.title ?? '(بلا عنوان)',
+                    run.title ?? context.l10n.homeUntitled,
                     textDirection: TextDirection.rtl,
                     style: const TextStyle(
                         color: Colors.white,
@@ -1146,14 +1141,15 @@ class _HeroCard extends StatelessWidget {
                       FilledButton.icon(
                         onPressed: onPlay,
                         icon: const Icon(Icons.play_arrow),
-                        label: const Text('Play',
-                            style: TextStyle(fontWeight: FontWeight.w700)),
+                        label: Text(context.l10n.homePlay,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
                       ),
                       const SizedBox(width: 12),
                       OutlinedButton.icon(
                         onPressed: onTap,
                         icon: const Icon(Icons.info_outline),
-                        label: const Text('Details'),
+                        label: Text(context.l10n.homeDetails),
                       ),
                     ],
                   ),
@@ -1219,7 +1215,7 @@ class _SeriesRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text('${series.episodes.length} حلقات',
+                Text(context.l10n.homeEpisodesCount(series.episodes.length),
                     textDirection: TextDirection.rtl,
                     style: const TextStyle(
                         color: FacelessTheme.textSecondary, fontSize: 12)),
@@ -1385,7 +1381,8 @@ class _PosterTile extends StatelessWidget {
                           color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text('EP $episodeNumber',
+                        child: Text(
+                            context.l10n.homeEpisodeAbbrev(episodeNumber!),
                             style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
@@ -1415,7 +1412,7 @@ class _PosterTile extends StatelessWidget {
               const SizedBox(height: 6),
               Flexible(
                 child: Text(
-                  run.title ?? '(بلا عنوان)',
+                  run.title ?? context.l10n.homeUntitled,
                   textDirection: _isArabic(run.title)
                       ? TextDirection.rtl
                       : TextDirection.ltr,
@@ -1485,37 +1482,46 @@ class _SongStatusStyle {
       {this.working = false});
 }
 
-_SongStatusStyle _songStatusStyle(String status) {
+_SongStatusStyle _songStatusStyle(AppLocalizations l10n, String status) {
   switch (status) {
     case 'writing_lyrics':
-      return const _SongStatusStyle(
-          'Writing lyrics', FacelessTheme.info, Icons.edit_note, working: true);
+      return _SongStatusStyle(l10n.homeStatusWritingLyrics, FacelessTheme.info,
+          Icons.edit_note,
+          working: true);
     case 'awaiting_approval':
-      return const _SongStatusStyle(
-          'Review & approve', FacelessTheme.accent, Icons.play_circle_fill);
+      return _SongStatusStyle(l10n.homeStatusReviewApprove,
+          FacelessTheme.accent, Icons.play_circle_fill);
     case 'approved':
     case 'generating_song':
-      return const _SongStatusStyle(
-          'Composing music', FacelessTheme.info, Icons.autorenew, working: true);
+      return _SongStatusStyle(
+          l10n.homeStatusComposing, FacelessTheme.info, Icons.autorenew,
+          working: true);
     case 'generating_cover':
-      return const _SongStatusStyle(
-          'Designing cover', FacelessTheme.info, Icons.autorenew, working: true);
+      return _SongStatusStyle(
+          l10n.homeStatusDesigningCover, FacelessTheme.info, Icons.autorenew,
+          working: true);
     case 'detecting_beats':
-      return const _SongStatusStyle('Syncing to the beat', FacelessTheme.info,
-          Icons.autorenew, working: true);
+      return _SongStatusStyle(
+          l10n.homeStatusSyncingBeat, FacelessTheme.info, Icons.autorenew,
+          working: true);
     case 'aligning':
-      return const _SongStatusStyle(
-          'Syncing lyrics', FacelessTheme.info, Icons.autorenew, working: true);
+      return _SongStatusStyle(
+          l10n.homeStatusSyncingLyrics, FacelessTheme.info, Icons.autorenew,
+          working: true);
     case 'assembling':
-      return const _SongStatusStyle('Rendering video', FacelessTheme.info,
-          Icons.autorenew, working: true);
+      return _SongStatusStyle(
+          l10n.homeStatusRendering, FacelessTheme.info, Icons.autorenew,
+          working: true);
     case 'complete':
-      return const _SongStatusStyle('Ready', FacelessTheme.success, Icons.check_circle);
+      return _SongStatusStyle(
+          l10n.homeStatusReady, FacelessTheme.success, Icons.check_circle);
     case 'failed':
-      return const _SongStatusStyle('Failed', FacelessTheme.danger, Icons.error_outline);
+      return _SongStatusStyle(
+          l10n.statusFailed, FacelessTheme.danger, Icons.error_outline);
     default:
+      // Unknown codes are pretty-printed raw — they're debug text by definition.
       final pretty = status.isEmpty
-          ? 'Pending'
+          ? l10n.homeStatusPending
           : (status[0].toUpperCase() + status.substring(1)).replaceAll('_', ' ');
       return _SongStatusStyle(pretty, FacelessTheme.textSecondary, Icons.circle);
   }
@@ -1699,7 +1705,7 @@ class _SongSearchBarState extends State<_SongSearchBar> {
         style: const TextStyle(color: FacelessTheme.textPrimary, fontSize: 14),
         decoration: InputDecoration(
           isDense: true,
-          hintText: 'Search your songs…',
+          hintText: context.l10n.homeSearchHint,
           hintStyle:
               const TextStyle(color: FacelessTheme.textSecondary, fontSize: 14),
           prefixIcon: const Icon(Icons.search,
@@ -1745,7 +1751,7 @@ class _SongHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final st = _songStatusStyle(status);
+    final st = _songStatusStyle(context.l10n, status);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
       child: GestureDetector(
@@ -1776,8 +1782,8 @@ class _SongHero extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('◆  LATEST RELEASE',
-                        style: TextStyle(
+                    Text(context.l10n.homeLatestRelease,
+                        style: const TextStyle(
                             color: FacelessTheme.accent,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
@@ -1832,7 +1838,7 @@ class _RecentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final st = _songStatusStyle(status);
+    final st = _songStatusStyle(context.l10n, status);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1895,7 +1901,7 @@ class _SongCardC extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final st = _songStatusStyle(status);
+    final st = _songStatusStyle(context.l10n, status);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
       child: Container(
@@ -1982,48 +1988,52 @@ Widget _runImage(String runId, String? baseUrl, String? token,
 // ---------------------------------------------------------------------------
 
 // Theme metadata — drives the home gallery + the New Run screen's chips.
+// Display strings live in the ARB files; see [_themeStrings].
 class _ThemeInfo {
   final String id;
-  final String titleEn;
-  final String titleAr;
-  final String subtitle;
   final IconData icon;
   final List<Color> gradient;
-  const _ThemeInfo(this.id, this.titleEn, this.titleAr, this.subtitle,
-      this.icon, this.gradient);
+  const _ThemeInfo(this.id, this.icon, this.gradient);
 }
 
+/// Localized (title, subtitle) for a theme id. Ids are API values — never
+/// shown raw except as a last-resort fallback for unknown ids.
+(String, String) _themeStrings(AppLocalizations l10n, String id) =>
+    switch (id) {
+      'folkloric' => (l10n.homeThemeFolkloric, l10n.homeThemeFolkloricDesc),
+      'urban' => (l10n.homeThemeUrban, l10n.homeThemeUrbanDesc),
+      'wilderness' => (l10n.homeThemeWilderness, l10n.homeThemeWildernessDesc),
+      'memory' => (l10n.homeThemeMemory, l10n.homeThemeMemoryDesc),
+      'domestic' => (l10n.homeThemeDomestic, l10n.homeThemeDomesticDesc),
+      'travel' => (l10n.homeThemeTravel, l10n.homeThemeTravelDesc),
+      'tech' => (l10n.homeThemeTech, l10n.homeThemeTechDesc),
+      'workplace' => (l10n.homeThemeWorkplace, l10n.homeThemeWorkplaceDesc),
+      _ => (id, ''),
+    };
+
 const _allThemes = <_ThemeInfo>[
-  _ThemeInfo('folkloric', 'Folkloric', 'فلكلوري',
-      'Ancestral tales, jinn, old wells',
+  _ThemeInfo('folkloric',
       Icons.account_balance_outlined,
       [Color(0xFFB07F1F), Color(0xFFE7B53C)]),
-  _ThemeInfo('urban', 'Urban', 'مدني',
-      'City legends, late-night streets',
+  _ThemeInfo('urban',
       Icons.location_city_outlined,
       [Color(0xFF3B82F6), Color(0xFF1E40AF)]),
-  _ThemeInfo('wilderness', 'Wilderness', 'البرية',
-      'Forests, deserts, the unknown',
+  _ThemeInfo('wilderness',
       Icons.forest_outlined,
       [Color(0xFF059669), Color(0xFF064E3B)]),
-  _ThemeInfo('memory', 'Memory', 'الذاكرة',
-      'Psychological, half-remembered',
+  _ThemeInfo('memory',
       Icons.psychology_outlined,
       [Color(0xFF8B5CF6), Color(0xFF5B21B6)]),
-  _ThemeInfo('domestic', 'Domestic', 'منزلي',
-      'Home, family, the everyday turned',
+  _ThemeInfo('domestic',
       Icons.home_outlined,
       [Color(0xFFEA580C), Color(0xFF9A3412)]),
-  _ThemeInfo('travel', 'Travel', 'سفر',
-      'On the road, far from home',
+  _ThemeInfo('travel',
       Icons.travel_explore_outlined,
       [Color(0xFF0D9488), Color(0xFF134E4A)]),
-  _ThemeInfo('tech', 'Tech', 'تقني',
-      'Screens, signals, machines',
+  _ThemeInfo('tech',
       Icons.memory_outlined,
       [Color(0xFF06B6D4), Color(0xFF155E75)]),
-  _ThemeInfo('workplace', 'Workplace', 'العمل',
-      'Offices, shops, after-hours',
+  _ThemeInfo('workplace',
       Icons.business_center_outlined,
       [Color(0xFF64748B), Color(0xFF334155)]),
 ];
@@ -2165,20 +2175,20 @@ class _Hero extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'AI-powered Arabic horror shorts',
+          Text(
+            context.l10n.homeHeroTagline,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: FacelessTheme.textSecondary,
               fontSize: 14,
               letterSpacing: 0.3,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'اصنع قصصك القصيرة بالذكاء الاصطناعي',
+          Text(
+            context.l10n.homeHeroSubtitle,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: FacelessTheme.textSecondary,
               fontSize: 13,
               height: 1.5,
@@ -2191,15 +2201,16 @@ class _Hero extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onCreate,
               icon: const Icon(Icons.auto_awesome),
-              label: const Text(
-                'Start creating',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              label: Text(
+                context.l10n.homeStartCreating,
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700),
               ),
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Free to write · Subscribe to render',
+            context.l10n.homeFreeToWrite,
             style: TextStyle(
               color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
               fontSize: 11,
@@ -2222,9 +2233,8 @@ class _ThemeGallerySection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionTitle(
-          english: 'Choose a theme',
-          arabic: 'اختر ثيمة',
-          subtitle: 'Tap to start a new story with this style',
+          title: context.l10n.homeChooseTheme,
+          subtitle: context.l10n.homeChooseThemeSubtitle,
         ),
         const SizedBox(height: 14),
         GridView.count(
@@ -2251,6 +2261,7 @@ class _ThemeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final (title, subtitle) = _themeStrings(context.l10n, theme.id);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2291,33 +2302,19 @@ class _ThemeCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            theme.titleEn,
-                            style: const TextStyle(
-                              color: FacelessTheme.textPrimary,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          theme.titleAr,
-                          style: TextStyle(
-                            color: FacelessTheme.textSecondary
-                                .withValues(alpha: 0.7),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: FacelessTheme.textPrimary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      theme.subtitle,
+                      subtitle,
                       style: const TextStyle(
                         color: FacelessTheme.textSecondary,
                         fontSize: 11,
@@ -2338,12 +2335,10 @@ class _ThemeCard extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  final String english;
-  final String arabic;
+  final String title;
   final String? subtitle;
   const _SectionTitle({
-    required this.english,
-    required this.arabic,
+    required this.title,
     this.subtitle,
   });
   @override
@@ -2353,26 +2348,14 @@ class _SectionTitle extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                english,
-                style: const TextStyle(
-                  color: FacelessTheme.textPrimary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 17,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                arabic,
-                style: TextStyle(
-                  color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ],
+          Text(
+            title,
+            style: const TextStyle(
+              color: FacelessTheme.textPrimary,
+              fontWeight: FontWeight.w700,
+              fontSize: 17,
+              letterSpacing: 0.3,
+            ),
           ),
           if (subtitle != null) ...[
             const SizedBox(height: 3),
@@ -2397,7 +2380,7 @@ class _HowItWorksCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle(english: 'How it works', arabic: 'كيف تعمل'),
+        _SectionTitle(title: context.l10n.homeHowItWorks),
         const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
@@ -2409,24 +2392,24 @@ class _HowItWorksCard extends StatelessWidget {
           ),
           padding:
               const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: const Column(
+          child: Column(
             children: [
               _Step(
                 number: '1',
-                title: 'Write a premise',
-                subtitle: 'One sentence is enough',
+                title: context.l10n.homeStep1Title,
+                subtitle: context.l10n.homeStep1Subtitle,
               ),
-              _StepDivider(),
+              const _StepDivider(),
               _Step(
                 number: '2',
-                title: 'AI writes your script',
-                subtitle: 'Arabic, in seconds — free for everyone',
+                title: context.l10n.homeStep2Title,
+                subtitle: context.l10n.homeStep2Subtitle,
               ),
-              _StepDivider(),
+              const _StepDivider(),
               _Step(
                 number: '3',
-                title: 'Subscribe to render the video',
-                subtitle: 'Each clip uses 1 credit',
+                title: context.l10n.homeStep3Title,
+                subtitle: context.l10n.homeStep3Subtitle,
               ),
             ],
           ),
@@ -2458,14 +2441,14 @@ class _PricingTeaser extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle(english: 'Plans', arabic: 'الخطط'),
+        _SectionTitle(title: context.l10n.homePlans),
         const SizedBox(height: 12),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: _PlanChip(
-                name: 'Starter',
+                name: context.l10n.homePlanStarter,
                 price: r'$9',
                 credits: 12,
                 badge: badgeFor('starter'),
@@ -2474,7 +2457,7 @@ class _PricingTeaser extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: _PlanChip(
-                name: 'Creator',
+                name: context.l10n.homePlanCreator,
                 price: r'$29',
                 credits: 60,
                 badge: badgeFor('creator'),
@@ -2483,7 +2466,7 @@ class _PricingTeaser extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: _PlanChip(
-                name: 'Pro',
+                name: context.l10n.homePlanPro,
                 price: r'$79',
                 credits: 200,
                 badge: badgeFor('pro'),
@@ -2495,7 +2478,7 @@ class _PricingTeaser extends StatelessWidget {
         Center(
           child: TextButton.icon(
             icon: const Icon(Icons.chevron_right, size: 18),
-            label: const Text('See full plans'),
+            label: Text(context.l10n.homeSeeFullPlans),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const BillingScreen()),
             ),
@@ -2553,9 +2536,9 @@ class _PlanChip extends StatelessWidget {
                     color: FacelessTheme.accent.withValues(alpha: 0.22),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Text(
-                    'Your plan',
-                    style: TextStyle(
+                  child: Text(
+                    context.l10n.homeYourPlan,
+                    style: const TextStyle(
                       color: FacelessTheme.accent,
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
@@ -2564,7 +2547,7 @@ class _PlanChip extends StatelessWidget {
                   ),
                 ),
               _PlanBadge.recommended => Text(
-                  'Recommended',
+                  context.l10n.homeRecommended,
                   style: TextStyle(
                     color: FacelessTheme.textSecondary.withValues(alpha: 0.85),
                     fontSize: 9,
@@ -2589,7 +2572,7 @@ class _PlanChip extends StatelessWidget {
                 fontSize: 18,
               )),
           const SizedBox(height: 2),
-          Text('$credits credits',
+          Text(context.l10n.homeCreditsCount(credits),
               style: const TextStyle(
                 color: FacelessTheme.textSecondary,
                 fontSize: 11,
@@ -2707,8 +2690,8 @@ class _ErrorView extends StatelessWidget {
                       size: 64,
                       color: Theme.of(context).colorScheme.error),
                   const SizedBox(height: 16),
-                  const Text('Could not reach the server.',
-                      style: TextStyle(
+                  Text(context.l10n.homeServerUnreachable,
+                      style: const TextStyle(
                           fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Text(error,
@@ -2722,12 +2705,12 @@ class _ErrorView extends StatelessWidget {
                       OutlinedButton.icon(
                           onPressed: onRetry,
                           icon: const Icon(Icons.refresh),
-                          label: const Text('Retry')),
+                          label: Text(context.l10n.commonRetry)),
                       const SizedBox(width: 12),
                       FilledButton.icon(
                           onPressed: onSettings,
                           icon: const Icon(Icons.settings),
-                          label: const Text('Settings')),
+                          label: Text(context.l10n.homeSettings)),
                     ],
                   ),
                 ],
@@ -2826,15 +2809,15 @@ class _SongsEmptyState extends StatelessWidget {
             size: 64, color: FacelessTheme.textSecondary),
         const SizedBox(height: 12),
         Text(
-          'Make your first AI song',
+          context.l10n.homeMakeFirstSong,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Pick a sample to start with, or tap "New song" to write your own.',
+        Text(
+          context.l10n.homePickSampleHint,
           textAlign: TextAlign.center,
-          style: TextStyle(color: FacelessTheme.textSecondary),
+          style: const TextStyle(color: FacelessTheme.textSecondary),
         ),
         const SizedBox(height: 24),
         for (final (emoji, theme, preset) in _samples)
@@ -2876,7 +2859,7 @@ class _SongsEmptyState extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: onCreate,
             icon: const Icon(Icons.add),
-            label: const Text('New song from scratch'),
+            label: Text(context.l10n.homeNewSongFromScratch),
           ),
         ),
       ],
