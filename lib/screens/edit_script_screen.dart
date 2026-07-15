@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 
 /// Per-beat editor — fix Claude's slips without regenerating from scratch.
@@ -67,14 +68,15 @@ class _EditScriptScreenState extends State<EditScriptScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Script'),
+        title: Text(l.editScriptTitle),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
-            child: const Text('Save',
-                style: TextStyle(
+            child: Text(l.commonSave,
+                style: const TextStyle(
                     color: FacelessTheme.accent,
                     fontWeight: FontWeight.w700)),
           ),
@@ -86,9 +88,9 @@ class _EditScriptScreenState extends State<EditScriptScreen> {
           children: [
             TextField(
               controller: _titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l.editScriptTitleLabel,
+                border: const OutlineInputBorder(),
               ),
               textDirection: TextDirection.rtl,
             ),
@@ -174,6 +176,7 @@ class _BeatEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -191,7 +194,7 @@ class _BeatEditor extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'BEAT ${index.toString().padLeft(2, "0")}',
+                    l.newRunBeatBadge(index.toString().padLeft(2, '0')),
                     style: const TextStyle(
                         color: FacelessTheme.accent,
                         fontWeight: FontWeight.w700,
@@ -214,10 +217,10 @@ class _BeatEditor extends StatelessWidget {
                       return TextField(
                         controller: controller,
                         focusNode: focusNode,
-                        decoration: const InputDecoration(
-                          labelText: 'Speaker (free-text)',
-                          hintText: 'e.g. mother, narrator, warrior, …',
-                          contentPadding: EdgeInsets.symmetric(
+                        decoration: InputDecoration(
+                          labelText: l.newRunSpeakerLabel,
+                          hintText: l.newRunSpeakerHint,
+                          contentPadding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 0),
                         ),
                         onChanged: (v) {
@@ -237,10 +240,10 @@ class _BeatEditor extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(
               controller: beat.characterNameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Character name (Arabic, optional)',
-                hintText: 'e.g. خالد، فاطمة، أم يوسف',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l.newRunCharacterNameLabel,
+                hintText: l.newRunCharacterNameHint,
+                border: const OutlineInputBorder(),
               ),
               textDirection: TextDirection.rtl,
               style: const TextStyle(fontSize: 15),
@@ -248,9 +251,9 @@ class _BeatEditor extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(
               controller: beat.arabicCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Arabic dialogue (leave empty for silent beat)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l.editScriptArabicDialogueLabel,
+                border: const OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
               textDirection: TextDirection.rtl,
@@ -260,9 +263,9 @@ class _BeatEditor extends StatelessWidget {
             const SizedBox(height: 8),
             TextField(
               controller: beat.englishCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Visual description (English)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l.editScriptVisualDescLabel,
+                border: const OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
               maxLines: 3,
@@ -271,8 +274,9 @@ class _BeatEditor extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Text('Clip duration:',
-                    style: TextStyle(color: FacelessTheme.textSecondary)),
+                Text(l.newRunClipDurationLabel,
+                    style:
+                        const TextStyle(color: FacelessTheme.textSecondary)),
                 Expanded(
                   child: Slider(
                     min: 4, max: 12, divisions: 16,

@@ -9,6 +9,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../api/settings.dart';
 import '../config.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 import 'edit_script_screen.dart';
 import 'log_viewer_screen.dart';
@@ -79,16 +80,17 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     // backend status flips to "running_paid", and without this snackbar the
     // user thinks nothing happened and starts spam-tapping.
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Approved — preparing characters (~30s)…'),
-      duration: Duration(seconds: 4),
+    messenger.showSnackBar(SnackBar(
+      content: Text(context.l10n.runDetailApprovedPreparing),
+      duration: const Duration(seconds: 4),
     ));
     try {
       await widget.client.approveRun(widget.runId);
       await _refresh();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Approve failed: $e')));
+        messenger.showSnackBar(SnackBar(
+            content: Text(context.l10n.runDetailApproveFailed(e.toString()))));
         setState(() => _busy = false);
       }
       return;
@@ -103,16 +105,17 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Approved — generating clips…'),
-      duration: Duration(seconds: 4),
+    messenger.showSnackBar(SnackBar(
+      content: Text(context.l10n.runDetailApprovedGenerating),
+      duration: const Duration(seconds: 4),
     ));
     try {
       await widget.client.approveVeoRun(widget.runId);
       await _refresh();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Approve failed: $e')));
+        messenger.showSnackBar(SnackBar(
+            content: Text(context.l10n.runDetailApproveFailed(e.toString()))));
         setState(() => _busy = false);
       }
       return;
@@ -125,18 +128,15 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Regenerate character look?'),
-        content: const Text(
-          'This discards the current character look and generates a new one. '
-          'Your credit balance is not affected.',
-        ),
+        title: Text(context.l10n.runDetailRegenLookTitle),
+        content: Text(context.l10n.runDetailRegenLookBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keep')),
+              child: Text(context.l10n.runDetailKeep)),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Regenerate')),
+              child: Text(context.l10n.songDetailRegenerate)),
         ],
       ),
     );
@@ -148,7 +148,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Reroll failed: $e')),
+          SnackBar(content: Text(context.l10n.runDetailRerollFailed(e.toString()))),
         );
       }
     } finally {
@@ -160,20 +160,21 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Repairing video — re-muxing for browser playback…'),
-      duration: Duration(seconds: 2),
+    messenger.showSnackBar(SnackBar(
+      content: Text(context.l10n.runDetailRepairing),
+      duration: const Duration(seconds: 2),
     ));
     try {
       await widget.client.repairVideo(widget.runId);
       if (!mounted) return;
-      messenger.showSnackBar(const SnackBar(
-        content: Text('Repaired. Tap Play again.'),
-        duration: Duration(seconds: 3),
+      messenger.showSnackBar(SnackBar(
+        content: Text(context.l10n.runDetailRepaired),
+        duration: const Duration(seconds: 3),
       ));
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Repair failed: $e')));
+        messenger.showSnackBar(SnackBar(
+            content: Text(context.l10n.runDetailRepairFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -184,16 +185,17 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Resuming pipeline…'),
-      duration: Duration(seconds: 2),
+    messenger.showSnackBar(SnackBar(
+      content: Text(context.l10n.runDetailResuming),
+      duration: const Duration(seconds: 2),
     ));
     try {
       await widget.client.resumeRun(widget.runId);
       await _refresh();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Resume failed: $e')));
+        messenger.showSnackBar(SnackBar(
+            content: Text(context.l10n.runDetailResumeFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -208,22 +210,18 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Discard this run?'),
-        content: const Text(
-          'Cancelling will stop any running pipeline AND delete the run '
-          'entirely. The script and any partially-generated artifacts will '
-          'be removed. This cannot be undone.',
-        ),
+        title: Text(context.l10n.runDetailDiscardTitle),
+        content: Text(context.l10n.runDetailDiscardBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keep')),
+              child: Text(context.l10n.runDetailKeep)),
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: FacelessTheme.danger,
                   foregroundColor: Colors.white),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Discard')),
+              child: Text(context.l10n.approveDiscard)),
         ],
       ),
     );
@@ -238,13 +236,14 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
       // process was technically still alive when delete fired.
       await widget.client.deleteRun(widget.runId);
       if (!mounted) return;
-      messenger.showSnackBar(const SnackBar(
-          content: Text('Run discarded'),
-          duration: Duration(seconds: 2)));
+      messenger.showSnackBar(SnackBar(
+          content: Text(context.l10n.runDetailRunDiscarded),
+          duration: const Duration(seconds: 2)));
       navigator.pop();  // back to gallery
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Discard failed: $e')));
+        messenger.showSnackBar(SnackBar(
+            content: Text(context.l10n.runDetailDiscardFailed(e.toString()))));
         setState(() => _busy = false);
       }
     }
@@ -254,7 +253,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final n = _script?.beats.length ?? 0;
     if (n == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No script — nothing to reroll')),
+        SnackBar(content: Text(context.l10n.runDetailNoScriptToReroll)),
       );
       return;
     }
@@ -267,7 +266,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final k = selected.length;
     messenger.showSnackBar(SnackBar(
-      content: Text('Rerolling $k clip${k == 1 ? "" : "s"} — $k credit${k == 1 ? "" : "s"}'),
+      content: Text(context.l10n.runDetailRerollingClips(k)),
       duration: const Duration(seconds: 4),
     ));
     try {
@@ -275,7 +274,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
       await _refresh();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Reroll failed: $e')));
+        messenger.showSnackBar(SnackBar(content: Text(context.l10n.runDetailRerollFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -287,16 +286,16 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-            'Reroll clip ${clipIndex.toString().padLeft(2, "0")}?'),
-        content: const Text('This regenerates one clip and costs 1 credit.'),
+        title: Text(context.l10n
+            .runDetailRerollClipTitle(clipIndex.toString().padLeft(2, '0'))),
+        content: Text(context.l10n.runDetailRerollClipBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keep')),
+              child: Text(context.l10n.runDetailKeep)),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Reroll (1 credit)')),
+              child: Text(context.l10n.runDetailRerollOneCredit)),
         ],
       ),
     );
@@ -304,8 +303,8 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(SnackBar(
-      content: Text(
-          'Rerolling clip ${clipIndex.toString().padLeft(2, "0")} — 1 credit'),
+      content: Text(context.l10n
+          .runDetailRerollingClip(clipIndex.toString().padLeft(2, '0'))),
       duration: const Duration(seconds: 3),
     ));
     try {
@@ -313,7 +312,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
       await _refresh();
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Reroll failed: $e')));
+        messenger.showSnackBar(SnackBar(content: Text(context.l10n.runDetailRerollFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -352,7 +351,9 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(
-          SnackBar(content: Text('Download failed: $e')),
+          SnackBar(
+              content:
+                  Text(context.l10n.songDetailDownloadFailed(e.toString()))),
         );
       }
     }
@@ -397,11 +398,12 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                   fontWeight: FontWeight.w700,
                 ),
               )
-            : const Text('Story', style: TextStyle(fontSize: 16)),
+            : Text(context.l10n.runDetailStoryFallback,
+                style: const TextStyle(fontSize: 16)),
         actions: [
           IconButton(
               icon: const Icon(Icons.article_outlined),
-              tooltip: 'Activity log',
+              tooltip: context.l10n.runDetailActivityLog,
               onPressed: _openLog),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
         ],
@@ -478,26 +480,26 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                   ),
                 ),
                 icon: const Icon(Icons.play_arrow, size: 24),
-                label: const Text('Play video',
-                    style: TextStyle(
+                label: Text(context.l10n.songDetailPlayVideo,
+                    style: const TextStyle(
                         fontSize: 15, fontWeight: FontWeight.w700)),
               ),
             ),
             const SizedBox(height: 8),
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton.icon(
                     onPressed: _busy ? null : _repairVideo,
                     icon: const Icon(Icons.build_outlined, size: 16),
-                    label: const Text('Repair playback'),
+                    label: Text(context.l10n.runDetailRepairPlayback),
                   ),
                   TextButton.icon(
                     onPressed: _busy ? null : _rerollClips,
                     icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('Reroll selected clips'),
+                    label: Text(context.l10n.runDetailRerollSelectedClips),
                   ),
                 ],
               ),
@@ -517,13 +519,13 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    children: const [
-                      Icon(Icons.error_outline,
+                    children: [
+                      const Icon(Icons.error_outline,
                           color: FacelessTheme.danger, size: 20),
-                      SizedBox(width: 8),
+                      const SizedBox(width: 8),
                       Text(
-                        'Generation failed',
-                        style: TextStyle(
+                        context.l10n.runDetailGenerationFailed,
+                        style: const TextStyle(
                           color: FacelessTheme.danger,
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
@@ -571,7 +573,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                   child: FilledButton.icon(
                     onPressed: _busy ? null : _resume,
                     icon: const Icon(Icons.replay),
-                    label: const Text('Resume'),
+                    label: Text(context.l10n.runDetailResume),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -579,7 +581,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _openLog,
                     icon: const Icon(Icons.article_outlined),
-                    label: const Text('Activity log'),
+                    label: Text(context.l10n.runDetailActivityLog),
                   ),
                 ),
               ],
@@ -604,7 +606,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                         ),
                       ),
                       icon: const Icon(Icons.play_arrow, size: 18),
-                      label: const Text('Play video'),
+                      label: Text(context.l10n.songDetailPlayVideo),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -612,7 +614,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                     child: OutlinedButton.icon(
                       onPressed: _busy ? null : _repairVideo,
                       icon: const Icon(Icons.build_outlined, size: 18),
-                      label: const Text('Repair playback'),
+                      label: Text(context.l10n.runDetailRepairPlayback),
                     ),
                   ),
                 ],
@@ -664,7 +666,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
             FilledButton.tonalIcon(
               onPressed: _busy ? null : _cancelAndDelete,
               icon: const Icon(Icons.delete_forever),
-              label: const Text('Cancel & Discard'),
+              label: Text(context.l10n.runDetailCancelDiscard),
             ),
           ],
         ],
@@ -685,29 +687,34 @@ class _StatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     final (label, icon, color) = switch (run.status) {
       RunStatus.complete =>
-        ('Ready to watch', Icons.check_circle, FacelessTheme.success),
+        (l.runDetailStatusReady, Icons.check_circle, FacelessTheme.success),
       RunStatus.awaitingApproval => (
-          'Script ready — approve to generate the video',
+          l.runDetailStatusScriptReady,
           Icons.pause_circle,
           FacelessTheme.warning,
         ),
       RunStatus.awaitingVeoApproval => (
-          'Character look ready — approve to generate clips',
+          l.runDetailStatusCharacterReady,
           Icons.image_outlined,
           FacelessTheme.warning,
         ),
       RunStatus.runningPaid =>
-        ('Generating your video…', Icons.movie_filter, FacelessTheme.info),
+        (l.runDetailStatusGenerating, Icons.movie_filter, FacelessTheme.info),
       RunStatus.creating =>
-        ('Writing the script…', Icons.edit_note, FacelessTheme.info),
+        (l.runDetailStatusWriting, Icons.edit_note, FacelessTheme.info),
       RunStatus.failed => (
-          'Generation failed — tap Resume to retry',
+          l.runDetailStatusFailed,
           Icons.error,
           FacelessTheme.danger,
         ),
-      _ => (run.status, Icons.info, FacelessTheme.textSecondary),
+      _ => (
+          statusLabel(l, run.status),
+          Icons.info,
+          FacelessTheme.textSecondary
+        ),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -739,7 +746,6 @@ class _CreditPill extends StatelessWidget {
   const _CreditPill({required this.credits});
   @override
   Widget build(BuildContext context) {
-    final w = credits == 1 ? 'credit' : 'credits';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -753,7 +759,7 @@ class _CreditPill extends StatelessWidget {
           const Icon(Icons.monetization_on,
               color: FacelessTheme.accent, size: 14),
           const SizedBox(width: 4),
-          Text('$credits $w',
+          Text(context.l10n.runDetailCreditsCount(credits),
               style: const TextStyle(
                 color: FacelessTheme.accent,
                 fontSize: 12,
@@ -791,7 +797,7 @@ class _ScriptPanel extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Script (${script.beats.length} beats)',
+            Text(context.l10n.runDetailScriptBeats(script.beats.length),
                 style: Theme.of(context).textTheme.titleMedium),
             if (showCost)
               _CreditPill(credits: script.beats.length),
@@ -800,11 +806,11 @@ class _ScriptPanel extends StatelessWidget {
         if (onDownloadPdf != null) ...[
           const SizedBox(height: 8),
           Align(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             child: OutlinedButton.icon(
               onPressed: onDownloadPdf,
               icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-              label: const Text('Download script (PDF)'),
+              label: Text(context.l10n.runDetailDownloadScriptPdf),
               style: OutlinedButton.styleFrom(
                 foregroundColor: FacelessTheme.accent,
                 side: BorderSide(
@@ -899,7 +905,7 @@ class _BeatTile extends StatelessWidget {
                         const SizedBox(width: 4),
                         IconButton(
                           icon: const Icon(Icons.refresh, size: 18),
-                          tooltip: 'Reroll this clip (1 credit)',
+                          tooltip: context.l10n.runDetailRerollClipTooltip,
                           visualDensity: VisualDensity.compact,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -910,7 +916,7 @@ class _BeatTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   if (beat.isSilent)
-                    Text('(silent action beat — no dialogue)',
+                    Text(context.l10n.runDetailSilentBeat,
                         style: TextStyle(
                             fontStyle: FontStyle.italic,
                             color: Theme.of(context).hintColor))
@@ -973,8 +979,8 @@ class _ApprovalBar extends StatelessWidget {
             Expanded(
               child: Text(
                 isVeoGate
-                    ? 'Starting video generation — clips appear shortly…'
-                    : 'Approving — preparing characters (~30s)…',
+                    ? context.l10n.runDetailStartingGeneration
+                    : context.l10n.runDetailApprovingPreparing,
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -982,7 +988,6 @@ class _ApprovalBar extends StatelessWidget {
         ),
       );
     }
-    final creditWord = credits == 1 ? 'credit' : 'credits';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1003,8 +1008,8 @@ class _ApprovalBar extends StatelessWidget {
               Expanded(
                 child: Text(
                   isVeoGate
-                      ? 'Approve to generate the video — $credits $creditWord'
-                      : 'Approve to start generation — $credits $creditWord total',
+                      ? context.l10n.runDetailApproveVeoLine(credits)
+                      : context.l10n.runDetailApproveLine(credits),
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
@@ -1015,11 +1020,11 @@ class _ApprovalBar extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Padding(
-            padding: const EdgeInsets.only(left: 28),
+            padding: const EdgeInsetsDirectional.only(start: 28),
             child: Text(
               isVeoGate
-                  ? 'Once started, clips render one by one (~1 min each).'
-                  : 'Characters are prepared first; the video starts once you confirm again.',
+                  ? context.l10n.runDetailVeoGateHint
+                  : context.l10n.runDetailApproveHint,
               style: const TextStyle(
                 color: FacelessTheme.textSecondary,
                 fontSize: 12,
@@ -1034,7 +1039,7 @@ class _ApprovalBar extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: onEdit,
                   icon: const Icon(Icons.edit, size: 18),
-                  label: const Text('Edit'),
+                  label: Text(context.l10n.approveEdit),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1048,7 +1053,7 @@ class _ApprovalBar extends StatelessWidget {
                             FacelessTheme.danger.withValues(alpha: 0.5)),
                   ),
                   icon: const Icon(Icons.delete_forever, size: 18),
-                  label: const Text('Discard'),
+                  label: Text(context.l10n.approveDiscard),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1057,7 +1062,7 @@ class _ApprovalBar extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onApprove,
                   icon: const Icon(Icons.check_circle),
-                  label: const Text('Approve'),
+                  label: Text(context.l10n.runDetailApprove),
                 ),
               ),
             ],
@@ -1075,13 +1080,14 @@ class _ProgressPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     final stageLabel = switch (progress.stage) {
-      'script' => 'Writing the script…',
-      'character_sheet' => 'Preparing characters…',
-      'video' =>
-        'Generating clip ${progress.clipsDone + 1} of ${progress.clipsTotal}…',
-      'captions' => 'Aligning captions…',
-      'assemble' => 'Assembling final video…',
+      'script' => l.runDetailStatusWriting,
+      'character_sheet' => l.runDetailStagePreparingCharacters,
+      'video' => l.runDetailStageGeneratingClip(
+          progress.clipsDone + 1, progress.clipsTotal),
+      'captions' => l.runDetailStageAligningCaptions,
+      'assemble' => l.runDetailStageAssembling,
       _ => progress.stage,
     };
     final value = progress.fractional;
@@ -1119,7 +1125,7 @@ class _ProgressPanel extends StatelessWidget {
             if (progress.stage == 'video' && progress.clipsTotal > 0) ...[
               const SizedBox(height: 6),
               Text(
-                '${progress.clipsDone} / ${progress.clipsTotal} clips done',
+                l.runDetailClipsDone(progress.clipsDone, progress.clipsTotal),
                 style: const TextStyle(
                     color: FacelessTheme.textSecondary, fontSize: 12),
               ),
@@ -1151,7 +1157,7 @@ class _ErrorPanel extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
+                label: Text(context.l10n.commonRetry),
               ),
             ],
           ),
@@ -1296,8 +1302,8 @@ class _CharacterSheetPanelState extends State<_CharacterSheetPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('CHARACTER LOOK',
-              style: TextStyle(
+          Text(context.l10n.runDetailCharacterLook,
+              style: const TextStyle(
                   color: FacelessTheme.textSecondary,
                   fontWeight: FontWeight.w700,
                   fontSize: 11,
@@ -1327,7 +1333,7 @@ class _CharacterSheetPanelState extends State<_CharacterSheetPanel> {
           OutlinedButton.icon(
             onPressed: widget.onReroll,
             icon: const Icon(Icons.refresh, size: 18),
-            label: const Text("Don't like it? Regenerate"),
+            label: Text(context.l10n.runDetailDontLikeRegenerate),
           ),
         ],
       ),
@@ -1349,19 +1355,18 @@ class _RerollDialogState extends State<_RerollDialog> {
   @override
   Widget build(BuildContext context) {
     final n = _selected.length;
-    final creditWord = n == 1 ? 'credit' : 'credits';
+    final l = context.l10n;
     return AlertDialog(
-      title: const Text('Reroll which clips?'),
+      title: Text(l.runDetailRerollWhichTitle),
       content: SizedBox(
         width: 360,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Pick the clips that need regenerating. Each costs 1 credit. '
-              'The other clips stay; the final video re-stitches at the end.',
-              style: TextStyle(
+            Text(
+              l.runDetailRerollWhichBody,
+              style: const TextStyle(
                   color: FacelessTheme.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: 12),
@@ -1387,8 +1392,8 @@ class _RerollDialogState extends State<_RerollDialog> {
             const SizedBox(height: 12),
             Text(
               n == 0
-                  ? 'No clips selected'
-                  : '$n clip${n == 1 ? "" : "s"} — $n $creditWord',
+                  ? l.runDetailNoClipsSelected
+                  : l.runDetailSelectedClipsCredits(n),
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ],
@@ -1397,14 +1402,14 @@ class _RerollDialogState extends State<_RerollDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel')),
+            child: Text(l.commonCancel)),
         FilledButton.icon(
           onPressed: _selected.isEmpty
               ? null
               : () =>
                   Navigator.pop(context, _selected.toList()..sort()),
           icon: const Icon(Icons.refresh),
-          label: const Text('Reroll'),
+          label: Text(l.songDetailReroll),
         ),
       ],
     );

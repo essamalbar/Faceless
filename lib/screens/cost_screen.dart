@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 
 /// Cost dashboard — shows total Kie.ai (Veo + Flux) spend across all runs,
@@ -34,13 +35,14 @@ class _CostScreenState extends State<CostScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Spend'),
+        title: Text(l.costTitle),
         actions: [
           IconButton(
             icon: Icon(_sortByAmount ? Icons.sort_by_alpha : Icons.attach_money),
-            tooltip: _sortByAmount ? 'Sort by date' : 'Sort by amount',
+            tooltip: _sortByAmount ? l.costSortByDate : l.costSortByAmount,
             onPressed: () =>
                 setState(() => _sortByAmount = !_sortByAmount),
           ),
@@ -79,7 +81,7 @@ class _CostScreenState extends State<CostScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
-                      _sortByAmount ? 'BY AMOUNT' : 'BY DATE (newest first)',
+                      _sortByAmount ? l.costByAmount : l.costByDate,
                       style: const TextStyle(
                         color: FacelessTheme.textSecondary,
                         fontWeight: FontWeight.w700,
@@ -108,6 +110,7 @@ class _TotalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     final perRun = summary.runCount == 0
         ? 0.0
         : summary.totalUsd / summary.runCount;
@@ -124,8 +127,8 @@ class _TotalCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('TOTAL KIE.AI SPEND',
-              style: TextStyle(
+          Text(l.costTotalKieSpend,
+              style: const TextStyle(
                   color: Colors.black87,
                   fontWeight: FontWeight.w700,
                   fontSize: 11,
@@ -140,10 +143,10 @@ class _TotalCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              _Metric(label: 'RUNS', value: '${summary.runCount}'),
+              _Metric(label: l.costRunsLabel, value: '${summary.runCount}'),
               const SizedBox(width: 24),
               _Metric(
-                  label: 'AVG / RUN',
+                  label: l.costAvgPerRun,
                   value: '\$${perRun.toStringAsFixed(2)}'),
             ],
           ),
@@ -239,7 +242,9 @@ class _RunSpendTile extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text('${(pct * 100).toStringAsFixed(1)} % of total',
+            Text(
+                context.l10n
+                    .costPercentOfTotal((pct * 100).toStringAsFixed(1)),
                 style: const TextStyle(
                     color: FacelessTheme.textSecondary, fontSize: 10)),
           ],
@@ -258,11 +263,10 @@ class _Footnote extends StatelessWidget {
           color: FacelessTheme.surface,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Text(
-          'Counts Veo (\$0.10/sec) + Flux character sheet (\$0.05/run). '
-          'Doesn\'t include ElevenLabs (~\$0.30/episode if used) or '
-          'Anthropic / Groq script generation (<\$0.05/episode).',
-          style: TextStyle(color: FacelessTheme.textSecondary, fontSize: 11),
+        child: Text(
+          context.l10n.costFootnote,
+          style: const TextStyle(
+              color: FacelessTheme.textSecondary, fontSize: 11),
         ),
       );
 }

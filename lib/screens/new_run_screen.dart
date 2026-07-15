@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../widgets/paywall_dialog.dart';
 
@@ -17,18 +18,21 @@ class NewRunScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('New Episode'),
-          bottom: const TabBar(
+          title: Text(l.newRunTitle),
+          bottom: TabBar(
             indicatorColor: FacelessTheme.accent,
             labelColor: FacelessTheme.accent,
             unselectedLabelColor: FacelessTheme.textSecondary,
             tabs: [
-              Tab(icon: Icon(Icons.tune), text: 'AI Generate'),
-              Tab(icon: Icon(Icons.edit_note), text: 'Paste Script'),
+              Tab(icon: const Icon(Icons.tune), text: l.newRunTabAiGenerate),
+              Tab(
+                  icon: const Icon(Icons.edit_note),
+                  text: l.newRunTabPasteScript),
             ],
           ),
         ),
@@ -47,6 +51,19 @@ const _themes = [
   'folkloric', 'domestic', 'urban', 'workplace',
   'travel', 'wilderness', 'tech', 'memory',
 ];
+
+/// Localized display name for a theme id (the id itself is the API value).
+String _themeLabel(AppLocalizations l, String theme) => switch (theme) {
+      'folkloric' => l.homeThemeFolkloric,
+      'domestic' => l.homeThemeDomestic,
+      'urban' => l.homeThemeUrban,
+      'workplace' => l.homeThemeWorkplace,
+      'travel' => l.homeThemeTravel,
+      'wilderness' => l.homeThemeWilderness,
+      'tech' => l.homeThemeTech,
+      'memory' => l.homeThemeMemory,
+      _ => theme,
+    };
 
 // Suggestions only — speaker is now a free-form string (PA-1 loosened the
 // backend enum). The user can type any role label; these are just quick picks.
@@ -80,47 +97,48 @@ class _AiGenerateTabState extends State<_AiGenerateTab> {
   bool _submitting = false;
   String? _error;
 
-  // (label, displayName) pairs for each dropdown's items
-  static const _dialects = [
-    ('msa', 'MSA (الفصحى)'),
-    ('syrian', 'Syrian / Levantine'),
-    ('egyptian', 'Egyptian'),
-    ('khaliji', 'Khaliji / Gulf'),
-    ('maghrebi', 'Maghrebi'),
-    ('iraqi', 'Iraqi'),
-  ];
-  static const _artStyles = [
-    ('pixar_3d', '3D Pixar'),
-    ('anime_2d', '2D Anime'),
-    ('cinematic_photo_real', 'Cinematic photo-real'),
-    ('claymation', 'Claymation'),
-    ('hand_drawn', 'Hand-drawn'),
-    ('ghibli', 'Studio Ghibli'),
-  ];
-  static const _characterTemplates = [
-    ('ai_choose', 'Let the AI choose'),
-    ('human', 'Human cast'),
-    ('fruit_sunstoriz', 'Fruit cast (Sunstoriz)'),
-    ('animal', 'Animal cast'),
-    ('surreal', 'Surreal creatures'),
-  ];
-  static const _endingTypes = [
-    ('ai_choose', 'Let the AI choose'),
-    ('open', 'Open-ended'),
-    ('closed_tragic', 'Closed tragic'),
-    ('closed_happy', 'Closed happy'),
-    ('twist', 'Twist'),
-  ];
-  static const _narrationStyles = [
-    ('cinematic', 'Cinematic (recommended)'),
-    ('first_person_monologue', 'First-person monologue (TikTok)'),
-    ('ai_choose', 'Let the AI choose'),
-  ];
+  // (value, displayName) pairs for each dropdown's items — values are the
+  // API payload ids, display names are localized.
+  List<(String, String)> _dialects(AppLocalizations l) => [
+        ('msa', l.newRunDialectMsa),
+        ('syrian', l.newRunDialectSyrian),
+        ('egyptian', l.newRunDialectEgyptian),
+        ('khaliji', l.newRunDialectKhaliji),
+        ('maghrebi', l.newRunDialectMaghrebi),
+        ('iraqi', l.newRunDialectIraqi),
+      ];
+  List<(String, String)> _artStyles(AppLocalizations l) => [
+        ('pixar_3d', l.newRunArtPixar3d),
+        ('anime_2d', l.newRunArtAnime2d),
+        ('cinematic_photo_real', l.newRunArtCinematic),
+        ('claymation', l.newRunArtClaymation),
+        ('hand_drawn', l.newRunArtHandDrawn),
+        ('ghibli', l.newRunArtGhibli),
+      ];
+  List<(String, String)> _characterTemplates(AppLocalizations l) => [
+        ('ai_choose', l.newRunAiChoose),
+        ('human', l.newRunCharHuman),
+        ('fruit_sunstoriz', l.newRunCharFruit),
+        ('animal', l.newRunCharAnimal),
+        ('surreal', l.newRunCharSurreal),
+      ];
+  List<(String, String)> _endingTypes(AppLocalizations l) => [
+        ('ai_choose', l.newRunAiChoose),
+        ('open', l.newRunEndingOpen),
+        ('closed_tragic', l.newRunEndingClosedTragic),
+        ('closed_happy', l.newRunEndingClosedHappy),
+        ('twist', l.newRunEndingTwist),
+      ];
+  List<(String, String)> _narrationStyles(AppLocalizations l) => [
+        ('cinematic', l.newRunNarrCinematic),
+        ('first_person_monologue', l.newRunNarrFirstPerson),
+        ('ai_choose', l.newRunAiChoose),
+      ];
 
   Future<void> _submit() async {
     final premise = _premiseCtrl.text.trim();
     if (premise.length < 4) {
-      setState(() => _error = 'Premise too short');
+      setState(() => _error = context.l10n.newRunPremiseTooShort);
       return;
     }
     setState(() {
@@ -172,6 +190,7 @@ class _AiGenerateTabState extends State<_AiGenerateTab> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -179,20 +198,17 @@ class _AiGenerateTabState extends State<_AiGenerateTab> {
         children: [
           Card(
             color: FacelessTheme.surface2,
-            child: const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'AI generates a script from your premise. Pick the dialect, art style, '
-                'character template, and narration style; the writer follows your choices.',
-              ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(l.newRunAiExplainer),
             ),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _premiseCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Premise (Arabic)',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l.newRunPremiseLabel,
+              border: const OutlineInputBorder(),
               alignLabelWithHint: true,
             ),
             textDirection: TextDirection.rtl,
@@ -200,54 +216,54 @@ class _AiGenerateTabState extends State<_AiGenerateTab> {
           ),
           const SizedBox(height: 12),
           _kvDropdown<String>(
-            label: 'Theme',
+            label: l.newRunThemeLabel,
             value: _theme,
-            items: _themes.map((t) => (t, t)).toList(),
+            items: _themes.map((t) => (t, _themeLabel(l, t))).toList(),
             onChanged: (v) => setState(() => _theme = v ?? 'folkloric'),
           ),
           const SizedBox(height: 12),
           _kvDropdown<String>(
-            label: 'Dialect',
+            label: l.newRunDialectLabel,
             value: _dialect,
-            items: _dialects,
+            items: _dialects(l),
             onChanged: (v) => setState(() => _dialect = v ?? 'msa'),
           ),
           const SizedBox(height: 12),
           _kvDropdown<String>(
-            label: 'Art style',
+            label: l.newRunArtStyleLabel,
             value: _artStyle,
-            items: _artStyles,
+            items: _artStyles(l),
             onChanged: (v) =>
                 setState(() => _artStyle = v ?? 'cinematic_photo_real'),
           ),
           const SizedBox(height: 12),
           _kvDropdown<String>(
-            label: 'Character template',
+            label: l.newRunCharacterTemplateLabel,
             value: _characterTemplate,
-            items: _characterTemplates,
+            items: _characterTemplates(l),
             onChanged: (v) =>
                 setState(() => _characterTemplate = v ?? 'ai_choose'),
           ),
           const SizedBox(height: 12),
           _kvDropdown<String>(
-            label: 'Ending type',
+            label: l.newRunEndingTypeLabel,
             value: _endingType,
-            items: _endingTypes,
+            items: _endingTypes(l),
             onChanged: (v) =>
                 setState(() => _endingType = v ?? 'ai_choose'),
           ),
           const SizedBox(height: 12),
           _kvDropdown<String>(
-            label: 'Narration style',
+            label: l.newRunNarrationStyleLabel,
             value: _narrationStyle,
-            items: _narrationStyles,
+            items: _narrationStyles(l),
             onChanged: (v) =>
                 setState(() => _narrationStyle = v ?? 'cinematic'),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              const Text('Beats:'),
+              Text(l.newRunBeatsLabel),
               Expanded(
                 child: Slider(
                   min: 4, max: 15, divisions: 11,
@@ -261,7 +277,7 @@ class _AiGenerateTabState extends State<_AiGenerateTab> {
           ),
           Row(
             children: [
-              const Text('Sec / beat:'),
+              Text(l.newRunSecPerBeatLabel),
               Expanded(
                 child: Slider(
                   min: 4, max: 10, divisions: 6,
@@ -289,7 +305,8 @@ class _AiGenerateTabState extends State<_AiGenerateTab> {
                     width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.tune),
-            label: Text(_submitting ? 'Writing…' : 'Generate Script'),
+            label:
+                Text(_submitting ? l.newRunWriting : l.newRunGenerateScript),
           ),
         ],
       ),
@@ -392,31 +409,35 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
       _error = null;
       _lastParseMethod = parsed.parseMethod;
     });
+    final l = context.l10n;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(
-        'Parsed ${beatsRaw.length} beats '
-        '(${switch (parsed.parseMethod) {
-          ParseMethod.regex => "regex",
-          ParseMethod.llmSplit => "AI split",
-          ParseMethod.naiveFallback => "auto-segmented",
-        }})',
+        l.newRunParsedBeats(
+          beatsRaw.length,
+          switch (parsed.parseMethod) {
+            ParseMethod.regex => l.newRunMethodRegex,
+            ParseMethod.llmSplit => l.newRunMethodAiSplit,
+            ParseMethod.naiveFallback => l.newRunMethodAuto,
+          },
+        ),
       )),
     );
   }
 
   Future<void> _submit() async {
+    final l = context.l10n;
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) {
-      setState(() => _error = 'Title is required');
+      setState(() => _error = l.newRunTitleRequired);
       return;
     }
     if (_beats.isEmpty) {
-      setState(() => _error = 'At least one beat is required');
+      setState(() => _error = l.newRunBeatRequired);
       return;
     }
     for (final b in _beats) {
       if (b.englishCtrl.text.trim().isEmpty) {
-        setState(() => _error = 'Every beat needs a visual description (English)');
+        setState(() => _error = l.newRunVisualRequired);
         return;
       }
     }
@@ -448,6 +469,7 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return Column(
       children: [
         Expanded(
@@ -456,20 +478,16 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
             children: [
               Card(
                 color: FacelessTheme.surface2,
-                child: const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'Your dialogue is used VERBATIM — no LLM rewrite. Use '
-                    'this for episode continuations where you want to control '
-                    'every line.',
-                  ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(l.newRunPasteExplainer),
                 ),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _openMarkdownPaster,
                 icon: const Icon(Icons.content_paste),
-                label: const Text('Paste from Markdown Script'),
+                label: Text(l.newRunPasteFromMarkdown),
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(
                       color: FacelessTheme.accent.withValues(alpha: 0.5)),
@@ -479,30 +497,32 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
               const SizedBox(height: 16),
               TextField(
                 controller: _titleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Title (Arabic)',
-                  hintText: 'مثلاً: العقد المقدس - الحلقة 4',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l.newRunTitleLabel,
+                  hintText: l.newRunTitleHint,
+                  border: const OutlineInputBorder(),
                 ),
                 textDirection: TextDirection.rtl,
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _theme,
-                decoration: const InputDecoration(
-                    labelText: 'Theme', border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                    labelText: l.newRunThemeLabel,
+                    border: const OutlineInputBorder()),
                 items: _themes
-                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                    .map((t) => DropdownMenuItem(
+                        value: t, child: Text(_themeLabel(l, t))))
                     .toList(),
                 onChanged: (v) => setState(() => _theme = v ?? 'folkloric'),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _premiseCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Story context (optional, Arabic)',
-                  hintText: 'الحلقة الرابعة من سلسلة العقد',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l.newRunStoryContextLabel,
+                  hintText: l.newRunStoryContextHint,
+                  border: const OutlineInputBorder(),
                 ),
                 textDirection: TextDirection.rtl,
                 maxLines: 2,
@@ -543,9 +563,10 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
                         const SizedBox(width: 6),
                         Text(
                           switch (_lastParseMethod!) {
-                            ParseMethod.regex => 'Parsed from your markdown',
-                            ParseMethod.llmSplit => 'Split by AI — review before saving',
-                            ParseMethod.naiveFallback => 'Auto-segmented — review carefully',
+                            ParseMethod.regex => l.newRunBadgeParsedMarkdown,
+                            ParseMethod.llmSplit => l.newRunBadgeAiSplit,
+                            ParseMethod.naiveFallback =>
+                                l.newRunBadgeAutoSegmented,
                           },
                           style: const TextStyle(
                               fontSize: 11, fontWeight: FontWeight.w600),
@@ -555,10 +576,10 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
                   ),
                 ),
               ],
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
-                child: Text('Beats',
-                    style: TextStyle(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(l.newRunBeatsSection,
+                    style: const TextStyle(
                         color: FacelessTheme.textSecondary,
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
@@ -575,7 +596,7 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
               OutlinedButton.icon(
                 onPressed: _addBeat,
                 icon: const Icon(Icons.add),
-                label: Text('Add Beat (${_beats.length + 1})'),
+                label: Text(l.newRunAddBeat(_beats.length + 1)),
               ),
               const SizedBox(height: 80),
             ],
@@ -607,9 +628,11 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
                           child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.check),
                   label: Text(_submitting
-                      ? 'Saving…'
-                      : 'Use This Script (${_beats.length} beats, '
-                          '~\$${_estimatedCost().toStringAsFixed(2)})'),
+                      ? l.newRunSaving
+                      : l.newRunUseScript(
+                          _beats.length,
+                          '\$${_estimatedCost().toStringAsFixed(2)}',
+                        )),
                 ),
               ),
             ],
@@ -651,7 +674,7 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
   Future<void> _parse() async {
     final raw = _ctrl.text.trim();
     if (raw.length < 20) {
-      setState(() => _error = 'Paste a real script (at least a few scenes).');
+      setState(() => _error = context.l10n.newRunPasteRealScript);
       return;
     }
     setState(() {
@@ -672,6 +695,7 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return Dialog(
       insetPadding: const EdgeInsets.all(16),
       child: ConstrainedBox(
@@ -683,9 +707,9 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
             children: [
               Row(
                 children: [
-                  const Expanded(
-                    child: Text('Paste Markdown Script',
-                        style: TextStyle(
+                  Expanded(
+                    child: Text(l.newRunPasteDialogTitle,
+                        style: const TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 18)),
                   ),
                   IconButton(
@@ -695,23 +719,18 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Recognised format: **العنوان: ...** title, **المشهد N – ...** scene '
-                'headings, and **SPEAKER:**\\n"dialogue" blocks. Stage directions '
-                'in plain prose are kept as silent context. Your Arabic is '
-                'preserved character-for-character.',
-                style: TextStyle(
+              Text(
+                l.newRunPasteFormatHelp,
+                style: const TextStyle(
                     color: FacelessTheme.textSecondary, fontSize: 12),
               ),
               const SizedBox(height: 12),
               Expanded(
                 child: TextField(
                   controller: _ctrl,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: '**العنوان: القلادة المقدسة – الحلقة 4**\n\n'
-                        '**المشهد 1 – الفراغ**\nسكون مطلق...\n\n'
-                        '**الشاب (بهمس):**\n"أنا… وين…؟"\n\n...',
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    hintText: l.newRunPasteHint,
                     alignLabelWithHint: true,
                   ),
                   textDirection: TextDirection.rtl,
@@ -729,7 +748,7 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Text('Target beats:'),
+                  Text(l.newRunTargetBeats),
                   Expanded(
                     child: Slider(
                       min: 4, max: 15, divisions: 11,
@@ -749,7 +768,7 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
                       onPressed: _parsing
                           ? null
                           : () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
+                      child: Text(l.commonCancel),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -762,7 +781,8 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
                               width: 16, height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2))
                           : const Icon(Icons.auto_fix_high),
-                      label: Text(_parsing ? 'Parsing…' : 'Parse to Beats'),
+                      label: Text(
+                          _parsing ? l.newRunParsing : l.newRunParseToBeats),
                     ),
                   ),
                 ],
@@ -795,6 +815,7 @@ class _PasteBeatEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = context.l10n;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -812,7 +833,7 @@ class _PasteBeatEditor extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'BEAT ${index.toString().padLeft(2, "0")}',
+                    l.newRunBeatBadge(index.toString().padLeft(2, '0')),
                     style: const TextStyle(
                         color: FacelessTheme.accent,
                         fontWeight: FontWeight.w700,
@@ -835,10 +856,10 @@ class _PasteBeatEditor extends StatelessWidget {
                       return TextField(
                         controller: controller,
                         focusNode: focusNode,
-                        decoration: const InputDecoration(
-                          labelText: 'Speaker (free-text)',
-                          hintText: 'e.g. mother, narrator, warrior, …',
-                          contentPadding: EdgeInsets.symmetric(
+                        decoration: InputDecoration(
+                          labelText: l.newRunSpeakerLabel,
+                          hintText: l.newRunSpeakerHint,
+                          contentPadding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 0),
                         ),
                         onChanged: (v) {
@@ -864,10 +885,10 @@ class _PasteBeatEditor extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(
               controller: beat.characterNameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Character name (Arabic, optional)',
-                hintText: 'e.g. خالد، فاطمة، أم يوسف',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l.newRunCharacterNameLabel,
+                hintText: l.newRunCharacterNameHint,
+                border: const OutlineInputBorder(),
               ),
               textDirection: TextDirection.rtl,
               style: const TextStyle(fontSize: 15),
@@ -875,9 +896,9 @@ class _PasteBeatEditor extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(
               controller: beat.arabicCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Arabic dialogue (leave empty for silent action beat)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l.newRunArabicDialogueLabel,
+                border: const OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
               textDirection: TextDirection.rtl,
@@ -887,11 +908,10 @@ class _PasteBeatEditor extends StatelessWidget {
             const SizedBox(height: 8),
             TextField(
               controller: beat.englishCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Visual description (English) — required',
-                hintText: 'e.g. Strawberry son in stone room, golden light, '
-                    'looking at necklace',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l.newRunVisualDescLabel,
+                hintText: l.newRunVisualDescHint,
+                border: const OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
               maxLines: 3,
@@ -900,8 +920,9 @@ class _PasteBeatEditor extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Text('Clip duration:',
-                    style: TextStyle(color: FacelessTheme.textSecondary)),
+                Text(l.newRunClipDurationLabel,
+                    style:
+                        const TextStyle(color: FacelessTheme.textSecondary)),
                 Expanded(
                   child: Slider(
                     min: 4, max: 12, divisions: 16,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 
 class PersonasScreen extends StatefulWidget {
@@ -29,24 +30,21 @@ class _PersonasScreenState extends State<PersonasScreen> {
   }
 
   Future<void> _confirmDelete(Persona p) async {
+    final l10n = context.l10n;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete "${p.name}"?'),
-        content: const Text(
-          'This removes the saved voice. Songs you already generated '
-          'with it keep their audio — only future generations lose '
-          'the lock to this voice.',
-        ),
+        title: Text(l10n.personasDeleteTitle(p.name)),
+        content: Text(l10n.personasDeleteBody),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(l10n.commonDelete),
           ),
         ],
       ),
@@ -56,20 +54,23 @@ class _PersonasScreenState extends State<PersonasScreen> {
     try {
       await widget.client.deletePersona(p.id);
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('"${p.name}" removed')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(l10n.personasRemoved(p.name))));
         _refresh();
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        messenger.showSnackBar(
+            SnackBar(content: Text(l10n.homeDeleteError('$e'))));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('Saved voices')),
+      appBar: AppBar(title: Text(l10n.homeSavedVoices)),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: FutureBuilder<List<Persona>>(
@@ -83,7 +84,7 @@ class _PersonasScreenState extends State<PersonasScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    'Failed to load voices: ${snap.error}',
+                    l10n.personasLoadFailed('${snap.error}'),
                     style: TextStyle(
                         color: Theme.of(context).colorScheme.error),
                     textAlign: TextAlign.center,
@@ -94,19 +95,18 @@ class _PersonasScreenState extends State<PersonasScreen> {
             final personas = snap.data ?? [];
             if (personas.isEmpty) {
               return ListView(
-                children: const [
-                  SizedBox(height: 80),
-                  Icon(Icons.record_voice_over,
+                children: [
+                  const SizedBox(height: 80),
+                  const Icon(Icons.record_voice_over,
                       size: 64, color: FacelessTheme.textSecondary),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
                     child: Text(
-                      'No saved voices yet.\n\n'
-                      'Generate a song, then tap "Save this voice" on its '
-                      'detail screen to pin the singer for future songs.',
+                      l10n.personasEmpty,
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: FacelessTheme.textSecondary),
+                      style: const TextStyle(
+                          color: FacelessTheme.textSecondary),
                     ),
                   ),
                 ],
@@ -128,7 +128,9 @@ class _PersonasScreenState extends State<PersonasScreen> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
-                      Text('From song ${p.sourceRunId} · take ${p.sourceTake}',
+                      Text(
+                          l10n.personasFromSong(
+                              p.sourceRunId, p.sourceTake),
                           style: const TextStyle(
                               fontSize: 11,
                               color: FacelessTheme.textSecondary)),
@@ -136,7 +138,7 @@ class _PersonasScreenState extends State<PersonasScreen> {
                   ),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline),
-                    tooltip: 'Delete this voice',
+                    tooltip: l10n.personasDeleteTooltip,
                     onPressed: () => _confirmDelete(p),
                   ),
                   isThreeLine: true,

@@ -209,7 +209,7 @@ class BrandPill extends StatelessWidget {
             Container(
               width: 8,
               height: 8,
-              margin: const EdgeInsets.only(right: 8),
+              margin: const EdgeInsetsDirectional.only(end: 8),
               decoration: BoxDecoration(
                   color: dotColor ?? FacelessTheme.accent, shape: BoxShape.circle),
             ),

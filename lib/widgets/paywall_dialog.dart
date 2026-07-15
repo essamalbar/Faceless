@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../screens/billing_screen.dart';
 import '../theme.dart';
 
@@ -25,33 +26,32 @@ class PaywallDialog extends StatelessWidget {
     return AlertDialog(
       icon: const Icon(Icons.monetization_on,
                        color: FacelessTheme.accent, size: 36),
-      title: const Text('Out of credits'),
+      title: Text(context.l10n.paywallOutOfCredits),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'This video needs $required credits. You have $balance — '
-            '$missing more to go. Top up to keep generating.',
+            context.l10n.paywallNeedCredits(required, balance, missing),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Your script and characters are saved. After topping up, '
-            'tap Resume on this run to continue.',
+          Text(
+            context.l10n.paywallSavedNotice,
             textAlign: TextAlign.center,
-            style: TextStyle(color: FacelessTheme.textSecondary, fontSize: 13),
+            style: const TextStyle(
+                color: FacelessTheme.textSecondary, fontSize: 13),
           ),
         ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.commonCancel),
         ),
         FilledButton.icon(
           icon: const Icon(Icons.shopping_cart),
-          label: const Text('Top up'),
+          label: Text(context.l10n.paywallTopUp),
           onPressed: () {
             Navigator.of(context).pop();
             Navigator.of(context).push(

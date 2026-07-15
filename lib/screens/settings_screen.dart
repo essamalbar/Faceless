@@ -5,8 +5,17 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../api/settings.dart';
 import '../config.dart';
+import '../l10n/l10n.dart';
 import '../theme.dart';
 import 'billing_screen.dart';
+
+/// Localized display name for a plan id. Unknown ids render title-cased.
+String _planDisplayName(AppLocalizations l10n, String plan) => switch (plan) {
+      'starter' => l10n.homePlanStarter,
+      'creator' => l10n.homePlanCreator,
+      'pro' => l10n.homePlanPro,
+      _ => plan.isEmpty ? plan : plan[0].toUpperCase() + plan.substring(1),
+    };
 
 class SettingsScreen extends StatefulWidget {
   final bool firstLaunch;
@@ -63,6 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _testConnection() async {
     if (!_formKey.currentState!.validate()) return;
+    final l10n = context.l10n;
     setState(() {
       _loading = true;
       _testResult = null;
@@ -79,9 +89,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Cloud Run reserves /healthz at the LB so it never reaches FastAPI;
       // exercise the real authenticated path instead.
       await client.listRuns();
-      setState(() => _testResult = '✓ Connected');
+      setState(() => _testResult = l10n.settingsTestConnected);
     } catch (e) {
-      setState(() => _testResult = '✗ ${e.toString()}');
+      setState(() => _testResult = l10n.settingsTestFailed(e.toString()));
     } finally {
       client.close();
       setState(() => _loading = false);
@@ -96,26 +106,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _resetToDefaults() async {
+    final l10n = context.l10n;
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Reset to launcher defaults?'),
-        content: const Text(
-          'This clears your saved Server URL from the device. The app will '
-          'fall back to whatever the launcher script (run-app.sh) baked in '
-          'via --dart-define on the next launch. Use this when the tunnel '
-          'URL has changed and the saved value is stale.',
-        ),
+        title: Text(l10n.settingsResetDefaultsTitle),
+        content: Text(l10n.settingsResetDefaultsBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: FacelessTheme.danger,
                   foregroundColor: Colors.white),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Reset')),
+              child: Text(l10n.settingsReset)),
         ],
       ),
     );
@@ -125,28 +131,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final url = await _settings.baseUrl();
     if (mounted) {
       _urlCtrl.text = url ?? '';
-      setState(() => _testResult = '✓ Reset — using launcher defaults');
+      setState(() => _testResult = l10n.settingsResetDone);
     }
   }
 
   Future<void> _signOut() async {
+    final l10n = context.l10n;
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text(
-          "You'll need to sign in again to access your library and credits.",
-        ),
+        title: Text(l10n.settingsSignOutTitle),
+        content: Text(l10n.settingsSignOutBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: FacelessTheme.danger,
                   foregroundColor: Colors.white),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Sign out')),
+              child: Text(l10n.settingsSignOut)),
         ],
       ),
     );
@@ -162,13 +167,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: const Text('Settings'),
+        title: Text(l10n.homeSettings),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -183,23 +189,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     _AccountCard(email: _email, plan: _plan),
                     const SizedBox(height: 24),
-                    _SectionLabel(text: 'Subscription'),
+                    _SectionLabel(text: l10n.settingsSectionSubscription),
                     const SizedBox(height: 8),
                     _SettingTile(
                       icon: Icons.monetization_on_outlined,
-                      title: 'Plan & credits',
+                      title: l10n.settingsPlanCredits,
                       subtitle: _plan == null
-                          ? 'View plans, manage your subscription'
+                          ? l10n.settingsPlanCreditsSubtitle
                           : (_plan!.plan == 'free'
-                              ? 'You are on the Free plan — subscribe to render videos'
-                              : 'Manage your ${_titleCase(_plan!.plan)} plan'),
+                              ? l10n.settingsFreePlanSubtitle
+                              : l10n.settingsManagePlanSubtitle(
+                                  _planDisplayName(l10n, _plan!.plan))),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                             builder: (_) => const BillingScreen()),
                       ),
                     ),
                     const SizedBox(height: 24),
-                    _SectionLabel(text: 'Advanced'),
+                    // Language — instant AR/EN switch, persisted. null = device.
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.language),
+                        title: Text(l10n.settingsLanguage),
+                        trailing: DropdownButton<String>(
+                          value: LocaleController
+                                  .instance.value?.languageCode ??
+                              'auto',
+                          underline: const SizedBox.shrink(),
+                          items: [
+                            DropdownMenuItem(
+                                value: 'auto',
+                                child: Text(l10n.settingsLanguageAuto)),
+                            const DropdownMenuItem(
+                                value: 'ar', child: Text('العربية')),
+                            const DropdownMenuItem(
+                                value: 'en', child: Text('English')),
+                          ],
+                          onChanged: (v) => LocaleController.instance
+                              .set(v == null || v == 'auto'
+                                  ? null
+                                  : Locale(v)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    _SectionLabel(text: l10n.settingsSectionAdvanced),
                     const SizedBox(height: 8),
                     _AdvancedCard(
                       expanded: _advancedExpanded,
@@ -216,13 +250,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       firstLaunch: widget.firstLaunch,
                     ),
                     const SizedBox(height: 24),
-                    _SectionLabel(text: 'About'),
+                    _SectionLabel(text: l10n.settingsSectionAbout),
                     const SizedBox(height: 8),
                     const _AboutCard(),
                     const SizedBox(height: 32),
                     _DangerButton(
                       icon: Icons.logout,
-                      label: 'Sign out',
+                      label: l10n.settingsSignOut,
                       onPressed: _loading ? null : _signOut,
                     ),
                   ],
@@ -234,9 +268,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
-  static String _titleCase(String s) =>
-      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   @override
   void dispose() {
@@ -357,12 +388,15 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final initial = (email == null || email!.isEmpty)
         ? '?'
         : email![0].toUpperCase();
     final planLabel = plan == null
         ? '…'
-        : (plan!.plan == 'free' ? 'Free plan' : '${_titleCase(plan!.plan)} plan');
+        : (plan!.plan == 'free'
+            ? l10n.settingsFreePlan
+            : l10n.settingsPlanName(_planDisplayName(l10n, plan!.plan)));
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       decoration: BoxDecoration(
@@ -407,7 +441,7 @@ class _AccountCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  email ?? 'Not signed in',
+                  email ?? l10n.settingsNotSignedIn,
                   style: const TextStyle(
                     color: FacelessTheme.textPrimary,
                     fontWeight: FontWeight.w700,
@@ -430,7 +464,7 @@ class _AccountCard extends StatelessWidget {
                     ),
                     if (plan != null)
                       _ChipLabel(
-                        label: '${plan!.balance} credits',
+                        label: l10n.homeCreditsCount(plan!.balance),
                         color: FacelessTheme.accent2,
                       ),
                   ],
@@ -442,9 +476,6 @@ class _AccountCard extends StatelessWidget {
       ),
     );
   }
-
-  static String _titleCase(String s) =>
-      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }
 
 class _ChipLabel extends StatelessWidget {
@@ -532,20 +563,20 @@ class _AdvancedCard extends StatelessWidget {
                         color: FacelessTheme.textPrimary, size: 20),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Server connection',
-                            style: TextStyle(
+                        Text(context.l10n.settingsServerConnection,
+                            style: const TextStyle(
                               color: FacelessTheme.textPrimary,
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
                             )),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
-                          'Override the API URL — for self-hosters and debugging',
-                          style: TextStyle(
+                          context.l10n.settingsServerConnectionSubtitle,
+                          style: const TextStyle(
                             color: FacelessTheme.textSecondary,
                             fontSize: 12,
                             height: 1.35,
@@ -586,16 +617,15 @@ class _AdvancedCard extends StatelessWidget {
                         color: FacelessTheme.accent.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.info_outline,
+                          const Icon(Icons.info_outline,
                               color: FacelessTheme.accent, size: 18),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              "First-time setup. Paste the API URL printed "
-                              "by run-app.sh, then tap Test → Save.",
-                              style: TextStyle(
+                              context.l10n.settingsFirstTimeSetup,
+                              style: const TextStyle(
                                 color: FacelessTheme.textPrimary,
                                 fontSize: 12,
                                 height: 1.4,
@@ -609,18 +639,20 @@ class _AdvancedCard extends StatelessWidget {
                   ],
                   TextFormField(
                     controller: urlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Server URL',
+                    decoration: InputDecoration(
+                      labelText: context.l10n.settingsServerUrlLabel,
                       hintText: 'https://xyz.example.com',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                     keyboardType: TextInputType.url,
                     autocorrect: false,
                     validator: (v) {
-                      if (v == null || v.trim().isEmpty) return 'required';
+                      if (v == null || v.trim().isEmpty) {
+                        return context.l10n.settingsUrlRequired;
+                      }
                       if (!v.startsWith('http')) {
-                        return 'must start with http:// or https://';
+                        return context.l10n.settingsUrlMustStartWithHttp;
                       }
                       return null;
                     },
@@ -644,7 +676,7 @@ class _AdvancedCard extends StatelessWidget {
                         child: OutlinedButton.icon(
                           onPressed: loading ? null : onTest,
                           icon: const Icon(Icons.wifi_tethering, size: 18),
-                          label: const Text('Test'),
+                          label: Text(context.l10n.settingsTest),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -652,7 +684,7 @@ class _AdvancedCard extends StatelessWidget {
                         child: FilledButton.icon(
                           onPressed: loading ? null : onSave,
                           icon: const Icon(Icons.save, size: 18),
-                          label: const Text('Save'),
+                          label: Text(context.l10n.commonSave),
                         ),
                       ),
                     ],
@@ -660,15 +692,15 @@ class _AdvancedCard extends StatelessWidget {
                   if (onReset != null) ...[
                     const SizedBox(height: 10),
                     Align(
-                      alignment: Alignment.centerLeft,
+                      alignment: AlignmentDirectional.centerStart,
                       child: TextButton.icon(
                         onPressed: loading ? null : onReset,
                         icon: const Icon(Icons.restart_alt,
                             color: FacelessTheme.danger, size: 18),
-                        label: const Text(
-                          'Reset to launcher defaults',
+                        label: Text(
+                          context.l10n.settingsResetToLauncherDefaults,
                           style:
-                              TextStyle(color: FacelessTheme.danger),
+                              const TextStyle(color: FacelessTheme.danger),
                         ),
                       ),
                     ),
@@ -700,13 +732,13 @@ class _AboutCard extends StatelessWidget {
           color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
         ),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          _AboutRow(label: 'App',     value: 'Faceless'),
-          _AboutRow(label: 'Version', value: '1.0.0'),
+          _AboutRow(label: context.l10n.settingsAboutApp, value: 'Faceless'),
+          _AboutRow(label: context.l10n.settingsAboutVersion, value: '1.0.0'),
           _AboutRow(
-            label: 'Made for',
-            value: 'Arabic short-form storytelling',
+            label: context.l10n.settingsAboutMadeFor,
+            value: context.l10n.settingsAboutMadeForValue,
             last: true,
           ),
         ],

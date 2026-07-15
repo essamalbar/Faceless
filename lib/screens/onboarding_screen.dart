@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/l10n.dart';
 import '../theme.dart';
 
 /// Full-screen welcome carousel shown to first-time visitors immediately
@@ -47,50 +48,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _pageController = PageController();
   int _page = 0;
 
-  // Defined as static records so the widget tree below can map() over
-  // them cleanly. Each slide is self-describing (no per-slide branches
-  // in build()).
-  static const List<_Slide> _slides = [
-    _Slide(
-      eyebrow: 'WELCOME',
-      title: 'An Arabic AI studio that respects your wallet',
-      body:
-          "Faceless Lab generates cinematic Arabic horror shorts and "
-          "original Arabic songs from a single sentence. You'll write the "
-          "premise; we'll handle the rest.",
-      icon: Icons.auto_awesome_outlined,
-    ),
-    _Slide(
-      eyebrow: 'TWO MODES',
-      title: 'Horror shorts. AI songs. One studio.',
-      body:
-          "Switch between Horror (cinematic Arabic shorts in 6 dialects) "
-          "and Songs (full Suno-vocal tracks with AI cover art). Each "
-          "render lives in your library and stays sharable forever.",
-      icon: Icons.movie_filter_outlined,
-    ),
-    _Slide(
-      eyebrow: 'FAIR PRICING',
-      title: 'Free drafts. You only pay when you generate.',
-      body:
-          "Scripts and lyrics preview at zero cost. Approve when you're "
-          "happy. If a render fails, the credits come back automatically — "
-          "you never pay for video that didn't deliver.",
-      icon: Icons.payments_outlined,
-    ),
-    _Slide(
-      eyebrow: 'LET\'S GO',
-      title: 'Your first draft is free.',
-      body:
-          "Tap below and write a sentence. The system will produce a full "
-          "Arabic script or song lyrics for you to review — all before any "
-          "credit is spent.",
-      icon: Icons.rocket_launch_outlined,
-    ),
-  ];
+  static const int _slideCount = 4;
+
+  // Built per-locale so the copy follows the app language. Each slide is
+  // self-describing (no per-slide branches in build()).
+  List<_Slide> _slides(AppLocalizations l10n) => [
+        _Slide(
+          eyebrow: l10n.onboardingSlide1Eyebrow,
+          title: l10n.onboardingSlide1Title,
+          body: l10n.onboardingSlide1Body,
+          icon: Icons.auto_awesome_outlined,
+        ),
+        _Slide(
+          eyebrow: l10n.onboardingSlide2Eyebrow,
+          title: l10n.onboardingSlide2Title,
+          body: l10n.onboardingSlide2Body,
+          icon: Icons.movie_filter_outlined,
+        ),
+        _Slide(
+          eyebrow: l10n.onboardingSlide3Eyebrow,
+          title: l10n.onboardingSlide3Title,
+          body: l10n.onboardingSlide3Body,
+          icon: Icons.payments_outlined,
+        ),
+        _Slide(
+          eyebrow: l10n.onboardingSlide4Eyebrow,
+          title: l10n.onboardingSlide4Title,
+          body: l10n.onboardingSlide4Body,
+          icon: Icons.rocket_launch_outlined,
+        ),
+      ];
 
   void _next() {
-    if (_page < _slides.length - 1) {
+    if (_page < _slideCount - 1) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 320),
         curve: Curves.easeOutCubic,
@@ -118,7 +108,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLast = _page == _slides.length - 1;
+    final slides = _slides(context.l10n);
+    final isLast = _page == slides.length - 1;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -135,7 +126,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     style: TextButton.styleFrom(
                       foregroundColor: FacelessTheme.textSecondary,
                     ),
-                    child: const Text('Skip'),
+                    child: Text(context.l10n.onboardingSkip),
                   ),
                 ],
               ),
@@ -144,8 +135,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: PageView.builder(
                 controller: _pageController,
                 onPageChanged: (i) => setState(() => _page = i),
-                itemCount: _slides.length,
-                itemBuilder: (ctx, i) => _SlideView(slide: _slides[i]),
+                itemCount: slides.length,
+                itemBuilder: (ctx, i) => _SlideView(slide: slides[i]),
               ),
             ),
             // Progress dots
@@ -153,7 +144,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(_slides.length, (i) {
+                children: List.generate(slides.length, (i) {
                   final active = i == _page;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 240),
@@ -189,7 +180,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: Text(isLast ? "Let's create" : 'Next'),
+                  child: Text(isLast
+                      ? context.l10n.onboardingLetsCreate
+                      : context.l10n.onboardingNext),
                 ),
               ),
             ),

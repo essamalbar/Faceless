@@ -60,7 +60,8 @@ class FacelessTheme {
         color: color ?? textPrimary,
       ).copyWith(fontFamilyFallback: const ['Cairo']);
 
-  static ThemeData build() {
+  static ThemeData build({Locale? locale}) {
+    final isArabic = locale?.languageCode == 'ar';
     final base = ThemeData.light(useMaterial3: true);
     final scheme = ColorScheme.fromSeed(
       seedColor: accent,
@@ -71,11 +72,20 @@ class FacelessTheme {
       error: danger,
     ).copyWith(surfaceContainerHighest: surface2);
 
+    // Arabic UI: Cairo primary (Inter fallback for Latin snippets).
+    // English UI: Inter primary (Cairo fallback for Arabic content).
     final cairo = GoogleFonts.cairo().fontFamily;
-    final textTheme = GoogleFonts.interTextTheme(base.textTheme).apply(
+    final inter = GoogleFonts.inter().fontFamily;
+    final textTheme = (isArabic
+            ? GoogleFonts.cairoTextTheme(base.textTheme)
+            : GoogleFonts.interTextTheme(base.textTheme))
+        .apply(
       bodyColor: textPrimary,
       displayColor: textPrimary,
-      fontFamilyFallback: [if (cairo != null) cairo],
+      fontFamilyFallback: [
+        if (isArabic && inter != null) inter,
+        if (!isArabic && cairo != null) cairo,
+      ],
     );
 
     return base.copyWith(
