@@ -4047,6 +4047,104 @@ def get_artist_avatar(artist_id: str, user: User = Depends(require_user)):
     raise HTTPException(404, "no avatar")
 
 
+def _find_artist_public(handle: str) -> tuple[dict, Path] | None:
+    """Locate an artist by handle across all user roots (public page has no
+    auth context). Solo-scale linear scan — one artists.json read per user."""
+    from pipeline import artists as artists_mod
+    root = _out_root()
+    if not root.exists():
+        return None
+    for user_dir in root.iterdir():
+        if not user_dir.is_dir():
+            continue
+        artist = artists_mod.find_by_handle(
+            artists_mod.load_artists(user_dir), handle)
+        if artist:
+            return artist, user_dir
+    return None
+
+
+@app.get("/a/{handle}", include_in_schema=False)
+def public_artist_page(handle: str):
+    """PUBLIC artist page (no auth): header + the artist's SHARED songs only
+    (a song is public iff it has a share_token). Links go to the existing
+    /p/{token} pages, so playback/OG reuse that machinery."""
+    from fastapi.responses import HTMLResponse
+    import html as _html
+
+    found = _find_artist_public(handle)
+    if found is None:
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;background:#F2EFF7;"
+            "color:#1B1E28;display:grid;place-items:center;height:100vh'>"
+            "<div><h2>Artist not found</h2></div></body></html>",
+            status_code=404)
+    artist, user_dir = found
+
+    songs = []
+    for d in sorted(user_dir.iterdir(), key=lambda p: p.name, reverse=True):
+        if not d.is_dir():
+            continue
+        st = _read_state(d)
+        if (st.get("kind") == "song"
+                and st.get("artist_id") == artist["id"]
+                and st.get("share_token")):
+            songs.append({
+                "title": st.get("title") or "AI song",
+                "token": st.get("share_token"),
+            })
+
+    name = _html.escape(artist.get("name", ""))
+    bio = _html.escape(artist.get("bio", ""))
+    initial = (artist.get("name") or "?")[:1]
+    cards = "".join(
+        f"<a class='song' href='/p/{s['token']}'>"
+        f"<div class='art'>♪</div>"
+        f"<div class='t'>{_html.escape(s['title'])}</div>"
+        f"<div class='play'>▶</div></a>"
+        for s in songs
+    ) or "<p class='empty'>No public songs yet.</p>"
+
+    return HTMLResponse(f"""<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{name} — Faceless Lab</title>
+<meta property="og:title" content="{name}">
+<meta property="og:description" content="{bio or 'AI artist on Faceless Lab'}">
+<style>
+ body{{margin:0;font-family:Inter,system-ui,sans-serif;color:#1B1E28;
+   background:linear-gradient(135deg,#FBF6EE,#F2EFF7 50%,#E9EBF2);min-height:100vh}}
+ .wrap{{max-width:680px;margin:0 auto;padding:48px 20px}}
+ .head{{display:flex;gap:20px;align-items:center;margin-bottom:8px}}
+ .avatar{{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;
+   font-size:40px;font-weight:700;color:#fff;
+   background:linear-gradient(135deg,#34A473,#38BFA6);flex:none}}
+ h1{{margin:0;font-size:32px;letter-spacing:-.02em}}
+ .bio{{color:#767C8C;margin:4px 0 0}}
+ .count{{color:#A2A7B4;font-size:13px;margin:24px 0 12px}}
+ .song{{display:flex;align-items:center;gap:14px;background:#fff;
+   border:1px solid rgba(20,22,45,.07);border-radius:16px;padding:12px 16px;
+   margin-bottom:10px;text-decoration:none;color:#1B1E28;
+   box-shadow:0 12px 34px rgba(30,32,70,.08)}}
+ .art{{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;
+   background:linear-gradient(135deg,#E7E1F4,#DCEBE6);flex:none}}
+ .t{{flex:1;font-weight:600}}
+ .play{{width:36px;height:36px;border-radius:50%;background:#232636;color:#fff;
+   display:grid;place-items:center;font-size:13px}}
+ .empty{{color:#767C8C}}
+ .foot{{margin-top:36px;color:#A2A7B4;font-size:13px;text-align:center}}
+ .foot a{{color:#2FA36B;text-decoration:none;font-weight:600}}
+</style></head><body><div class="wrap">
+ <div class="head">
+   <div class="avatar">{_html.escape(initial)}</div>
+   <div><h1>{name}</h1>{f"<p class='bio'>{bio}</p>" if bio else ""}</div>
+ </div>
+ <div class="count">{len(songs)} public song(s)</div>
+ {cards}
+ <div class="foot">Made with <a href="/app/">Faceless Lab</a> — create your own AI artist</div>
+</div></body></html>""")
+
+
 # ---------------------------------------------------------------------------
 # Public sharing — /p/{token} pages anyone can view (no auth).
 #

@@ -2685,3 +2685,41 @@ def test_artist_avatar_upload_and_fetch(client_factory, monkeypatch, tmp_path):
     r = c.get(f"/artists/{a['id']}/avatar")
     assert r.status_code == 200
     assert r.content == b"\x89PNG fake"
+
+
+def test_public_artist_page_shows_only_shared_songs(client_factory, monkeypatch, tmp_path):
+    """/a/{handle} is public (no auth), lists ONLY songs with a share_token,
+    and links to their /p/{token} pages."""
+    from fastapi.testclient import TestClient
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    a = _mk_artist(c, name="Layl", handle="layl")
+
+    def _song(run_id, title, shared):
+        d = tmp_path / "alice" / run_id
+        d.mkdir(parents=True)
+        st = {"kind": "song", "status": "complete", "user_id": "alice",
+              "artist_id": a["id"], "title": title,
+              "created_at": "2026-07-15T00:00:00+00:00"}
+        if shared:
+            st["share_token"] = f"tok-{run_id}"
+        (d / "api_state.json").write_text(json.dumps(st))
+    _song("2026-07-15-000001", "أغنية عامة", shared=True)
+    _song("2026-07-15-000002", "أغنية خاصة", shared=False)
+
+    public = TestClient(api_mod.app)  # NO auth header
+    r = public.get("/a/layl")
+    assert r.status_code == 200
+    assert "Layl" in r.text
+    assert "أغنية عامة" in r.text
+    assert "أغنية خاصة" not in r.text          # unshared stays private
+    assert "/p/tok-2026-07-15-000001" in r.text  # links to the share page
+
+
+def test_public_artist_page_unknown_handle_404(client_factory, monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    public = TestClient(api_mod.app)
+    assert public.get("/a/who-dis").status_code == 404
