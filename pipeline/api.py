@@ -21,6 +21,7 @@ Run with:  uv run uvicorn pipeline.api:app --host 0.0.0.0 --port 8000
 from __future__ import annotations
 
 import json
+import uuid
 import os
 import re
 import signal
@@ -396,6 +397,10 @@ class CreateSongRequest(BaseModel):
     # Video render mode. "static" = single cover still over audio (1 credit);
     # "cinematic" = beat-synced multi-scene pool (3 credits).
     video_mode: str = "static"
+    # Make this song AS an artist: the artist's persona (voice) + default
+    # style fill any fields the request left empty, and the run is stamped
+    # with artist_id so it lands in the artist's discography. 404 if unknown.
+    artist_id: str | None = None
 
     @field_validator("video_mode")
     @classmethod
@@ -463,6 +468,48 @@ class PersonaSummary(BaseModel):
     created_at: str
 
 
+class ArtistSummary(BaseModel):
+    id: str
+    name: str
+    handle: str
+    bio: str = ""
+    persona_id: str | None = None
+    avatar_run_id: str | None = None
+    avatar_upload: str | None = None
+    default_style: str = ""
+    default_language: str = "ar"
+    default_vocal_gender: str = "m"
+    created_at: str
+    song_count: int = 0
+
+
+class CreateArtistRequest(BaseModel):
+    name: str
+    handle: str | None = None  # auto-slugged from name when omitted
+    bio: str = ""
+    default_style: str = ""
+    default_language: str = "ar"
+    default_vocal_gender: str = "m"
+
+
+class PatchArtistRequest(BaseModel):
+    name: str | None = None
+    handle: str | None = None
+    bio: str | None = None
+    persona_id: str | None = None
+    avatar_run_id: str | None = None
+    default_style: str | None = None
+    default_language: str | None = None
+    default_vocal_gender: str | None = None
+
+
+class CreateArtistFromSongRequest(BaseModel):
+    run_id: str
+    name: str
+    handle: str | None = None
+    take: int | None = None  # defaults to the run's chosen_take
+
+
 class ShareInfo(BaseModel):
     token: str
     url: str  # the public /p/{token} URL
@@ -492,6 +539,11 @@ class SongRunSummary(BaseModel):
     # "static" (single cover still) or "cinematic" (beat-synced multi-scene
     # pool). Older songs without the key read as "static".
     video_mode: str = "static"
+    # Artist Core: which artist this song belongs to (None = unassigned).
+    # artist_name is denormalized into summaries so lists render without
+    # an extra /artists call.
+    artist_id: str | None = None
+    artist_name: str | None = None
 
 
 class RunProgress(BaseModel):
@@ -2431,6 +2483,23 @@ def create_song(
     if user.role != "service" and get_balance(user.id) < credits_required:
         _raise_402_insufficient_credits(get_balance(user.id), credits_required)
 
+    # Artist Core: songs made AS an artist inherit the artist's voice +
+    # default style for any field the request left empty. Explicit request
+    # values always win. Resolved BEFORE any work so an unknown id is a
+    # clean 404.
+    persona_id = req.persona_id
+    style_hint = req.style_hint
+    if req.artist_id:
+        from pipeline import artists as artists_mod
+        artist = artists_mod.find_by_id(
+            artists_mod.load_artists(_user_runs_root(user)), req.artist_id)
+        if artist is None:
+            raise HTTPException(404, f"artist {req.artist_id!r} not found")
+        if persona_id is None:
+            persona_id = artist.get("persona_id")
+        if not style_hint:
+            style_hint = artist.get("default_style") or None
+
     user_root = _user_runs_root(user)
     user_root.mkdir(parents=True, exist_ok=True)
     run_id = _make_run_id(root=user_root)
@@ -2444,6 +2513,7 @@ def create_song(
         user_id=user.id,
         theme=req.theme,
         video_mode=req.video_mode,
+        artist_id=req.artist_id,
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
 
@@ -2453,7 +2523,7 @@ def create_song(
             llm=llm,
             theme=req.theme,
             custom_lyrics=req.custom_lyrics,
-            style_hint=req.style_hint,
+            style_hint=style_hint,
             language=req.language,
         )
     except Exception as e:
@@ -2471,7 +2541,7 @@ def create_song(
             # vocal_gender defaults to 'm' on the API side, but pass
             # through whatever the request specified.
             "vocal_gender": req.vocal_gender,
-            "persona_id": req.persona_id,
+            "persona_id": persona_id,
             # Optional Suno model override. Validated against
             # _ALLOWED_SUNO_MODELS; None falls back to config default.
             "suno_model": (
@@ -2549,6 +2619,7 @@ def upload_cover_song(
     video_mode: str = Form("static"),
     vocal_gender: str | None = Form("m"),
     suno_model: str | None = Form(None),
+    artist_id: str | None = Form(None),
     user: User = Depends(require_user),
 ):
     """Start a faithful-cover run from an UPLOADED audio file. Writes a draft
@@ -2577,6 +2648,13 @@ def upload_cover_song(
         balance = get_balance(user.id)
         if balance < credits_required:
             _raise_402_insufficient_credits(balance, credits_required)
+
+    # Artist Core: validate before any work so an unknown id is a clean 404.
+    if artist_id:
+        from pipeline import artists as artists_mod
+        if artists_mod.find_by_id(
+                artists_mod.load_artists(_user_runs_root(user)), artist_id) is None:
+            raise HTTPException(404, f"artist {artist_id!r} not found")
 
     user_root = _user_runs_root(user)
     user_root.mkdir(parents=True, exist_ok=True)
@@ -2798,6 +2876,8 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         failure_stage=state.get("failure_stage"),
         watermarked=bool(state.get("watermarked", False)),
         video_mode=state.get("video_mode", "static"),
+        artist_id=state.get("artist_id"),
+        artist_name=_artist_name_for(user, state.get("artist_id")),
     )
 
 
@@ -2888,6 +2968,12 @@ def list_songs(user: User = Depends(require_user)):
     user_root = _user_runs_root(user)
     if not user_root.exists():
         return out
+    # One artists.json read for the whole list (not per song).
+    from pipeline import artists as artists_mod
+    artist_names = {
+        a["id"]: a.get("name")
+        for a in artists_mod.load_artists(user_root)
+    }
     for d in sorted(user_root.iterdir(), key=lambda p: p.name, reverse=True):
         if not d.is_dir():
             continue
@@ -2906,6 +2992,8 @@ def list_songs(user: User = Depends(require_user)):
             last_error=state.get("last_error"),
             failure_stage=state.get("failure_stage"),
             video_mode=state.get("video_mode", "static"),
+            artist_id=state.get("artist_id"),
+            artist_name=artist_names.get(state.get("artist_id")),
         ))
     return out
 
@@ -3698,6 +3786,367 @@ def delete_persona(persona_id: str, user: User = Depends(require_user)):
         raise HTTPException(404, "persona not found")
     _save_personas(user, new_list)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Artists — the identity wrapper around a persona voice (Artist Core).
+#
+# An Artist = name + handle + pinned voice (persona_id) + visuals + default
+# song settings. Songs made "as" an artist carry artist_id in state and form
+# the artist's discography. Storage: pipeline/artists.py (artists.json per
+# user). Spec: docs/superpowers/specs/2026-07-15-artist-core-design.md.
+# ---------------------------------------------------------------------------
+
+
+def _artist_name_for(user: "User", artist_id: str | None) -> str | None:
+    """Denormalized artist name for a single-song summary. None-safe."""
+    if not artist_id:
+        return None
+    from pipeline import artists as artists_mod
+    a = artists_mod.find_by_id(
+        artists_mod.load_artists(_user_runs_root(user)), artist_id)
+    return a.get("name") if a else None
+
+
+def _artist_song_count(user: "User", artist_id: str) -> int:
+    root = _user_runs_root(user)
+    if not root.exists():
+        return 0
+    n = 0
+    for d in root.iterdir():
+        if d.is_dir():
+            st = _read_state(d)
+            if st.get("kind") == "song" and st.get("artist_id") == artist_id:
+                n += 1
+    return n
+
+
+def _artist_summary(user: "User", artist: dict) -> ArtistSummary:
+    return ArtistSummary(**artist,
+                         song_count=_artist_song_count(user, artist["id"]))
+
+
+def _resolve_new_handle(
+    user: "User", *, name: str, requested: str | None,
+    artists: list[dict], exclude_id: str | None = None,
+) -> str:
+    """Validate/derive a handle. Explicit duplicates → 409 with a
+    suggestion; auto-slugged ones silently get a -2 suffix."""
+    from pipeline.artists import (
+        ARTIST_HANDLE_RE, slugify_handle, unique_handle)
+    taken = {a["handle"] for a in artists if a.get("id") != exclude_id}
+    if requested:
+        handle = requested.strip().lower()
+        if not ARTIST_HANDLE_RE.match(handle):
+            raise HTTPException(
+                422, "handle must be 2-32 chars of a-z, 0-9, '-'")
+        if handle in taken:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": f"handle {handle!r} is taken",
+                    "suggested_handle": unique_handle(handle, taken),
+                },
+            )
+        return handle
+    # Auto-derive from the name; collisions auto-suffix (no 409 — the user
+    # never typed this handle).
+    seed = slugify_handle(name, uuid.uuid4().hex[:8])
+    return unique_handle(seed, taken)
+
+
+@app.get("/artists", response_model=list[ArtistSummary])
+def list_artists(user: User = Depends(require_user)):
+    from pipeline import artists as artists_mod
+    return [_artist_summary(user, a)
+            for a in artists_mod.load_artists(_user_runs_root(user))]
+
+
+@app.post("/artists", response_model=ArtistSummary, status_code=201)
+def create_artist(req: CreateArtistRequest, user: User = Depends(require_user)):
+    from pipeline import artists as artists_mod
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(422, "artist name is required")
+    if len(name) > 80:
+        raise HTTPException(422, "artist name exceeds 80 chars")
+    root = _user_runs_root(user)
+    artists = artists_mod.load_artists(root)
+    handle = _resolve_new_handle(
+        user, name=name, requested=req.handle, artists=artists)
+    artist = artists_mod.new_artist(
+        name=name,
+        handle=handle,
+        bio=req.bio.strip(),
+        default_style=req.default_style.strip(),
+        default_language=req.default_language,
+        default_vocal_gender=req.default_vocal_gender,
+    )
+    artists.append(artist)
+    artists_mod.save_artists(root, artists)
+    return _artist_summary(user, artist)
+
+
+@app.patch("/artists/{artist_id}", response_model=ArtistSummary)
+def patch_artist(
+    artist_id: str,
+    req: PatchArtistRequest,
+    user: User = Depends(require_user),
+):
+    from pipeline import artists as artists_mod
+    root = _user_runs_root(user)
+    artists = artists_mod.load_artists(root)
+    artist = artists_mod.find_by_id(artists, artist_id)
+    if artist is None:
+        raise HTTPException(404, "artist not found")
+    if req.name is not None:
+        if not req.name.strip():
+            raise HTTPException(422, "artist name is required")
+        artist["name"] = req.name.strip()
+    if req.handle is not None:
+        artist["handle"] = _resolve_new_handle(
+            user, name=artist["name"], requested=req.handle,
+            artists=artists, exclude_id=artist_id)
+    for field in ("bio", "persona_id", "avatar_run_id", "default_style",
+                  "default_language", "default_vocal_gender"):
+        val = getattr(req, field)
+        if val is not None:
+            artist[field] = val
+    artists_mod.save_artists(root, artists)
+    return _artist_summary(user, artist)
+
+
+@app.delete("/artists/{artist_id}", status_code=204)
+def delete_artist(artist_id: str, user: User = Depends(require_user)):
+    """Remove the artist. Their songs stay (detached: artist_id cleared);
+    the persona voice is kept — it may be pinned by other artists later."""
+    from pipeline import artists as artists_mod
+    root = _user_runs_root(user)
+    artists = artists_mod.load_artists(root)
+    remaining = [a for a in artists if a.get("id") != artist_id]
+    if len(remaining) == len(artists):
+        raise HTTPException(404, "artist not found")
+    artists_mod.save_artists(root, remaining)
+    # Detach songs.
+    if root.exists():
+        for d in root.iterdir():
+            if d.is_dir():
+                st = _read_state(d)
+                if st.get("kind") == "song" and st.get("artist_id") == artist_id:
+                    _write_state(d, artist_id=None)
+    return None
+
+
+@app.post("/artists/from-song", response_model=ArtistSummary, status_code=201)
+def create_artist_from_song(
+    req: CreateArtistFromSongRequest,
+    user: User = Depends(require_user),
+):
+    """One-step door: save the song take's voice as a persona AND create the
+    artist wrapping it — avatar from the song's cover, default style from the
+    song's style_prompt. The source song is assigned to the new artist."""
+    from pipeline import artists as artists_mod
+
+    # 1) Voice: reuse the existing persona flow (validations included).
+    persona = save_persona_from_song(
+        req.run_id,
+        CreatePersonaRequest(name=req.name, description="", take=req.take),
+        user,
+    )
+
+    # 2) Identity: defaults harvested from the source song.
+    run_dir = _resolve_song_dir(req.run_id, user)
+    song_json = {}
+    sj = run_dir / "song.json"
+    if sj.exists():
+        try:
+            song_json = json.loads(sj.read_text())
+        except (OSError, json.JSONDecodeError):
+            song_json = {}
+    root = _user_runs_root(user)
+    artists = artists_mod.load_artists(root)
+    handle = _resolve_new_handle(
+        user, name=req.name.strip(), requested=req.handle, artists=artists)
+    artist = artists_mod.new_artist(
+        name=req.name.strip(),
+        handle=handle,
+        persona_id=persona.id,
+        avatar_run_id=req.run_id,
+        default_style=str(song_json.get("style_prompt") or ""),
+        default_language=str(song_json.get("language") or "ar"),
+        default_vocal_gender=str(song_json.get("vocal_gender") or "m"),
+    )
+    artists.append(artist)
+    artists_mod.save_artists(root, artists)
+    # 3) The source song joins the discography.
+    _write_state(run_dir, artist_id=artist["id"])
+    return _artist_summary(user, artist)
+
+
+_AVATAR_MAX_BYTES = 10 * 1024 * 1024
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+@app.post("/artists/{artist_id}/avatar", response_model=ArtistSummary)
+def upload_artist_avatar(
+    artist_id: str,
+    file: UploadFile = File(...),
+    user: User = Depends(require_user),
+):
+    from pipeline import artists as artists_mod
+    root = _user_runs_root(user)
+    artists = artists_mod.load_artists(root)
+    artist = artists_mod.find_by_id(artists, artist_id)
+    if artist is None:
+        raise HTTPException(404, "artist not found")
+    ext = Path(file.filename or "").suffix.lower()
+    ctype = (file.content_type or "").lower()
+    if not (ctype.startswith("image/") or ext in _IMAGE_EXTS):
+        raise HTTPException(422, "avatar must be an image (png, jpg, webp)")
+    if ext not in _IMAGE_EXTS:
+        ext = ".png"
+    fname = f"avatar_{artist_id}{ext}"
+    dest = root / fname
+    total = 0
+    root.mkdir(parents=True, exist_ok=True)
+    with dest.open("wb") as out:
+        while chunk := file.file.read(1 << 20):
+            total += len(chunk)
+            if total > _AVATAR_MAX_BYTES:
+                out.close()
+                try:
+                    dest.unlink()
+                except OSError:
+                    pass
+                raise HTTPException(413, "avatar too large (max 10 MB)")
+            out.write(chunk)
+    if total == 0:
+        raise HTTPException(422, "uploaded file was empty")
+    artist["avatar_upload"] = fname
+    artists_mod.save_artists(root, artists)
+    return _artist_summary(user, artist)
+
+
+@app.get("/artists/{artist_id}/avatar")
+def get_artist_avatar(
+    artist_id: str,
+    user: User = Depends(require_user_header_or_query),
+):
+    """Uploaded avatar, else the avatar run's cover.png, else 404 (the client
+    falls back to a generated gradient). Query-token auth so <img> widgets
+    (which can't set headers on web) can load it."""
+    from pipeline import artists as artists_mod
+    root = _user_runs_root(user)
+    artist = artists_mod.find_by_id(artists_mod.load_artists(root), artist_id)
+    if artist is None:
+        raise HTTPException(404, "artist not found")
+    if artist.get("avatar_upload"):
+        p = root / artist["avatar_upload"]
+        if p.exists():
+            return FileResponse(p)
+    if artist.get("avatar_run_id"):
+        p = root / artist["avatar_run_id"] / "cover.png"
+        if p.exists():
+            return FileResponse(p)
+    raise HTTPException(404, "no avatar")
+
+
+def _find_artist_public(handle: str) -> tuple[dict, Path] | None:
+    """Locate an artist by handle across all user roots (public page has no
+    auth context). Solo-scale linear scan — one artists.json read per user."""
+    from pipeline import artists as artists_mod
+    root = _out_root()
+    if not root.exists():
+        return None
+    for user_dir in root.iterdir():
+        if not user_dir.is_dir():
+            continue
+        artist = artists_mod.find_by_handle(
+            artists_mod.load_artists(user_dir), handle)
+        if artist:
+            return artist, user_dir
+    return None
+
+
+@app.get("/a/{handle}", include_in_schema=False)
+def public_artist_page(handle: str):
+    """PUBLIC artist page (no auth): header + the artist's SHARED songs only
+    (a song is public iff it has a share_token). Links go to the existing
+    /p/{token} pages, so playback/OG reuse that machinery."""
+    from fastapi.responses import HTMLResponse
+    import html as _html
+
+    found = _find_artist_public(handle)
+    if found is None:
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;background:#F2EFF7;"
+            "color:#1B1E28;display:grid;place-items:center;height:100vh'>"
+            "<div><h2>Artist not found</h2></div></body></html>",
+            status_code=404)
+    artist, user_dir = found
+
+    songs = []
+    for d in sorted(user_dir.iterdir(), key=lambda p: p.name, reverse=True):
+        if not d.is_dir():
+            continue
+        st = _read_state(d)
+        if (st.get("kind") == "song"
+                and st.get("artist_id") == artist["id"]
+                and st.get("share_token")):
+            songs.append({
+                "title": st.get("title") or "AI song",
+                "token": st.get("share_token"),
+            })
+
+    name = _html.escape(artist.get("name", ""))
+    bio = _html.escape(artist.get("bio", ""))
+    initial = (artist.get("name") or "?")[:1]
+    cards = "".join(
+        f"<a class='song' href='/p/{s['token']}'>"
+        f"<div class='art'>♪</div>"
+        f"<div class='t'>{_html.escape(s['title'])}</div>"
+        f"<div class='play'>▶</div></a>"
+        for s in songs
+    ) or "<p class='empty'>No public songs yet.</p>"
+
+    return HTMLResponse(f"""<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{name} — Faceless Lab</title>
+<meta property="og:title" content="{name}">
+<meta property="og:description" content="{bio or 'AI artist on Faceless Lab'}">
+<style>
+ body{{margin:0;font-family:Inter,system-ui,sans-serif;color:#1B1E28;
+   background:linear-gradient(135deg,#FBF6EE,#F2EFF7 50%,#E9EBF2);min-height:100vh}}
+ .wrap{{max-width:680px;margin:0 auto;padding:48px 20px}}
+ .head{{display:flex;gap:20px;align-items:center;margin-bottom:8px}}
+ .avatar{{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;
+   font-size:40px;font-weight:700;color:#fff;
+   background:linear-gradient(135deg,#34A473,#38BFA6);flex:none}}
+ h1{{margin:0;font-size:32px;letter-spacing:-.02em}}
+ .bio{{color:#767C8C;margin:4px 0 0}}
+ .count{{color:#A2A7B4;font-size:13px;margin:24px 0 12px}}
+ .song{{display:flex;align-items:center;gap:14px;background:#fff;
+   border:1px solid rgba(20,22,45,.07);border-radius:16px;padding:12px 16px;
+   margin-bottom:10px;text-decoration:none;color:#1B1E28;
+   box-shadow:0 12px 34px rgba(30,32,70,.08)}}
+ .art{{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;
+   background:linear-gradient(135deg,#E7E1F4,#DCEBE6);flex:none}}
+ .t{{flex:1;font-weight:600}}
+ .play{{width:36px;height:36px;border-radius:50%;background:#232636;color:#fff;
+   display:grid;place-items:center;font-size:13px}}
+ .empty{{color:#767C8C}}
+ .foot{{margin-top:36px;color:#A2A7B4;font-size:13px;text-align:center}}
+ .foot a{{color:#2FA36B;text-decoration:none;font-weight:600}}
+</style></head><body><div class="wrap">
+ <div class="head">
+   <div class="avatar">{_html.escape(initial)}</div>
+   <div><h1>{name}</h1>{f"<p class='bio'>{bio}</p>" if bio else ""}</div>
+ </div>
+ <div class="count">{len(songs)} public song(s)</div>
+ {cards}
+ <div class="foot">Made with <a href="/app/">Faceless Lab</a> — create your own AI artist</div>
+</div></body></html>""")
 
 
 # ---------------------------------------------------------------------------

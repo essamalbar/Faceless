@@ -319,6 +319,9 @@ class SongSummary {
   // rerunning the whole bucket sweep.
   final bool watermarked;
   final String videoMode;
+  // Artist Core: which artist this song belongs to (null = unassigned).
+  final String? artistId;
+  final String? artistName;
 
   SongSummary({
     required this.id,
@@ -332,6 +335,8 @@ class SongSummary {
     this.failureStage,
     this.watermarked = false,
     this.videoMode = 'static',
+    this.artistId,
+    this.artistName,
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -346,6 +351,56 @@ class SongSummary {
         failureStage: j['failure_stage'] as String?,
         watermarked: (j['watermarked'] as bool?) ?? false,
         videoMode: (j['video_mode'] as String?) ?? 'static',
+        artistId: j['artist_id'] as String?,
+        artistName: j['artist_name'] as String?,
+      );
+}
+
+/// Artist Core: a virtual artist — identity wrapper around a persona voice.
+class Artist {
+  final String id;
+  final String name;
+  final String handle;
+  final String bio;
+  final String? personaId;
+  final String? avatarRunId;
+  final String? avatarUpload;
+  final String defaultStyle;
+  final String defaultLanguage;
+  final String defaultVocalGender;
+  final String createdAt;
+  final int songCount;
+
+  Artist({
+    required this.id,
+    required this.name,
+    required this.handle,
+    this.bio = '',
+    this.personaId,
+    this.avatarRunId,
+    this.avatarUpload,
+    this.defaultStyle = '',
+    this.defaultLanguage = 'ar',
+    this.defaultVocalGender = 'm',
+    required this.createdAt,
+    this.songCount = 0,
+  });
+
+  bool get hasAvatar => avatarUpload != null || avatarRunId != null;
+
+  factory Artist.fromJson(Map<String, dynamic> j) => Artist(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        handle: j['handle'] as String,
+        bio: (j['bio'] as String?) ?? '',
+        personaId: j['persona_id'] as String?,
+        avatarRunId: j['avatar_run_id'] as String?,
+        avatarUpload: j['avatar_upload'] as String?,
+        defaultStyle: (j['default_style'] as String?) ?? '',
+        defaultLanguage: (j['default_language'] as String?) ?? 'ar',
+        defaultVocalGender: (j['default_vocal_gender'] as String?) ?? 'm',
+        createdAt: (j['created_at'] as String?) ?? '',
+        songCount: (j['song_count'] as int?) ?? 0,
       );
 }
 

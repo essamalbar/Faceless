@@ -1879,4 +1879,131 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get misconfiguredBody =>
       'أعد التشغيل عبر scripts/run-app.sh حتى تُدمَج روابط Supabase وواجهة API في البناء.';
+
+  @override
+  String get artistsSectionTitle => 'الفنانون';
+
+  @override
+  String get artistNewTile => 'جديد';
+
+  @override
+  String get artistEditTitleCreate => 'فنان جديد';
+
+  @override
+  String get artistEditTitleEdit => 'تعديل الفنان';
+
+  @override
+  String get artistNameLabel => 'الاسم';
+
+  @override
+  String get artistNameRequired => 'الاسم مطلوب';
+
+  @override
+  String get artistHandleLabel => 'المُعرّف';
+
+  @override
+  String get artistHandleHelper =>
+      'اختياري — اتركه فارغًا وسيُنشأ مُعرّف من الاسم';
+
+  @override
+  String get artistBioLabel => 'نبذة';
+
+  @override
+  String get artistDefaultStyleLabel => 'الأسلوب الافتراضي';
+
+  @override
+  String get artistVocalLabel => 'الصوت الافتراضي';
+
+  @override
+  String get artistChooseAvatar => 'اختيار صورة الفنان';
+
+  @override
+  String get artistAvatarSelected =>
+      'تم اختيار صورة جديدة — سيتم رفعها عند الحفظ';
+
+  @override
+  String artistAvatarUploadFailed(String error) {
+    return 'فشل رفع الصورة: $error';
+  }
+
+  @override
+  String get artistCreateButton => 'إنشاء الفنان';
+
+  @override
+  String get artistSaveButton => 'حفظ التغييرات';
+
+  @override
+  String get artistDeleteButton => 'حذف الفنان';
+
+  @override
+  String get artistDeleteConfirmTitle => 'حذف الفنان؟';
+
+  @override
+  String get artistDeleteConfirmBody =>
+      'تبقى الأغاني قابلة للتشغيل لكنها تخرج من قائمة أعمال هذا الفنان. الصوت المحفوظ يبقى كما هو.';
+
+  @override
+  String artistDeleteFailed(String error) {
+    return 'فشل الحذف: $error';
+  }
+
+  @override
+  String artistSongCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count أغنية',
+      many: '$count أغنية',
+      few: '$count أغانٍ',
+      two: 'أغنيتان',
+      one: 'أغنية واحدة',
+      zero: 'لا توجد أغانٍ بعد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get artistShare => 'مشاركة';
+
+  @override
+  String get artistLinkCopied => 'تم نسخ رابط الفنان';
+
+  @override
+  String get artistEdit => 'تعديل';
+
+  @override
+  String artistNewSongCta(String name) {
+    return 'أغنية جديدة باسم $name';
+  }
+
+  @override
+  String get artistDiscographyTitle => 'الأعمال';
+
+  @override
+  String artistNoSongsYet(String name) {
+    return 'لا توجد أغانٍ بعد — أطلق أول أغنية باسم $name.';
+  }
+
+  @override
+  String get artistPickerLabel => 'الغناء بصفة فنان';
+
+  @override
+  String get artistPickerNone => 'بدون';
+
+  @override
+  String get artistMakeFromSongButton => 'اجعل هذا المغني فنانًا';
+
+  @override
+  String get artistMakeFromSongBody =>
+      'يحفظ صوت هذه الأغنية ويُنشئ فنانًا حوله. تنضم هذه الأغنية إلى أعماله، ويمكن إنشاء أغانٍ جديدة بصفته.';
+
+  @override
+  String artistCreatedSnack(String name) {
+    return 'تم إنشاء الفنان «$name»';
+  }
+
+  @override
+  String artistCreateFailed(String error) {
+    return 'تعذر إنشاء الفنان: $error';
+  }
 }

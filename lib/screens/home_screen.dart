@@ -10,7 +10,10 @@ import '../api/settings.dart';
 import '../config.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../widgets/artist_avatar.dart';
 import '../widgets/faceless_logo.dart';
+import 'artist_edit_screen.dart';
+import 'artist_screen.dart';
 import 'billing_screen.dart';
 import 'cost_screen.dart';
 import 'new_run_screen.dart';
@@ -41,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
   PlanInfo? _plan;
   String _mode = 'horror';  // horror | song
   Future<List<SongSummary>>? _songsFuture;
+  Future<List<Artist>>? _artistsFuture; // Artist Core: home artists row
   String _songQuery = '';   // live search filter for the song list
 
   @override
@@ -74,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _runsFuture = _client.listRuns();
         _songsFuture = _client.listSongs();
+        _artistsFuture = _client.listArtists();
       });
     }
     _fetchSpend();
@@ -122,6 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _runsFuture = _client.listRuns();
       _songsFuture = _client.listSongs();
+      _artistsFuture = _client.listArtists();
     });
     await _runsFuture;
     _fetchSpend();
@@ -354,6 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _mode = s.first;
                 if (_mode == 'song' && _songsFuture == null) {
                   _songsFuture = _client.listSongs();
+                  _artistsFuture ??= _client.listArtists();
                 }
               }),
             ),
@@ -534,6 +541,73 @@ class _HomeScreenState extends State<HomeScreen> {
         .push(MaterialPageRoute(builder: (_) => screen));
   }
 
+  // ─── Artist Core: home artists row ─────────────────────────────────────────
+
+  void _refreshArtistsAndSongs() {
+    if (!mounted) return;
+    setState(() {
+      _artistsFuture = _client.listArtists();
+      _songsFuture = _client.listSongs();
+    });
+  }
+
+  Future<void> _openArtist(Artist a) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ArtistScreen(client: _client, artist: a),
+      ),
+    );
+    _refreshArtistsAndSongs();
+  }
+
+  Future<void> _openNewArtist() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ArtistEditScreen(client: _client),
+      ),
+    );
+    _refreshArtistsAndSongs();
+  }
+
+  /// Compact horizontal strip of artist avatars, "+" tile first. Shown even
+  /// when there are no artists yet (title + the create tile).
+  Widget _artistsSection() {
+    return FutureBuilder<List<Artist>>(
+      future: _artistsFuture,
+      builder: (context, snap) {
+        final artists = snap.data ?? const <Artist>[];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SongSectionTitle(
+              title: context.l10n.artistsSectionTitle,
+              trailing: artists.isEmpty ? '' : '${artists.length}',
+            ),
+            SizedBox(
+              height: 82,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  _NewArtistTile(onTap: _openNewArtist),
+                  for (final a in artists)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(start: 14),
+                      child: _ArtistCircleTile(
+                        artist: a,
+                        client: _client,
+                        onTap: () => _openArtist(a),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildSongsList() {
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -552,10 +626,20 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           final all = snap.data ?? [];
           if (all.isEmpty) {
-            return _SongsEmptyState(
-              onCreate: _openNewSong,
-              onTrySample: (theme, presetLabel) =>
-                  _openNewSongWithSample(theme, presetLabel),
+            // Artists row stays visible above the empty state (the "+"
+            // tile is the entry point to Artist Core before any song).
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _artistsSection(),
+                Expanded(
+                  child: _SongsEmptyState(
+                    onCreate: _openNewSong,
+                    onTrySample: (theme, presetLabel) =>
+                        _openNewSongWithSample(theme, presetLabel),
+                  ),
+                ),
+              ],
             );
           }
 
@@ -581,6 +665,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return ListView(
             padding: const EdgeInsets.only(bottom: 28),
             children: [
+              _artistsSection(),
               _SongSearchBar(
                 initial: _songQuery,
                 onChanged: (v) => setState(() => _songQuery = v),
@@ -2960,6 +3045,89 @@ class _LoadingPlaceholderState extends State<_LoadingPlaceholder>
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Artist Core — home artists row tiles
+// ---------------------------------------------------------------------------
+
+/// Avatar circle + name, tap opens the artist screen.
+class _ArtistCircleTile extends StatelessWidget {
+  final Artist artist;
+  final FacelessApiClient client;
+  final VoidCallback onTap;
+  const _ArtistCircleTile({
+    required this.artist,
+    required this.client,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: SizedBox(
+        width: 64,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ArtistAvatar(artist: artist, client: client, size: 56),
+            const SizedBox(height: 4),
+            Text(
+              artist.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 11, color: FacelessTheme.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Soft "＋" circle that opens the create-artist form.
+class _NewArtistTile extends StatelessWidget {
+  final VoidCallback onTap;
+  const _NewArtistTile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: SizedBox(
+        width: 64,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: FacelessTheme.surface,
+                shape: BoxShape.circle,
+                border: Border.all(color: FacelessTheme.border, width: 1.4),
+              ),
+              child: const Icon(Icons.add,
+                  color: FacelessTheme.textSecondary, size: 26),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              context.l10n.artistNewTile,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 11, color: FacelessTheme.textSecondary),
+            ),
+          ],
         ),
       ),
     );

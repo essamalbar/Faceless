@@ -1844,4 +1844,128 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get misconfiguredBody =>
       'Restart via scripts/run-app.sh so the Supabase + API URLs are baked into the build.';
+
+  @override
+  String get artistsSectionTitle => 'Artists';
+
+  @override
+  String get artistNewTile => 'New';
+
+  @override
+  String get artistEditTitleCreate => 'New artist';
+
+  @override
+  String get artistEditTitleEdit => 'Edit artist';
+
+  @override
+  String get artistNameLabel => 'Name';
+
+  @override
+  String get artistNameRequired => 'Name is required';
+
+  @override
+  String get artistHandleLabel => 'Handle';
+
+  @override
+  String get artistHandleHelper =>
+      'Optional — leave empty and one is generated from the name';
+
+  @override
+  String get artistBioLabel => 'Bio';
+
+  @override
+  String get artistDefaultStyleLabel => 'Default style';
+
+  @override
+  String get artistVocalLabel => 'Default voice';
+
+  @override
+  String get artistChooseAvatar => 'Choose avatar image';
+
+  @override
+  String get artistAvatarSelected =>
+      'New avatar selected — it uploads when you save';
+
+  @override
+  String artistAvatarUploadFailed(String error) {
+    return 'Avatar upload failed: $error';
+  }
+
+  @override
+  String get artistCreateButton => 'Create artist';
+
+  @override
+  String get artistSaveButton => 'Save changes';
+
+  @override
+  String get artistDeleteButton => 'Delete artist';
+
+  @override
+  String get artistDeleteConfirmTitle => 'Delete artist?';
+
+  @override
+  String get artistDeleteConfirmBody =>
+      'Songs stay playable but leave this discography. The saved voice is kept.';
+
+  @override
+  String artistDeleteFailed(String error) {
+    return 'Delete failed: $error';
+  }
+
+  @override
+  String artistSongCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count songs',
+      one: '1 song',
+      zero: 'No songs yet',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get artistShare => 'Share';
+
+  @override
+  String get artistLinkCopied => 'Artist link copied';
+
+  @override
+  String get artistEdit => 'Edit';
+
+  @override
+  String artistNewSongCta(String name) {
+    return 'New song as $name';
+  }
+
+  @override
+  String get artistDiscographyTitle => 'Discography';
+
+  @override
+  String artistNoSongsYet(String name) {
+    return 'No songs yet — release the first one as $name.';
+  }
+
+  @override
+  String get artistPickerLabel => 'Sing as artist';
+
+  @override
+  String get artistPickerNone => 'None';
+
+  @override
+  String get artistMakeFromSongButton => 'Make this singer an artist';
+
+  @override
+  String get artistMakeFromSongBody =>
+      'Saves this song\'s voice and creates an artist around it. This song joins the discography, and new songs can be made as this artist.';
+
+  @override
+  String artistCreatedSnack(String name) {
+    return 'Artist \"$name\" created';
+  }
+
+  @override
+  String artistCreateFailed(String error) {
+    return 'Couldn\'t create artist: $error';
+  }
 }

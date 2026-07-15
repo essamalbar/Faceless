@@ -2506,3 +2506,228 @@ def test_upload_cover_service_token_bypasses_paywall(client_factory, monkeypatch
         data={"language": "ar", "video_mode": "static"},
     )
     assert r.status_code == 201
+
+
+# ---------------------------------------------------------------------------
+# Artists — Artist Core (identity wrapper around a persona voice)
+# ---------------------------------------------------------------------------
+
+def _mk_artist(c, name="ليل", **kw):
+    r = c.post("/artists", json={"name": name, **kw})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_artist_crud_roundtrip(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    a = _mk_artist(c, name="ليل", default_style="arabic pop")
+    # Arabic name → fallback handle, always URL-safe
+    assert a["handle"].startswith("artist-")
+    assert a["song_count"] == 0
+
+    # list
+    ids = [x["id"] for x in c.get("/artists").json()]
+    assert a["id"] in ids
+
+    # patch
+    r = c.patch(f"/artists/{a['id']}", json={"bio": "night songs", "handle": "layl"})
+    assert r.status_code == 200
+    assert r.json()["bio"] == "night songs"
+    assert r.json()["handle"] == "layl"
+
+    # delete
+    assert c.delete(f"/artists/{a['id']}").status_code == 204
+    assert c.get("/artists").json() == []
+
+
+def test_artist_duplicate_handle_409_with_suggestion(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    _mk_artist(c, name="Layl", handle="layl")
+    r = c.post("/artists", json={"name": "Other", "handle": "layl"})
+    assert r.status_code == 409
+    assert r.json()["detail"]["suggested_handle"] == "layl-2"
+
+
+def test_artist_invalid_handle_422(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    r = c.post("/artists", json={"name": "X Y", "handle": "Bad Handle!"})
+    assert r.status_code == 422
+
+
+def test_create_song_with_artist_inherits_voice_and_style(
+        client_factory, monkeypatch, tmp_path):
+    """artist_id on POST /songs → persona + default style fill empty fields,
+    artist_id lands in state. Explicit request fields win."""
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    c = client_factory(user_id="alice")
+    a = _mk_artist(c, name="Layl", handle="layl",
+                   default_style="khaleeji ballad, 90 BPM")
+    # pin a voice on the artist
+    c.patch(f"/artists/{a['id']}", json={"persona_id": "pers-123"})
+
+    captured = {}
+    def fake_gen(**kw):
+        captured.update(kw)
+        class S:
+            title = "t"; lyrics = "[Verse 1]\nx\n[Chorus]\ny"
+            style_prompt = "s"; cover_prompt = "c"; language = "ar"
+            art_direction = ""; scene_prompts = []
+        return S()
+    monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_gen)
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
+
+    r = c.post("/songs", json={"theme": "الليل", "artist_id": a["id"]})
+    assert r.status_code == 201, r.text
+    run_id = r.json()["run_id"]
+    state = json.loads((tmp_path / "alice" / run_id / "api_state.json").read_text())
+    song = json.loads((tmp_path / "alice" / run_id / "song.json").read_text())
+    assert state["artist_id"] == a["id"]
+    assert song["persona_id"] == "pers-123"           # inherited voice
+    assert captured["style_hint"] == "khaleeji ballad, 90 BPM"  # inherited style
+
+    # explicit style wins over the artist default
+    r2 = c.post("/songs", json={"theme": "x", "artist_id": a["id"],
+                                "style_hint": "my own style"})
+    assert r2.status_code == 201
+    assert captured["style_hint"] == "my own style"
+
+    # summaries expose artist info
+    songs = c.get("/songs").json()
+    mine = next(s for s in songs if s["id"] == run_id)
+    assert mine["artist_id"] == a["id"]
+    assert mine["artist_name"] == "Layl"
+
+
+def test_create_song_unknown_artist_404(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    c = client_factory(user_id="alice")
+    r = c.post("/songs", json={"theme": "x", "artist_id": "art_nope1234"})
+    assert r.status_code == 404
+
+
+def test_delete_artist_detaches_songs(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    c = client_factory(user_id="alice")
+    a = _mk_artist(c, name="Layl", handle="layl")
+    def fake_gen(**kw):
+        class S:
+            title = "t"; lyrics = "[Chorus]\ny"; style_prompt = "s"
+            cover_prompt = "c"; language = "ar"; art_direction = ""
+            scene_prompts = []
+        return S()
+    monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_gen)
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
+    run_id = c.post("/songs", json={"theme": "x", "artist_id": a["id"]}).json()["run_id"]
+
+    assert c.delete(f"/artists/{a['id']}").status_code == 204
+    state = json.loads((tmp_path / "alice" / run_id / "api_state.json").read_text())
+    assert state["artist_id"] is None  # detached, song survives
+
+
+def test_artist_from_song_creates_persona_and_artist(
+        client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    # A complete song with persona sources + song.json on disk.
+    run_dir = tmp_path / "alice" / "2026-07-15-000001"
+    run_dir.mkdir(parents=True)
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "complete", "user_id": "alice",
+        "suno_task_id": "task-1", "take_audio_ids": ["aud-1", "aud-2"],
+        "chosen_take": 1,
+        "created_at": "2026-07-15T00:00:00+00:00",
+    }))
+    (run_dir / "song.json").write_text(json.dumps({
+        "title": "t", "lyrics": "[Chorus]\ny",
+        "style_prompt": "arabic pop, 95 BPM", "cover_prompt": "c",
+        "language": "ar", "vocal_gender": "f",
+    }))
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+    monkeypatch.setattr("pipeline.song.submit_persona_job",
+                        lambda client, **kw: "pers-999")
+
+    r = c.post("/artists/from-song",
+               json={"run_id": "2026-07-15-000001", "name": "Layl", "handle": "layl"})
+    assert r.status_code == 201, r.text
+    a = r.json()
+    assert a["persona_id"] == "pers-999"
+    assert a["avatar_run_id"] == "2026-07-15-000001"
+    assert a["default_style"] == "arabic pop, 95 BPM"
+    assert a["default_vocal_gender"] == "f"
+    assert a["song_count"] == 1  # source song auto-assigned
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["artist_id"] == a["id"]
+
+
+def test_artist_avatar_upload_and_fetch(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    a = _mk_artist(c, name="Layl", handle="layl")
+    # non-image rejected
+    r = c.post(f"/artists/{a['id']}/avatar",
+               files={"file": ("x.txt", b"hi", "text/plain")})
+    assert r.status_code == 422
+    # image accepted
+    r = c.post(f"/artists/{a['id']}/avatar",
+               files={"file": ("me.png", b"\x89PNG fake", "image/png")})
+    assert r.status_code == 200
+    assert r.json()["avatar_upload"] == f"avatar_{a['id']}.png"
+    # served back — avatar GET uses query-token auth (img widgets);
+    # override that dependency to the same test user.
+    from pipeline.api import app as _app
+    from pipeline.auth import User as _User, require_user_header_or_query
+    _app.dependency_overrides[require_user_header_or_query] = (
+        lambda: _User(id="alice", email=None, role="user"))
+    try:
+        r = c.get(f"/artists/{a['id']}/avatar")
+        assert r.status_code == 200
+        assert r.content == b"\x89PNG fake"
+    finally:
+        _app.dependency_overrides.pop(require_user_header_or_query, None)
+
+
+def test_public_artist_page_shows_only_shared_songs(client_factory, monkeypatch, tmp_path):
+    """/a/{handle} is public (no auth), lists ONLY songs with a share_token,
+    and links to their /p/{token} pages."""
+    from fastapi.testclient import TestClient
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    a = _mk_artist(c, name="Layl", handle="layl")
+
+    def _song(run_id, title, shared):
+        d = tmp_path / "alice" / run_id
+        d.mkdir(parents=True)
+        st = {"kind": "song", "status": "complete", "user_id": "alice",
+              "artist_id": a["id"], "title": title,
+              "created_at": "2026-07-15T00:00:00+00:00"}
+        if shared:
+            st["share_token"] = f"tok-{run_id}"
+        (d / "api_state.json").write_text(json.dumps(st))
+    _song("2026-07-15-000001", "أغنية عامة", shared=True)
+    _song("2026-07-15-000002", "أغنية خاصة", shared=False)
+
+    public = TestClient(api_mod.app)  # NO auth header
+    r = public.get("/a/layl")
+    assert r.status_code == 200
+    assert "Layl" in r.text
+    assert "أغنية عامة" in r.text
+    assert "أغنية خاصة" not in r.text          # unshared stays private
+    assert "/p/tok-2026-07-15-000001" in r.text  # links to the share page
+
+
+def test_public_artist_page_unknown_handle_404(client_factory, monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    public = TestClient(api_mod.app)
+    assert public.get("/a/who-dis").status_code == 404
