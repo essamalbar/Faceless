@@ -1549,6 +1549,384 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unknown error'**
   String get songDetailUnknownError;
+
+  /// No description provided for @landingHeroPill.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Music Studio · Arabic & beyond'**
+  String get landingHeroPill;
+
+  /// No description provided for @landingHeroTitlePart1.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn any idea into a '**
+  String get landingHeroTitlePart1;
+
+  /// No description provided for @landingHeroTitlePart2Accent.
+  ///
+  /// In en, this message translates to:
+  /// **'finished song.'**
+  String get landingHeroTitlePart2Accent;
+
+  /// No description provided for @landingHeroSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a theme, or upload a track for a faithful cover. Faceless composes the lyrics, voices it, designs the cover, and cuts a cinematic video — you approve before a single credit is spent.'**
+  String get landingHeroSubtitle;
+
+  /// No description provided for @landingStartCreating.
+  ///
+  /// In en, this message translates to:
+  /// **'Start creating'**
+  String get landingStartCreating;
+
+  /// No description provided for @landingTrustLine.
+  ///
+  /// In en, this message translates to:
+  /// **'★★★★★   Loved by creators · 60 free credits to start'**
+  String get landingTrustLine;
+
+  /// No description provided for @landingNowGenerating.
+  ///
+  /// In en, this message translates to:
+  /// **'Now generating'**
+  String get landingNowGenerating;
+
+  /// No description provided for @landingSampleTagline.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinematic · 92 BPM · Arabic pop'**
+  String get landingSampleTagline;
+
+  /// No description provided for @landingSectionHowItWorks.
+  ///
+  /// In en, this message translates to:
+  /// **'How it works'**
+  String get landingSectionHowItWorks;
+
+  /// No description provided for @landingSectionShowcase.
+  ///
+  /// In en, this message translates to:
+  /// **'What it makes'**
+  String get landingSectionShowcase;
+
+  /// No description provided for @landingSectionPricing.
+  ///
+  /// In en, this message translates to:
+  /// **'Pricing'**
+  String get landingSectionPricing;
+
+  /// No description provided for @landingStep1Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a mode'**
+  String get landingStep1Title;
+
+  /// No description provided for @landingStep1Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Horror shorts: one-sentence premise becomes a cinematic Arabic story with characters and shots. Songs: a theme + style becomes a full Arabic ballad with cover art.'**
+  String get landingStep1Body;
+
+  /// No description provided for @landingStep2Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Review before you spend'**
+  String get landingStep2Title;
+
+  /// No description provided for @landingStep2Body.
+  ///
+  /// In en, this message translates to:
+  /// **'AI drafts the script or lyrics + cover prompt for free. You see exactly what gets generated. Approve only when it feels right.'**
+  String get landingStep2Body;
+
+  /// No description provided for @landingStep3Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Download or share'**
+  String get landingStep3Title;
+
+  /// No description provided for @landingStep3Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Square MP4 with music + visuals, ready for WhatsApp and Instagram. Save the lyrics or script as a PDF. Share a public link with OG preview baked in.'**
+  String get landingStep3Body;
+
+  /// No description provided for @landingShowcaseTagline1.
+  ///
+  /// In en, this message translates to:
+  /// **'Horror · Folkloric · 2 min'**
+  String get landingShowcaseTagline1;
+
+  /// No description provided for @landingShowcaseTagline2.
+  ///
+  /// In en, this message translates to:
+  /// **'Horror · Urban · 90 sec'**
+  String get landingShowcaseTagline2;
+
+  /// No description provided for @landingShowcaseTagline3.
+  ///
+  /// In en, this message translates to:
+  /// **'Song · Romantic ballad · 3 min'**
+  String get landingShowcaseTagline3;
+
+  /// No description provided for @landingPricingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Credits power both modes. 1 song ≈ 1 credit. 1 horror clip = 1 credit (avg short = 8–12).'**
+  String get landingPricingSubtitle;
+
+  /// No description provided for @landingTierStarter.
+  ///
+  /// In en, this message translates to:
+  /// **'Starter'**
+  String get landingTierStarter;
+
+  /// No description provided for @landingTierStarterDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'For trying ideas'**
+  String get landingTierStarterDesc;
+
+  /// No description provided for @landingTierCreator.
+  ///
+  /// In en, this message translates to:
+  /// **'Creator'**
+  String get landingTierCreator;
+
+  /// No description provided for @landingTierCreatorDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'For weekly drops'**
+  String get landingTierCreatorDesc;
+
+  /// No description provided for @landingTierPro.
+  ///
+  /// In en, this message translates to:
+  /// **'Pro'**
+  String get landingTierPro;
+
+  /// No description provided for @landingTierProDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'For daily output'**
+  String get landingTierProDesc;
+
+  /// No description provided for @landingRecommended.
+  ///
+  /// In en, this message translates to:
+  /// **'Recommended'**
+  String get landingRecommended;
+
+  /// No description provided for @landingPerMonth.
+  ///
+  /// In en, this message translates to:
+  /// **'/ month'**
+  String get landingPerMonth;
+
+  /// No description provided for @landingCreditsPerMonth.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} credits / month'**
+  String landingCreditsPerMonth(int count);
+
+  /// No description provided for @landingStartFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Start free'**
+  String get landingStartFree;
+
+  /// No description provided for @landingFooterLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Faceless Lab · faceless-lab.com'**
+  String get landingFooterLine;
+
+  /// No description provided for @loginEmailLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get loginEmailLabel;
+
+  /// No description provided for @loginPasswordLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get loginPasswordLabel;
+
+  /// No description provided for @loginEmailRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Email is required'**
+  String get loginEmailRequired;
+
+  /// No description provided for @loginEmailInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid email'**
+  String get loginEmailInvalid;
+
+  /// No description provided for @loginPasswordRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Password is required'**
+  String get loginPasswordRequired;
+
+  /// No description provided for @loginPasswordMinLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Min 8 characters for new accounts'**
+  String get loginPasswordMinLength;
+
+  /// No description provided for @loginAccountCreatedInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Account created. Check your email to confirm — or sign in directly if email confirmation is disabled.'**
+  String get loginAccountCreatedInfo;
+
+  /// No description provided for @loginUnexpectedError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unexpected error: {error}'**
+  String loginUnexpectedError(String error);
+
+  /// No description provided for @loginShowPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get loginShowPassword;
+
+  /// No description provided for @loginHidePassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get loginHidePassword;
+
+  /// No description provided for @loginCreateAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Create account'**
+  String get loginCreateAccount;
+
+  /// No description provided for @loginSignUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign up'**
+  String get loginSignUp;
+
+  /// No description provided for @loginNoAccountYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No account yet? '**
+  String get loginNoAccountYet;
+
+  /// No description provided for @loginAlreadyHaveAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Already have one? '**
+  String get loginAlreadyHaveAccount;
+
+  /// No description provided for @loginSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to manage your runs'**
+  String get loginSubtitle;
+
+  /// No description provided for @loginFooterTagline.
+  ///
+  /// In en, this message translates to:
+  /// **'Faceless · Arabic horror, scripted by AI'**
+  String get loginFooterTagline;
+
+  /// No description provided for @onboardingSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get onboardingSkip;
+
+  /// No description provided for @onboardingNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get onboardingNext;
+
+  /// No description provided for @onboardingLetsCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Let\'s create'**
+  String get onboardingLetsCreate;
+
+  /// No description provided for @onboardingSlide1Eyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'WELCOME'**
+  String get onboardingSlide1Eyebrow;
+
+  /// No description provided for @onboardingSlide1Title.
+  ///
+  /// In en, this message translates to:
+  /// **'An Arabic AI studio that respects your wallet'**
+  String get onboardingSlide1Title;
+
+  /// No description provided for @onboardingSlide1Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Faceless Lab generates cinematic Arabic horror shorts and original Arabic songs from a single sentence. You\'ll write the premise; we\'ll handle the rest.'**
+  String get onboardingSlide1Body;
+
+  /// No description provided for @onboardingSlide2Eyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'TWO MODES'**
+  String get onboardingSlide2Eyebrow;
+
+  /// No description provided for @onboardingSlide2Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Horror shorts. AI songs. One studio.'**
+  String get onboardingSlide2Title;
+
+  /// No description provided for @onboardingSlide2Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch between Horror (cinematic Arabic shorts in 6 dialects) and Songs (full Suno-vocal tracks with AI cover art). Each render lives in your library and stays sharable forever.'**
+  String get onboardingSlide2Body;
+
+  /// No description provided for @onboardingSlide3Eyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'FAIR PRICING'**
+  String get onboardingSlide3Eyebrow;
+
+  /// No description provided for @onboardingSlide3Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Free drafts. You only pay when you generate.'**
+  String get onboardingSlide3Title;
+
+  /// No description provided for @onboardingSlide3Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Scripts and lyrics preview at zero cost. Approve when you\'re happy. If a render fails, the credits come back automatically — you never pay for video that didn\'t deliver.'**
+  String get onboardingSlide3Body;
+
+  /// No description provided for @onboardingSlide4Eyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'LET\'S GO'**
+  String get onboardingSlide4Eyebrow;
+
+  /// No description provided for @onboardingSlide4Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Your first draft is free.'**
+  String get onboardingSlide4Title;
+
+  /// No description provided for @onboardingSlide4Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap below and write a sentence. The system will produce a full Arabic script or song lyrics for you to review — all before any credit is spent.'**
+  String get onboardingSlide4Body;
 }
 
 class _AppLocalizationsDelegate

@@ -824,4 +824,210 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get songDetailUnknownError => 'Unknown error';
+
+  @override
+  String get landingHeroPill => 'AI Music Studio · Arabic & beyond';
+
+  @override
+  String get landingHeroTitlePart1 => 'Turn any idea into a ';
+
+  @override
+  String get landingHeroTitlePart2Accent => 'finished song.';
+
+  @override
+  String get landingHeroSubtitle =>
+      'Write a theme, or upload a track for a faithful cover. Faceless composes the lyrics, voices it, designs the cover, and cuts a cinematic video — you approve before a single credit is spent.';
+
+  @override
+  String get landingStartCreating => 'Start creating';
+
+  @override
+  String get landingTrustLine =>
+      '★★★★★   Loved by creators · 60 free credits to start';
+
+  @override
+  String get landingNowGenerating => 'Now generating';
+
+  @override
+  String get landingSampleTagline => 'Cinematic · 92 BPM · Arabic pop';
+
+  @override
+  String get landingSectionHowItWorks => 'How it works';
+
+  @override
+  String get landingSectionShowcase => 'What it makes';
+
+  @override
+  String get landingSectionPricing => 'Pricing';
+
+  @override
+  String get landingStep1Title => 'Pick a mode';
+
+  @override
+  String get landingStep1Body =>
+      'Horror shorts: one-sentence premise becomes a cinematic Arabic story with characters and shots. Songs: a theme + style becomes a full Arabic ballad with cover art.';
+
+  @override
+  String get landingStep2Title => 'Review before you spend';
+
+  @override
+  String get landingStep2Body =>
+      'AI drafts the script or lyrics + cover prompt for free. You see exactly what gets generated. Approve only when it feels right.';
+
+  @override
+  String get landingStep3Title => 'Download or share';
+
+  @override
+  String get landingStep3Body =>
+      'Square MP4 with music + visuals, ready for WhatsApp and Instagram. Save the lyrics or script as a PDF. Share a public link with OG preview baked in.';
+
+  @override
+  String get landingShowcaseTagline1 => 'Horror · Folkloric · 2 min';
+
+  @override
+  String get landingShowcaseTagline2 => 'Horror · Urban · 90 sec';
+
+  @override
+  String get landingShowcaseTagline3 => 'Song · Romantic ballad · 3 min';
+
+  @override
+  String get landingPricingSubtitle =>
+      'Credits power both modes. 1 song ≈ 1 credit. 1 horror clip = 1 credit (avg short = 8–12).';
+
+  @override
+  String get landingTierStarter => 'Starter';
+
+  @override
+  String get landingTierStarterDesc => 'For trying ideas';
+
+  @override
+  String get landingTierCreator => 'Creator';
+
+  @override
+  String get landingTierCreatorDesc => 'For weekly drops';
+
+  @override
+  String get landingTierPro => 'Pro';
+
+  @override
+  String get landingTierProDesc => 'For daily output';
+
+  @override
+  String get landingRecommended => 'Recommended';
+
+  @override
+  String get landingPerMonth => '/ month';
+
+  @override
+  String landingCreditsPerMonth(int count) {
+    return '$count credits / month';
+  }
+
+  @override
+  String get landingStartFree => 'Start free';
+
+  @override
+  String get landingFooterLine => 'Faceless Lab · faceless-lab.com';
+
+  @override
+  String get loginEmailLabel => 'Email';
+
+  @override
+  String get loginPasswordLabel => 'Password';
+
+  @override
+  String get loginEmailRequired => 'Email is required';
+
+  @override
+  String get loginEmailInvalid => 'Enter a valid email';
+
+  @override
+  String get loginPasswordRequired => 'Password is required';
+
+  @override
+  String get loginPasswordMinLength => 'Min 8 characters for new accounts';
+
+  @override
+  String get loginAccountCreatedInfo =>
+      'Account created. Check your email to confirm — or sign in directly if email confirmation is disabled.';
+
+  @override
+  String loginUnexpectedError(String error) {
+    return 'Unexpected error: $error';
+  }
+
+  @override
+  String get loginShowPassword => 'Show password';
+
+  @override
+  String get loginHidePassword => 'Hide password';
+
+  @override
+  String get loginCreateAccount => 'Create account';
+
+  @override
+  String get loginSignUp => 'Sign up';
+
+  @override
+  String get loginNoAccountYet => 'No account yet? ';
+
+  @override
+  String get loginAlreadyHaveAccount => 'Already have one? ';
+
+  @override
+  String get loginSubtitle => 'Sign in to manage your runs';
+
+  @override
+  String get loginFooterTagline => 'Faceless · Arabic horror, scripted by AI';
+
+  @override
+  String get onboardingSkip => 'Skip';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingLetsCreate => 'Let\'s create';
+
+  @override
+  String get onboardingSlide1Eyebrow => 'WELCOME';
+
+  @override
+  String get onboardingSlide1Title =>
+      'An Arabic AI studio that respects your wallet';
+
+  @override
+  String get onboardingSlide1Body =>
+      'Faceless Lab generates cinematic Arabic horror shorts and original Arabic songs from a single sentence. You\'ll write the premise; we\'ll handle the rest.';
+
+  @override
+  String get onboardingSlide2Eyebrow => 'TWO MODES';
+
+  @override
+  String get onboardingSlide2Title => 'Horror shorts. AI songs. One studio.';
+
+  @override
+  String get onboardingSlide2Body =>
+      'Switch between Horror (cinematic Arabic shorts in 6 dialects) and Songs (full Suno-vocal tracks with AI cover art). Each render lives in your library and stays sharable forever.';
+
+  @override
+  String get onboardingSlide3Eyebrow => 'FAIR PRICING';
+
+  @override
+  String get onboardingSlide3Title =>
+      'Free drafts. You only pay when you generate.';
+
+  @override
+  String get onboardingSlide3Body =>
+      'Scripts and lyrics preview at zero cost. Approve when you\'re happy. If a render fails, the credits come back automatically — you never pay for video that didn\'t deliver.';
+
+  @override
+  String get onboardingSlide4Eyebrow => 'LET\'S GO';
+
+  @override
+  String get onboardingSlide4Title => 'Your first draft is free.';
+
+  @override
+  String get onboardingSlide4Body =>
+      'Tap below and write a sentence. The system will produce a full Arabic script or song lyrics for you to review — all before any credit is spent.';
 }

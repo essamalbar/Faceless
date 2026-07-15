@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/brand.dart';
 import '../widgets/faceless_logo.dart';
@@ -63,11 +64,11 @@ class _TopNav extends StatelessWidget {
               const Spacer(),
               TextButton(
                 onPressed: () => _goLogin(context, signUp: false),
-                child: const Text('Sign in'),
+                child: Text(context.l10n.commonSignIn),
               ),
               const SizedBox(width: 10),
               GradientButton(
-                label: 'Get started',
+                label: context.l10n.commonGetStarted,
                 icon: Icons.arrow_forward,
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 onPressed: () => _goLogin(context, signUp: true),
@@ -90,11 +91,12 @@ class _Hero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
+    final l10n = context.l10n;
     final copy = Column(
       crossAxisAlignment:
           wide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
-        const BrandPill('AI Music Studio · Arabic & beyond', dot: true),
+        BrandPill(l10n.landingHeroPill, dot: true),
         const SizedBox(height: 22),
         DefaultTextStyle(
           style: FacelessTheme.display(size: wide ? 56 : 40, height: 1.04),
@@ -102,10 +104,10 @@ class _Hero extends StatelessWidget {
           child: Wrap(
             alignment: wide ? WrapAlignment.start : WrapAlignment.center,
             children: [
-              Text('Turn any idea into a ',
+              Text(l10n.landingHeroTitlePart1,
                   textAlign: wide ? TextAlign.start : TextAlign.center,
                   style: FacelessTheme.display(size: wide ? 56 : 40, height: 1.04)),
-              GradientText('finished song.',
+              GradientText(l10n.landingHeroTitlePart2Accent,
                   style: FacelessTheme.display(size: wide ? 56 : 40, height: 1.04)),
             ],
           ),
@@ -114,9 +116,7 @@ class _Hero extends StatelessWidget {
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: Text(
-            'Write a theme, or upload a track for a faithful cover. Faceless '
-            'composes the lyrics, voices it, designs the cover, and cuts a '
-            'cinematic video — you approve before a single credit is spent.',
+            l10n.landingHeroSubtitle,
             textAlign: wide ? TextAlign.start : TextAlign.center,
             style: const TextStyle(
                 color: FacelessTheme.textSecondary, fontSize: 17, height: 1.6),
@@ -129,19 +129,19 @@ class _Hero extends StatelessWidget {
           alignment: wide ? WrapAlignment.start : WrapAlignment.center,
           children: [
             GradientButton(
-              label: 'Start creating',
+              label: l10n.landingStartCreating,
               icon: Icons.auto_awesome,
               onPressed: () => _goLogin(context, signUp: true),
             ),
             OutlinedButton.icon(
               onPressed: () => _goLogin(context, signUp: false),
               icon: const Icon(Icons.play_arrow_rounded),
-              label: const Text('Sign in'),
+              label: Text(l10n.commonSignIn),
             ),
           ],
         ),
         const SizedBox(height: 22),
-        Text('★★★★★   Loved by creators · 60 free credits to start',
+        Text(l10n.landingTrustLine,
             style: TextStyle(color: FacelessTheme.faint, fontSize: 13)),
       ],
     );
@@ -188,10 +188,14 @@ class _NowPlayingCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               gradient: coverGradient('حلم في الليل'),
             ),
-            child: const Stack(
+            child: Stack(
               children: [
-                Positioned(top: 12, left: 12, child: BrandPill('Now generating', dot: true)),
-                Center(child: Text('🌙', style: TextStyle(fontSize: 64))),
+                Positioned(
+                    top: 12,
+                    left: 12,
+                    child:
+                        BrandPill(context.l10n.landingNowGenerating, dot: true)),
+                const Center(child: Text('🌙', style: TextStyle(fontSize: 64))),
               ],
             ),
           ),
@@ -205,7 +209,7 @@ class _NowPlayingCard extends StatelessWidget {
                     Text('حلم في الليل',
                         style: FacelessTheme.display(size: 20, weight: FontWeight.w600)),
                     const SizedBox(height: 3),
-                    Text('Cinematic · 92 BPM · Arabic pop',
+                    Text(context.l10n.landingSampleTagline,
                         style: TextStyle(color: FacelessTheme.textSecondary, fontSize: 13)),
                   ],
                 ),
@@ -267,6 +271,7 @@ class _HowItWorks extends StatelessWidget {
   const _HowItWorks();
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 960),
@@ -275,7 +280,7 @@ class _HowItWorks extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SectionHeading(en: 'How it works', ar: 'كيف تعمل'),
+              _SectionHeading(title: l10n.landingSectionHowItWorks),
               const SizedBox(height: 24),
               LayoutBuilder(
                 builder: (ctx, c) {
@@ -284,26 +289,18 @@ class _HowItWorks extends StatelessWidget {
                   final cards = [
                     _StepCard(
                       number: '1',
-                      title: 'Pick a mode',
-                      body: 'Horror shorts: one-sentence premise becomes a '
-                          'cinematic Arabic story with characters and shots. '
-                          'Songs: a theme + style becomes a full Arabic '
-                          'ballad with cover art.',
+                      title: l10n.landingStep1Title,
+                      body: l10n.landingStep1Body,
                     ),
                     _StepCard(
                       number: '2',
-                      title: 'Review before you spend',
-                      body: 'AI drafts the script or lyrics + cover prompt '
-                          'for free. You see exactly what gets generated. '
-                          'Approve only when it feels right.',
+                      title: l10n.landingStep2Title,
+                      body: l10n.landingStep2Body,
                     ),
                     _StepCard(
                       number: '3',
-                      title: 'Download or share',
-                      body: 'Square MP4 with music + visuals, ready for '
-                          'WhatsApp and Instagram. Save the lyrics or '
-                          'script as a PDF. Share a public link with '
-                          'OG preview baked in.',
+                      title: l10n.landingStep3Title,
+                      body: l10n.landingStep3Body,
                     ),
                   ];
                   if (wide) {
@@ -429,23 +426,23 @@ class _ShowcaseItem {
 // Mix horror + songs so visitors see both modes work. First two are
 // horror, third is a song so the gallery doesn't read as a one-genre
 // product.
-const _showcase = <_ShowcaseItem>[
-  _ShowcaseItem(
-    title: 'البئر المهجور',
-    tagline: 'Horror · Folkloric · 2 min',
-    gradient: [Color(0xFFB07F1F), Color(0xFFE7B53C)],
-  ),
-  _ShowcaseItem(
-    title: 'صوت من الجدار',
-    tagline: 'Horror · Urban · 90 sec',
-    gradient: [Color(0xFF8B5CF6), Color(0xFF5B21B6)],
-  ),
-  _ShowcaseItem(
-    title: 'تحت حراسة القمر',
-    tagline: 'Song · Romantic ballad · 3 min',
-    gradient: [Color(0xFF1E3A8A), Color(0xFF312E81)],
-  ),
-];
+List<_ShowcaseItem> _showcase(AppLocalizations l10n) => [
+      _ShowcaseItem(
+        title: 'البئر المهجور',
+        tagline: l10n.landingShowcaseTagline1,
+        gradient: const [Color(0xFFB07F1F), Color(0xFFE7B53C)],
+      ),
+      _ShowcaseItem(
+        title: 'صوت من الجدار',
+        tagline: l10n.landingShowcaseTagline2,
+        gradient: const [Color(0xFF8B5CF6), Color(0xFF5B21B6)],
+      ),
+      _ShowcaseItem(
+        title: 'تحت حراسة القمر',
+        tagline: l10n.landingShowcaseTagline3,
+        gradient: const [Color(0xFF1E3A8A), Color(0xFF312E81)],
+      ),
+    ];
 
 class _Showcase extends StatelessWidget {
   const _Showcase();
@@ -459,11 +456,11 @@ class _Showcase extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SectionHeading(en: 'What it makes', ar: 'ماذا تصنع'),
+              _SectionHeading(title: context.l10n.landingSectionShowcase),
               const SizedBox(height: 24),
               LayoutBuilder(builder: (ctx, c) {
                 final wide = c.maxWidth >= 720;
-                final cards = _showcase
+                final cards = _showcase(context.l10n)
                     .map((s) => _ShowcaseCard(item: s))
                     .toList();
                 if (wide) {
@@ -579,6 +576,7 @@ class _Pricing extends StatelessWidget {
   const _Pricing();
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 960),
@@ -587,11 +585,10 @@ class _Pricing extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SectionHeading(en: 'Pricing', ar: 'الأسعار'),
+              _SectionHeading(title: l10n.landingSectionPricing),
               const SizedBox(height: 8),
               Text(
-                'Credits power both modes. 1 song ≈ 1 credit. '
-                '1 horror clip = 1 credit (avg short = 8–12).',
+                l10n.landingPricingSubtitle,
                 style: TextStyle(
                   color: FacelessTheme.textSecondary.withValues(alpha: 0.85),
                   fontSize: 13,
@@ -602,23 +599,23 @@ class _Pricing extends StatelessWidget {
                 final wide = c.maxWidth >= 720;
                 final cards = [
                   _PriceCard(
-                    name: 'Starter',
+                    name: l10n.landingTierStarter,
                     price: r'$9',
                     credits: 12,
-                    desc: 'For trying ideas',
+                    desc: l10n.landingTierStarterDesc,
                   ),
                   _PriceCard(
-                    name: 'Creator',
+                    name: l10n.landingTierCreator,
                     price: r'$29',
                     credits: 60,
-                    desc: 'For weekly drops',
+                    desc: l10n.landingTierCreatorDesc,
                     recommended: true,
                   ),
                   _PriceCard(
-                    name: 'Pro',
+                    name: l10n.landingTierPro,
                     price: r'$79',
                     credits: 200,
-                    desc: 'For daily output',
+                    desc: l10n.landingTierProDesc,
                   ),
                 ];
                 if (wide) {
@@ -648,8 +645,8 @@ class _Pricing extends StatelessWidget {
                   height: 48,
                   child: FilledButton(
                     onPressed: () => _goLogin(context, signUp: true),
-                    child: const Text('Start free',
-                        style: TextStyle(
+                    child: Text(l10n.landingStartFree,
+                        style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
                   ),
                 ),
@@ -704,7 +701,7 @@ class _PriceCard extends StatelessWidget {
                       color: FacelessTheme.accent.withValues(alpha: 0.22),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Text('Recommended',
+                    child: Text(context.l10n.landingRecommended,
                         style: TextStyle(
                           color: FacelessTheme.accent,
                           fontSize: 9,
@@ -733,15 +730,15 @@ class _PriceCard extends StatelessWidget {
                     fontSize: 30,
                   )),
               const SizedBox(width: 4),
-              const Text('/ month',
-                  style: TextStyle(
+              Text(context.l10n.landingPerMonth,
+                  style: const TextStyle(
                     color: FacelessTheme.textSecondary,
                     fontSize: 13,
                   )),
             ],
           ),
           const SizedBox(height: 8),
-          Text('$credits credits / month',
+          Text(context.l10n.landingCreditsPerMonth(credits),
               style: const TextStyle(
                 color: FacelessTheme.textPrimary,
                 fontWeight: FontWeight.w600,
@@ -780,7 +777,7 @@ class _Footer extends StatelessWidget {
               const FacelessLogo(size: 24),
               const SizedBox(width: 8),
               Text(
-                'Faceless Lab · faceless-lab.com',
+                context.l10n.landingFooterLine,
                 style: TextStyle(
                   color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
                   fontSize: 12,
@@ -789,7 +786,7 @@ class _Footer extends StatelessWidget {
               const Spacer(),
               TextButton(
                 onPressed: () => _goLogin(context, signUp: false),
-                child: const Text('Sign in'),
+                child: Text(context.l10n.commonSignIn),
               ),
             ],
           ),
@@ -800,13 +797,12 @@ class _Footer extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Section heading — bilingual title with a gold rule
+// Section heading — localized title with a gold rule
 // ---------------------------------------------------------------------------
 
 class _SectionHeading extends StatelessWidget {
-  final String en;
-  final String ar;
-  const _SectionHeading({required this.en, required this.ar});
+  final String title;
+  const _SectionHeading({required this.title});
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -821,23 +817,13 @@ class _SectionHeading extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            Text(en,
-                style: const TextStyle(
-                  color: FacelessTheme.textPrimary,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 24,
-                  letterSpacing: 0.3,
-                )),
-            const SizedBox(width: 10),
-            Text(ar,
-                style: TextStyle(
-                  color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
-                  fontSize: 16,
-                )),
-          ],
-        ),
+        Text(title,
+            style: const TextStyle(
+              color: FacelessTheme.textPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 24,
+              letterSpacing: 0.3,
+            )),
       ],
     );
   }

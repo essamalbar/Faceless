@@ -827,4 +827,221 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get songDetailUnknownError => 'خطأ غير معروف';
+
+  @override
+  String get landingHeroPill =>
+      'استوديو موسيقى بالذكاء الاصطناعي · بالعربية وأبعد';
+
+  @override
+  String get landingHeroTitlePart1 => 'حوّل أي فكرة إلى ';
+
+  @override
+  String get landingHeroTitlePart2Accent => 'أغنية كاملة.';
+
+  @override
+  String get landingHeroSubtitle =>
+      'اكتب فكرة، أو ارفع مقطعًا لصنع نسخة وفية منه. يؤلّف Faceless الكلمات، ويؤديها غناءً، ويصمم الغلاف، ويُخرج فيديو سينمائيًا — وأنت توافق قبل إنفاق رصيد واحد.';
+
+  @override
+  String get landingStartCreating => 'ابدأ الإبداع';
+
+  @override
+  String get landingTrustLine =>
+      '★★★★★   يحبه صنّاع المحتوى · 60 رصيدًا مجانيًا للبدء';
+
+  @override
+  String get landingNowGenerating => 'قيد التوليد الآن';
+
+  @override
+  String get landingSampleTagline => 'سينمائي · 92 BPM · بوب عربي';
+
+  @override
+  String get landingSectionHowItWorks => 'كيف تعمل';
+
+  @override
+  String get landingSectionShowcase => 'ماذا تصنع';
+
+  @override
+  String get landingSectionPricing => 'الأسعار';
+
+  @override
+  String get landingStep1Title => 'اختر وضعًا';
+
+  @override
+  String get landingStep1Body =>
+      'قصص الرعب القصيرة: جملة واحدة تتحول إلى قصة عربية سينمائية بشخصيات ولقطات. الأغاني: فكرة وأسلوب يتحولان إلى أغنية عربية كاملة مع غلاف فني.';
+
+  @override
+  String get landingStep2Title => 'راجِع قبل أن تنفق';
+
+  @override
+  String get landingStep2Body =>
+      'يكتب الذكاء الاصطناعي النص أو الكلمات ووصف الغلاف مجانًا. ترى بالضبط ما سيُولَّد. لا توافق إلا عندما يعجبك.';
+
+  @override
+  String get landingStep3Title => 'نزّل أو شارك';
+
+  @override
+  String get landingStep3Body =>
+      'فيديو MP4 مربّع بالموسيقى والمرئيات، جاهز لواتساب وإنستغرام. احفظ الكلمات أو النص بصيغة PDF. شارك رابطًا عامًا بمعاينة جاهزة للمشاركة.';
+
+  @override
+  String get landingShowcaseTagline1 => 'رعب · فلكلوري · دقيقتان';
+
+  @override
+  String get landingShowcaseTagline2 => 'رعب · مدني · 90 ثانية';
+
+  @override
+  String get landingShowcaseTagline3 => 'أغنية · بالاد رومانسي · 3 دقائق';
+
+  @override
+  String get landingPricingSubtitle =>
+      'الرصيد يشغّل الوضعين معًا. أغنية واحدة ≈ رصيد واحد. مقطع رعب واحد = رصيد واحد (متوسط الفيديو القصير = 8–12).';
+
+  @override
+  String get landingTierStarter => 'المبتدئ';
+
+  @override
+  String get landingTierStarterDesc => 'لتجربة الأفكار';
+
+  @override
+  String get landingTierCreator => 'المبدع';
+
+  @override
+  String get landingTierCreatorDesc => 'لإصدارات أسبوعية';
+
+  @override
+  String get landingTierPro => 'الاحترافي';
+
+  @override
+  String get landingTierProDesc => 'لإنتاج يومي';
+
+  @override
+  String get landingRecommended => 'موصى بها';
+
+  @override
+  String get landingPerMonth => '/ شهريًا';
+
+  @override
+  String landingCreditsPerMonth(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count رصيد في الشهر',
+      many: '$count رصيدًا في الشهر',
+      few: '$count أرصدة في الشهر',
+      two: 'رصيدان في الشهر',
+      one: 'رصيد واحد في الشهر',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get landingStartFree => 'ابدأ مجانًا';
+
+  @override
+  String get landingFooterLine => 'Faceless Lab · faceless-lab.com';
+
+  @override
+  String get loginEmailLabel => 'البريد الإلكتروني';
+
+  @override
+  String get loginPasswordLabel => 'كلمة المرور';
+
+  @override
+  String get loginEmailRequired => 'البريد الإلكتروني مطلوب';
+
+  @override
+  String get loginEmailInvalid => 'أدخل بريدًا إلكترونيًا صحيحًا';
+
+  @override
+  String get loginPasswordRequired => 'كلمة المرور مطلوبة';
+
+  @override
+  String get loginPasswordMinLength => '8 أحرف على الأقل للحسابات الجديدة';
+
+  @override
+  String get loginAccountCreatedInfo =>
+      'تم إنشاء الحساب. تحقق من بريدك الإلكتروني للتأكيد — أو سجّل الدخول مباشرة إذا كان تأكيد البريد معطّلًا.';
+
+  @override
+  String loginUnexpectedError(String error) {
+    return 'خطأ غير متوقع: $error';
+  }
+
+  @override
+  String get loginShowPassword => 'إظهار كلمة المرور';
+
+  @override
+  String get loginHidePassword => 'إخفاء كلمة المرور';
+
+  @override
+  String get loginCreateAccount => 'إنشاء الحساب';
+
+  @override
+  String get loginSignUp => 'إنشاء حساب';
+
+  @override
+  String get loginNoAccountYet => 'ليس لديك حساب بعد؟ ';
+
+  @override
+  String get loginAlreadyHaveAccount => 'لديك حساب بالفعل؟ ';
+
+  @override
+  String get loginSubtitle => 'سجّل الدخول لإدارة أعمالك';
+
+  @override
+  String get loginFooterTagline => 'Faceless · رعب عربي بقلم الذكاء الاصطناعي';
+
+  @override
+  String get onboardingSkip => 'تخطّي';
+
+  @override
+  String get onboardingNext => 'التالي';
+
+  @override
+  String get onboardingLetsCreate => 'هيا نبدع';
+
+  @override
+  String get onboardingSlide1Eyebrow => 'مرحبًا بك';
+
+  @override
+  String get onboardingSlide1Title =>
+      'استوديو عربي بالذكاء الاصطناعي يحترم ميزانيتك';
+
+  @override
+  String get onboardingSlide1Body =>
+      'ينشئ Faceless Lab قصص رعب عربية سينمائية قصيرة وأغاني عربية أصلية من جملة واحدة. أنت تكتب الفكرة، ونحن نتولى الباقي.';
+
+  @override
+  String get onboardingSlide2Eyebrow => 'وضعان';
+
+  @override
+  String get onboardingSlide2Title =>
+      'قصص رعب قصيرة. أغانٍ بالذكاء الاصطناعي. استوديو واحد.';
+
+  @override
+  String get onboardingSlide2Body =>
+      'بدّل بين الرعب (قصص عربية سينمائية قصيرة بست لهجات) والأغاني (مقطوعات كاملة بأصوات Suno مع غلاف فني بالذكاء الاصطناعي). كل عمل يبقى في مكتبتك وقابلًا للمشاركة إلى الأبد.';
+
+  @override
+  String get onboardingSlide3Eyebrow => 'تسعير عادل';
+
+  @override
+  String get onboardingSlide3Title =>
+      'المسودات مجانية. لا تدفع إلا عند التوليد.';
+
+  @override
+  String get onboardingSlide3Body =>
+      'تُعرض النصوص والكلمات دون أي تكلفة. وافق عندما ترضى. وإذا فشل الإخراج، يعود الرصيد تلقائيًا — لن تدفع أبدًا مقابل فيديو لم يكتمل.';
+
+  @override
+  String get onboardingSlide4Eyebrow => 'هيا بنا';
+
+  @override
+  String get onboardingSlide4Title => 'مسودتك الأولى مجانية.';
+
+  @override
+  String get onboardingSlide4Body =>
+      'انقر أدناه واكتب جملة واحدة. سينتج النظام نصًا عربيًا كاملًا أو كلمات أغنية لتراجعها — كل ذلك قبل إنفاق أي رصيد.';
 }

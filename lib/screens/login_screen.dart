@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../widgets/faceless_logo.dart';
 
@@ -37,16 +38,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? _validateEmail(String? v) {
     final s = (v ?? '').trim();
-    if (s.isEmpty) return 'Email is required';
-    if (!s.contains('@') || !s.contains('.')) return 'Enter a valid email';
+    if (s.isEmpty) return context.l10n.loginEmailRequired;
+    if (!s.contains('@') || !s.contains('.')) {
+      return context.l10n.loginEmailInvalid;
+    }
     return null;
   }
 
   String? _validatePassword(String? v) {
     final s = v ?? '';
-    if (s.isEmpty) return 'Password is required';
+    if (s.isEmpty) return context.l10n.loginPasswordRequired;
     if (_mode == _Mode.signUp && s.length < 8) {
-      return 'Min 8 characters for new accounts';
+      return context.l10n.loginPasswordMinLength;
     }
     return null;
   }
@@ -85,15 +88,16 @@ class _LoginScreenState extends State<LoginScreen> {
             Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         } else if (mounted) {
-          setState(() => _info =
-              'Account created. Check your email to confirm — or sign in '
-              'directly if email confirmation is disabled.');
+          setState(() => _info = context.l10n.loginAccountCreatedInfo);
         }
       }
     } on AuthException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = 'Unexpected error: $e');
+      if (mounted) {
+        setState(
+            () => _error = context.l10n.loginUnexpectedError(e.toString()));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -204,9 +208,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 keyboardType: TextInputType.emailAddress,
                                 autofillHints: const [AutofillHints.email],
                                 validator: _validateEmail,
-                                decoration: const InputDecoration(
-                                  labelText: 'Email',
-                                  prefixIcon: Icon(Icons.alternate_email,
+                                decoration: InputDecoration(
+                                  labelText: context.l10n.loginEmailLabel,
+                                  prefixIcon: const Icon(
+                                      Icons.alternate_email,
                                       size: 20),
                                 ),
                               ),
@@ -222,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 validator: _validatePassword,
                                 onFieldSubmitted: (_) => _submit(),
                                 decoration: InputDecoration(
-                                  labelText: 'Password',
+                                  labelText: context.l10n.loginPasswordLabel,
                                   prefixIcon: const Icon(
                                       Icons.lock_outline,
                                       size: 20),
@@ -234,8 +239,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                       size: 20,
                                     ),
                                     tooltip: _showPassword
-                                        ? 'Hide password'
-                                        : 'Show password',
+                                        ? context.l10n.loginHidePassword
+                                        : context.l10n.loginShowPassword,
                                     onPressed: () => setState(() =>
                                         _showPassword = !_showPassword),
                                   ),
@@ -274,8 +279,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                         )
                                       : Text(
                                           isSignIn
-                                              ? 'Sign in'
-                                              : 'Create account',
+                                              ? context.l10n.commonSignIn
+                                              : context
+                                                  .l10n.loginCreateAccount,
                                         ),
                                 ),
                               ),
@@ -292,13 +298,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                     children: [
                                       TextSpan(
                                         text: isSignIn
-                                            ? "No account yet? "
-                                            : 'Already have one? ',
+                                            ? context.l10n.loginNoAccountYet
+                                            : context
+                                                .l10n.loginAlreadyHaveAccount,
                                       ),
                                       TextSpan(
                                         text: isSignIn
-                                            ? 'Sign up'
-                                            : 'Sign in',
+                                            ? context.l10n.loginSignUp
+                                            : context.l10n.commonSignIn,
                                         style: const TextStyle(
                                           color: FacelessTheme.accent,
                                           fontWeight: FontWeight.w600,
@@ -314,7 +321,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        'Faceless · Arabic horror, scripted by AI',
+                        context.l10n.loginFooterTagline,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: FacelessTheme.textSecondary
@@ -367,7 +374,7 @@ class _BrandHeader extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Sign in to manage your runs',
+          context.l10n.loginSubtitle,
           style: TextStyle(
             color: FacelessTheme.textSecondary,
             fontSize: 14,
@@ -396,8 +403,8 @@ class _ModeSegmentedControl extends StatelessWidget {
       padding: const EdgeInsets.all(4),
       child: Row(
         children: [
-          _segment('Sign in', _Mode.signIn),
-          _segment('Sign up', _Mode.signUp),
+          _segment(context.l10n.commonSignIn, _Mode.signIn),
+          _segment(context.l10n.loginSignUp, _Mode.signUp),
         ],
       ),
     );
