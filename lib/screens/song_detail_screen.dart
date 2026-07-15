@@ -377,6 +377,72 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     }
   }
 
+  /// Artist Core one-step door: save this song's voice as a persona AND
+  /// create an artist wrapping it (POST /artists/from-song). The song
+  /// joins the new artist's discography.
+  Future<void> _showMakeArtistDialog(SongSummary s) async {
+    final nameCtrl = TextEditingController(text: s.title ?? '');
+    final create = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(ctx.l10n.artistMakeFromSongButton),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              ctx.l10n.artistMakeFromSongBody,
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(
+                labelText: ctx.l10n.artistNameLabel,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(ctx.l10n.commonCancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(ctx.l10n.artistCreateButton)),
+        ],
+      ),
+    );
+    if (create != true || !mounted) return;
+    final name = nameCtrl.text.trim();
+    if (name.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final artist = await widget.client.createArtistFromSong(
+        runId: widget.runId,
+        name: name,
+      );
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(
+          content: Text(context.l10n.artistCreatedSnack(artist.name)),
+          duration: const Duration(seconds: 5),
+        ));
+      }
+    } on FacelessApiException catch (e) {
+      // 409 (duplicate handle) / 422 (no voice on this take) etc — the
+      // server detail is the actionable part; surface it as-is.
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(
+            content: Text(context.l10n.artistCreateFailed(e.message))));
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.artistCreateFailed('$e'))));
+      }
+    }
+  }
+
   Future<void> _downloadAudio() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -733,6 +799,17 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               icon: const Icon(Icons.record_voice_over),
               label: Text(l10n.songDetailSaveVoiceTitle),
               onPressed: () => _showSavePersonaDialog(s),
+            ),
+            const SizedBox(height: 8),
+            // Artist Core: turn this song's singer into a full artist
+            // (voice persona + identity + discography) in one step.
+            // TODO(artist-core): "Add to artist" (assign an EXISTING song
+            // to an artist) needs a song-assignment endpoint on the
+            // backend; skipped for v1.
+            OutlinedButton.icon(
+              icon: const Icon(Icons.star_outline),
+              label: Text(l10n.artistMakeFromSongButton),
+              onPressed: () => _showMakeArtistDialog(s),
             ),
             const SizedBox(height: 8),
             Row(

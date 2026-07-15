@@ -16,11 +16,15 @@ class NewSongScreen extends StatefulWidget {
   // so the user is one tap away from generating.
   final String? initialTheme;
   final String? initialPresetLabel;
+  // Artist Core: opening from an ArtistScreen preselects the artist so the
+  // song lands in their discography with their defaults prefilled.
+  final Artist? initialArtist;
   const NewSongScreen({
     super.key,
     required this.client,
     this.initialTheme,
     this.initialPresetLabel,
+    this.initialArtist,
   });
 
   @override
@@ -100,6 +104,9 @@ class _NewSongScreenState extends State<NewSongScreen> {
   String? _personaId;          // null = no persona (let Suno pick)
   String? _selectedPreset;     // label of the chip that filled the style field
   List<Persona> _personas = [];
+  Artist? _artist;             // selected artist (null = none)
+  List<Artist> _artists = [];
+  bool _artistsLoading = true;
   bool _submitting = false;
   String? _error;
 
@@ -107,6 +114,10 @@ class _NewSongScreenState extends State<NewSongScreen> {
   void initState() {
     super.initState();
     _loadPersonas();
+    _loadArtists();
+    if (widget.initialArtist != null) {
+      _applyArtist(widget.initialArtist!);
+    }
     // Apply optional pre-fills from the empty-state "try this" chips.
     if (widget.initialTheme != null) {
       _themeCtrl.text = widget.initialTheme!;
@@ -130,6 +141,34 @@ class _NewSongScreenState extends State<NewSongScreen> {
     } catch (_) {
       // Personas are optional; ignore listing errors silently
     }
+  }
+
+  Future<void> _loadArtists() async {
+    try {
+      final list = await widget.client.listArtists();
+      if (mounted) {
+        setState(() {
+          _artists = list;
+          _artistsLoading = false;
+        });
+      }
+    } catch (_) {
+      // Artists are optional; the picker row simply stays hidden.
+      if (mounted) setState(() => _artistsLoading = false);
+    }
+  }
+
+  /// Select an artist: prefill their defaults. Explicit user edits win —
+  /// the style field is only stamped when still empty.
+  void _applyArtist(Artist a) {
+    setState(() {
+      _artist = a;
+      _language = a.defaultLanguage;
+      _vocalGender = a.defaultVocalGender;
+      if (_styleCtrl.text.trim().isEmpty && a.defaultStyle.isNotEmpty) {
+        _styleCtrl.text = a.defaultStyle;
+      }
+    });
   }
 
   @override
@@ -197,6 +236,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
           language: _language,
           videoMode: _videoMode,
           vocalGender: _vocalGender,
+          artistId: _artist?.id,
         );
       } else {
         runId = await widget.client.createSong(
@@ -209,6 +249,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
           vocalGender: _vocalGender,
           sunoModel: _sunoModel,
           videoMode: _videoMode,
+          artistId: _artist?.id,
         );
       }
       if (!mounted) return;
@@ -225,6 +266,19 @@ class _NewSongScreenState extends State<NewSongScreen> {
     }
   }
 
+  bool get _showArtistRow =>
+      !_artistsLoading && (_artists.isNotEmpty || _artist != null);
+
+  /// Chips to render: the loaded list, plus the preselected artist if the
+  /// listing hasn't caught up with it (or failed).
+  List<Artist> get _artistChoices {
+    final sel = _artist;
+    if (sel != null && !_artists.any((a) => a.id == sel.id)) {
+      return [sel, ..._artists];
+    }
+    return _artists;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -235,6 +289,38 @@ class _NewSongScreenState extends State<NewSongScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Artist picker — release the song as one of your artists.
+            // Hidden while loading, and when there are no artists at all.
+            if (_showArtistRow) ...[
+              Text(
+                l10n.artistPickerLabel,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 40,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    ChoiceChip(
+                      label: Text(l10n.artistPickerNone),
+                      selected: _artist == null,
+                      onSelected: (_) => setState(() => _artist = null),
+                    ),
+                    for (final a in _artistChoices)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(start: 8),
+                        child: ChoiceChip(
+                          label: Text(a.name),
+                          selected: _artist?.id == a.id,
+                          onSelected: (_) => _applyArtist(a),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             // Mode selector — Write a theme vs Upload a song (cover).
             SegmentedButton<String>(
               segments: [

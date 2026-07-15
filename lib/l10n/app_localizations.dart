@@ -3271,6 +3271,204 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Restart via scripts/run-app.sh so the Supabase + API URLs are baked into the build.'**
   String get misconfiguredBody;
+
+  /// No description provided for @artistsSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Artists'**
+  String get artistsSectionTitle;
+
+  /// No description provided for @artistNewTile.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get artistNewTile;
+
+  /// No description provided for @artistEditTitleCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'New artist'**
+  String get artistEditTitleCreate;
+
+  /// No description provided for @artistEditTitleEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit artist'**
+  String get artistEditTitleEdit;
+
+  /// No description provided for @artistNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get artistNameLabel;
+
+  /// No description provided for @artistNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Name is required'**
+  String get artistNameRequired;
+
+  /// No description provided for @artistHandleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Handle'**
+  String get artistHandleLabel;
+
+  /// No description provided for @artistHandleHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional — leave empty and one is generated from the name'**
+  String get artistHandleHelper;
+
+  /// No description provided for @artistBioLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Bio'**
+  String get artistBioLabel;
+
+  /// No description provided for @artistDefaultStyleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Default style'**
+  String get artistDefaultStyleLabel;
+
+  /// No description provided for @artistVocalLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Default voice'**
+  String get artistVocalLabel;
+
+  /// No description provided for @artistChooseAvatar.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose avatar image'**
+  String get artistChooseAvatar;
+
+  /// No description provided for @artistAvatarSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'New avatar selected — it uploads when you save'**
+  String get artistAvatarSelected;
+
+  /// No description provided for @artistAvatarUploadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Avatar upload failed: {error}'**
+  String artistAvatarUploadFailed(String error);
+
+  /// No description provided for @artistCreateButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Create artist'**
+  String get artistCreateButton;
+
+  /// No description provided for @artistSaveButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get artistSaveButton;
+
+  /// No description provided for @artistDeleteButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete artist'**
+  String get artistDeleteButton;
+
+  /// No description provided for @artistDeleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete artist?'**
+  String get artistDeleteConfirmTitle;
+
+  /// No description provided for @artistDeleteConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Songs stay playable but leave this discography. The saved voice is kept.'**
+  String get artistDeleteConfirmBody;
+
+  /// No description provided for @artistDeleteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete failed: {error}'**
+  String artistDeleteFailed(String error);
+
+  /// No description provided for @artistSongCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No songs yet} =1{1 song} other{{count} songs}}'**
+  String artistSongCount(int count);
+
+  /// No description provided for @artistShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get artistShare;
+
+  /// No description provided for @artistLinkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Artist link copied'**
+  String get artistLinkCopied;
+
+  /// No description provided for @artistEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get artistEdit;
+
+  /// No description provided for @artistNewSongCta.
+  ///
+  /// In en, this message translates to:
+  /// **'New song as {name}'**
+  String artistNewSongCta(String name);
+
+  /// No description provided for @artistDiscographyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discography'**
+  String get artistDiscographyTitle;
+
+  /// No description provided for @artistNoSongsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No songs yet — release the first one as {name}.'**
+  String artistNoSongsYet(String name);
+
+  /// No description provided for @artistPickerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sing as artist'**
+  String get artistPickerLabel;
+
+  /// No description provided for @artistPickerNone.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get artistPickerNone;
+
+  /// No description provided for @artistMakeFromSongButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Make this singer an artist'**
+  String get artistMakeFromSongButton;
+
+  /// No description provided for @artistMakeFromSongBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Saves this song\'s voice and creates an artist around it. This song joins the discography, and new songs can be made as this artist.'**
+  String get artistMakeFromSongBody;
+
+  /// No description provided for @artistCreatedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Artist \"{name}\" created'**
+  String artistCreatedSnack(String name);
+
+  /// No description provided for @artistCreateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t create artist: {error}'**
+  String artistCreateFailed(String error);
 }
 
 class _AppLocalizationsDelegate
