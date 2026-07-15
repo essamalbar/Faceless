@@ -1260,4 +1260,562 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get personasDeleteTooltip => 'حذف هذا الصوت';
+
+  @override
+  String get newRunTitle => 'حلقة جديدة';
+
+  @override
+  String get newRunTabAiGenerate => 'توليد بالذكاء الاصطناعي';
+
+  @override
+  String get newRunTabPasteScript => 'لصق نص';
+
+  @override
+  String get newRunAiExplainer =>
+      'يولّد الذكاء الاصطناعي نصًا من فكرتك. اختر اللهجة والأسلوب الفني وقالب الشخصيات وأسلوب السرد؛ وسيلتزم الكاتب باختياراتك.';
+
+  @override
+  String get newRunPremiseLabel => 'الفكرة (بالعربية)';
+
+  @override
+  String get newRunPremiseTooShort => 'الفكرة قصيرة جدًا';
+
+  @override
+  String get newRunThemeLabel => 'الثيمة';
+
+  @override
+  String get newRunDialectLabel => 'اللهجة';
+
+  @override
+  String get newRunArtStyleLabel => 'الأسلوب الفني';
+
+  @override
+  String get newRunCharacterTemplateLabel => 'قالب الشخصيات';
+
+  @override
+  String get newRunEndingTypeLabel => 'نوع النهاية';
+
+  @override
+  String get newRunNarrationStyleLabel => 'أسلوب السرد';
+
+  @override
+  String get newRunDialectMsa => 'الفصحى (MSA)';
+
+  @override
+  String get newRunDialectSyrian => 'سورية / شامية';
+
+  @override
+  String get newRunDialectEgyptian => 'مصرية';
+
+  @override
+  String get newRunDialectKhaliji => 'خليجية';
+
+  @override
+  String get newRunDialectMaghrebi => 'مغاربية';
+
+  @override
+  String get newRunDialectIraqi => 'عراقية';
+
+  @override
+  String get newRunArtPixar3d => 'بيكسار ثلاثي الأبعاد';
+
+  @override
+  String get newRunArtAnime2d => 'أنمي ثنائي الأبعاد';
+
+  @override
+  String get newRunArtCinematic => 'سينمائي واقعي';
+
+  @override
+  String get newRunArtClaymation => 'تحريك بالصلصال';
+
+  @override
+  String get newRunArtHandDrawn => 'رسم يدوي';
+
+  @override
+  String get newRunArtGhibli => 'ستوديو جيبلي';
+
+  @override
+  String get newRunAiChoose => 'دع الذكاء الاصطناعي يختار';
+
+  @override
+  String get newRunCharHuman => 'شخصيات بشرية';
+
+  @override
+  String get newRunCharFruit => 'شخصيات فواكه (Sunstoriz)';
+
+  @override
+  String get newRunCharAnimal => 'شخصيات حيوانات';
+
+  @override
+  String get newRunCharSurreal => 'كائنات سريالية';
+
+  @override
+  String get newRunEndingOpen => 'نهاية مفتوحة';
+
+  @override
+  String get newRunEndingClosedTragic => 'نهاية مأساوية مغلقة';
+
+  @override
+  String get newRunEndingClosedHappy => 'نهاية سعيدة مغلقة';
+
+  @override
+  String get newRunEndingTwist => 'نهاية بمفاجأة';
+
+  @override
+  String get newRunNarrCinematic => 'سينمائي (موصى به)';
+
+  @override
+  String get newRunNarrFirstPerson => 'مونولوج بضمير المتكلم (تيك توك)';
+
+  @override
+  String get newRunBeatsLabel => 'المشاهد:';
+
+  @override
+  String get newRunSecPerBeatLabel => 'ثانية / مشهد:';
+
+  @override
+  String get newRunWriting => 'جارٍ الكتابة…';
+
+  @override
+  String get newRunGenerateScript => 'توليد النص';
+
+  @override
+  String get newRunPasteExplainer =>
+      'يُستخدم حوارك حرفيًا — دون أي إعادة صياغة بالذكاء الاصطناعي. استخدم هذا لتكملة الحلقات عندما تريد التحكم في كل سطر.';
+
+  @override
+  String get newRunPasteFromMarkdown => 'لصق من نص ماركداون';
+
+  @override
+  String get newRunTitleLabel => 'العنوان (بالعربية)';
+
+  @override
+  String get newRunTitleHint => 'مثلاً: العقد المقدس - الحلقة 4';
+
+  @override
+  String get newRunStoryContextLabel => 'سياق القصة (اختياري، بالعربية)';
+
+  @override
+  String get newRunStoryContextHint => 'الحلقة الرابعة من سلسلة العقد';
+
+  @override
+  String get newRunTitleRequired => 'العنوان مطلوب';
+
+  @override
+  String get newRunBeatRequired => 'مطلوب مشهد واحد على الأقل';
+
+  @override
+  String get newRunVisualRequired => 'كل مشهد يحتاج إلى وصف بصري (بالإنجليزية)';
+
+  @override
+  String newRunParsedBeats(int count, String method) {
+    return 'تم تحليل $count من المشاهد ($method)';
+  }
+
+  @override
+  String get newRunMethodRegex => 'تحليل نمطي';
+
+  @override
+  String get newRunMethodAiSplit => 'تقسيم بالذكاء الاصطناعي';
+
+  @override
+  String get newRunMethodAuto => 'تقسيم تلقائي';
+
+  @override
+  String get newRunBadgeParsedMarkdown =>
+      'تم التحليل من نص الماركداون الخاص بك';
+
+  @override
+  String get newRunBadgeAiSplit => 'قسّمه الذكاء الاصطناعي — راجعه قبل الحفظ';
+
+  @override
+  String get newRunBadgeAutoSegmented => 'تقسيم تلقائي — راجعه بعناية';
+
+  @override
+  String get newRunBeatsSection => 'المشاهد';
+
+  @override
+  String newRunAddBeat(int number) {
+    return 'إضافة مشهد ($number)';
+  }
+
+  @override
+  String get newRunSaving => 'جارٍ الحفظ…';
+
+  @override
+  String newRunUseScript(int count, String cost) {
+    return 'استخدام هذا النص ($count مشاهد، ~$cost)';
+  }
+
+  @override
+  String get newRunPasteDialogTitle => 'لصق نص ماركداون';
+
+  @override
+  String get newRunPasteFormatHelp =>
+      'الصيغة المدعومة: عنوان **العنوان: ...**، وعناوين مشاهد **المشهد N – ...**، وكتل **المتحدث:**\\n\"الحوار\". تُحفظ الإرشادات المسرحية المكتوبة نثرًا كسياق صامت. يُحفظ نصك العربي حرفًا بحرف.';
+
+  @override
+  String get newRunPasteHint =>
+      '**العنوان: القلادة المقدسة – الحلقة 4**\n\n**المشهد 1 – الفراغ**\nسكون مطلق...\n\n**الشاب (بهمس):**\n\"أنا… وين…؟\"\n\n...';
+
+  @override
+  String get newRunPasteRealScript =>
+      'الصق نصًا حقيقيًا (بضعة مشاهد على الأقل).';
+
+  @override
+  String get newRunTargetBeats => 'عدد المشاهد المستهدف:';
+
+  @override
+  String get newRunParsing => 'جارٍ التحليل…';
+
+  @override
+  String get newRunParseToBeats => 'تحليل إلى مشاهد';
+
+  @override
+  String newRunBeatBadge(String number) {
+    return 'مشهد $number';
+  }
+
+  @override
+  String get newRunSpeakerLabel => 'المتحدث (نص حر)';
+
+  @override
+  String get newRunSpeakerHint => 'مثال: mother، narrator، warrior…';
+
+  @override
+  String get newRunCharacterNameLabel => 'اسم الشخصية (بالعربية، اختياري)';
+
+  @override
+  String get newRunCharacterNameHint => 'مثال: خالد، فاطمة، أم يوسف';
+
+  @override
+  String get newRunArabicDialogueLabel =>
+      'الحوار العربي (اتركه فارغًا لمشهد صامت)';
+
+  @override
+  String get newRunVisualDescLabel => 'الوصف البصري (بالإنجليزية) — مطلوب';
+
+  @override
+  String get newRunVisualDescHint =>
+      'مثال: Strawberry son in stone room, golden light, looking at necklace';
+
+  @override
+  String get newRunClipDurationLabel => 'مدة المقطع:';
+
+  @override
+  String get runDetailStoryFallback => 'قصة';
+
+  @override
+  String get runDetailActivityLog => 'سجل النشاط';
+
+  @override
+  String get runDetailApprovedPreparing =>
+      'تمت الموافقة — جارٍ تجهيز الشخصيات (~30 ث)…';
+
+  @override
+  String get runDetailApprovedGenerating =>
+      'تمت الموافقة — جارٍ توليد المقاطع…';
+
+  @override
+  String runDetailApproveFailed(String error) {
+    return 'فشلت الموافقة: $error';
+  }
+
+  @override
+  String get runDetailRegenLookTitle => 'إعادة توليد مظهر الشخصيات؟';
+
+  @override
+  String get runDetailRegenLookBody =>
+      'يتجاهل هذا مظهر الشخصيات الحالي ويولّد مظهرًا جديدًا. لن يتأثر رصيدك.';
+
+  @override
+  String get runDetailKeep => 'إبقاء';
+
+  @override
+  String runDetailRerollFailed(String error) {
+    return 'فشلت إعادة التوليد: $error';
+  }
+
+  @override
+  String get runDetailRepairing =>
+      'جارٍ إصلاح الفيديو — إعادة تجميع للتشغيل في المتصفح…';
+
+  @override
+  String get runDetailRepaired => 'تم الإصلاح. انقر «تشغيل» مرة أخرى.';
+
+  @override
+  String runDetailRepairFailed(String error) {
+    return 'فشل الإصلاح: $error';
+  }
+
+  @override
+  String get runDetailResuming => 'جارٍ استئناف المعالجة…';
+
+  @override
+  String runDetailResumeFailed(String error) {
+    return 'فشل الاستئناف: $error';
+  }
+
+  @override
+  String get runDetailDiscardTitle => 'تجاهل هذه العملية؟';
+
+  @override
+  String get runDetailDiscardBody =>
+      'سيوقف الإلغاء أي معالجة جارية وسيحذف العملية بالكامل. سيُزال النص وأي ملفات مولّدة جزئيًا. لا يمكن التراجع عن هذا.';
+
+  @override
+  String get runDetailRunDiscarded => 'تم تجاهل العملية';
+
+  @override
+  String runDetailDiscardFailed(String error) {
+    return 'فشل التجاهل: $error';
+  }
+
+  @override
+  String get runDetailNoScriptToReroll => 'لا يوجد نص — لا شيء لإعادة توليده';
+
+  @override
+  String runDetailRerollingClips(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'جارٍ إعادة توليد $count مقطع — $count رصيد',
+      many: 'جارٍ إعادة توليد $count مقطعًا — $count رصيدًا',
+      few: 'جارٍ إعادة توليد $count مقاطع — $count أرصدة',
+      two: 'جارٍ إعادة توليد مقطعين — رصيدان',
+      one: 'جارٍ إعادة توليد مقطع واحد — رصيد واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String runDetailRerollClipTitle(String number) {
+    return 'إعادة توليد المقطع $number؟';
+  }
+
+  @override
+  String get runDetailRerollClipBody =>
+      'يعيد هذا توليد مقطع واحد ويكلّف رصيدًا واحدًا.';
+
+  @override
+  String get runDetailRerollOneCredit => 'إعادة توليد (رصيد واحد)';
+
+  @override
+  String runDetailRerollingClip(String number) {
+    return 'جارٍ إعادة توليد المقطع $number — رصيد واحد';
+  }
+
+  @override
+  String get runDetailStatusReady => 'جاهز للمشاهدة';
+
+  @override
+  String get runDetailStatusScriptReady => 'النص جاهز — وافق لتوليد الفيديو';
+
+  @override
+  String get runDetailStatusCharacterReady =>
+      'مظهر الشخصيات جاهز — وافق لتوليد المقاطع';
+
+  @override
+  String get runDetailStatusGenerating => 'جارٍ توليد الفيديو الخاص بك…';
+
+  @override
+  String get runDetailStatusWriting => 'جارٍ كتابة النص…';
+
+  @override
+  String get runDetailStatusFailed =>
+      'فشل التوليد — انقر «استئناف» لإعادة المحاولة';
+
+  @override
+  String get runDetailRepairPlayback => 'إصلاح التشغيل';
+
+  @override
+  String get runDetailRerollSelectedClips => 'إعادة توليد المقاطع المحددة';
+
+  @override
+  String get runDetailGenerationFailed => 'فشل التوليد';
+
+  @override
+  String get runDetailResume => 'استئناف';
+
+  @override
+  String get runDetailCancelDiscard => 'إلغاء وتجاهل';
+
+  @override
+  String runDetailCreditsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count رصيد',
+      many: '$count رصيدًا',
+      few: '$count أرصدة',
+      two: 'رصيدان',
+      one: 'رصيد واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String runDetailScriptBeats(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'النص ($count مشهد)',
+      many: 'النص ($count مشهدًا)',
+      few: 'النص ($count مشاهد)',
+      two: 'النص (مشهدان)',
+      one: 'النص (مشهد واحد)',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get runDetailDownloadScriptPdf => 'تنزيل النص (PDF)';
+
+  @override
+  String get runDetailRerollClipTooltip => 'إعادة توليد هذا المقطع (رصيد واحد)';
+
+  @override
+  String get runDetailSilentBeat => '(مشهد صامت — بلا حوار)';
+
+  @override
+  String get runDetailStartingGeneration =>
+      'جارٍ بدء توليد الفيديو — ستظهر المقاطع قريبًا…';
+
+  @override
+  String get runDetailApprovingPreparing =>
+      'جارٍ الموافقة — يجري تجهيز الشخصيات (~30 ث)…';
+
+  @override
+  String runDetailApproveVeoLine(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'وافق لتوليد الفيديو — $count رصيد',
+      many: 'وافق لتوليد الفيديو — $count رصيدًا',
+      few: 'وافق لتوليد الفيديو — $count أرصدة',
+      two: 'وافق لتوليد الفيديو — رصيدان',
+      one: 'وافق لتوليد الفيديو — رصيد واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String runDetailApproveLine(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'وافق لبدء التوليد — $count رصيد إجمالًا',
+      many: 'وافق لبدء التوليد — $count رصيدًا إجمالًا',
+      few: 'وافق لبدء التوليد — $count أرصدة إجمالًا',
+      two: 'وافق لبدء التوليد — رصيدان إجمالًا',
+      one: 'وافق لبدء التوليد — رصيد واحد إجمالًا',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get runDetailVeoGateHint =>
+      'بعد البدء، تُولَّد المقاطع واحدًا تلو الآخر (~دقيقة لكل مقطع).';
+
+  @override
+  String get runDetailApproveHint =>
+      'تُجهَّز الشخصيات أولًا؛ ويبدأ الفيديو بعد تأكيدك مرة أخرى.';
+
+  @override
+  String get runDetailApprove => 'موافقة';
+
+  @override
+  String get runDetailStagePreparingCharacters => 'جارٍ تجهيز الشخصيات…';
+
+  @override
+  String runDetailStageGeneratingClip(int current, int total) {
+    return 'جارٍ توليد المقطع $current من $total…';
+  }
+
+  @override
+  String get runDetailStageAligningCaptions => 'جارٍ مزامنة الترجمات…';
+
+  @override
+  String get runDetailStageAssembling => 'جارٍ تجميع الفيديو النهائي…';
+
+  @override
+  String runDetailClipsDone(int done, int total) {
+    return 'اكتمل $done / $total من المقاطع';
+  }
+
+  @override
+  String get runDetailCharacterLook => 'مظهر الشخصيات';
+
+  @override
+  String get runDetailDontLikeRegenerate => 'لم يعجبك؟ أعد التوليد';
+
+  @override
+  String get runDetailRerollWhichTitle => 'أي المقاطع تريد إعادة توليدها؟';
+
+  @override
+  String get runDetailRerollWhichBody =>
+      'اختر المقاطع التي تحتاج إلى إعادة توليد. يكلّف كل مقطع رصيدًا واحدًا. تبقى المقاطع الأخرى كما هي؛ ويُعاد تجميع الفيديو النهائي في النهاية.';
+
+  @override
+  String get runDetailNoClipsSelected => 'لم تُحدد أي مقاطع';
+
+  @override
+  String runDetailSelectedClipsCredits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مقطع — $count رصيد',
+      many: '$count مقطعًا — $count رصيدًا',
+      few: '$count مقاطع — $count أرصدة',
+      two: 'مقطعان — رصيدان',
+      one: 'مقطع واحد — رصيد واحد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get editScriptTitle => 'تعديل النص';
+
+  @override
+  String get editScriptTitleLabel => 'العنوان';
+
+  @override
+  String get editScriptArabicDialogueLabel =>
+      'الحوار العربي (اتركه فارغًا لمشهد صامت)';
+
+  @override
+  String get editScriptVisualDescLabel => 'الوصف البصري (بالإنجليزية)';
+
+  @override
+  String get costTitle => 'الإنفاق';
+
+  @override
+  String get costSortByDate => 'ترتيب حسب التاريخ';
+
+  @override
+  String get costSortByAmount => 'ترتيب حسب المبلغ';
+
+  @override
+  String get costByAmount => 'حسب المبلغ';
+
+  @override
+  String get costByDate => 'حسب التاريخ (الأحدث أولًا)';
+
+  @override
+  String get costTotalKieSpend => 'إجمالي الإنفاق على KIE.AI';
+
+  @override
+  String get costRunsLabel => 'العمليات';
+
+  @override
+  String get costAvgPerRun => 'المتوسط / عملية';
+
+  @override
+  String costPercentOfTotal(String percent) {
+    return '$percent % من الإجمالي';
+  }
+
+  @override
+  String get costFootnote =>
+      'يشمل Veo ‏(\$0.10/ثانية) + ورقة شخصيات Flux ‏(\$0.05/عملية). لا يشمل ElevenLabs ‏(~\$0.30/حلقة إن استُخدم) ولا توليد النصوص عبر Anthropic / Groq ‏(أقل من \$0.05/حلقة).';
 }

@@ -2287,6 +2287,888 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete this voice'**
   String get personasDeleteTooltip;
+
+  /// No description provided for @newRunTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New Episode'**
+  String get newRunTitle;
+
+  /// No description provided for @newRunTabAiGenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Generate'**
+  String get newRunTabAiGenerate;
+
+  /// No description provided for @newRunTabPasteScript.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste Script'**
+  String get newRunTabPasteScript;
+
+  /// No description provided for @newRunAiExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'AI generates a script from your premise. Pick the dialect, art style, character template, and narration style; the writer follows your choices.'**
+  String get newRunAiExplainer;
+
+  /// No description provided for @newRunPremiseLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Premise (Arabic)'**
+  String get newRunPremiseLabel;
+
+  /// No description provided for @newRunPremiseTooShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Premise too short'**
+  String get newRunPremiseTooShort;
+
+  /// No description provided for @newRunThemeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get newRunThemeLabel;
+
+  /// No description provided for @newRunDialectLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Dialect'**
+  String get newRunDialectLabel;
+
+  /// No description provided for @newRunArtStyleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Art style'**
+  String get newRunArtStyleLabel;
+
+  /// No description provided for @newRunCharacterTemplateLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Character template'**
+  String get newRunCharacterTemplateLabel;
+
+  /// No description provided for @newRunEndingTypeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Ending type'**
+  String get newRunEndingTypeLabel;
+
+  /// No description provided for @newRunNarrationStyleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Narration style'**
+  String get newRunNarrationStyleLabel;
+
+  /// No description provided for @newRunDialectMsa.
+  ///
+  /// In en, this message translates to:
+  /// **'MSA (الفصحى)'**
+  String get newRunDialectMsa;
+
+  /// No description provided for @newRunDialectSyrian.
+  ///
+  /// In en, this message translates to:
+  /// **'Syrian / Levantine'**
+  String get newRunDialectSyrian;
+
+  /// No description provided for @newRunDialectEgyptian.
+  ///
+  /// In en, this message translates to:
+  /// **'Egyptian'**
+  String get newRunDialectEgyptian;
+
+  /// No description provided for @newRunDialectKhaliji.
+  ///
+  /// In en, this message translates to:
+  /// **'Khaliji / Gulf'**
+  String get newRunDialectKhaliji;
+
+  /// No description provided for @newRunDialectMaghrebi.
+  ///
+  /// In en, this message translates to:
+  /// **'Maghrebi'**
+  String get newRunDialectMaghrebi;
+
+  /// No description provided for @newRunDialectIraqi.
+  ///
+  /// In en, this message translates to:
+  /// **'Iraqi'**
+  String get newRunDialectIraqi;
+
+  /// No description provided for @newRunArtPixar3d.
+  ///
+  /// In en, this message translates to:
+  /// **'3D Pixar'**
+  String get newRunArtPixar3d;
+
+  /// No description provided for @newRunArtAnime2d.
+  ///
+  /// In en, this message translates to:
+  /// **'2D Anime'**
+  String get newRunArtAnime2d;
+
+  /// No description provided for @newRunArtCinematic.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinematic photo-real'**
+  String get newRunArtCinematic;
+
+  /// No description provided for @newRunArtClaymation.
+  ///
+  /// In en, this message translates to:
+  /// **'Claymation'**
+  String get newRunArtClaymation;
+
+  /// No description provided for @newRunArtHandDrawn.
+  ///
+  /// In en, this message translates to:
+  /// **'Hand-drawn'**
+  String get newRunArtHandDrawn;
+
+  /// No description provided for @newRunArtGhibli.
+  ///
+  /// In en, this message translates to:
+  /// **'Studio Ghibli'**
+  String get newRunArtGhibli;
+
+  /// No description provided for @newRunAiChoose.
+  ///
+  /// In en, this message translates to:
+  /// **'Let the AI choose'**
+  String get newRunAiChoose;
+
+  /// No description provided for @newRunCharHuman.
+  ///
+  /// In en, this message translates to:
+  /// **'Human cast'**
+  String get newRunCharHuman;
+
+  /// No description provided for @newRunCharFruit.
+  ///
+  /// In en, this message translates to:
+  /// **'Fruit cast (Sunstoriz)'**
+  String get newRunCharFruit;
+
+  /// No description provided for @newRunCharAnimal.
+  ///
+  /// In en, this message translates to:
+  /// **'Animal cast'**
+  String get newRunCharAnimal;
+
+  /// No description provided for @newRunCharSurreal.
+  ///
+  /// In en, this message translates to:
+  /// **'Surreal creatures'**
+  String get newRunCharSurreal;
+
+  /// No description provided for @newRunEndingOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open-ended'**
+  String get newRunEndingOpen;
+
+  /// No description provided for @newRunEndingClosedTragic.
+  ///
+  /// In en, this message translates to:
+  /// **'Closed tragic'**
+  String get newRunEndingClosedTragic;
+
+  /// No description provided for @newRunEndingClosedHappy.
+  ///
+  /// In en, this message translates to:
+  /// **'Closed happy'**
+  String get newRunEndingClosedHappy;
+
+  /// No description provided for @newRunEndingTwist.
+  ///
+  /// In en, this message translates to:
+  /// **'Twist'**
+  String get newRunEndingTwist;
+
+  /// No description provided for @newRunNarrCinematic.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinematic (recommended)'**
+  String get newRunNarrCinematic;
+
+  /// No description provided for @newRunNarrFirstPerson.
+  ///
+  /// In en, this message translates to:
+  /// **'First-person monologue (TikTok)'**
+  String get newRunNarrFirstPerson;
+
+  /// No description provided for @newRunBeatsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Beats:'**
+  String get newRunBeatsLabel;
+
+  /// No description provided for @newRunSecPerBeatLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sec / beat:'**
+  String get newRunSecPerBeatLabel;
+
+  /// No description provided for @newRunWriting.
+  ///
+  /// In en, this message translates to:
+  /// **'Writing…'**
+  String get newRunWriting;
+
+  /// No description provided for @newRunGenerateScript.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate Script'**
+  String get newRunGenerateScript;
+
+  /// No description provided for @newRunPasteExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Your dialogue is used VERBATIM — no LLM rewrite. Use this for episode continuations where you want to control every line.'**
+  String get newRunPasteExplainer;
+
+  /// No description provided for @newRunPasteFromMarkdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste from Markdown Script'**
+  String get newRunPasteFromMarkdown;
+
+  /// No description provided for @newRunTitleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Title (Arabic)'**
+  String get newRunTitleLabel;
+
+  /// No description provided for @newRunTitleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'مثلاً: العقد المقدس - الحلقة 4'**
+  String get newRunTitleHint;
+
+  /// No description provided for @newRunStoryContextLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Story context (optional, Arabic)'**
+  String get newRunStoryContextLabel;
+
+  /// No description provided for @newRunStoryContextHint.
+  ///
+  /// In en, this message translates to:
+  /// **'الحلقة الرابعة من سلسلة العقد'**
+  String get newRunStoryContextHint;
+
+  /// No description provided for @newRunTitleRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Title is required'**
+  String get newRunTitleRequired;
+
+  /// No description provided for @newRunBeatRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'At least one beat is required'**
+  String get newRunBeatRequired;
+
+  /// No description provided for @newRunVisualRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Every beat needs a visual description (English)'**
+  String get newRunVisualRequired;
+
+  /// No description provided for @newRunParsedBeats.
+  ///
+  /// In en, this message translates to:
+  /// **'Parsed {count} beats ({method})'**
+  String newRunParsedBeats(int count, String method);
+
+  /// No description provided for @newRunMethodRegex.
+  ///
+  /// In en, this message translates to:
+  /// **'regex'**
+  String get newRunMethodRegex;
+
+  /// No description provided for @newRunMethodAiSplit.
+  ///
+  /// In en, this message translates to:
+  /// **'AI split'**
+  String get newRunMethodAiSplit;
+
+  /// No description provided for @newRunMethodAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'auto-segmented'**
+  String get newRunMethodAuto;
+
+  /// No description provided for @newRunBadgeParsedMarkdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Parsed from your markdown'**
+  String get newRunBadgeParsedMarkdown;
+
+  /// No description provided for @newRunBadgeAiSplit.
+  ///
+  /// In en, this message translates to:
+  /// **'Split by AI — review before saving'**
+  String get newRunBadgeAiSplit;
+
+  /// No description provided for @newRunBadgeAutoSegmented.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-segmented — review carefully'**
+  String get newRunBadgeAutoSegmented;
+
+  /// No description provided for @newRunBeatsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Beats'**
+  String get newRunBeatsSection;
+
+  /// No description provided for @newRunAddBeat.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Beat ({number})'**
+  String newRunAddBeat(int number);
+
+  /// No description provided for @newRunSaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get newRunSaving;
+
+  /// No description provided for @newRunUseScript.
+  ///
+  /// In en, this message translates to:
+  /// **'Use This Script ({count} beats, ~{cost})'**
+  String newRunUseScript(int count, String cost);
+
+  /// No description provided for @newRunPasteDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste Markdown Script'**
+  String get newRunPasteDialogTitle;
+
+  /// No description provided for @newRunPasteFormatHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Recognised format: **العنوان: ...** title, **المشهد N – ...** scene headings, and **SPEAKER:**\\n\"dialogue\" blocks. Stage directions in plain prose are kept as silent context. Your Arabic is preserved character-for-character.'**
+  String get newRunPasteFormatHelp;
+
+  /// No description provided for @newRunPasteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'**العنوان: القلادة المقدسة – الحلقة 4**\n\n**المشهد 1 – الفراغ**\nسكون مطلق...\n\n**الشاب (بهمس):**\n\"أنا… وين…؟\"\n\n...'**
+  String get newRunPasteHint;
+
+  /// No description provided for @newRunPasteRealScript.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a real script (at least a few scenes).'**
+  String get newRunPasteRealScript;
+
+  /// No description provided for @newRunTargetBeats.
+  ///
+  /// In en, this message translates to:
+  /// **'Target beats:'**
+  String get newRunTargetBeats;
+
+  /// No description provided for @newRunParsing.
+  ///
+  /// In en, this message translates to:
+  /// **'Parsing…'**
+  String get newRunParsing;
+
+  /// No description provided for @newRunParseToBeats.
+  ///
+  /// In en, this message translates to:
+  /// **'Parse to Beats'**
+  String get newRunParseToBeats;
+
+  /// No description provided for @newRunBeatBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'BEAT {number}'**
+  String newRunBeatBadge(String number);
+
+  /// No description provided for @newRunSpeakerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaker (free-text)'**
+  String get newRunSpeakerLabel;
+
+  /// No description provided for @newRunSpeakerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. mother, narrator, warrior, …'**
+  String get newRunSpeakerHint;
+
+  /// No description provided for @newRunCharacterNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Character name (Arabic, optional)'**
+  String get newRunCharacterNameLabel;
+
+  /// No description provided for @newRunCharacterNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. خالد، فاطمة، أم يوسف'**
+  String get newRunCharacterNameHint;
+
+  /// No description provided for @newRunArabicDialogueLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Arabic dialogue (leave empty for silent action beat)'**
+  String get newRunArabicDialogueLabel;
+
+  /// No description provided for @newRunVisualDescLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Visual description (English) — required'**
+  String get newRunVisualDescLabel;
+
+  /// No description provided for @newRunVisualDescHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Strawberry son in stone room, golden light, looking at necklace'**
+  String get newRunVisualDescHint;
+
+  /// No description provided for @newRunClipDurationLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Clip duration:'**
+  String get newRunClipDurationLabel;
+
+  /// No description provided for @runDetailStoryFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Story'**
+  String get runDetailStoryFallback;
+
+  /// No description provided for @runDetailActivityLog.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity log'**
+  String get runDetailActivityLog;
+
+  /// No description provided for @runDetailApprovedPreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved — preparing characters (~30s)…'**
+  String get runDetailApprovedPreparing;
+
+  /// No description provided for @runDetailApprovedGenerating.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved — generating clips…'**
+  String get runDetailApprovedGenerating;
+
+  /// No description provided for @runDetailApproveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve failed: {error}'**
+  String runDetailApproveFailed(String error);
+
+  /// No description provided for @runDetailRegenLookTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Regenerate character look?'**
+  String get runDetailRegenLookTitle;
+
+  /// No description provided for @runDetailRegenLookBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This discards the current character look and generates a new one. Your credit balance is not affected.'**
+  String get runDetailRegenLookBody;
+
+  /// No description provided for @runDetailKeep.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep'**
+  String get runDetailKeep;
+
+  /// No description provided for @runDetailRerollFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Reroll failed: {error}'**
+  String runDetailRerollFailed(String error);
+
+  /// No description provided for @runDetailRepairing.
+  ///
+  /// In en, this message translates to:
+  /// **'Repairing video — re-muxing for browser playback…'**
+  String get runDetailRepairing;
+
+  /// No description provided for @runDetailRepaired.
+  ///
+  /// In en, this message translates to:
+  /// **'Repaired. Tap Play again.'**
+  String get runDetailRepaired;
+
+  /// No description provided for @runDetailRepairFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Repair failed: {error}'**
+  String runDetailRepairFailed(String error);
+
+  /// No description provided for @runDetailResuming.
+  ///
+  /// In en, this message translates to:
+  /// **'Resuming pipeline…'**
+  String get runDetailResuming;
+
+  /// No description provided for @runDetailResumeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume failed: {error}'**
+  String runDetailResumeFailed(String error);
+
+  /// No description provided for @runDetailDiscardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard this run?'**
+  String get runDetailDiscardTitle;
+
+  /// No description provided for @runDetailDiscardBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelling will stop any running pipeline AND delete the run entirely. The script and any partially-generated artifacts will be removed. This cannot be undone.'**
+  String get runDetailDiscardBody;
+
+  /// No description provided for @runDetailRunDiscarded.
+  ///
+  /// In en, this message translates to:
+  /// **'Run discarded'**
+  String get runDetailRunDiscarded;
+
+  /// No description provided for @runDetailDiscardFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard failed: {error}'**
+  String runDetailDiscardFailed(String error);
+
+  /// No description provided for @runDetailNoScriptToReroll.
+  ///
+  /// In en, this message translates to:
+  /// **'No script — nothing to reroll'**
+  String get runDetailNoScriptToReroll;
+
+  /// No description provided for @runDetailRerollingClips.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Rerolling 1 clip — 1 credit} other{Rerolling {count} clips — {count} credits}}'**
+  String runDetailRerollingClips(int count);
+
+  /// No description provided for @runDetailRerollClipTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reroll clip {number}?'**
+  String runDetailRerollClipTitle(String number);
+
+  /// No description provided for @runDetailRerollClipBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This regenerates one clip and costs 1 credit.'**
+  String get runDetailRerollClipBody;
+
+  /// No description provided for @runDetailRerollOneCredit.
+  ///
+  /// In en, this message translates to:
+  /// **'Reroll (1 credit)'**
+  String get runDetailRerollOneCredit;
+
+  /// No description provided for @runDetailRerollingClip.
+  ///
+  /// In en, this message translates to:
+  /// **'Rerolling clip {number} — 1 credit'**
+  String runDetailRerollingClip(String number);
+
+  /// No description provided for @runDetailStatusReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to watch'**
+  String get runDetailStatusReady;
+
+  /// No description provided for @runDetailStatusScriptReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Script ready — approve to generate the video'**
+  String get runDetailStatusScriptReady;
+
+  /// No description provided for @runDetailStatusCharacterReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Character look ready — approve to generate clips'**
+  String get runDetailStatusCharacterReady;
+
+  /// No description provided for @runDetailStatusGenerating.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating your video…'**
+  String get runDetailStatusGenerating;
+
+  /// No description provided for @runDetailStatusWriting.
+  ///
+  /// In en, this message translates to:
+  /// **'Writing the script…'**
+  String get runDetailStatusWriting;
+
+  /// No description provided for @runDetailStatusFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Generation failed — tap Resume to retry'**
+  String get runDetailStatusFailed;
+
+  /// No description provided for @runDetailRepairPlayback.
+  ///
+  /// In en, this message translates to:
+  /// **'Repair playback'**
+  String get runDetailRepairPlayback;
+
+  /// No description provided for @runDetailRerollSelectedClips.
+  ///
+  /// In en, this message translates to:
+  /// **'Reroll selected clips'**
+  String get runDetailRerollSelectedClips;
+
+  /// No description provided for @runDetailGenerationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Generation failed'**
+  String get runDetailGenerationFailed;
+
+  /// No description provided for @runDetailResume.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume'**
+  String get runDetailResume;
+
+  /// No description provided for @runDetailCancelDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel & Discard'**
+  String get runDetailCancelDiscard;
+
+  /// No description provided for @runDetailCreditsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 credit} other{{count} credits}}'**
+  String runDetailCreditsCount(int count);
+
+  /// No description provided for @runDetailScriptBeats.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Script (1 beat)} other{Script ({count} beats)}}'**
+  String runDetailScriptBeats(int count);
+
+  /// No description provided for @runDetailDownloadScriptPdf.
+  ///
+  /// In en, this message translates to:
+  /// **'Download script (PDF)'**
+  String get runDetailDownloadScriptPdf;
+
+  /// No description provided for @runDetailRerollClipTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Reroll this clip (1 credit)'**
+  String get runDetailRerollClipTooltip;
+
+  /// No description provided for @runDetailSilentBeat.
+  ///
+  /// In en, this message translates to:
+  /// **'(silent action beat — no dialogue)'**
+  String get runDetailSilentBeat;
+
+  /// No description provided for @runDetailStartingGeneration.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting video generation — clips appear shortly…'**
+  String get runDetailStartingGeneration;
+
+  /// No description provided for @runDetailApprovingPreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Approving — preparing characters (~30s)…'**
+  String get runDetailApprovingPreparing;
+
+  /// No description provided for @runDetailApproveVeoLine.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Approve to generate the video — 1 credit} other{Approve to generate the video — {count} credits}}'**
+  String runDetailApproveVeoLine(int count);
+
+  /// No description provided for @runDetailApproveLine.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Approve to start generation — 1 credit total} other{Approve to start generation — {count} credits total}}'**
+  String runDetailApproveLine(int count);
+
+  /// No description provided for @runDetailVeoGateHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Once started, clips render one by one (~1 min each).'**
+  String get runDetailVeoGateHint;
+
+  /// No description provided for @runDetailApproveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Characters are prepared first; the video starts once you confirm again.'**
+  String get runDetailApproveHint;
+
+  /// No description provided for @runDetailApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get runDetailApprove;
+
+  /// No description provided for @runDetailStagePreparingCharacters.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing characters…'**
+  String get runDetailStagePreparingCharacters;
+
+  /// No description provided for @runDetailStageGeneratingClip.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating clip {current} of {total}…'**
+  String runDetailStageGeneratingClip(int current, int total);
+
+  /// No description provided for @runDetailStageAligningCaptions.
+  ///
+  /// In en, this message translates to:
+  /// **'Aligning captions…'**
+  String get runDetailStageAligningCaptions;
+
+  /// No description provided for @runDetailStageAssembling.
+  ///
+  /// In en, this message translates to:
+  /// **'Assembling final video…'**
+  String get runDetailStageAssembling;
+
+  /// No description provided for @runDetailClipsDone.
+  ///
+  /// In en, this message translates to:
+  /// **'{done} / {total} clips done'**
+  String runDetailClipsDone(int done, int total);
+
+  /// No description provided for @runDetailCharacterLook.
+  ///
+  /// In en, this message translates to:
+  /// **'CHARACTER LOOK'**
+  String get runDetailCharacterLook;
+
+  /// No description provided for @runDetailDontLikeRegenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t like it? Regenerate'**
+  String get runDetailDontLikeRegenerate;
+
+  /// No description provided for @runDetailRerollWhichTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reroll which clips?'**
+  String get runDetailRerollWhichTitle;
+
+  /// No description provided for @runDetailRerollWhichBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the clips that need regenerating. Each costs 1 credit. The other clips stay; the final video re-stitches at the end.'**
+  String get runDetailRerollWhichBody;
+
+  /// No description provided for @runDetailNoClipsSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'No clips selected'**
+  String get runDetailNoClipsSelected;
+
+  /// No description provided for @runDetailSelectedClipsCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 clip — 1 credit} other{{count} clips — {count} credits}}'**
+  String runDetailSelectedClipsCredits(int count);
+
+  /// No description provided for @editScriptTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Script'**
+  String get editScriptTitle;
+
+  /// No description provided for @editScriptTitleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get editScriptTitleLabel;
+
+  /// No description provided for @editScriptArabicDialogueLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Arabic dialogue (leave empty for silent beat)'**
+  String get editScriptArabicDialogueLabel;
+
+  /// No description provided for @editScriptVisualDescLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Visual description (English)'**
+  String get editScriptVisualDescLabel;
+
+  /// No description provided for @costTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Spend'**
+  String get costTitle;
+
+  /// No description provided for @costSortByDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort by date'**
+  String get costSortByDate;
+
+  /// No description provided for @costSortByAmount.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort by amount'**
+  String get costSortByAmount;
+
+  /// No description provided for @costByAmount.
+  ///
+  /// In en, this message translates to:
+  /// **'BY AMOUNT'**
+  String get costByAmount;
+
+  /// No description provided for @costByDate.
+  ///
+  /// In en, this message translates to:
+  /// **'BY DATE (newest first)'**
+  String get costByDate;
+
+  /// No description provided for @costTotalKieSpend.
+  ///
+  /// In en, this message translates to:
+  /// **'TOTAL KIE.AI SPEND'**
+  String get costTotalKieSpend;
+
+  /// No description provided for @costRunsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'RUNS'**
+  String get costRunsLabel;
+
+  /// No description provided for @costAvgPerRun.
+  ///
+  /// In en, this message translates to:
+  /// **'AVG / RUN'**
+  String get costAvgPerRun;
+
+  /// No description provided for @costPercentOfTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent} % of total'**
+  String costPercentOfTotal(String percent);
+
+  /// No description provided for @costFootnote.
+  ///
+  /// In en, this message translates to:
+  /// **'Counts Veo (\$0.10/sec) + Flux character sheet (\$0.05/run). Doesn\'t include ElevenLabs (~\$0.30/episode if used) or Anthropic / Groq script generation (<\$0.05/episode).'**
+  String get costFootnote;
 }
 
 class _AppLocalizationsDelegate

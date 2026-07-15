@@ -1244,4 +1244,543 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get personasDeleteTooltip => 'Delete this voice';
+
+  @override
+  String get newRunTitle => 'New Episode';
+
+  @override
+  String get newRunTabAiGenerate => 'AI Generate';
+
+  @override
+  String get newRunTabPasteScript => 'Paste Script';
+
+  @override
+  String get newRunAiExplainer =>
+      'AI generates a script from your premise. Pick the dialect, art style, character template, and narration style; the writer follows your choices.';
+
+  @override
+  String get newRunPremiseLabel => 'Premise (Arabic)';
+
+  @override
+  String get newRunPremiseTooShort => 'Premise too short';
+
+  @override
+  String get newRunThemeLabel => 'Theme';
+
+  @override
+  String get newRunDialectLabel => 'Dialect';
+
+  @override
+  String get newRunArtStyleLabel => 'Art style';
+
+  @override
+  String get newRunCharacterTemplateLabel => 'Character template';
+
+  @override
+  String get newRunEndingTypeLabel => 'Ending type';
+
+  @override
+  String get newRunNarrationStyleLabel => 'Narration style';
+
+  @override
+  String get newRunDialectMsa => 'MSA (الفصحى)';
+
+  @override
+  String get newRunDialectSyrian => 'Syrian / Levantine';
+
+  @override
+  String get newRunDialectEgyptian => 'Egyptian';
+
+  @override
+  String get newRunDialectKhaliji => 'Khaliji / Gulf';
+
+  @override
+  String get newRunDialectMaghrebi => 'Maghrebi';
+
+  @override
+  String get newRunDialectIraqi => 'Iraqi';
+
+  @override
+  String get newRunArtPixar3d => '3D Pixar';
+
+  @override
+  String get newRunArtAnime2d => '2D Anime';
+
+  @override
+  String get newRunArtCinematic => 'Cinematic photo-real';
+
+  @override
+  String get newRunArtClaymation => 'Claymation';
+
+  @override
+  String get newRunArtHandDrawn => 'Hand-drawn';
+
+  @override
+  String get newRunArtGhibli => 'Studio Ghibli';
+
+  @override
+  String get newRunAiChoose => 'Let the AI choose';
+
+  @override
+  String get newRunCharHuman => 'Human cast';
+
+  @override
+  String get newRunCharFruit => 'Fruit cast (Sunstoriz)';
+
+  @override
+  String get newRunCharAnimal => 'Animal cast';
+
+  @override
+  String get newRunCharSurreal => 'Surreal creatures';
+
+  @override
+  String get newRunEndingOpen => 'Open-ended';
+
+  @override
+  String get newRunEndingClosedTragic => 'Closed tragic';
+
+  @override
+  String get newRunEndingClosedHappy => 'Closed happy';
+
+  @override
+  String get newRunEndingTwist => 'Twist';
+
+  @override
+  String get newRunNarrCinematic => 'Cinematic (recommended)';
+
+  @override
+  String get newRunNarrFirstPerson => 'First-person monologue (TikTok)';
+
+  @override
+  String get newRunBeatsLabel => 'Beats:';
+
+  @override
+  String get newRunSecPerBeatLabel => 'Sec / beat:';
+
+  @override
+  String get newRunWriting => 'Writing…';
+
+  @override
+  String get newRunGenerateScript => 'Generate Script';
+
+  @override
+  String get newRunPasteExplainer =>
+      'Your dialogue is used VERBATIM — no LLM rewrite. Use this for episode continuations where you want to control every line.';
+
+  @override
+  String get newRunPasteFromMarkdown => 'Paste from Markdown Script';
+
+  @override
+  String get newRunTitleLabel => 'Title (Arabic)';
+
+  @override
+  String get newRunTitleHint => 'مثلاً: العقد المقدس - الحلقة 4';
+
+  @override
+  String get newRunStoryContextLabel => 'Story context (optional, Arabic)';
+
+  @override
+  String get newRunStoryContextHint => 'الحلقة الرابعة من سلسلة العقد';
+
+  @override
+  String get newRunTitleRequired => 'Title is required';
+
+  @override
+  String get newRunBeatRequired => 'At least one beat is required';
+
+  @override
+  String get newRunVisualRequired =>
+      'Every beat needs a visual description (English)';
+
+  @override
+  String newRunParsedBeats(int count, String method) {
+    return 'Parsed $count beats ($method)';
+  }
+
+  @override
+  String get newRunMethodRegex => 'regex';
+
+  @override
+  String get newRunMethodAiSplit => 'AI split';
+
+  @override
+  String get newRunMethodAuto => 'auto-segmented';
+
+  @override
+  String get newRunBadgeParsedMarkdown => 'Parsed from your markdown';
+
+  @override
+  String get newRunBadgeAiSplit => 'Split by AI — review before saving';
+
+  @override
+  String get newRunBadgeAutoSegmented => 'Auto-segmented — review carefully';
+
+  @override
+  String get newRunBeatsSection => 'Beats';
+
+  @override
+  String newRunAddBeat(int number) {
+    return 'Add Beat ($number)';
+  }
+
+  @override
+  String get newRunSaving => 'Saving…';
+
+  @override
+  String newRunUseScript(int count, String cost) {
+    return 'Use This Script ($count beats, ~$cost)';
+  }
+
+  @override
+  String get newRunPasteDialogTitle => 'Paste Markdown Script';
+
+  @override
+  String get newRunPasteFormatHelp =>
+      'Recognised format: **العنوان: ...** title, **المشهد N – ...** scene headings, and **SPEAKER:**\\n\"dialogue\" blocks. Stage directions in plain prose are kept as silent context. Your Arabic is preserved character-for-character.';
+
+  @override
+  String get newRunPasteHint =>
+      '**العنوان: القلادة المقدسة – الحلقة 4**\n\n**المشهد 1 – الفراغ**\nسكون مطلق...\n\n**الشاب (بهمس):**\n\"أنا… وين…؟\"\n\n...';
+
+  @override
+  String get newRunPasteRealScript =>
+      'Paste a real script (at least a few scenes).';
+
+  @override
+  String get newRunTargetBeats => 'Target beats:';
+
+  @override
+  String get newRunParsing => 'Parsing…';
+
+  @override
+  String get newRunParseToBeats => 'Parse to Beats';
+
+  @override
+  String newRunBeatBadge(String number) {
+    return 'BEAT $number';
+  }
+
+  @override
+  String get newRunSpeakerLabel => 'Speaker (free-text)';
+
+  @override
+  String get newRunSpeakerHint => 'e.g. mother, narrator, warrior, …';
+
+  @override
+  String get newRunCharacterNameLabel => 'Character name (Arabic, optional)';
+
+  @override
+  String get newRunCharacterNameHint => 'e.g. خالد، فاطمة، أم يوسف';
+
+  @override
+  String get newRunArabicDialogueLabel =>
+      'Arabic dialogue (leave empty for silent action beat)';
+
+  @override
+  String get newRunVisualDescLabel => 'Visual description (English) — required';
+
+  @override
+  String get newRunVisualDescHint =>
+      'e.g. Strawberry son in stone room, golden light, looking at necklace';
+
+  @override
+  String get newRunClipDurationLabel => 'Clip duration:';
+
+  @override
+  String get runDetailStoryFallback => 'Story';
+
+  @override
+  String get runDetailActivityLog => 'Activity log';
+
+  @override
+  String get runDetailApprovedPreparing =>
+      'Approved — preparing characters (~30s)…';
+
+  @override
+  String get runDetailApprovedGenerating => 'Approved — generating clips…';
+
+  @override
+  String runDetailApproveFailed(String error) {
+    return 'Approve failed: $error';
+  }
+
+  @override
+  String get runDetailRegenLookTitle => 'Regenerate character look?';
+
+  @override
+  String get runDetailRegenLookBody =>
+      'This discards the current character look and generates a new one. Your credit balance is not affected.';
+
+  @override
+  String get runDetailKeep => 'Keep';
+
+  @override
+  String runDetailRerollFailed(String error) {
+    return 'Reroll failed: $error';
+  }
+
+  @override
+  String get runDetailRepairing =>
+      'Repairing video — re-muxing for browser playback…';
+
+  @override
+  String get runDetailRepaired => 'Repaired. Tap Play again.';
+
+  @override
+  String runDetailRepairFailed(String error) {
+    return 'Repair failed: $error';
+  }
+
+  @override
+  String get runDetailResuming => 'Resuming pipeline…';
+
+  @override
+  String runDetailResumeFailed(String error) {
+    return 'Resume failed: $error';
+  }
+
+  @override
+  String get runDetailDiscardTitle => 'Discard this run?';
+
+  @override
+  String get runDetailDiscardBody =>
+      'Cancelling will stop any running pipeline AND delete the run entirely. The script and any partially-generated artifacts will be removed. This cannot be undone.';
+
+  @override
+  String get runDetailRunDiscarded => 'Run discarded';
+
+  @override
+  String runDetailDiscardFailed(String error) {
+    return 'Discard failed: $error';
+  }
+
+  @override
+  String get runDetailNoScriptToReroll => 'No script — nothing to reroll';
+
+  @override
+  String runDetailRerollingClips(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Rerolling $count clips — $count credits',
+      one: 'Rerolling 1 clip — 1 credit',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String runDetailRerollClipTitle(String number) {
+    return 'Reroll clip $number?';
+  }
+
+  @override
+  String get runDetailRerollClipBody =>
+      'This regenerates one clip and costs 1 credit.';
+
+  @override
+  String get runDetailRerollOneCredit => 'Reroll (1 credit)';
+
+  @override
+  String runDetailRerollingClip(String number) {
+    return 'Rerolling clip $number — 1 credit';
+  }
+
+  @override
+  String get runDetailStatusReady => 'Ready to watch';
+
+  @override
+  String get runDetailStatusScriptReady =>
+      'Script ready — approve to generate the video';
+
+  @override
+  String get runDetailStatusCharacterReady =>
+      'Character look ready — approve to generate clips';
+
+  @override
+  String get runDetailStatusGenerating => 'Generating your video…';
+
+  @override
+  String get runDetailStatusWriting => 'Writing the script…';
+
+  @override
+  String get runDetailStatusFailed => 'Generation failed — tap Resume to retry';
+
+  @override
+  String get runDetailRepairPlayback => 'Repair playback';
+
+  @override
+  String get runDetailRerollSelectedClips => 'Reroll selected clips';
+
+  @override
+  String get runDetailGenerationFailed => 'Generation failed';
+
+  @override
+  String get runDetailResume => 'Resume';
+
+  @override
+  String get runDetailCancelDiscard => 'Cancel & Discard';
+
+  @override
+  String runDetailCreditsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count credits',
+      one: '1 credit',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String runDetailScriptBeats(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Script ($count beats)',
+      one: 'Script (1 beat)',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get runDetailDownloadScriptPdf => 'Download script (PDF)';
+
+  @override
+  String get runDetailRerollClipTooltip => 'Reroll this clip (1 credit)';
+
+  @override
+  String get runDetailSilentBeat => '(silent action beat — no dialogue)';
+
+  @override
+  String get runDetailStartingGeneration =>
+      'Starting video generation — clips appear shortly…';
+
+  @override
+  String get runDetailApprovingPreparing =>
+      'Approving — preparing characters (~30s)…';
+
+  @override
+  String runDetailApproveVeoLine(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Approve to generate the video — $count credits',
+      one: 'Approve to generate the video — 1 credit',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String runDetailApproveLine(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Approve to start generation — $count credits total',
+      one: 'Approve to start generation — 1 credit total',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get runDetailVeoGateHint =>
+      'Once started, clips render one by one (~1 min each).';
+
+  @override
+  String get runDetailApproveHint =>
+      'Characters are prepared first; the video starts once you confirm again.';
+
+  @override
+  String get runDetailApprove => 'Approve';
+
+  @override
+  String get runDetailStagePreparingCharacters => 'Preparing characters…';
+
+  @override
+  String runDetailStageGeneratingClip(int current, int total) {
+    return 'Generating clip $current of $total…';
+  }
+
+  @override
+  String get runDetailStageAligningCaptions => 'Aligning captions…';
+
+  @override
+  String get runDetailStageAssembling => 'Assembling final video…';
+
+  @override
+  String runDetailClipsDone(int done, int total) {
+    return '$done / $total clips done';
+  }
+
+  @override
+  String get runDetailCharacterLook => 'CHARACTER LOOK';
+
+  @override
+  String get runDetailDontLikeRegenerate => 'Don\'t like it? Regenerate';
+
+  @override
+  String get runDetailRerollWhichTitle => 'Reroll which clips?';
+
+  @override
+  String get runDetailRerollWhichBody =>
+      'Pick the clips that need regenerating. Each costs 1 credit. The other clips stay; the final video re-stitches at the end.';
+
+  @override
+  String get runDetailNoClipsSelected => 'No clips selected';
+
+  @override
+  String runDetailSelectedClipsCredits(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count clips — $count credits',
+      one: '1 clip — 1 credit',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get editScriptTitle => 'Edit Script';
+
+  @override
+  String get editScriptTitleLabel => 'Title';
+
+  @override
+  String get editScriptArabicDialogueLabel =>
+      'Arabic dialogue (leave empty for silent beat)';
+
+  @override
+  String get editScriptVisualDescLabel => 'Visual description (English)';
+
+  @override
+  String get costTitle => 'Spend';
+
+  @override
+  String get costSortByDate => 'Sort by date';
+
+  @override
+  String get costSortByAmount => 'Sort by amount';
+
+  @override
+  String get costByAmount => 'BY AMOUNT';
+
+  @override
+  String get costByDate => 'BY DATE (newest first)';
+
+  @override
+  String get costTotalKieSpend => 'TOTAL KIE.AI SPEND';
+
+  @override
+  String get costRunsLabel => 'RUNS';
+
+  @override
+  String get costAvgPerRun => 'AVG / RUN';
+
+  @override
+  String costPercentOfTotal(String percent) {
+    return '$percent % of total';
+  }
+
+  @override
+  String get costFootnote =>
+      'Counts Veo (\$0.10/sec) + Flux character sheet (\$0.05/run). Doesn\'t include ElevenLabs (~\$0.30/episode if used) or Anthropic / Groq script generation (<\$0.05/episode).';
 }
