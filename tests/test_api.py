@@ -2681,10 +2681,18 @@ def test_artist_avatar_upload_and_fetch(client_factory, monkeypatch, tmp_path):
                files={"file": ("me.png", b"\x89PNG fake", "image/png")})
     assert r.status_code == 200
     assert r.json()["avatar_upload"] == f"avatar_{a['id']}.png"
-    # served back
-    r = c.get(f"/artists/{a['id']}/avatar")
-    assert r.status_code == 200
-    assert r.content == b"\x89PNG fake"
+    # served back — avatar GET uses query-token auth (img widgets);
+    # override that dependency to the same test user.
+    from pipeline.api import app as _app
+    from pipeline.auth import User as _User, require_user_header_or_query
+    _app.dependency_overrides[require_user_header_or_query] = (
+        lambda: _User(id="alice", email=None, role="user"))
+    try:
+        r = c.get(f"/artists/{a['id']}/avatar")
+        assert r.status_code == 200
+        assert r.content == b"\x89PNG fake"
+    finally:
+        _app.dependency_overrides.pop(require_user_header_or_query, None)
 
 
 def test_public_artist_page_shows_only_shared_songs(client_factory, monkeypatch, tmp_path):
