@@ -3721,6 +3721,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t save the YouTube auto-publish setting: {error}'**
   String ytAutoPublishSaveFailed(String error);
+
+  /// No description provided for @newSongFaithfulness.
+  ///
+  /// In en, this message translates to:
+  /// **'Faithfulness to the original'**
+  String get newSongFaithfulness;
+
+  /// No description provided for @newSongFaithfulnessHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High — the cover closely follows the original\'s melody and feel.'**
+  String get newSongFaithfulnessHigh;
+
+  /// No description provided for @newSongFaithfulnessLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low — more creative freedom, further from the original.'**
+  String get newSongFaithfulnessLow;
+
+  /// No description provided for @llmDegradedBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Lyric quality reduced — the primary writing model is unavailable (check Anthropic credits).'**
+  String get llmDegradedBanner;
 }
 
 class _AppLocalizationsDelegate

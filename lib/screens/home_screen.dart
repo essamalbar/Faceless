@@ -46,6 +46,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<List<SongSummary>>? _songsFuture;
   Future<List<Artist>>? _artistsFuture; // Artist Core: home artists row
   String _songQuery = '';   // live search filter for the song list
+  bool _llmDegraded = false; // lyric-quality alarm (primary LLM fell back)
+  bool _llmBannerDismissed = false;
 
   @override
   void initState() {
@@ -53,6 +55,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _client = FacelessApiClient(_settings);
     _loadAndRefresh();
     _maybeShowOnboarding();
+    _checkLlmStatus();
+  }
+
+  /// Lyric-quality alarm — best-effort, silent on failure. Warns when the
+  /// primary writing model recently failed and lyrics degraded to the
+  /// fallback provider.
+  Future<void> _checkLlmStatus() async {
+    try {
+      final degraded = await _client.llmDegraded();
+      if (mounted && degraded) setState(() => _llmDegraded = true);
+    } catch (_) {/* silent */}
   }
 
   /// First-launch carousel. Scheduled after the frame is laid out so
@@ -365,6 +378,39 @@ class _HomeScreenState extends State<HomeScreen> {
               }),
             ),
           ),
+          if (_llmDegraded && !_llmBannerDismissed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: FacelessTheme.warning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: FacelessTheme.warning.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded,
+                        size: 18, color: FacelessTheme.warning),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        context.l10n.llmDegradedBanner,
+                        style: const TextStyle(
+                            fontSize: 13, color: FacelessTheme.textPrimary),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16),
+                      color: FacelessTheme.textSecondary,
+                      onPressed: () =>
+                          setState(() => _llmBannerDismissed = true),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Expanded(
             child: _mode == 'song'
                 ? _buildSongsList()

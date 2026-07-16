@@ -620,6 +620,7 @@ class FacelessApiClient {
     String videoMode = 'static',
     String vocalGender = 'm',
     String? artistId,
+    double? audioWeight,
   }) async {
     final req = http.MultipartRequest('POST', await _uri('/songs/upload-cover'));
     req.headers.addAll(await _headers()); // Authorization + Accept (no Content-Type)
@@ -630,9 +631,22 @@ class FacelessApiClient {
       req.fields['instruction'] = instruction;
     }
     if (artistId != null) req.fields['artist_id'] = artistId;
+    if (audioWeight != null) {
+      // Faithfulness knob → Kie audioWeight (how closely the cover follows
+      // the source audio).
+      req.fields['audio_weight'] = audioWeight.toStringAsFixed(2);
+    }
     req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     final r = await http.Response.fromStream(await _http.send(req));
     return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
+  }
+
+  /// Lyric-quality alarm: degraded=true when the primary writing model
+  /// recently failed and the Groq fallback wrote the lyrics instead.
+  Future<bool> llmDegraded() async {
+    final r = await _http.get(await _uri('/system/llm-status'),
+        headers: await _headers());
+    return _parse(r, (j) => ((j as Map<String, dynamic>)['degraded'] as bool?) ?? false);
   }
 
   // --- Artists (Artist Core) ---------------------------------------------
