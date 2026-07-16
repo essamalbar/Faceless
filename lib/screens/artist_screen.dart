@@ -290,21 +290,47 @@ class _SongRow extends StatelessWidget {
                               const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: FacelessTheme.surface2,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: FacelessTheme.border),
-                          ),
-                          child: Text(
-                            statusLabel(l10n, song.status),
-                            style: const TextStyle(
-                                fontSize: 11.5,
-                                color: FacelessTheme.textSecondary,
-                                fontWeight: FontWeight.w600),
-                          ),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: FacelessTheme.surface2,
+                                borderRadius: BorderRadius.circular(999),
+                                border:
+                                    Border.all(color: FacelessTheme.border),
+                              ),
+                              child: Text(
+                                statusLabel(l10n, song.status),
+                                style: const TextStyle(
+                                    fontSize: 11.5,
+                                    color: FacelessTheme.textSecondary,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            // Distribution: green "● Released" chip once the
+                            // song is marked live on the stores.
+                            if (song.released)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: FacelessTheme.accent
+                                      .withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '● ${l10n.releaseBadge}',
+                                  style: const TextStyle(
+                                      fontSize: 11.5,
+                                      color: FacelessTheme.accent,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                          ],
                         ),
                       ],
                     ),

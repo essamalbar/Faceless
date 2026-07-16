@@ -856,6 +856,33 @@ class FacelessApiClient {
     );
   }
 
+  /// Store-ready release package (zip: audio + cover + metadata + lyrics
+  /// + checklist). Token in the query string — same browser-download
+  /// pattern as [songDownloadUrl] / [scriptPdfUrl] so url_launcher can
+  /// hand the URL straight to the OS/browser download handler.
+  Future<Uri> releasePackageUrl(String runId) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    return Uri.parse(
+      '${_stripTrailing(base)}/songs/$runId/release-package?token=$token',
+    );
+  }
+
+  /// Toggle the manual "released" flag (the user confirms after uploading
+  /// the package to a distributor). Returns the new value from the server.
+  Future<bool> markReleased(String runId, bool released) async {
+    final r = await _http.post(
+      await _uri('/songs/$runId/mark-released'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'released': released}),
+    );
+    return _parse(
+        r, (j) => ((j as Map<String, dynamic>)['released'] as bool?) ?? false);
+  }
+
   Future<void> deleteSong(String id) async {
     final r = await _http.delete(
       await _uri('/songs/$id'),

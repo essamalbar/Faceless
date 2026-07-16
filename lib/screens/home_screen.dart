@@ -732,6 +732,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ...filtered.map((s) => _SongCardC(
                     title: s.title ?? s.theme ?? context.l10n.homeUntitled,
                     status: s.status,
+                    released: s.released,
                     coverUrlFuture: _client.songCoverUrl(s.id, thumb: true),
                     onTap: () => _openSong(s),
                   )),
@@ -1653,6 +1654,31 @@ class _SongStatusPill extends StatelessWidget {
   }
 }
 
+/// Tiny "● Released" chip — mirrors the status-pill visual so it can sit
+/// beside one. Shown on song cards / discography rows when the user has
+/// marked the song live on the stores (Distribution feature).
+class _ReleasedBadge extends StatelessWidget {
+  const _ReleasedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: FacelessTheme.accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '● ${context.l10n.releaseBadge}',
+        style: const TextStyle(
+            color: FacelessTheme.accent,
+            fontSize: 11,
+            fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
 class _SongThumbPlaceholder extends StatelessWidget {
   const _SongThumbPlaceholder();
   @override
@@ -1975,11 +2001,13 @@ class _RecentTile extends StatelessWidget {
 class _SongCardC extends StatelessWidget {
   final String title;
   final String status;
+  final bool released;
   final Future<Uri> coverUrlFuture;
   final VoidCallback onTap;
   const _SongCardC({
     required this.title,
     required this.status,
+    this.released = false,
     required this.coverUrlFuture,
     required this.onTap,
   });
@@ -2029,7 +2057,14 @@ class _SongCardC extends StatelessWidget {
                         const SizedBox(height: 8),
                         const _EqBars(),
                         const SizedBox(height: 8),
-                        _SongStatusPill(style: st),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            _SongStatusPill(style: st),
+                            if (released) const _ReleasedBadge(),
+                          ],
+                        ),
                       ],
                     ),
                   ),

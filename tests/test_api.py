@@ -2731,3 +2731,93 @@ def test_public_artist_page_unknown_handle_404(client_factory, monkeypatch, tmp_
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
     public = TestClient(api_mod.app)
     assert public.get("/a/who-dis").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Distribution — release package + mark-released
+# ---------------------------------------------------------------------------
+
+def _complete_song_run(tmp_path, user_id="alice", run_id="2026-07-16-000001",
+                       artist_id=None, with_audio=True):
+    d = tmp_path / user_id / run_id
+    d.mkdir(parents=True)
+    st = {"kind": "song", "status": "complete", "user_id": user_id,
+          "title": "حلم في الليل",
+          "created_at": "2026-07-16T00:00:00+00:00"}
+    if artist_id:
+        st["artist_id"] = artist_id
+    (d / "api_state.json").write_text(json.dumps(st))
+    (d / "song.json").write_text(json.dumps({
+        "title": "حلم في الليل", "lyrics": "[Chorus]\nلازمة",
+        "style_prompt": "Arabic pop, 92 BPM", "language": "ar"}))
+    if with_audio:
+        (d / "song.mp3").write_bytes(b"\x00mp3")
+    from PIL import Image
+    Image.new("RGB", (64, 64), (9, 9, 9)).save(d / "cover.png")
+    return d
+
+
+def _with_query_auth(user_id="alice"):
+    """Context: override query-token auth to a fixed user (media endpoints)."""
+    from pipeline.api import app as _app
+    from pipeline.auth import User as _User, require_user_header_or_query
+    _app.dependency_overrides[require_user_header_or_query] = (
+        lambda: _User(id=user_id, email=None, role="user"))
+    import contextlib
+    @contextlib.contextmanager
+    def _ctx():
+        try:
+            yield
+        finally:
+            _app.dependency_overrides.pop(require_user_header_or_query, None)
+    return _ctx()
+
+
+def test_release_package_downloads_zip(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    a = _mk_artist(c, name="Layl", handle="layl")
+    _complete_song_run(tmp_path, artist_id=a["id"])
+    with _with_query_auth():
+        r = c.get("/songs/2026-07-16-000001/release-package")
+    assert r.status_code == 200, r.text
+    assert r.content[:2] == b"PK"  # zip magic
+    assert "layl-" in r.headers["content-disposition"]
+    import io, zipfile as _zf
+    names = set(_zf.ZipFile(io.BytesIO(r.content)).namelist())
+    assert "audio.mp3" in names and "metadata.json" in names
+
+
+def test_release_package_409_when_not_complete(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    d = _complete_song_run(tmp_path)
+    st = json.loads((d / "api_state.json").read_text())
+    st["status"] = "generating_song"
+    (d / "api_state.json").write_text(json.dumps(st))
+    with _with_query_auth():
+        r = c.get("/songs/2026-07-16-000001/release-package")
+    assert r.status_code == 409
+    assert "missing" in r.json()["detail"]
+
+
+def test_release_package_409_missing_audio(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    _complete_song_run(tmp_path, with_audio=False)
+    with _with_query_auth():
+        r = c.get("/songs/2026-07-16-000001/release-package")
+    assert r.status_code == 409
+    assert "song.mp3" in r.json()["detail"]["missing"]
+
+
+def test_mark_released_toggles_and_surfaces_in_summary(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    _complete_song_run(tmp_path)
+    r = c.post("/songs/2026-07-16-000001/mark-released", json={"released": True})
+    assert r.status_code == 200 and r.json()["released"] is True
+    assert c.get("/songs/2026-07-16-000001").json()["released"] is True
+    # toggle back
+    c.post("/songs/2026-07-16-000001/mark-released", json={"released": False})
+    assert c.get("/songs/2026-07-16-000001").json()["released"] is False
