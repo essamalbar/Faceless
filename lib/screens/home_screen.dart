@@ -45,6 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _mode = 'horror';  // horror | song
   Future<List<SongSummary>>? _songsFuture;
   Future<List<Artist>>? _artistsFuture; // Artist Core: home artists row
+  Future<List<TrendBrief>>? _trendsFuture; // Trend Engine: timely briefs
+  bool _trendsRefreshing = false;
   String _songQuery = '';   // live search filter for the song list
   bool _llmDegraded = false; // lyric-quality alarm (primary LLM fell back)
   bool _llmBannerDismissed = false;
@@ -374,6 +376,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_mode == 'song' && _songsFuture == null) {
                   _songsFuture = _client.listSongs();
                   _artistsFuture ??= _client.listArtists();
+                  _trendsFuture ??= _client.trendBriefs();
                 }
               }),
             ),
@@ -654,6 +657,127 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _refreshTrends() async {
+    setState(() {
+      _trendsRefreshing = true;
+      _trendsFuture = _client.trendBriefs(refresh: true);
+    });
+    try {
+      await _trendsFuture;
+    } catch (_) {/* section hides itself */} finally {
+      if (mounted) setState(() => _trendsRefreshing = false);
+    }
+  }
+
+  void _createFromBrief(TrendBrief b) {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => NewSongScreen(
+            client: _client,
+            initialTheme: b.theme,
+            initialStyleHint: b.styleHint,
+            initialLanguage: b.language,
+          ),
+        ))
+        .then((_) => _refresh());
+  }
+
+  /// Trend Engine: "Trending now" — timely, ready-to-approve song briefs.
+  /// Fire-and-forget: any fetch error hides the section entirely.
+  Widget _trendsSection() {
+    return FutureBuilder<List<TrendBrief>>(
+      future: _trendsFuture,
+      builder: (context, snap) {
+        if (snap.hasError) return const SizedBox.shrink();
+        final briefs = snap.data ?? const <TrendBrief>[];
+        if (briefs.isEmpty && !_trendsRefreshing) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Row(
+                children: [
+                  Text('✨ ${context.l10n.trendSectionTitle}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 15)),
+                  const Spacer(),
+                  _trendsRefreshing
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : IconButton(
+                          icon: const Icon(Icons.refresh, size: 18),
+                          color: FacelessTheme.textSecondary,
+                          visualDensity: VisualDensity.compact,
+                          tooltip: context.l10n.trendRefreshTooltip,
+                          onPressed: _refreshTrends,
+                        ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 150,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: briefs.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (_, i) {
+                  final b = briefs[i];
+                  return Container(
+                    width: 250,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: FacelessTheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: FacelessTheme.border),
+                      boxShadow: FacelessTheme.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(b.titleIdea.isEmpty ? b.theme : b.titleIdea,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 15)),
+                        const SizedBox(height: 5),
+                        Expanded(
+                          child: Text(b.rationale.isEmpty ? b.theme : b.rationale,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: FacelessTheme.textSecondary)),
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 8),
+                            ),
+                            onPressed: () => _createFromBrief(b),
+                            child: Text(context.l10n.trendCreateButton,
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildSongsList() {
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -672,11 +796,12 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           final all = snap.data ?? [];
           if (all.isEmpty) {
-            // Artists row stays visible above the empty state (the "+"
-            // tile is the entry point to Artist Core before any song).
+            // Trend briefs + artists row stay visible above the empty
+            // state — a brand-new user gets timely ideas immediately.
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _trendsSection(),
                 _artistsSection(),
                 Expanded(
                   child: _SongsEmptyState(
@@ -711,6 +836,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return ListView(
             padding: const EdgeInsets.only(bottom: 28),
             children: [
+              _trendsSection(),
               _artistsSection(),
               _SongSearchBar(
                 initial: _songQuery,

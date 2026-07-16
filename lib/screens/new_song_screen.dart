@@ -16,6 +16,9 @@ class NewSongScreen extends StatefulWidget {
   // so the user is one tap away from generating.
   final String? initialTheme;
   final String? initialPresetLabel;
+  // Trend Engine: brief prefills (style stamped only if the field is empty).
+  final String? initialStyleHint;
+  final String? initialLanguage;
   // Artist Core: opening from an ArtistScreen preselects the artist so the
   // song lands in their discography with their defaults prefilled.
   final Artist? initialArtist;
@@ -24,6 +27,8 @@ class NewSongScreen extends StatefulWidget {
     required this.client,
     this.initialTheme,
     this.initialPresetLabel,
+    this.initialStyleHint,
+    this.initialLanguage,
     this.initialArtist,
   });
 
@@ -122,6 +127,13 @@ class _NewSongScreenState extends State<NewSongScreen> {
     // Apply optional pre-fills from the empty-state "try this" chips.
     if (widget.initialTheme != null) {
       _themeCtrl.text = widget.initialTheme!;
+    }
+    // Trend-brief prefills — never clobber an artist's stamped style.
+    if (widget.initialStyleHint != null && _styleCtrl.text.trim().isEmpty) {
+      _styleCtrl.text = widget.initialStyleHint!;
+    }
+    if (widget.initialLanguage != null) {
+      _language = widget.initialLanguage!;
     }
     if (widget.initialPresetLabel != null) {
       final match = _kStylePresets.firstWhere(

@@ -1191,5 +1191,8 @@
   "newSongFaithfulness": "Faithfulness to the original",
   "newSongFaithfulnessHigh": "High — the cover closely follows the original's melody and feel.",
   "newSongFaithfulnessLow": "Low — more creative freedom, further from the original.",
-  "llmDegradedBanner": "Lyric quality reduced — the primary writing model is unavailable (check Anthropic credits)."
+  "llmDegradedBanner": "Lyric quality reduced — the primary writing model is unavailable (check Anthropic credits).",
+  "trendSectionTitle": "Trending now",
+  "trendRefreshTooltip": "New ideas",
+  "trendCreateButton": "Create"
 }

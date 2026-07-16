@@ -490,3 +490,31 @@ class Persona {
         createdAt: (j['created_at'] as String?) ?? '',
       );
 }
+
+/// Trend Engine: a timely, ready-to-approve song brief.
+class TrendBrief {
+  final String id;
+  final String titleIdea;
+  final String theme;
+  final String styleHint;
+  final String language;
+  final String rationale;
+
+  TrendBrief({
+    required this.id,
+    required this.titleIdea,
+    required this.theme,
+    required this.styleHint,
+    required this.language,
+    required this.rationale,
+  });
+
+  factory TrendBrief.fromJson(Map<String, dynamic> j) => TrendBrief(
+        id: j['id'] as String,
+        titleIdea: (j['title_idea'] as String?) ?? '',
+        theme: (j['theme'] as String?) ?? '',
+        styleHint: (j['style_hint'] as String?) ?? '',
+        language: (j['language'] as String?) ?? 'ar',
+        rationale: (j['rationale'] as String?) ?? '',
+      );
+}
