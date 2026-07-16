@@ -813,6 +813,46 @@ def _build_song_llm():
     return _build_llm()
 
 
+_TRENDS_TTL_H = float(os.environ.get("TRENDS_TTL_H", "12"))
+
+
+@app.get("/trends/briefs")
+def trend_briefs(refresh: bool = False, language: str = "ar",
+                 user: User = Depends(require_user)):
+    """Trend Engine: timely, ready-to-approve song briefs (cached per user,
+    TRENDS_TTL_H freshness; ?refresh=1 forces new ideas). Chart data comes
+    from the official YouTube trending-music charts (SA/EG/AE) when
+    YOUTUBE_API_KEY is set; otherwise the LLM works calendar-only. On LLM
+    failure a stale cache is returned (stale=true) rather than an error."""
+    from pipeline import trends as trends_mod
+
+    user_root = _user_runs_root(user)
+    cached = trends_mod.load_cache(user_root)
+    if cached and not refresh:
+        try:
+            age_h = (datetime.now(timezone.utc)
+                     - datetime.fromisoformat(cached["generated_at"])
+                     ).total_seconds() / 3600
+            if age_h <= _TRENDS_TTL_H:
+                return {**cached, "stale": False}
+        except (KeyError, TypeError, ValueError):
+            pass  # unreadable timestamp → regenerate
+
+    api_key = os.environ.get("YOUTUBE_API_KEY", "")
+    trending = trends_mod.fetch_trending_music(api_key) if api_key else []
+    today = datetime.now(timezone.utc).date().isoformat()
+    try:
+        briefs = trends_mod.build_briefs(
+            _build_song_llm(), trending, language=language, today=today)
+    except Exception as e:
+        if cached:
+            return {**cached, "stale": True}
+        raise HTTPException(502, f"trend briefs unavailable: {e}")
+    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    trends_mod.save_cache(user_root, generated_at, briefs)
+    return {"generated_at": generated_at, "briefs": briefs, "stale": False}
+
+
 def _generate_script_inline(
     *,
     run_dir: Path,
