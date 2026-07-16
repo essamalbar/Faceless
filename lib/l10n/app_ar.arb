@@ -610,5 +610,6 @@
   "llmDegradedBanner": "انخفضت جودة الكلمات — نموذج الكتابة الأساسي غير متاح (تحقق من رصيد Anthropic).",
   "trendSectionTitle": "رائج الآن",
   "trendRefreshTooltip": "أفكار جديدة",
-  "trendCreateButton": "إنشاء"
+  "trendCreateButton": "إنشاء",
+  "trendGenerating": "جارٍ قراءة اتجاهات اليوم…"
 }

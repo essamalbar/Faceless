@@ -1194,5 +1194,6 @@
   "llmDegradedBanner": "Lyric quality reduced — the primary writing model is unavailable (check Anthropic credits).",
   "trendSectionTitle": "Trending now",
   "trendRefreshTooltip": "New ideas",
-  "trendCreateButton": "Create"
+  "trendCreateButton": "Create",
+  "trendGenerating": "Reading today's trends…"
 }

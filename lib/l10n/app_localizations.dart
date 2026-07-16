@@ -3763,6 +3763,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create'**
   String get trendCreateButton;
+
+  /// No description provided for @trendGenerating.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading today\'s trends…'**
+  String get trendGenerating;
 }
 
 class _AppLocalizationsDelegate

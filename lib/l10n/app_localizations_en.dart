@@ -2139,4 +2139,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trendCreateButton => 'Create';
+
+  @override
+  String get trendGenerating => 'Reading today\'s trends…';
 }

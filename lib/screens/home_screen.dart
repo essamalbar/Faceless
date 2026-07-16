@@ -94,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _runsFuture = _client.listRuns();
         _songsFuture = _client.listSongs();
         _artistsFuture = _client.listArtists();
+        _trendsFuture = _client.trendBriefs();
       });
     }
     _fetchSpend();
@@ -597,6 +598,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _artistsFuture = _client.listArtists();
       _songsFuture = _client.listSongs();
+      _trendsFuture ??= _client.trendBriefs();
     });
   }
 
@@ -690,8 +692,35 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, snap) {
         if (snap.hasError) return const SizedBox.shrink();
         final briefs = snap.data ?? const <TrendBrief>[];
-        if (briefs.isEmpty && !_trendsRefreshing) {
+        final loading =
+            snap.connectionState == ConnectionState.waiting || _trendsRefreshing;
+        if (briefs.isEmpty && !loading) {
           return const SizedBox.shrink();
+        }
+        if (briefs.isEmpty) {
+          // First generation takes ~15-20s (charts + LLM). Show a compact
+          // placeholder so the feature is discoverable instead of invisible.
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(
+              children: [
+                Text('✨ ${context.l10n.trendSectionTitle}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 15)),
+                const SizedBox(width: 12),
+                const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(context.l10n.trendGenerating,
+                      style: const TextStyle(
+                          fontSize: 12.5,
+                          color: FacelessTheme.textSecondary)),
+                ),
+              ],
+            ),
+          );
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

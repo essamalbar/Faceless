@@ -2177,4 +2177,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get trendCreateButton => 'إنشاء';
+
+  @override
+  String get trendGenerating => 'جارٍ قراءة اتجاهات اليوم…';
 }
