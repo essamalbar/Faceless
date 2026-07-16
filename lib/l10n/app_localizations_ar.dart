@@ -2006,4 +2006,67 @@ class AppLocalizationsAr extends AppLocalizations {
   String artistCreateFailed(String error) {
     return 'تعذر إنشاء الفنان: $error';
   }
+
+  @override
+  String get releaseButton => 'الإطلاق إلى المتاجر';
+
+  @override
+  String get releaseButtonReleased => 'تم الإصدار ✓';
+
+  @override
+  String get releaseDialogTitle => 'الإطلاق إلى المتاجر';
+
+  @override
+  String get releaseDialogExplainer =>
+      'كل ما يحتاجه الموزّع — الصوت والغلاف والبيانات والكلمات — في ملف مضغوط واحد. اتبع الخطوات أدناه لإيصال هذه الأغنية إلى سبوتيفاي وآبل ميوزك وغيرهما.';
+
+  @override
+  String get releaseArtistHint =>
+      'نصيحة: عيّن فنانًا أولًا للحفاظ على هوية متّسقة.';
+
+  @override
+  String get releaseStep1 => 'نزّل حزمة الإصدار.';
+
+  @override
+  String get releaseStep2 => 'فُكّ ضغط الملف.';
+
+  @override
+  String get releaseStep3 => 'أنشئ حسابًا في DistroKid (أو أي موزّع آخر).';
+
+  @override
+  String get releaseStep4 => 'انقر «Upload» ثم اختر الملف audio.mp3.';
+
+  @override
+  String get releaseStep5 => 'استخدم cover.jpg صورةً للغلاف.';
+
+  @override
+  String get releaseStep6 =>
+      'انسخ العنوان واسم الفنان والنوع واللغة من metadata.txt.';
+
+  @override
+  String get releaseStep7 => 'الصق محتوى lyrics.txt عند طلب كلمات الأغنية.';
+
+  @override
+  String get releaseStep8 =>
+      'أرسل الطلب — تظهر الأغنية في المتاجر خلال 1–7 أيام، ثم عُد إلى هنا وانقر «وضع علامة تم الإصدار».';
+
+  @override
+  String get releaseDownloadPackage => 'تنزيل الحزمة';
+
+  @override
+  String get releaseMarkAsReleased => 'وضع علامة «تم الإصدار»';
+
+  @override
+  String get releaseMarkedSnack => 'تم وضع علامة الإصدار';
+
+  @override
+  String get releaseUnmarkedSnack => 'أزيلت علامة الإصدار';
+
+  @override
+  String releaseMarkFailed(String error) {
+    return 'تعذر تحديث حالة الإصدار: $error';
+  }
+
+  @override
+  String get releaseBadge => 'تم الإصدار';
 }

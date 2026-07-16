@@ -322,6 +322,9 @@ class SongSummary {
   // Artist Core: which artist this song belongs to (null = unassigned).
   final String? artistId;
   final String? artistName;
+  // Distribution: manual "live on stores" flag toggled by the user
+  // after uploading the release package to a distributor.
+  final bool released;
 
   SongSummary({
     required this.id,
@@ -337,6 +340,7 @@ class SongSummary {
     this.videoMode = 'static',
     this.artistId,
     this.artistName,
+    this.released = false,
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -353,6 +357,7 @@ class SongSummary {
         videoMode: (j['video_mode'] as String?) ?? 'static',
         artistId: j['artist_id'] as String?,
         artistName: j['artist_name'] as String?,
+        released: (j['released'] as bool?) ?? false,
       );
 }
 

@@ -1968,4 +1968,67 @@ class AppLocalizationsEn extends AppLocalizations {
   String artistCreateFailed(String error) {
     return 'Couldn\'t create artist: $error';
   }
+
+  @override
+  String get releaseButton => 'Release to stores';
+
+  @override
+  String get releaseButtonReleased => 'Released ✓';
+
+  @override
+  String get releaseDialogTitle => 'Release to stores';
+
+  @override
+  String get releaseDialogExplainer =>
+      'Everything a distributor needs — audio, artwork, metadata, and lyrics — packed into one zip. Follow the steps below to get this song on Spotify, Apple Music, and more.';
+
+  @override
+  String get releaseArtistHint =>
+      'Tip: assign an artist first for consistent branding.';
+
+  @override
+  String get releaseStep1 => 'Download the release package.';
+
+  @override
+  String get releaseStep2 => 'Unzip it.';
+
+  @override
+  String get releaseStep3 => 'Create a DistroKid (or any distributor) account.';
+
+  @override
+  String get releaseStep4 => 'Tap \"Upload\" and choose audio.mp3.';
+
+  @override
+  String get releaseStep5 => 'Use cover.jpg as the artwork.';
+
+  @override
+  String get releaseStep6 =>
+      'Copy the title, artist, genre, and language from metadata.txt.';
+
+  @override
+  String get releaseStep7 => 'Paste lyrics.txt when asked for the lyrics.';
+
+  @override
+  String get releaseStep8 =>
+      'Submit — stores go live in 1–7 days, then return here and tap \"Mark as released\".';
+
+  @override
+  String get releaseDownloadPackage => 'Download package';
+
+  @override
+  String get releaseMarkAsReleased => 'Mark as released';
+
+  @override
+  String get releaseMarkedSnack => 'Marked as released';
+
+  @override
+  String get releaseUnmarkedSnack => 'Release mark removed';
+
+  @override
+  String releaseMarkFailed(String error) {
+    return 'Couldn\'t update release status: $error';
+  }
+
+  @override
+  String get releaseBadge => 'Released';
 }

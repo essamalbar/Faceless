@@ -111,6 +111,13 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           lastError: event['last_error'] as String? ?? summary.lastError,
           failureStage:
               event['failure_stage'] as String? ?? summary.failureStage,
+          // Fields the SSE events never carry — keep the snapshot values
+          // so merges don't silently reset them to their defaults.
+          watermarked: summary.watermarked,
+          videoMode: summary.videoMode,
+          artistId: summary.artistId,
+          artistName: summary.artistName,
+          released: summary.released,
         );
         setState(() => _summary = merged);
         if (_terminalStatuses.contains(merged.status)) {
@@ -599,6 +606,183 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     }
   }
 
+  // ─── release to stores ──────────────────────────────────────────────────────
+
+  /// Browser download of the store-ready release zip — same url_launcher
+  /// hand-off as the MP4 download. No pre-check: if the package isn't
+  /// ready the server answers the navigation itself.
+  Future<void> _downloadReleasePackage() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final uri = await widget.client.releasePackageUrl(widget.runId);
+      await launchUrl(uri, webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(context.l10n.songDetailDownloadFailed('$e'))),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleReleased(bool released, StateSetter setDialogState,
+      void Function(bool) setBusy) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setDialogState(() => setBusy(true));
+    try {
+      final confirmed = await widget.client.markReleased(widget.runId, released);
+      if (!mounted) return;
+      // Sync screen state so the button label + list badges update.
+      final s = _summary;
+      if (s != null) {
+        setState(() {
+          _summary = SongSummary(
+            id: s.id,
+            status: s.status,
+            title: s.title,
+            theme: s.theme,
+            createdAt: s.createdAt,
+            hasVideo: s.hasVideo,
+            chosenTake: s.chosenTake,
+            lastError: s.lastError,
+            failureStage: s.failureStage,
+            watermarked: s.watermarked,
+            videoMode: s.videoMode,
+            artistId: s.artistId,
+            artistName: s.artistName,
+            released: confirmed,
+          );
+        });
+      }
+      setDialogState(() => setBusy(false));
+      messenger.showSnackBar(SnackBar(
+        content: Text(confirmed
+            ? context.l10n.releaseMarkedSnack
+            : context.l10n.releaseUnmarkedSnack),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      setDialogState(() => setBusy(false));
+      messenger.showSnackBar(
+        SnackBar(content: Text(context.l10n.releaseMarkFailed('$e'))),
+      );
+    }
+  }
+
+  Future<void> _showReleaseDialog(SongSummary s) async {
+    var busy = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final released = _summary?.released ?? s.released;
+          final steps = [
+            ctx.l10n.releaseStep1,
+            ctx.l10n.releaseStep2,
+            ctx.l10n.releaseStep3,
+            ctx.l10n.releaseStep4,
+            ctx.l10n.releaseStep5,
+            ctx.l10n.releaseStep6,
+            ctx.l10n.releaseStep7,
+            ctx.l10n.releaseStep8,
+          ];
+          return AlertDialog(
+            title: Text(ctx.l10n.releaseDialogTitle),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(ctx.l10n.releaseDialogExplainer,
+                        style: const TextStyle(fontSize: 13)),
+                    // Non-blocking nudge: the package still builds without
+                    // an artist, but branding is more consistent with one.
+                    if (s.artistId == null) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.lightbulb_outline,
+                              size: 16, color: FacelessTheme.warning),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              ctx.l10n.releaseArtistHint,
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: FacelessTheme.warning),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    for (var i = 0; i < steps.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: FacelessTheme.accent
+                                    .withValues(alpha: 0.14),
+                              ),
+                              child: Text('${i + 1}',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: FacelessTheme.accent)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(steps[i],
+                                  style: const TextStyle(
+                                      fontSize: 13, height: 1.35)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(ctx.l10n.releaseMarkAsReleased,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                      value: released,
+                      onChanged: busy
+                          ? null
+                          : (v) => _toggleReleased(
+                              v, setDialogState, (b) => busy = b),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(ctx.l10n.commonClose),
+              ),
+              FilledButton.icon(
+                icon: const Icon(Icons.download),
+                label: Text(ctx.l10n.releaseDownloadPackage),
+                onPressed: _downloadReleasePackage,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _rerollTakes() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -810,6 +994,16 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               icon: const Icon(Icons.star_outline),
               label: Text(l10n.artistMakeFromSongButton),
               onPressed: () => _showMakeArtistDialog(s),
+            ),
+            const SizedBox(height: 8),
+            // Distribution: guided release-package export + released toggle.
+            // Still opens when already released (to re-download or un-mark);
+            // the label flips to a "done" state.
+            OutlinedButton.icon(
+              icon: const Icon(Icons.rocket_launch_outlined),
+              label: Text(
+                  s.released ? l10n.releaseButtonReleased : l10n.releaseButton),
+              onPressed: () => _showReleaseDialog(s),
             ),
             const SizedBox(height: 8),
             Row(

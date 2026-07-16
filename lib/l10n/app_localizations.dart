@@ -3469,6 +3469,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t create artist: {error}'**
   String artistCreateFailed(String error);
+
+  /// No description provided for @releaseButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Release to stores'**
+  String get releaseButton;
+
+  /// No description provided for @releaseButtonReleased.
+  ///
+  /// In en, this message translates to:
+  /// **'Released ✓'**
+  String get releaseButtonReleased;
+
+  /// No description provided for @releaseDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Release to stores'**
+  String get releaseDialogTitle;
+
+  /// No description provided for @releaseDialogExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything a distributor needs — audio, artwork, metadata, and lyrics — packed into one zip. Follow the steps below to get this song on Spotify, Apple Music, and more.'**
+  String get releaseDialogExplainer;
+
+  /// No description provided for @releaseArtistHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tip: assign an artist first for consistent branding.'**
+  String get releaseArtistHint;
+
+  /// No description provided for @releaseStep1.
+  ///
+  /// In en, this message translates to:
+  /// **'Download the release package.'**
+  String get releaseStep1;
+
+  /// No description provided for @releaseStep2.
+  ///
+  /// In en, this message translates to:
+  /// **'Unzip it.'**
+  String get releaseStep2;
+
+  /// No description provided for @releaseStep3.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a DistroKid (or any distributor) account.'**
+  String get releaseStep3;
+
+  /// No description provided for @releaseStep4.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap \"Upload\" and choose audio.mp3.'**
+  String get releaseStep4;
+
+  /// No description provided for @releaseStep5.
+  ///
+  /// In en, this message translates to:
+  /// **'Use cover.jpg as the artwork.'**
+  String get releaseStep5;
+
+  /// No description provided for @releaseStep6.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the title, artist, genre, and language from metadata.txt.'**
+  String get releaseStep6;
+
+  /// No description provided for @releaseStep7.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste lyrics.txt when asked for the lyrics.'**
+  String get releaseStep7;
+
+  /// No description provided for @releaseStep8.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit — stores go live in 1–7 days, then return here and tap \"Mark as released\".'**
+  String get releaseStep8;
+
+  /// No description provided for @releaseDownloadPackage.
+  ///
+  /// In en, this message translates to:
+  /// **'Download package'**
+  String get releaseDownloadPackage;
+
+  /// No description provided for @releaseMarkAsReleased.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as released'**
+  String get releaseMarkAsReleased;
+
+  /// No description provided for @releaseMarkedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked as released'**
+  String get releaseMarkedSnack;
+
+  /// No description provided for @releaseUnmarkedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Release mark removed'**
+  String get releaseUnmarkedSnack;
+
+  /// No description provided for @releaseMarkFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t update release status: {error}'**
+  String releaseMarkFailed(String error);
+
+  /// No description provided for @releaseBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Released'**
+  String get releaseBadge;
 }
 
 class _AppLocalizationsDelegate
