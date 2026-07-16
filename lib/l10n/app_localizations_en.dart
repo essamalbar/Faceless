@@ -2031,4 +2031,88 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get releaseBadge => 'Released';
+
+  @override
+  String get ytSettingsTitle => 'YouTube';
+
+  @override
+  String get ytSettingsSubtitleDisconnected => 'Publish songs to your channel';
+
+  @override
+  String ytSettingsConnected(String channel) {
+    return 'Connected: $channel';
+  }
+
+  @override
+  String get ytConnect => 'Connect';
+
+  @override
+  String get ytDisconnect => 'Disconnect';
+
+  @override
+  String get ytDisconnectConfirmTitle => 'Disconnect YouTube?';
+
+  @override
+  String get ytDisconnectConfirmBody =>
+      'Publishing from the app stops until you connect again. Videos already on YouTube are not affected.';
+
+  @override
+  String get ytDisconnectedSnack => 'YouTube disconnected';
+
+  @override
+  String ytDisconnectFailed(String error) {
+    return 'Couldn\'t disconnect: $error';
+  }
+
+  @override
+  String get ytFinishInBrowser =>
+      'Finish connecting in the browser, then pull to refresh.';
+
+  @override
+  String ytConnectFailed(String error) {
+    return 'Couldn\'t start YouTube connect: $error';
+  }
+
+  @override
+  String get ytPublishButton => 'Publish to YouTube';
+
+  @override
+  String get ytOnYoutubeButton => 'On YouTube';
+
+  @override
+  String get ytPublishDialogTitle => 'Publish to YouTube';
+
+  @override
+  String get ytPublishPreauditNote =>
+      'The upload starts as private until Google approves the app — make it public from YouTube Studio.';
+
+  @override
+  String get ytPublish => 'Publish';
+
+  @override
+  String get ytPublishedSnack => 'Published to YouTube';
+
+  @override
+  String ytPublishFailed(String error) {
+    return 'Publish failed: $error';
+  }
+
+  @override
+  String get ytNotConnectedSnack =>
+      'YouTube isn\'t connected — connect it from Settings first.';
+
+  @override
+  String get ytBadge => 'YouTube';
+
+  @override
+  String get ytAutoPublishLabel => 'Auto-publish new songs to YouTube';
+
+  @override
+  String get ytAutoPublishSubtitle =>
+      'When a song finishes, it\'s uploaded to your channel automatically.';
+
+  @override
+  String ytAutoPublishSaveFailed(String error) {
+    return 'Couldn\'t save the YouTube auto-publish setting: $error';
+  }
 }

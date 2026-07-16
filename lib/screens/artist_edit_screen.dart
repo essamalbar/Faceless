@@ -32,6 +32,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
   late final TextEditingController _styleCtrl;
   late String _language;
   late String _vocalGender;
+  late bool _autoPublishYoutube;
   Uint8List? _avatarBytes; // picked but not yet uploaded (uploads on save)
   String? _avatarName;
   bool _saving = false;
@@ -50,6 +51,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
     _styleCtrl = TextEditingController(text: a?.defaultStyle ?? '');
     _language = (a?.defaultLanguage == 'en') ? 'en' : 'ar';
     _vocalGender = (a?.defaultVocalGender == 'f') ? 'f' : 'm';
+    _autoPublishYoutube = a?.autoPublishYoutube ?? false; // create: OFF
   }
 
   @override
@@ -107,6 +109,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
           'default_style': _styleCtrl.text.trim(),
           'default_language': _language,
           'default_vocal_gender': _vocalGender,
+          'auto_publish_youtube': _autoPublishYoutube,
         });
       } else {
         artist = await widget.client.createArtist(
@@ -117,6 +120,18 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
           defaultLanguage: _language,
           defaultVocalGender: _vocalGender,
         );
+        // POST /artists doesn't accept the YouTube toggle — patch it on
+        // right after create, but only when the user actually turned it
+        // on (default is OFF). A failed patch shouldn't lose the artist.
+        if (_autoPublishYoutube) {
+          try {
+            artist = await widget.client
+                .patchArtist(artist.id, {'auto_publish_youtube': true});
+          } catch (e) {
+            messenger.showSnackBar(
+                SnackBar(content: Text(l10n.ytAutoPublishSaveFailed('$e'))));
+          }
+        }
       }
     } on FacelessApiException catch (e) {
       // 409 duplicate handle — the server message includes the suggestion;
@@ -313,6 +328,23 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
               selected: {_vocalGender},
               onSelectionChanged: (s) =>
                   setState(() => _vocalGender = s.first),
+            ),
+            const SizedBox(height: 12),
+            // YouTube: completed songs by this artist upload to the
+            // connected channel automatically (needs YouTube connected
+            // in Settings).
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.ytAutoPublishLabel),
+              subtitle: Text(
+                l10n.ytAutoPublishSubtitle,
+                style: const TextStyle(
+                    fontSize: 12, color: FacelessTheme.textSecondary),
+              ),
+              value: _autoPublishYoutube,
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _autoPublishYoutube = v),
             ),
             const SizedBox(height: 20),
             if (_error != null)

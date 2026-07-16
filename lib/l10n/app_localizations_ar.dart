@@ -2069,4 +2069,88 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get releaseBadge => 'تم الإصدار';
+
+  @override
+  String get ytSettingsTitle => 'يوتيوب';
+
+  @override
+  String get ytSettingsSubtitleDisconnected => 'انشر أغانيك على قناتك';
+
+  @override
+  String ytSettingsConnected(String channel) {
+    return 'متصل: $channel';
+  }
+
+  @override
+  String get ytConnect => 'ربط';
+
+  @override
+  String get ytDisconnect => 'فصل';
+
+  @override
+  String get ytDisconnectConfirmTitle => 'فصل يوتيوب؟';
+
+  @override
+  String get ytDisconnectConfirmBody =>
+      'سيتوقف النشر من التطبيق حتى تعيد الربط. الفيديوهات المنشورة على يوتيوب لن تتأثر.';
+
+  @override
+  String get ytDisconnectedSnack => 'تم فصل يوتيوب';
+
+  @override
+  String ytDisconnectFailed(String error) {
+    return 'تعذر الفصل: $error';
+  }
+
+  @override
+  String get ytFinishInBrowser =>
+      'أكمل الربط في المتصفح، ثم اسحب الشاشة للأسفل للتحديث.';
+
+  @override
+  String ytConnectFailed(String error) {
+    return 'تعذر بدء الربط بيوتيوب: $error';
+  }
+
+  @override
+  String get ytPublishButton => 'النشر على يوتيوب';
+
+  @override
+  String get ytOnYoutubeButton => 'على يوتيوب';
+
+  @override
+  String get ytPublishDialogTitle => 'النشر على يوتيوب';
+
+  @override
+  String get ytPublishPreauditNote =>
+      'يُرفع الفيديو بوضع «خاص» حتى توافق Google على التطبيق — يمكنك جعله عامًا من YouTube Studio.';
+
+  @override
+  String get ytPublish => 'نشر';
+
+  @override
+  String get ytPublishedSnack => 'تم النشر على يوتيوب';
+
+  @override
+  String ytPublishFailed(String error) {
+    return 'فشل النشر: $error';
+  }
+
+  @override
+  String get ytNotConnectedSnack =>
+      'يوتيوب غير مرتبط — اربطه من الإعدادات أولًا.';
+
+  @override
+  String get ytBadge => 'يوتيوب';
+
+  @override
+  String get ytAutoPublishLabel => 'النشر التلقائي للأغاني الجديدة على يوتيوب';
+
+  @override
+  String get ytAutoPublishSubtitle =>
+      'عند اكتمال أي أغنية، تُرفع إلى قناتك تلقائيًا.';
+
+  @override
+  String ytAutoPublishSaveFailed(String error) {
+    return 'تعذر حفظ إعداد النشر التلقائي على يوتيوب: $error';
+  }
 }

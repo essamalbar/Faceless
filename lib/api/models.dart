@@ -325,6 +325,9 @@ class SongSummary {
   // Distribution: manual "live on stores" flag toggled by the user
   // after uploading the release package to a distributor.
   final bool released;
+  // YouTube publish: watch URL once the song was uploaded (manually or
+  // via artist auto-publish). Null = not on YouTube yet.
+  final String? youtubeUrl;
 
   SongSummary({
     required this.id,
@@ -341,6 +344,7 @@ class SongSummary {
     this.artistId,
     this.artistName,
     this.released = false,
+    this.youtubeUrl,
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -358,6 +362,7 @@ class SongSummary {
         artistId: j['artist_id'] as String?,
         artistName: j['artist_name'] as String?,
         released: (j['released'] as bool?) ?? false,
+        youtubeUrl: j['youtube_url'] as String?,
       );
 }
 
@@ -375,6 +380,9 @@ class Artist {
   final String defaultVocalGender;
   final String createdAt;
   final int songCount;
+  // YouTube: when true, finished songs by this artist are uploaded to
+  // the connected channel automatically.
+  final bool autoPublishYoutube;
 
   Artist({
     required this.id,
@@ -389,6 +397,7 @@ class Artist {
     this.defaultVocalGender = 'm',
     required this.createdAt,
     this.songCount = 0,
+    this.autoPublishYoutube = false,
   });
 
   bool get hasAvatar => avatarUpload != null || avatarRunId != null;
@@ -406,6 +415,7 @@ class Artist {
         defaultVocalGender: (j['default_vocal_gender'] as String?) ?? 'm',
         createdAt: (j['created_at'] as String?) ?? '',
         songCount: (j['song_count'] as int?) ?? 0,
+        autoPublishYoutube: (j['auto_publish_youtube'] as bool?) ?? false,
       );
 }
 

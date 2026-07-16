@@ -517,6 +517,66 @@ class FacelessApiClient {
     return _parse(r, (j) => (j as Map)['url'] as String);
   }
 
+  // ---------- youtube ----------
+
+  /// Google OAuth consent URL — the app opens it via url_launcher and the
+  /// flow finishes in the browser (server callback stores the token).
+  /// Throws a 503 [FacelessApiException] with the operator's message when
+  /// the OAuth client isn't configured server-side yet.
+  Future<Uri> youtubeAuthStart() async {
+    final r = await _http.get(await _uri('/auth/youtube/start'),
+        headers: await _headers());
+    return _parse(
+        r, (j) => Uri.parse((j as Map<String, dynamic>)['url'] as String));
+  }
+
+  /// Connection status. `channelTitle` is null when disconnected.
+  Future<({bool connected, String? channelTitle})> youtubeStatus() async {
+    final r = await _http.get(await _uri('/auth/youtube/status'),
+        headers: await _headers());
+    return _parse(r, (j) {
+      final m = j as Map<String, dynamic>;
+      return (
+        connected: (m['connected'] as bool?) ?? false,
+        channelTitle: m['channel_title'] as String?,
+      );
+    });
+  }
+
+  Future<void> youtubeDisconnect() async {
+    final r = await _http.delete(await _uri('/auth/youtube'),
+        headers: await _headers());
+    _checkOk(r); // 204 expected
+  }
+
+  /// Upload the song's final.mp4 to the connected channel. Returns the
+  /// watch URL. Idempotent: a 409 "already published" (whose detail
+  /// carries the existing URL) resolves to that URL instead of throwing.
+  /// Other 409s ("youtube not connected", "song has no finished video
+  /// yet") and 502 upload failures surface as [FacelessApiException]
+  /// with the server's message.
+  Future<String> publishYoutube(String runId) async {
+    final r = await _http.post(
+      await _uri('/songs/$runId/publish-youtube'),
+      headers: await _headers(),
+    );
+    if (r.statusCode == 409) {
+      // detail can be a plain string OR {detail, video_url} when the
+      // song is already on YouTube — treat the latter as success.
+      try {
+        final body = jsonDecode(utf8.decode(r.bodyBytes));
+        final detail = body is Map ? body['detail'] : null;
+        if (detail is Map && detail['video_url'] is String) {
+          return detail['video_url'] as String;
+        }
+      } catch (_) {
+        // Fall through to the generic error path below.
+      }
+    }
+    return _parse(
+        r, (j) => (j as Map<String, dynamic>)['video_url'] as String);
+  }
+
   // ---------- songs ----------
 
   Future<String> createSong({

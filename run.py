@@ -1278,6 +1278,31 @@ def _run_song_post_approve(args) -> int:
         # this flag was added show watermarked=False (or missing) and
         # surface a "Apply watermark" button in the song detail UI.
         write_state(status="complete", watermarked=True)
+
+        # --- Channel Autopilot: per-artist YouTube auto-publish ---
+        # If this song belongs to an artist with the toggle ON and the user
+        # has connected YouTube, publish now. Failures NEVER fail the
+        # completed run — they land in youtube_publish_error for the UI.
+        try:
+            final_state = json.loads(state_path.read_text())
+            aid = final_state.get("artist_id")
+            if aid and not final_state.get("youtube_url"):
+                from pipeline import artists as _artists
+                from pipeline import youtube as _yt
+                user_root = run_dir.parent
+                artist = _artists.find_by_id(
+                    _artists.load_artists(user_root), aid)
+                if (artist and artist.get("auto_publish_youtube")
+                        and _yt.load_token(user_root) is not None):
+                    from pipeline.api import _publish_song_to_youtube
+                    vid, url = _publish_song_to_youtube(
+                        run_dir, user_root, artist)
+                    write_state(youtube_video_id=vid, youtube_url=url,
+                                youtube_publish_error=None)
+                    print(f"[song-post-approve] auto-published to YouTube: {url}")
+        except Exception as e:
+            print(f"[song-post-approve] WARN auto-publish failed: {e}")
+            write_state(youtube_publish_error=str(e))
         return 0
     except Exception as e:
         # Tag the failure with the stage we were in, so the API can
