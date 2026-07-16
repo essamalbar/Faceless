@@ -2130,4 +2130,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get llmDegradedBanner =>
       'Lyric quality reduced — the primary writing model is unavailable (check Anthropic credits).';
+
+  @override
+  String get trendSectionTitle => 'Trending now';
+
+  @override
+  String get trendRefreshTooltip => 'New ideas';
+
+  @override
+  String get trendCreateButton => 'Create';
 }

@@ -3745,6 +3745,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Lyric quality reduced — the primary writing model is unavailable (check Anthropic credits).'**
   String get llmDegradedBanner;
+
+  /// No description provided for @trendSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Trending now'**
+  String get trendSectionTitle;
+
+  /// No description provided for @trendRefreshTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'New ideas'**
+  String get trendRefreshTooltip;
+
+  /// No description provided for @trendCreateButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get trendCreateButton;
 }
 
 class _AppLocalizationsDelegate

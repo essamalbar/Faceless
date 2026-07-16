@@ -2168,4 +2168,13 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get llmDegradedBanner =>
       'انخفضت جودة الكلمات — نموذج الكتابة الأساسي غير متاح (تحقق من رصيد Anthropic).';
+
+  @override
+  String get trendSectionTitle => 'رائج الآن';
+
+  @override
+  String get trendRefreshTooltip => 'أفكار جديدة';
+
+  @override
+  String get trendCreateButton => 'إنشاء';
 }

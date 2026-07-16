@@ -2972,3 +2972,71 @@ def test_llm_status_degraded_by_marker_age(client_factory, monkeypatch, tmp_path
         "last_fallback_at": (_dt.now(_tz.utc) - _td(hours=48)).isoformat(timespec="seconds"),
         "error": "old"}))
     assert c.get("/system/llm-status").json()["degraded"] is False
+
+
+# ---------------------------------------------------------------------------
+# Trend Engine — /trends/briefs
+# ---------------------------------------------------------------------------
+
+_BRIEF = {"id": "tb_x", "title_idea": "فكرة", "theme": "أغنية صيفية",
+          "style_hint": "Arabic pop, 100 BPM", "language": "ar",
+          "rationale": "الصيف"}
+
+
+def test_trend_briefs_generates_and_caches(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    import pipeline.trends as trends_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)  # calendar-only path
+    calls = {"n": 0}
+    def fake_build(llm, trending, *, language, today, count=6):
+        calls["n"] += 1
+        assert trending == []  # no key → no chart fetch
+        return [dict(_BRIEF)] * 4
+    monkeypatch.setattr(trends_mod, "build_briefs", fake_build)
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
+
+    c = client_factory(user_id="alice")
+    r = c.get("/trends/briefs")
+    assert r.status_code == 200, r.text
+    assert len(r.json()["briefs"]) == 4 and r.json()["stale"] is False
+    # second call → cache, no regeneration
+    r2 = c.get("/trends/briefs")
+    assert r2.status_code == 200 and calls["n"] == 1
+    # refresh forces regeneration
+    c.get("/trends/briefs?refresh=1")
+    assert calls["n"] == 2
+
+
+def test_trend_briefs_stale_cache_on_llm_failure(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    import pipeline.trends as trends_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
+    c = client_factory(user_id="alice")
+    # seed an OLD cache (25h — beyond TTL)
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    trends_mod.save_cache(
+        tmp_path / "alice",
+        (_dt.now(_tz.utc) - _td(hours=25)).isoformat(timespec="seconds"),
+        [dict(_BRIEF)])
+    def boom(*a, **k):
+        raise trends_mod.TrendsError("llm down")
+    monkeypatch.setattr(trends_mod, "build_briefs", boom)
+    r = c.get("/trends/briefs")
+    assert r.status_code == 200
+    assert r.json()["stale"] is True and len(r.json()["briefs"]) == 1
+
+
+def test_trend_briefs_502_when_no_cache_and_failure(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    import pipeline.trends as trends_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
+    monkeypatch.setattr(trends_mod, "build_briefs",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            trends_mod.TrendsError("llm down")))
+    c = client_factory(user_id="alice")
+    assert c.get("/trends/briefs").status_code == 502

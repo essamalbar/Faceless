@@ -641,6 +641,17 @@ class FacelessApiClient {
     return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
   }
 
+  /// Trend Engine: timely song briefs (cached server-side; refresh forces
+  /// new ideas).
+  Future<List<TrendBrief>> trendBriefs({bool refresh = false, String language = 'ar'}) async {
+    final r = await _http.get(
+        await _uri('/trends/briefs?refresh=${refresh ? 1 : 0}&language=$language'),
+        headers: await _headers());
+    return _parse(r, (j) => ((j as Map<String, dynamic>)['briefs'] as List)
+        .map((x) => TrendBrief.fromJson(x as Map<String, dynamic>))
+        .toList());
+  }
+
   /// Lyric-quality alarm: degraded=true when the primary writing model
   /// recently failed and the Groq fallback wrote the lyrics instead.
   Future<bool> llmDegraded() async {
