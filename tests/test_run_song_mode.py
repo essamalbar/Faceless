@@ -423,3 +423,87 @@ def test_cover_post_approve_uses_cover_endpoint(tmp_path: Path, monkeypatch):
     assert (run_dir / "final.mp4").exists()
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["status"] == "complete"
+
+
+def _setup_autopublish_run(tmp_path, monkeypatch, *, toggle_on, with_token):
+    """A minimal complete-ready static song run whose artist may have the
+    YouTube auto-publish toggle; mocks Suno/cover like the other tests."""
+    from pipeline import artists as artists_mod
+    from pipeline import youtube as yt
+
+    user_root = tmp_path
+    run_dir = user_root / "song-run-autopub"
+    run_dir.mkdir()
+    artist = artists_mod.new_artist(name="ليل", handle="layl")
+    artist["auto_publish_youtube"] = toggle_on
+    artists_mod.save_artists(user_root, [artist])
+    if with_token:
+        yt.save_token(user_root, {"refresh_token": "rt", "channel_title": "TV"})
+
+    (run_dir / "song.json").write_text(json.dumps({
+        "title": "Test", "lyrics": "[Verse 1]\nhi\n[Chorus]\nworld",
+        "style_prompt": "Arabic pop, 72 BPM", "cover_prompt": "sea",
+        "language": "ar"}))
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "generating_song",
+        "artist_id": artist["id"]}))
+
+    def fake_submit(client, **kw):
+        return "fake-task"
+    def fake_wait(client, task_id, *, poll_interval_s=5, timeout_s=600):
+        return [song.SongTake(url="https://kie.ai/t1.mp3", duration_s=3.0),
+                song.SongTake(url="https://kie.ai/t2.mp3", duration_s=2.8)]
+    def fake_download(client, url, out_path):
+        shutil.copy(FIXTURE_SONG, out_path)
+    def fake_cover(*, client, cover_prompt, out_dir):
+        out = out_dir / "cover_raw.png"; shutil.copy(FIXTURE_COVER, out); return out
+    monkeypatch.setattr(song, "submit_song_job", fake_submit)
+    monkeypatch.setattr(song, "wait_for_song", fake_wait)
+    monkeypatch.setattr(song, "download_take", fake_download)
+    monkeypatch.setattr(song_cover, "generate_cover_image", fake_cover)
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+    return run_dir
+
+
+def test_autopublish_fires_when_toggle_on(tmp_path, monkeypatch):
+    run_dir = _setup_autopublish_run(tmp_path, monkeypatch,
+                                     toggle_on=True, with_token=True)
+    calls = {}
+    def fake_publish(rd, ur, artist):
+        calls["run"] = rd.name
+        return "vid-7", "https://youtu.be/vid-7"
+    import pipeline.api as api
+    monkeypatch.setattr(api, "_publish_song_to_youtube", fake_publish)
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+    assert rc == 0
+    assert calls["run"] == "song-run-autopub"
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "complete"
+    assert state["youtube_url"] == "https://youtu.be/vid-7"
+
+
+def test_autopublish_skipped_when_toggle_off(tmp_path, monkeypatch):
+    run_dir = _setup_autopublish_run(tmp_path, monkeypatch,
+                                     toggle_on=False, with_token=True)
+    import pipeline.api as api
+    monkeypatch.setattr(api, "_publish_song_to_youtube",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("must not publish")))
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+    assert rc == 0
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert "youtube_url" not in state or state["youtube_url"] is None
+
+
+def test_autopublish_failure_never_fails_the_run(tmp_path, monkeypatch):
+    run_dir = _setup_autopublish_run(tmp_path, monkeypatch,
+                                     toggle_on=True, with_token=True)
+    import pipeline.api as api
+    def boom(*a):
+        raise RuntimeError("quota exceeded")
+    monkeypatch.setattr(api, "_publish_song_to_youtube", boom)
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+    assert rc == 0  # run still succeeds
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "complete"
+    assert "quota exceeded" in state["youtube_publish_error"]

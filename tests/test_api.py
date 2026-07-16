@@ -2821,3 +2821,114 @@ def test_mark_released_toggles_and_surfaces_in_summary(client_factory, monkeypat
     # toggle back
     c.post("/songs/2026-07-16-000001/mark-released", json={"released": False})
     assert c.get("/songs/2026-07-16-000001").json()["released"] is False
+
+
+# ---------------------------------------------------------------------------
+# YouTube auto-publish — OAuth connect + one-tap upload
+# ---------------------------------------------------------------------------
+
+def test_youtube_start_503_when_unconfigured(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.delenv("YT_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("YT_OAUTH_CLIENT_SECRET", raising=False)
+    c = client_factory(user_id="alice")
+    assert c.get("/auth/youtube/start").status_code == 503
+
+
+def test_youtube_start_returns_signed_url(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setenv("YT_OAUTH_CLIENT_ID", "cid")
+    monkeypatch.setenv("YT_OAUTH_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("FACELESS_API_TOKEN", "hmac-key")
+    c = client_factory(user_id="alice")
+    r = c.get("/auth/youtube/start")
+    assert r.status_code == 200
+    url = r.json()["url"]
+    assert "accounts.google.com" in url and "state=alice." in url
+
+
+def test_youtube_callback_stores_token(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    import pipeline.youtube as yt
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setenv("YT_OAUTH_CLIENT_ID", "cid")
+    monkeypatch.setenv("YT_OAUTH_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("FACELESS_API_TOKEN", "hmac-key")
+    monkeypatch.setattr(yt, "exchange_code",
+                        lambda *a, **k: {"refresh_token": "rt-1",
+                                         "access_token": "at-1"})
+    monkeypatch.setattr(yt, "channel_title", lambda at: "ليل TV")
+    state = api_mod._yt_sign_state("alice")
+    public = TestClient(api_mod.app)  # callback is public (Google redirects)
+    r = public.get("/auth/youtube/callback",
+                   params={"code": "auth-code", "state": state})
+    assert r.status_code == 200 and "ليل TV" in r.text
+    tok = yt.load_token(tmp_path / "alice")
+    assert tok["refresh_token"] == "rt-1"
+
+    # status now reports connected
+    c = client_factory(user_id="alice")
+    st = c.get("/auth/youtube/status").json()
+    assert st == {"connected": True, "channel_title": "ليل TV"}
+
+    # disconnect
+    assert c.delete("/auth/youtube").status_code == 204
+    assert c.get("/auth/youtube/status").json()["connected"] is False
+
+
+def test_youtube_callback_rejects_bad_state(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setenv("YT_OAUTH_CLIENT_ID", "cid")
+    monkeypatch.setenv("YT_OAUTH_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("FACELESS_API_TOKEN", "hmac-key")
+    public = TestClient(api_mod.app)
+    r = public.get("/auth/youtube/callback",
+                   params={"code": "x", "state": "alice.123.deadbeef"})
+    assert r.status_code == 403
+
+
+def test_publish_youtube_happy_path(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    import pipeline.youtube as yt
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setenv("YT_OAUTH_CLIENT_ID", "cid")
+    monkeypatch.setenv("YT_OAUTH_CLIENT_SECRET", "sec")
+    c = client_factory(user_id="alice")
+    a = _mk_artist(c, name="ليل")
+    d = _complete_song_run(tmp_path, run_id="2026-07-16-000009",
+                           artist_id=a["id"])
+    (d / "final.mp4").write_bytes(b"\x00mp4")
+    yt.save_token(tmp_path / "alice", {"refresh_token": "rt",
+                                       "channel_title": "ليل TV"})
+    monkeypatch.setattr(yt, "refresh_access_token", lambda *a, **k: "at")
+    captured = {}
+    def fake_upload(access, path, *, title, description, tags, privacy):
+        captured.update(title=title, privacy=privacy)
+        return "vid-42"
+    monkeypatch.setattr(yt, "upload_video", fake_upload)
+
+    r = c.post("/songs/2026-07-16-000009/publish-youtube")
+    assert r.status_code == 200, r.text
+    assert r.json()["video_url"] == "https://youtu.be/vid-42"
+    assert "ليل" in captured["title"]           # artist in the title
+    assert captured["privacy"] == "private"      # pre-audit default
+
+    # summary carries it; re-publish → 409 with the URL
+    assert c.get("/songs/2026-07-16-000009").json()["youtube_url"] == \
+        "https://youtu.be/vid-42"
+    r2 = c.post("/songs/2026-07-16-000009/publish-youtube")
+    assert r2.status_code == 409
+    assert r2.json()["detail"]["video_url"] == "https://youtu.be/vid-42"
+
+
+def test_publish_youtube_409_not_connected(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    d = _complete_song_run(tmp_path, run_id="2026-07-16-000010")
+    (d / "final.mp4").write_bytes(b"\x00")
+    r = c.post("/songs/2026-07-16-000010/publish-youtube")
+    assert r.status_code == 409
+    assert "not connected" in r.text

@@ -479,6 +479,8 @@ class ArtistSummary(BaseModel):
     default_style: str = ""
     default_language: str = "ar"
     default_vocal_gender: str = "m"
+    # Channel Autopilot: publish each finished song to YouTube automatically.
+    auto_publish_youtube: bool = False
     created_at: str
     song_count: int = 0
 
@@ -501,6 +503,7 @@ class PatchArtistRequest(BaseModel):
     default_style: str | None = None
     default_language: str | None = None
     default_vocal_gender: str | None = None
+    auto_publish_youtube: bool | None = None
 
 
 class CreateArtistFromSongRequest(BaseModel):
@@ -547,6 +550,8 @@ class SongRunSummary(BaseModel):
     # Distribution: user-confirmed "this song is live on stores" flag
     # (set via POST /songs/{id}/mark-released after the manual upload).
     released: bool = False
+    # YouTube auto-publish: the published video URL (None = not published).
+    youtube_url: str | None = None
 
 
 class RunProgress(BaseModel):
@@ -2882,6 +2887,7 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         artist_id=state.get("artist_id"),
         artist_name=_artist_name_for(user, state.get("artist_id")),
         released=bool(state.get("released", False)),
+        youtube_url=state.get("youtube_url"),
     )
 
 
@@ -2999,6 +3005,7 @@ def list_songs(user: User = Depends(require_user)):
             artist_id=state.get("artist_id"),
             artist_name=artist_names.get(state.get("artist_id")),
             released=bool(state.get("released", False)),
+            youtube_url=state.get("youtube_url"),
         ))
     return out
 
@@ -3981,7 +3988,8 @@ def patch_artist(
             user, name=artist["name"], requested=req.handle,
             artists=artists, exclude_id=artist_id)
     for field in ("bio", "persona_id", "avatar_run_id", "default_style",
-                  "default_language", "default_vocal_gender"):
+                  "default_language", "default_vocal_gender",
+                  "auto_publish_youtube"):
         val = getattr(req, field)
         if val is not None:
             artist[field] = val
@@ -4122,6 +4130,186 @@ def get_artist_avatar(
         if p.exists():
             return FileResponse(p)
     raise HTTPException(404, "no avatar")
+
+
+# ---------------------------------------------------------------------------
+# YouTube auto-publish — OAuth connect + one-tap upload (Channel Autopilot).
+# Spec: docs/superpowers/specs/2026-07-16-youtube-auto-publish-design.md.
+# Pre-audit, Google forces API uploads to private (YOUTUBE_PRIVACY_STATUS
+# flips to "public" once the user's compliance audit passes).
+# ---------------------------------------------------------------------------
+
+_YT_STATE_TTL_S = 900  # signed OAuth state expires after 15 min
+
+
+def _yt_oauth_config() -> tuple[str, str, str]:
+    """(client_id, client_secret, redirect_uri) or 503 when unconfigured —
+    the feature stays dark until the operator creates the OAuth client."""
+    cid = os.environ.get("YT_OAUTH_CLIENT_ID", "")
+    secret = os.environ.get("YT_OAUTH_CLIENT_SECRET", "")
+    if not cid or not secret:
+        raise HTTPException(503, "YouTube publishing is not configured "
+                                 "(YT_OAUTH_CLIENT_ID/SECRET unset)")
+    base = os.environ.get(
+        "FACELESS_PUBLIC_URL",
+        "https://faceless-api-uplzdtffeq-uc.a.run.app").rstrip("/")
+    redirect = os.environ.get("YT_OAUTH_REDIRECT",
+                              f"{base}/auth/youtube/callback")
+    return cid, secret, redirect
+
+
+def _yt_sign_state(user_id: str) -> str:
+    import hashlib
+    import hmac as _hmac
+    import time as _time
+    key = os.environ.get("FACELESS_API_TOKEN", "").encode()
+    ts = str(int(_time.time()))
+    sig = _hmac.new(key, f"{user_id}.{ts}".encode(), hashlib.sha256).hexdigest()
+    return f"{user_id}.{ts}.{sig}"
+
+
+def _yt_verify_state(state: str) -> str:
+    """Returns the user_id or raises 403 (tampered/expired)."""
+    import hashlib
+    import hmac as _hmac
+    import time as _time
+    try:
+        user_id, ts, sig = state.rsplit(".", 2)
+    except ValueError:
+        raise HTTPException(403, "bad state")
+    key = os.environ.get("FACELESS_API_TOKEN", "").encode()
+    expect = _hmac.new(key, f"{user_id}.{ts}".encode(), hashlib.sha256).hexdigest()
+    if not _hmac.compare_digest(sig, expect):
+        raise HTTPException(403, "bad state signature")
+    if int(_time.time()) - int(ts) > _YT_STATE_TTL_S:
+        raise HTTPException(403, "state expired — restart the connect flow")
+    return user_id
+
+
+def _user_root_for_id(user_id: str) -> Path:
+    return _out_root() / user_id
+
+
+@app.get("/auth/youtube/start")
+def youtube_auth_start(user: User = Depends(require_user)):
+    from pipeline import youtube as yt
+    cid, _, redirect = _yt_oauth_config()
+    return {"url": yt.auth_url(cid, redirect, _yt_sign_state(user.id))}
+
+
+@app.get("/auth/youtube/callback", include_in_schema=False)
+def youtube_auth_callback(code: str = "", state: str = "", error: str = ""):
+    """PUBLIC — Google redirects the browser here. The signed state carries
+    the user identity; verify it, exchange the code, store the token."""
+    from fastapi.responses import HTMLResponse
+    from pipeline import youtube as yt
+
+    if error or not code:
+        return HTMLResponse(
+            f"<html><body style='font-family:sans-serif'>"
+            f"<h3>YouTube connection cancelled</h3><p>{error or 'no code'}"
+            f"</p></body></html>", status_code=400)
+    user_id = _yt_verify_state(state)
+    cid, secret, redirect = _yt_oauth_config()
+    tokens = yt.exchange_code(cid, secret, code, redirect)
+    refresh = tokens.get("refresh_token")
+    if not refresh:
+        raise HTTPException(502, "Google returned no refresh_token — remove "
+                                 "the app at myaccount.google.com/permissions "
+                                 "and reconnect")
+    try:
+        title = yt.channel_title(str(tokens.get("access_token") or ""))
+    except Exception:
+        title = "YouTube channel"
+    yt.save_token(_user_root_for_id(user_id), {
+        "refresh_token": refresh,
+        "channel_title": title,
+        "connected_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    })
+    return HTMLResponse(
+        "<html><body style='font-family:sans-serif;background:#F2EFF7;"
+        "display:grid;place-items:center;height:100vh'><div>"
+        f"<h2>✅ Connected: {title}</h2>"
+        "<p>Return to the Faceless Lab app.</p></div></body></html>")
+
+
+@app.get("/auth/youtube/status")
+def youtube_auth_status(user: User = Depends(require_user)):
+    from pipeline import youtube as yt
+    tok = yt.load_token(_user_runs_root(user))
+    return {"connected": tok is not None,
+            "channel_title": (tok or {}).get("channel_title")}
+
+
+@app.delete("/auth/youtube", status_code=204)
+def youtube_disconnect(user: User = Depends(require_user)):
+    from pipeline import youtube as yt
+    yt.delete_token(_user_runs_root(user))
+    return None
+
+
+def _publish_song_to_youtube(run_dir: Path, user_root: Path,
+                             artist: dict | None) -> tuple[str, str]:
+    """Shared by the endpoint and the worker auto-publish hook.
+    Returns (video_id, video_url); raises YouTubeError / RuntimeError."""
+    from pipeline import youtube as yt
+
+    tok = yt.load_token(user_root)
+    if tok is None:
+        raise RuntimeError("youtube not connected")
+    cid, secret, _ = _yt_oauth_config()
+    try:
+        access = yt.refresh_access_token(cid, secret, tok["refresh_token"])
+    except yt.YouTubeError:
+        # Revoked on Google's side → drop the stale token so /status
+        # reports disconnected instead of failing forever.
+        yt.delete_token(user_root)
+        raise
+    song_json = json.loads((run_dir / "song.json").read_text(encoding="utf-8"))
+    base = os.environ.get(
+        "FACELESS_PUBLIC_URL",
+        "https://faceless-api-uplzdtffeq-uc.a.run.app").rstrip("/")
+    meta = yt.build_metadata(song_json, artist, base)
+    privacy = os.environ.get("YOUTUBE_PRIVACY_STATUS", "private")
+    video_id = yt.upload_video(
+        access, run_dir / "final.mp4",
+        title=meta["title"], description=meta["description"],
+        tags=meta["tags"], privacy=privacy)
+    return video_id, f"https://youtu.be/{video_id}"
+
+
+@app.post("/songs/{run_id}/publish-youtube")
+def publish_song_youtube(run_id: str, user: User = Depends(require_user)):
+    from pipeline import artists as artists_mod
+    from pipeline import youtube as yt
+
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("youtube_url"):
+        raise HTTPException(
+            status_code=409,
+            detail={"detail": "already published",
+                    "video_url": state["youtube_url"]})
+    if state.get("status") != "complete" or not (run_dir / "final.mp4").exists():
+        raise HTTPException(409, "song has no finished video yet")
+    if yt.load_token(_user_runs_root(user)) is None:
+        raise HTTPException(409, "youtube not connected")
+
+    artist = None
+    if state.get("artist_id"):
+        artist = artists_mod.find_by_id(
+            artists_mod.load_artists(_user_runs_root(user)),
+            state["artist_id"])
+    try:
+        video_id, url = _publish_song_to_youtube(
+            run_dir, _user_runs_root(user), artist)
+    except yt.YouTubeError as e:
+        raise HTTPException(502, f"YouTube upload failed: {e}")
+    _write_state(run_dir, youtube_video_id=video_id, youtube_url=url,
+                 youtube_publish_error=None)
+    return {"video_id": video_id, "video_url": url}
 
 
 def _find_artist_public(handle: str) -> tuple[dict, Path] | None:
