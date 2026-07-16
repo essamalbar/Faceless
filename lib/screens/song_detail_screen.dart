@@ -118,6 +118,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           artistId: summary.artistId,
           artistName: summary.artistName,
           released: summary.released,
+          youtubeUrl: summary.youtubeUrl,
         );
         setState(() => _summary = merged);
         if (_terminalStatuses.contains(merged.status)) {
@@ -651,6 +652,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             artistId: s.artistId,
             artistName: s.artistName,
             released: confirmed,
+            youtubeUrl: s.youtubeUrl,
           );
         });
       }
@@ -779,6 +781,132 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  // ─── publish to YouTube ─────────────────────────────────────────────────────
+
+  /// Local-state stamp after a successful publish so the button flips to
+  /// "On YouTube" without a refetch.
+  void _setYoutubeUrl(String url) {
+    final s = _summary;
+    if (s == null) return;
+    setState(() {
+      _summary = SongSummary(
+        id: s.id,
+        status: s.status,
+        title: s.title,
+        theme: s.theme,
+        createdAt: s.createdAt,
+        hasVideo: s.hasVideo,
+        chosenTake: s.chosenTake,
+        lastError: s.lastError,
+        failureStage: s.failureStage,
+        watermarked: s.watermarked,
+        videoMode: s.videoMode,
+        artistId: s.artistId,
+        artistName: s.artistName,
+        released: s.released,
+        youtubeUrl: url,
+      );
+    });
+  }
+
+  Future<void> _openOnYoutube(SongSummary s) async {
+    final url = s.youtubeUrl;
+    if (url == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await launchUrl(Uri.parse(url), webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  Future<void> _showPublishYoutubeDialog(SongSummary s) async {
+    final l10n = context.l10n;
+    final title = s.title ?? s.theme ?? l10n.songDetailAiSongFallback;
+    // Metadata preview — the exact title line the upload will use.
+    final preview =
+        s.artistName != null ? '$title — ${s.artistName}' : title;
+    final messenger = ScaffoldMessenger.of(context);
+    var busy = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(ctx.l10n.ytPublishDialogTitle),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                preview,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+              const SizedBox(height: 10),
+              // Pre-audit reality: Google caps unreviewed apps to private
+              // uploads. One sentence so the user isn't surprised.
+              Text(
+                ctx.l10n.ytPublishPreauditNote,
+                style: const TextStyle(fontSize: 13, height: 1.35),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(ctx),
+              child: Text(ctx.l10n.commonCancel),
+            ),
+            FilledButton.icon(
+              icon: busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.play_circle_outline, size: 18),
+              label: Text(ctx.l10n.ytPublish),
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setDialogState(() => busy = true);
+                      try {
+                        final url = await widget.client
+                            .publishYoutube(widget.runId);
+                        if (!mounted) return;
+                        _setYoutubeUrl(url);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        messenger.showSnackBar(
+                            SnackBar(content: Text(l10n.ytPublishedSnack)));
+                      } on FacelessApiException catch (e) {
+                        if (!mounted) return;
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        // 409 "youtube not connected" → route the user to
+                        // Settings; everything else surfaces the server
+                        // message ("no finished video yet", 502 upload…).
+                        final notConnected = e.status == 409 &&
+                            e.message.contains('not connected');
+                        messenger.showSnackBar(SnackBar(
+                          content: Text(notConnected
+                              ? l10n.ytNotConnectedSnack
+                              : l10n.ytPublishFailed(e.message)),
+                        ));
+                      } catch (e) {
+                        if (!mounted) return;
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        messenger.showSnackBar(SnackBar(
+                            content: Text(l10n.ytPublishFailed('$e'))));
+                      }
+                    },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -998,12 +1126,34 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             const SizedBox(height: 8),
             // Distribution: guided release-package export + released toggle.
             // Still opens when already released (to re-download or un-mark);
-            // the label flips to a "done" state.
-            OutlinedButton.icon(
-              icon: const Icon(Icons.rocket_launch_outlined),
-              label: Text(
-                  s.released ? l10n.releaseButtonReleased : l10n.releaseButton),
-              onPressed: () => _showReleaseDialog(s),
+            // the label flips to a "done" state. YouTube publish sits next
+            // to it — the button flips to "On YouTube" once published.
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.rocket_launch_outlined),
+                    label: Text(s.released
+                        ? l10n.releaseButtonReleased
+                        : l10n.releaseButton),
+                    onPressed: () => _showReleaseDialog(s),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: s.youtubeUrl == null
+                      ? OutlinedButton.icon(
+                          icon: const Icon(Icons.play_circle_outline),
+                          label: Text(l10n.ytPublishButton),
+                          onPressed: () => _showPublishYoutubeDialog(s),
+                        )
+                      : OutlinedButton.icon(
+                          icon: const Icon(Icons.play_arrow),
+                          label: Text(l10n.ytOnYoutubeButton),
+                          onPressed: () => _openOnYoutube(s),
+                        ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Row(

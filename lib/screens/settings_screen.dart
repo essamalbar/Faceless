@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
@@ -36,6 +37,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _email;
   PlanInfo? _plan;
 
+  // YouTube connection — best-effort, status hidden while loading.
+  bool _ytLoading = true;
+  bool _ytConnected = false;
+  String? _ytChannel;
+
   // Advanced section is hidden by default to keep the screen calm for the
   // 99% case where the launcher already configured everything. We force it
   // open on first launch when there's no saved URL yet.
@@ -67,6 +73,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) setState(() => _plan = p);
     } catch (_) {
       // Best-effort.
+    }
+    await _loadYoutubeStatus();
+  }
+
+  Future<void> _loadYoutubeStatus() async {
+    if (mounted) setState(() => _ytLoading = true);
+    try {
+      final client = FacelessApiClient(_settings);
+      final status = await client.youtubeStatus();
+      client.close();
+      if (mounted) {
+        setState(() {
+          _ytConnected = status.connected;
+          _ytChannel = status.channelTitle;
+          _ytLoading = false;
+        });
+      }
+    } catch (_) {
+      // Best-effort — leave the row without status (e.g. old backend).
+      if (mounted) setState(() => _ytLoading = false);
+    }
+  }
+
+  /// Opens the Google consent URL in the browser. The OAuth flow finishes
+  /// there (server callback stores the token); the user comes back and
+  /// pulls to refresh to see "Connected".
+  Future<void> _connectYoutube() async {
+    final l10n = context.l10n;
+    final messenger = ScaffoldMessenger.of(context);
+    final client = FacelessApiClient(_settings);
+    try {
+      final url = await client.youtubeAuthStart();
+      await launchUrl(url, webOnlyWindowName: '_blank');
+      messenger.showSnackBar(SnackBar(
+        content: Text(l10n.ytFinishInBrowser),
+        duration: const Duration(seconds: 6),
+      ));
+    } on FacelessApiException catch (e) {
+      // 503 = operator hasn't configured the OAuth client yet — the
+      // server message says exactly that; surface it as-is.
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(l10n.ytConnectFailed('$e'))));
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<void> _disconnectYoutube() async {
+    final l10n = context.l10n;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.ytDisconnectConfirmTitle),
+        content: Text(l10n.ytDisconnectConfirmBody),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.commonCancel)),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: FacelessTheme.danger,
+                  foregroundColor: Colors.white),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.ytDisconnect)),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final client = FacelessApiClient(_settings);
+    try {
+      await client.youtubeDisconnect();
+      if (mounted) {
+        setState(() {
+          _ytConnected = false;
+          _ytChannel = null;
+        });
+      }
+      messenger.showSnackBar(
+          SnackBar(content: Text(l10n.ytDisconnectedSnack)));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(l10n.ytDisconnectFailed('$e'))));
+    } finally {
+      client.close();
     }
   }
 
@@ -177,8 +270,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text(l10n.homeSettings),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
@@ -232,6 +328,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    // YouTube — connect the channel used by "Publish to
+                    // YouTube" on song pages and artist auto-publish.
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.ondemand_video),
+                        title: Text(l10n.ytSettingsTitle),
+                        // Status hidden while the best-effort check runs.
+                        subtitle: _ytLoading
+                            ? null
+                            : Text(_ytConnected
+                                ? l10n.ytSettingsConnected(
+                                    _ytChannel ?? 'YouTube')
+                                : l10n.ytSettingsSubtitleDisconnected),
+                        trailing: _ytLoading
+                            ? null
+                            : (_ytConnected
+                                ? TextButton(
+                                    onPressed: _disconnectYoutube,
+                                    child: Text(
+                                      l10n.ytDisconnect,
+                                      style: const TextStyle(
+                                          color: FacelessTheme.danger),
+                                    ),
+                                  )
+                                : FilledButton.tonal(
+                                    onPressed: _connectYoutube,
+                                    child: Text(l10n.ytConnect),
+                                  )),
+                      ),
+                    ),
                     const SizedBox(height: 24),
                     _SectionLabel(text: l10n.settingsSectionAdvanced),
                     const SizedBox(height: 8),
@@ -264,6 +391,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );

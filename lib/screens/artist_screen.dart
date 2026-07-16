@@ -330,6 +330,25 @@ class _SongRow extends StatelessWidget {
                                       fontWeight: FontWeight.w600),
                                 ),
                               ),
+                            // YouTube: subtle neutral "▶ YouTube" chip when
+                            // the song has been published to the channel.
+                            if (song.youtubeUrl != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: FacelessTheme.textSecondary
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '▶ ${l10n.ytBadge}',
+                                  style: const TextStyle(
+                                      fontSize: 11.5,
+                                      color: FacelessTheme.textSecondary,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
                           ],
                         ),
                       ],

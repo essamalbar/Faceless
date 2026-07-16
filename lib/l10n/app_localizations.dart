@@ -3583,6 +3583,144 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Released'**
   String get releaseBadge;
+
+  /// No description provided for @ytSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube'**
+  String get ytSettingsTitle;
+
+  /// No description provided for @ytSettingsSubtitleDisconnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish songs to your channel'**
+  String get ytSettingsSubtitleDisconnected;
+
+  /// No description provided for @ytSettingsConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected: {channel}'**
+  String ytSettingsConnected(String channel);
+
+  /// No description provided for @ytConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get ytConnect;
+
+  /// No description provided for @ytDisconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnect'**
+  String get ytDisconnect;
+
+  /// No description provided for @ytDisconnectConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnect YouTube?'**
+  String get ytDisconnectConfirmTitle;
+
+  /// No description provided for @ytDisconnectConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Publishing from the app stops until you connect again. Videos already on YouTube are not affected.'**
+  String get ytDisconnectConfirmBody;
+
+  /// No description provided for @ytDisconnectedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube disconnected'**
+  String get ytDisconnectedSnack;
+
+  /// No description provided for @ytDisconnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t disconnect: {error}'**
+  String ytDisconnectFailed(String error);
+
+  /// No description provided for @ytFinishInBrowser.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish connecting in the browser, then pull to refresh.'**
+  String get ytFinishInBrowser;
+
+  /// No description provided for @ytConnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t start YouTube connect: {error}'**
+  String ytConnectFailed(String error);
+
+  /// No description provided for @ytPublishButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish to YouTube'**
+  String get ytPublishButton;
+
+  /// No description provided for @ytOnYoutubeButton.
+  ///
+  /// In en, this message translates to:
+  /// **'On YouTube'**
+  String get ytOnYoutubeButton;
+
+  /// No description provided for @ytPublishDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish to YouTube'**
+  String get ytPublishDialogTitle;
+
+  /// No description provided for @ytPublishPreauditNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The upload starts as private until Google approves the app — make it public from YouTube Studio.'**
+  String get ytPublishPreauditNote;
+
+  /// No description provided for @ytPublish.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish'**
+  String get ytPublish;
+
+  /// No description provided for @ytPublishedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'Published to YouTube'**
+  String get ytPublishedSnack;
+
+  /// No description provided for @ytPublishFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish failed: {error}'**
+  String ytPublishFailed(String error);
+
+  /// No description provided for @ytNotConnectedSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube isn\'t connected — connect it from Settings first.'**
+  String get ytNotConnectedSnack;
+
+  /// No description provided for @ytBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube'**
+  String get ytBadge;
+
+  /// No description provided for @ytAutoPublishLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-publish new songs to YouTube'**
+  String get ytAutoPublishLabel;
+
+  /// No description provided for @ytAutoPublishSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'When a song finishes, it\'s uploaded to your channel automatically.'**
+  String get ytAutoPublishSubtitle;
+
+  /// No description provided for @ytAutoPublishSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the YouTube auto-publish setting: {error}'**
+  String ytAutoPublishSaveFailed(String error);
 }
 
 class _AppLocalizationsDelegate
