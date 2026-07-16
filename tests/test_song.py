@@ -194,3 +194,22 @@ def test_download_take_writes_file(tmp_path: Path):
     song.download_take(c, "https://kie.ai/take.mp3", out)
     assert out.exists()
     assert out.read_bytes() == fake_bytes
+
+
+def test_submit_cover_job_passes_audio_weight_rounded():
+    c = _stub_client(post_resp={"code": 200, "data": {"taskId": "cov-w"}})
+    song.submit_cover_job(
+        c, upload_url="https://u/x.mp3", lyrics="[Chorus]\nx",
+        style_prompt="s", title="t", audio_weight=0.7999, style_weight=0.25)
+    _, body = c._post_json.call_args[0]
+    assert body["audioWeight"] == 0.8
+    assert body["styleWeight"] == 0.25
+
+
+def test_submit_cover_job_omits_weights_when_none():
+    c = _stub_client(post_resp={"code": 200, "data": {"taskId": "cov-n"}})
+    song.submit_cover_job(
+        c, upload_url="https://u/x.mp3", lyrics="[Chorus]\nx",
+        style_prompt="s", title="t")
+    _, body = c._post_json.call_args[0]
+    assert "audioWeight" not in body and "styleWeight" not in body

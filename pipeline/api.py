@@ -756,13 +756,56 @@ def _build_llm():
         fallback = GroqClient()
     if primary and fallback:
         from pipeline.llm import FallbackLLM
-        return FallbackLLM(primary, fallback)
+        return FallbackLLM(primary, fallback,
+                           on_fallback=_record_llm_fallback)
     if primary:
         return primary
     if fallback:
         return fallback
     from pipeline.llm import GeminiClient
     return GeminiClient()
+
+
+def _llm_fallback_marker() -> Path:
+    return _out_root() / "llm_fallback.json"
+
+
+def _record_llm_fallback(exc: Exception) -> None:
+    """Persist a 'lyrics quality degraded' marker when the primary LLM fails
+    and Groq takes over — the UI banners off this instead of the user
+    discovering weaker Arabic lyrics after a paid render. Best-effort."""
+    try:
+        p = _llm_fallback_marker()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(json.dumps({
+            "last_fallback_at":
+                datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "error": str(exc)[:300],
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(p)
+    except Exception:
+        pass
+
+
+@app.get("/system/llm-status")
+def llm_status(user: User = Depends(require_user)):
+    """degraded=True when the primary LLM fell back to Groq within the last
+    24h → the app shows a 'lyric quality reduced' banner."""
+    p = _llm_fallback_marker()
+    if not p.exists():
+        return {"degraded": False, "last_fallback_at": None, "error": None}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        ts = datetime.fromisoformat(data.get("last_fallback_at"))
+        age_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
+        return {
+            "degraded": age_h <= 24,
+            "last_fallback_at": data.get("last_fallback_at"),
+            "error": data.get("error"),
+        }
+    except Exception:
+        return {"degraded": False, "last_fallback_at": None, "error": None}
 
 
 def _build_song_llm():
@@ -2628,6 +2671,7 @@ def upload_cover_song(
     vocal_gender: str | None = Form("m"),
     suno_model: str | None = Form(None),
     artist_id: str | None = Form(None),
+    audio_weight: float | None = Form(None),
     user: User = Depends(require_user),
 ):
     """Start a faithful-cover run from an UPLOADED audio file. Writes a draft
@@ -2656,6 +2700,10 @@ def upload_cover_song(
         balance = get_balance(user.id)
         if balance < credits_required:
             _raise_402_insufficient_credits(balance, credits_required)
+
+    # Faithfulness knob (Kie audioWeight): 0-1 or absent.
+    if audio_weight is not None and not (0.0 <= audio_weight <= 1.0):
+        raise HTTPException(422, "audio_weight must be between 0 and 1")
 
     # Artist Core: validate before any work so an unknown id is a clean 404.
     if artist_id:
@@ -2698,6 +2746,7 @@ def upload_cover_song(
         status="analyzing",
         user_id=user.id,
         theme="(cover from uploaded audio…)",
+        audio_weight=audio_weight,
         reference_filename=reference_filename,
         import_instruction=instruction,
         video_mode=video_mode,
