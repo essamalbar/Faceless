@@ -99,6 +99,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
   String? _pickedName;
   String _language = 'ar';
   String _videoMode = 'static'; // 'static' | 'cinematic'
+  double _audioWeight = 0.8;   // cover faithfulness (Kie audioWeight)
   String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
   String? _sunoModel;          // null = use server default (V5_5)
   String? _personaId;          // null = no persona (let Suno pick)
@@ -232,6 +233,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
         runId = await widget.client.uploadCoverSong(
           bytes: _pickedBytes!,
           filename: _pickedName ?? 'reference.mp3',
+          audioWeight: _audioWeight,
           instruction: _styleCtrl.text.trim().isEmpty ? null : _styleCtrl.text,
           language: _language,
           videoMode: _videoMode,
@@ -367,6 +369,31 @@ class _NewSongScreenState extends State<NewSongScreen> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
+              const SizedBox(height: 16),
+              // Faithfulness knob → Kie audioWeight: how closely the cover
+              // follows the source audio. Default 0.8 (covers exist to match).
+              Text(l10n.newSongFaithfulness,
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: FacelessTheme.textSecondary)),
+              Slider(
+                value: _audioWeight,
+                min: 0.0,
+                max: 1.0,
+                divisions: 20,
+                label: _audioWeight.toStringAsFixed(2),
+                onChanged: _submitting
+                    ? null
+                    : (v) => setState(() => _audioWeight = v),
+              ),
+              Text(
+                _audioWeight >= 0.6
+                    ? l10n.newSongFaithfulnessHigh
+                    : l10n.newSongFaithfulnessLow,
+                style: const TextStyle(
+                    fontSize: 12, color: FacelessTheme.faint),
+              ),
               const SizedBox(height: 16),
             ] else ...[
               // Theme path: theme + custom lyrics fields.

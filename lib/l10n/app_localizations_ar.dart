@@ -2153,4 +2153,19 @@ class AppLocalizationsAr extends AppLocalizations {
   String ytAutoPublishSaveFailed(String error) {
     return 'تعذر حفظ إعداد النشر التلقائي على يوتيوب: $error';
   }
+
+  @override
+  String get newSongFaithfulness => 'الوفاء للأصل';
+
+  @override
+  String get newSongFaithfulnessHigh =>
+      'عالٍ — تتبع النسخة لحن الأغنية الأصلية وإحساسها عن قرب.';
+
+  @override
+  String get newSongFaithfulnessLow =>
+      'منخفض — حرية إبداعية أكبر وابتعاد عن الأصل.';
+
+  @override
+  String get llmDegradedBanner =>
+      'انخفضت جودة الكلمات — نموذج الكتابة الأساسي غير متاح (تحقق من رصيد Anthropic).';
 }

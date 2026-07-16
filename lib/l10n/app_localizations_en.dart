@@ -2115,4 +2115,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String ytAutoPublishSaveFailed(String error) {
     return 'Couldn\'t save the YouTube auto-publish setting: $error';
   }
+
+  @override
+  String get newSongFaithfulness => 'Faithfulness to the original';
+
+  @override
+  String get newSongFaithfulnessHigh =>
+      'High — the cover closely follows the original\'s melody and feel.';
+
+  @override
+  String get newSongFaithfulnessLow =>
+      'Low — more creative freedom, further from the original.';
+
+  @override
+  String get llmDegradedBanner =>
+      'Lyric quality reduced — the primary writing model is unavailable (check Anthropic credits).';
 }

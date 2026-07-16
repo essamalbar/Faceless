@@ -132,11 +132,27 @@ def _detect_bpm(audio: Path) -> float:
 
 
 def _transcribe(audio: Path, language: str) -> str:
-    """Whisper transcript (internal use only). Isolated for tests."""
+    """Whisper transcript (internal use only). Isolated for tests.
+
+    Model comes from WHISPER_COVER_MODEL (default "small" — noticeably
+    better Arabic than "base"; prod runs "medium" on the 8Gi worker). On ANY
+    failure with the configured model (OOM, download, decode) retry once with
+    "base" so this is never WORSE than the old behavior; the caller's
+    degrade-to-style-only path still catches a base failure."""
     from pipeline.align import _load_whisper
-    model = _load_whisper("base")
-    result = model.transcribe(str(audio), language=language or None)
-    return str(result.get("text", "")).strip()
+
+    preferred = os.environ.get("WHISPER_COVER_MODEL", "small")
+    for model_name in dict.fromkeys([preferred, "base"]):
+        try:
+            model = _load_whisper(model_name)
+            result = model.transcribe(str(audio), language=language or None)
+            return str(result.get("text", "")).strip()
+        except Exception as e:
+            print(f"[song_import] whisper {model_name!r} failed ({e})"
+                  + ("; retrying with 'base'" if model_name != "base" else ""))
+            if model_name == "base":
+                raise
+    raise RuntimeError("unreachable")  # pragma: no cover
 
 
 def _llm_descriptors(llm, user_msg: str, *, bpm: float, language: str) -> dict:

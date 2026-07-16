@@ -603,5 +603,9 @@
   "ytBadge": "يوتيوب",
   "ytAutoPublishLabel": "النشر التلقائي للأغاني الجديدة على يوتيوب",
   "ytAutoPublishSubtitle": "عند اكتمال أي أغنية، تُرفع إلى قناتك تلقائيًا.",
-  "ytAutoPublishSaveFailed": "تعذر حفظ إعداد النشر التلقائي على يوتيوب: {error}"
+  "ytAutoPublishSaveFailed": "تعذر حفظ إعداد النشر التلقائي على يوتيوب: {error}",
+  "newSongFaithfulness": "الوفاء للأصل",
+  "newSongFaithfulnessHigh": "عالٍ — تتبع النسخة لحن الأغنية الأصلية وإحساسها عن قرب.",
+  "newSongFaithfulnessLow": "منخفض — حرية إبداعية أكبر وابتعاد عن الأصل.",
+  "llmDegradedBanner": "انخفضت جودة الكلمات — نموذج الكتابة الأساسي غير متاح (تحقق من رصيد Anthropic)."
 }

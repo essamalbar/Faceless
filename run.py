@@ -1079,6 +1079,9 @@ def _run_song_post_approve(args) -> int:
                     title=script["title"],
                     model=_model,
                     vocal_gender=script.get("vocal_gender"),
+                    # Faithfulness knob from the upload form (state-stored;
+                    # None → Suno's default).
+                    audio_weight=current_state.get("audio_weight"),
                 )
             else:
                 task_id = song.submit_song_job(

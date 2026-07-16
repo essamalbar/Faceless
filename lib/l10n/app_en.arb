@@ -23,16 +23,46 @@
   "homeCleanupFailedBody": "This permanently deletes every run currently in Failed status. Running and complete runs are not touched.",
   "homeDeleteAllFailed": "Delete all failed",
   "homeRemovedFailedRuns": "Removed {count} failed run(s)",
-  "@homeRemovedFailedRuns": {"placeholders": {"count": {"type": "int"}}},
+  "@homeRemovedFailedRuns": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeCleanupError": "Cleanup failed: {error}",
-  "@homeCleanupError": {"placeholders": {"error": {"type": "String"}}},
+  "@homeCleanupError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "homeDeleteRunTitle": "Delete this run?",
   "homeDeleteRunBody": "This permanently removes the run dir, including any generated clips and final.mp4. {name}",
-  "@homeDeleteRunBody": {"placeholders": {"name": {"type": "String"}}},
+  "@homeDeleteRunBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "homeDeletedItem": "Deleted {name}",
-  "@homeDeletedItem": {"placeholders": {"name": {"type": "String"}}},
+  "@homeDeletedItem": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "homeDeleteError": "Delete failed: {error}",
-  "@homeDeleteError": {"placeholders": {"error": {"type": "String"}}},
+  "@homeDeleteError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "homeRefresh": "Refresh",
   "homeSavedVoices": "Saved voices",
   "homeSettings": "Settings",
@@ -44,7 +74,13 @@
   "homeNewSong": "New Song",
   "homeRecent": "Recent",
   "homeTracksCount": "{count} tracks",
-  "@homeTracksCount": {"placeholders": {"count": {"type": "int"}}},
+  "@homeTracksCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeResults": "Results",
   "homeYourSongs": "Your songs",
   "homeNoSongsMatchSearch": "No songs match your search",
@@ -54,9 +90,21 @@
   "homePlay": "Play",
   "homeDetails": "Details",
   "homeEpisodesCount": "{count} episodes",
-  "@homeEpisodesCount": {"placeholders": {"count": {"type": "int"}}},
+  "@homeEpisodesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeEpisodeAbbrev": "EP {number}",
-  "@homeEpisodeAbbrev": {"placeholders": {"number": {"type": "int"}}},
+  "@homeEpisodeAbbrev": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "homeYourStories": "Your stories",
   "homeNoRenderedVideos": "No rendered videos yet",
   "homeApproveScriptHint": "Approve a script and your video will show up here.",
@@ -70,9 +118,21 @@
   "homeHowItWorks": "How it works",
   "homePlans": "Plans",
   "homeRunsCount": "({count} runs)",
-  "@homeRunsCount": {"placeholders": {"count": {"type": "int"}}},
+  "@homeRunsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeCleanFailed": "Clean {count} failed",
-  "@homeCleanFailed": {"placeholders": {"count": {"type": "int"}}},
+  "@homeCleanFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeFilterAll": "All",
   "homeFilterComplete": "Complete",
   "homeFilterAwaiting": "Awaiting",
@@ -90,7 +150,13 @@
   "homeYourPlan": "Your plan",
   "homeRecommended": "Recommended",
   "homeCreditsCount": "{count} credits",
-  "@homeCreditsCount": {"placeholders": {"count": {"type": "int"}}},
+  "@homeCreditsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "homeSeeFullPlans": "See full plans",
   "homePlanStarter": "Starter",
   "homePlanCreator": "Creator",
@@ -127,12 +193,24 @@
   "newSongThemeExplainer": "The AI will write lyrics and a cover image prompt. You can review and edit both before any credit is spent.",
   "newSongFileReadError": "Couldn't read that file — try another.",
   "newSongFilePickerError": "Could not open the file picker: {error}",
-  "@newSongFilePickerError": {"placeholders": {"error": {"type": "String"}}},
+  "@newSongFilePickerError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "newSongChooseAudioError": "Choose an audio file to cover",
   "newSongThemeRequired": "Theme is required",
   "newSongChooseAudioFile": "Choose audio file (mp3, m4a, wav…)",
   "newSongSelectedFile": "Selected: {name}",
-  "@newSongSelectedFile": {"placeholders": {"name": {"type": "String"}}},
+  "@newSongSelectedFile": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "newSongThemeLabel": "Theme",
   "newSongThemeHint": "A sad song about the moon",
   "newSongCustomLyricsLabel": "Custom lyrics (optional)",
@@ -186,7 +264,16 @@
   "approveStyleSection": "Style",
   "approveCoverPromptSection": "Cover prompt",
   "approveCost": "{count, plural, =1{Cost: 1 credit (~{usd})} other{Cost: {count} credits (~{usd})}}",
-  "@approveCost": {"placeholders": {"count": {"type": "int"}, "usd": {"type": "String"}}},
+  "@approveCost": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "usd": {
+        "type": "String"
+      }
+    }
+  },
   "approveDiscard": "Discard",
   "approveApproveGenerate": "Approve & generate",
   "songDetailTitleFallback": "Song",
@@ -196,59 +283,137 @@
   "songDetailStatusAssembling": "Assembling video…",
   "songDetailStatusDone": "Done",
   "songDetailSwitchingTake": "Switching to Take {take} — ready in ~1 min",
-  "@songDetailSwitchingTake": {"placeholders": {"take": {"type": "int"}}},
+  "@songDetailSwitchingTake": {
+    "placeholders": {
+      "take": {
+        "type": "int"
+      }
+    }
+  },
   "songDetailSwapFailed": "Swap failed: {error}",
-  "@songDetailSwapFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailSwapFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailRetryTitle": "Retry will re-charge",
   "songDetailRetryBody": "The song generation failed. Retrying will spawn a new Suno job and deduct credits again. Continue?",
   "songDetailRetryFailed": "Retry failed: {error}",
-  "@songDetailRetryFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailRetryFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailDownloadFailed": "Download failed: {error}",
-  "@songDetailDownloadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailDownloadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailDeleteTitle": "Delete this song?",
   "songDetailDeleteBody": "This permanently removes the song, cover, takes, and final video for \"{title}\". Credits already spent on Suno + Flux are not refunded.",
-  "@songDetailDeleteBody": {"placeholders": {"title": {"type": "String"}}},
+  "@songDetailDeleteBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailThisRun": "this run",
   "songDetailSongDeleted": "Song deleted",
   "songDetailDeleteFailed": "Delete failed: {error}",
-  "@songDetailDeleteFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailSaveVoiceTitle": "Save this voice",
   "songDetailSaveVoiceBody": "Locks the singer's voice from this song so you can reuse it on future generations.",
   "songDetailVoiceNameLabel": "Voice name",
   "songDetailDescriptionLabel": "Description",
   "songDetailDescriptionHelper": "Genre, mood, vocal qualities",
   "songDetailVoiceSaved": "Voice \"{name}\" saved. Use it on the next song from the New Song form.",
-  "@songDetailVoiceSaved": {"placeholders": {"name": {"type": "String"}}},
+  "@songDetailVoiceSaved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailSaveFailed": "Save failed: {error}",
-  "@songDetailSaveFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailShareTitle": "Share this song",
   "songDetailShareBody": "Anyone with this link can play the song — no sign-in needed. Paste it in WhatsApp, Twitter, or anywhere; the preview shows the cover.",
   "songDetailOpen": "Open",
   "songDetailCopyLink": "Copy link",
   "songDetailLinkCopied": "Link copied to clipboard",
   "songDetailShareFailed": "Share failed: {error}",
-  "@songDetailShareFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailShareFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailAiSongFallback": "AI song",
   "songDetailWatermarkTitle": "Apply Faceless Lab watermark?",
   "songDetailWatermarkBody": "Re-renders the song's video to burn in the brand mark (top-right of the frame) and embed copyright + share-URL metadata into the MP4. The original audio and lyrics are preserved.\n\nTakes about 3–6 minutes. You can keep using the app — the watermark will appear once the render completes.",
   "songDetailApplyWatermark": "Apply watermark",
   "songDetailApplyingWatermark": "Applying watermark — this takes 3–6 minutes…",
   "songDetailWatermarkApplied": "Watermark applied in {seconds} seconds.",
-  "@songDetailWatermarkApplied": {"placeholders": {"seconds": {"type": "String"}}},
+  "@songDetailWatermarkApplied": {
+    "placeholders": {
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailWatermarkFailed": "Watermark failed: {error}",
-  "@songDetailWatermarkFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailWatermarkFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailRerollTitle": "Re-roll voice takes?",
   "songDetailRerollBody": "Generates two fresh Suno vocal takes (~$0.05). Lyrics, style, and cover are preserved. Use this when both current takes missed the mood.",
   "songDetailReroll": "Re-roll",
   "songDetailRerolling": "Re-rolling Suno takes — ready in ~2 min",
   "songDetailRerollFailed": "Re-roll failed: {error}",
-  "@songDetailRerollFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailRerollFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailRegenCoverTitle": "Regenerate cover?",
   "songDetailRegenCoverBody": "Calls Flux for a fresh cover image (~$0.03) and re-assembles the video with the new cover. Suno output is preserved. Takes ~2 minutes.",
   "songDetailRegenerate": "Regenerate",
   "songDetailRegeneratingCover": "Regenerating cover — refresh in ~2 min",
   "songDetailFailed": "Failed: {error}",
-  "@songDetailFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailDeleteTooltip": "Delete this song",
   "songDetailDownloadMp4": "Download MP4",
   "songDetailDownloadMp3": "Download MP3",
@@ -258,12 +423,30 @@
   "songDetailPlayVideo": "Play video",
   "songDetailDownload": "Download",
   "songDetailVideoLoadError": "Could not load video: {error}",
-  "@songDetailVideoLoadError": {"placeholders": {"error": {"type": "String"}}},
+  "@songDetailVideoLoadError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "songDetailActiveTake": "Active take",
   "songDetailTakeChosen": "Take {take} ✓",
-  "@songDetailTakeChosen": {"placeholders": {"take": {"type": "int"}}},
+  "@songDetailTakeChosen": {
+    "placeholders": {
+      "take": {
+        "type": "int"
+      }
+    }
+  },
   "songDetailUseTake": "Use Take {take}",
-  "@songDetailUseTake": {"placeholders": {"take": {"type": "int"}}},
+  "@songDetailUseTake": {
+    "placeholders": {
+      "take": {
+        "type": "int"
+      }
+    }
+  },
   "songDetailFailSongTitle": "Song generation failed",
   "songDetailFailSongHint": "Retry will spawn a fresh Suno job — this re-charges credits.",
   "songDetailFailCoverTitle": "Cover image failed",
@@ -302,7 +485,13 @@
   "landingRecommended": "Recommended",
   "landingPerMonth": "/ month",
   "landingCreditsPerMonth": "{count} credits / month",
-  "@landingCreditsPerMonth": {"placeholders": {"count": {"type": "int"}}},
+  "@landingCreditsPerMonth": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "landingStartFree": "Start free",
   "landingFooterLine": "Faceless Lab · faceless-lab.com",
   "loginEmailLabel": "Email",
@@ -313,7 +502,13 @@
   "loginPasswordMinLength": "Min 8 characters for new accounts",
   "loginAccountCreatedInfo": "Account created. Check your email to confirm — or sign in directly if email confirmation is disabled.",
   "loginUnexpectedError": "Unexpected error: {error}",
-  "@loginUnexpectedError": {"placeholders": {"error": {"type": "String"}}},
+  "@loginUnexpectedError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "loginShowPassword": "Show password",
   "loginHidePassword": "Hide password",
   "loginCreateAccount": "Create account",
@@ -348,17 +543,35 @@
   "settingsPlanCreditsSubtitle": "View plans, manage your subscription",
   "settingsFreePlanSubtitle": "You are on the Free plan — subscribe to render videos",
   "settingsManagePlanSubtitle": "Manage your {plan} plan",
-  "@settingsManagePlanSubtitle": {"placeholders": {"plan": {"type": "String"}}},
+  "@settingsManagePlanSubtitle": {
+    "placeholders": {
+      "plan": {
+        "type": "String"
+      }
+    }
+  },
   "settingsSectionAdvanced": "Advanced",
   "settingsSectionAbout": "About",
   "settingsTestConnected": "✓ Connected",
   "settingsTestFailed": "✗ {error}",
-  "@settingsTestFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@settingsTestFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "settingsResetDone": "✓ Reset — using launcher defaults",
   "settingsNotSignedIn": "Not signed in",
   "settingsFreePlan": "Free plan",
   "settingsPlanName": "{plan} plan",
-  "@settingsPlanName": {"placeholders": {"plan": {"type": "String"}}},
+  "@settingsPlanName": {
+    "placeholders": {
+      "plan": {
+        "type": "String"
+      }
+    }
+  },
   "settingsServerConnection": "Server connection",
   "settingsServerConnectionSubtitle": "Override the API URL — for self-hosters and debugging",
   "settingsFirstTimeSetup": "First-time setup. Paste the API URL printed by run-app.sh, then tap Test → Save.",
@@ -374,18 +587,42 @@
   "billingTitle": "Billing",
   "billingSubscriptions": "Subscriptions",
   "billingPricePerMonth": "{price} / month",
-  "@billingPricePerMonth": {"placeholders": {"price": {"type": "String"}}},
+  "@billingPricePerMonth": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
   "billingManageSubscription": "Manage subscription (Stripe)",
   "billingRecentTransactions": "Recent transactions",
   "billingNoTransactions": "No transactions yet.",
   "billingBalance": "Balance",
   "billingPlanLabel": "Plan: {plan}",
-  "@billingPlanLabel": {"placeholders": {"plan": {"type": "String"}}},
+  "@billingPlanLabel": {
+    "placeholders": {
+      "plan": {
+        "type": "String"
+      }
+    }
+  },
   "billingPlanFree": "Free",
   "billingCancelsOn": "Cancels {date}",
-  "@billingCancelsOn": {"placeholders": {"date": {"type": "String"}}},
+  "@billingCancelsOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "billingRenewsOn": "Renews {date}",
-  "@billingRenewsOn": {"placeholders": {"date": {"type": "String"}}},
+  "@billingRenewsOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "billingCurrentPlanChip": "current",
   "billingSubscribe": "Subscribe",
   "transactionsTitle": "Transactions",
@@ -396,18 +633,51 @@
   "transactionsKindSubscription": "Subscription",
   "transactionsKindTopup": "Top-up",
   "transactionsLoadFailed": "Failed to load: {error}",
-  "@transactionsLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@transactionsLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "transactionsEmpty": "No transactions yet.\nGenerate a song or buy credits to see activity here.",
   "personasDeleteTitle": "Delete \"{name}\"?",
-  "@personasDeleteTitle": {"placeholders": {"name": {"type": "String"}}},
+  "@personasDeleteTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "personasDeleteBody": "This removes the saved voice. Songs you already generated with it keep their audio — only future generations lose the lock to this voice.",
   "personasRemoved": "\"{name}\" removed",
-  "@personasRemoved": {"placeholders": {"name": {"type": "String"}}},
+  "@personasRemoved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "personasLoadFailed": "Failed to load voices: {error}",
-  "@personasLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@personasLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "personasEmpty": "No saved voices yet.\n\nGenerate a song, then tap \"Save this voice\" on its detail screen to pin the singer for future songs.",
   "personasFromSong": "From song {runId} · take {take}",
-  "@personasFromSong": {"placeholders": {"runId": {"type": "String"}, "take": {"type": "int"}}},
+  "@personasFromSong": {
+    "placeholders": {
+      "runId": {
+        "type": "String"
+      },
+      "take": {
+        "type": "int"
+      }
+    }
+  },
   "personasDeleteTooltip": "Delete this voice",
   "newRunTitle": "New Episode",
   "newRunTabAiGenerate": "AI Generate",
@@ -458,7 +728,16 @@
   "newRunBeatRequired": "At least one beat is required",
   "newRunVisualRequired": "Every beat needs a visual description (English)",
   "newRunParsedBeats": "Parsed {count} beats ({method})",
-  "@newRunParsedBeats": {"placeholders": {"count": {"type": "int"}, "method": {"type": "String"}}},
+  "@newRunParsedBeats": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "method": {
+        "type": "String"
+      }
+    }
+  },
   "newRunMethodRegex": "regex",
   "newRunMethodAiSplit": "AI split",
   "newRunMethodAuto": "auto-segmented",
@@ -467,10 +746,25 @@
   "newRunBadgeAutoSegmented": "Auto-segmented — review carefully",
   "newRunBeatsSection": "Beats",
   "newRunAddBeat": "Add Beat ({number})",
-  "@newRunAddBeat": {"placeholders": {"number": {"type": "int"}}},
+  "@newRunAddBeat": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "newRunSaving": "Saving…",
   "newRunUseScript": "Use This Script ({count} beats, ~{cost})",
-  "@newRunUseScript": {"placeholders": {"count": {"type": "int"}, "cost": {"type": "String"}}},
+  "@newRunUseScript": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "cost": {
+        "type": "String"
+      }
+    }
+  },
   "newRunPasteDialogTitle": "Paste Markdown Script",
   "newRunPasteFormatHelp": "Recognised format: **العنوان: ...** title, **المشهد N – ...** scene headings, and **SPEAKER:**\\n\"dialogue\" blocks. Stage directions in plain prose are kept as silent context. Your Arabic is preserved character-for-character.",
   "newRunPasteHint": "**العنوان: القلادة المقدسة – الحلقة 4**\n\n**المشهد 1 – الفراغ**\nسكون مطلق...\n\n**الشاب (بهمس):**\n\"أنا… وين…؟\"\n\n...",
@@ -479,7 +773,13 @@
   "newRunParsing": "Parsing…",
   "newRunParseToBeats": "Parse to Beats",
   "newRunBeatBadge": "BEAT {number}",
-  "@newRunBeatBadge": {"placeholders": {"number": {"type": "String"}}},
+  "@newRunBeatBadge": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
   "newRunSpeakerLabel": "Speaker (free-text)",
   "newRunSpeakerHint": "e.g. mother, narrator, warrior, …",
   "newRunCharacterNameLabel": "Character name (Arabic, optional)",
@@ -493,33 +793,81 @@
   "runDetailApprovedPreparing": "Approved — preparing characters (~30s)…",
   "runDetailApprovedGenerating": "Approved — generating clips…",
   "runDetailApproveFailed": "Approve failed: {error}",
-  "@runDetailApproveFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@runDetailApproveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "runDetailRegenLookTitle": "Regenerate character look?",
   "runDetailRegenLookBody": "This discards the current character look and generates a new one. Your credit balance is not affected.",
   "runDetailKeep": "Keep",
   "runDetailRerollFailed": "Reroll failed: {error}",
-  "@runDetailRerollFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@runDetailRerollFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "runDetailRepairing": "Repairing video — re-muxing for browser playback…",
   "runDetailRepaired": "Repaired. Tap Play again.",
   "runDetailRepairFailed": "Repair failed: {error}",
-  "@runDetailRepairFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@runDetailRepairFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "runDetailResuming": "Resuming pipeline…",
   "runDetailResumeFailed": "Resume failed: {error}",
-  "@runDetailResumeFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@runDetailResumeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "runDetailDiscardTitle": "Discard this run?",
   "runDetailDiscardBody": "Cancelling will stop any running pipeline AND delete the run entirely. The script and any partially-generated artifacts will be removed. This cannot be undone.",
   "runDetailRunDiscarded": "Run discarded",
   "runDetailDiscardFailed": "Discard failed: {error}",
-  "@runDetailDiscardFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@runDetailDiscardFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "runDetailNoScriptToReroll": "No script — nothing to reroll",
   "runDetailRerollingClips": "{count, plural, =1{Rerolling 1 clip — 1 credit} other{Rerolling {count} clips — {count} credits}}",
-  "@runDetailRerollingClips": {"placeholders": {"count": {"type": "int"}}},
+  "@runDetailRerollingClips": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "runDetailRerollClipTitle": "Reroll clip {number}?",
-  "@runDetailRerollClipTitle": {"placeholders": {"number": {"type": "String"}}},
+  "@runDetailRerollClipTitle": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
   "runDetailRerollClipBody": "This regenerates one clip and costs 1 credit.",
   "runDetailRerollOneCredit": "Reroll (1 credit)",
   "runDetailRerollingClip": "Rerolling clip {number} — 1 credit",
-  "@runDetailRerollingClip": {"placeholders": {"number": {"type": "String"}}},
+  "@runDetailRerollingClip": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
   "runDetailStatusReady": "Ready to watch",
   "runDetailStatusScriptReady": "Script ready — approve to generate the video",
   "runDetailStatusCharacterReady": "Character look ready — approve to generate clips",
@@ -532,35 +880,83 @@
   "runDetailResume": "Resume",
   "runDetailCancelDiscard": "Cancel & Discard",
   "runDetailCreditsCount": "{count, plural, =1{1 credit} other{{count} credits}}",
-  "@runDetailCreditsCount": {"placeholders": {"count": {"type": "int"}}},
+  "@runDetailCreditsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "runDetailScriptBeats": "{count, plural, =1{Script (1 beat)} other{Script ({count} beats)}}",
-  "@runDetailScriptBeats": {"placeholders": {"count": {"type": "int"}}},
+  "@runDetailScriptBeats": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "runDetailDownloadScriptPdf": "Download script (PDF)",
   "runDetailRerollClipTooltip": "Reroll this clip (1 credit)",
   "runDetailSilentBeat": "(silent action beat — no dialogue)",
   "runDetailStartingGeneration": "Starting video generation — clips appear shortly…",
   "runDetailApprovingPreparing": "Approving — preparing characters (~30s)…",
   "runDetailApproveVeoLine": "{count, plural, =1{Approve to generate the video — 1 credit} other{Approve to generate the video — {count} credits}}",
-  "@runDetailApproveVeoLine": {"placeholders": {"count": {"type": "int"}}},
+  "@runDetailApproveVeoLine": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "runDetailApproveLine": "{count, plural, =1{Approve to start generation — 1 credit total} other{Approve to start generation — {count} credits total}}",
-  "@runDetailApproveLine": {"placeholders": {"count": {"type": "int"}}},
+  "@runDetailApproveLine": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "runDetailVeoGateHint": "Once started, clips render one by one (~1 min each).",
   "runDetailApproveHint": "Characters are prepared first; the video starts once you confirm again.",
   "runDetailApprove": "Approve",
   "runDetailStagePreparingCharacters": "Preparing characters…",
   "runDetailStageGeneratingClip": "Generating clip {current} of {total}…",
-  "@runDetailStageGeneratingClip": {"placeholders": {"current": {"type": "int"}, "total": {"type": "int"}}},
+  "@runDetailStageGeneratingClip": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "runDetailStageAligningCaptions": "Aligning captions…",
   "runDetailStageAssembling": "Assembling final video…",
   "runDetailClipsDone": "{done} / {total} clips done",
-  "@runDetailClipsDone": {"placeholders": {"done": {"type": "int"}, "total": {"type": "int"}}},
+  "@runDetailClipsDone": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "runDetailCharacterLook": "CHARACTER LOOK",
   "runDetailDontLikeRegenerate": "Don't like it? Regenerate",
   "runDetailRerollWhichTitle": "Reroll which clips?",
   "runDetailRerollWhichBody": "Pick the clips that need regenerating. Each costs 1 credit. The other clips stay; the final video re-stitches at the end.",
   "runDetailNoClipsSelected": "No clips selected",
   "runDetailSelectedClipsCredits": "{count, plural, =1{1 clip — 1 credit} other{{count} clips — {count} credits}}",
-  "@runDetailSelectedClipsCredits": {"placeholders": {"count": {"type": "int"}}},
+  "@runDetailSelectedClipsCredits": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "editScriptTitle": "Edit Script",
   "editScriptTitleLabel": "Title",
   "editScriptArabicDialogueLabel": "Arabic dialogue (leave empty for silent beat)",
@@ -574,10 +970,22 @@
   "costRunsLabel": "RUNS",
   "costAvgPerRun": "AVG / RUN",
   "costPercentOfTotal": "{percent} % of total",
-  "@costPercentOfTotal": {"placeholders": {"percent": {"type": "String"}}},
+  "@costPercentOfTotal": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
   "costFootnote": "Counts Veo ($0.10/sec) + Flux character sheet ($0.05/run). Doesn't include ElevenLabs (~$0.30/episode if used) or Anthropic / Groq script generation (<$0.05/episode).",
   "videoPlayerClipTitle": "Clip {number}",
-  "@videoPlayerClipTitle": {"placeholders": {"number": {"type": "String"}}},
+  "@videoPlayerClipTitle": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
   "videoPlayerUrlCopied": "Video URL copied — paste anywhere",
   "videoPlayerOpenLinkToDownload": "Open the link in a new tab to download",
   "videoPlayerPlaybackError": "playback error",
@@ -585,13 +993,31 @@
   "videoPlayerBackToRun": "Back to run",
   "videoPlayerRepairing": "Repairing playback…",
   "logViewerTitle": "Log — {runId}",
-  "@logViewerTitle": {"placeholders": {"runId": {"type": "String"}}},
+  "@logViewerTitle": {
+    "placeholders": {
+      "runId": {
+        "type": "String"
+      }
+    }
+  },
   "logViewerCopyTooltip": "Copy log",
   "logViewerCopied": "Log copied",
   "logViewerEmpty": "(empty)",
   "paywallOutOfCredits": "Out of credits",
   "paywallNeedCredits": "This video needs {needed} credits. You have {balance} — {missing} more to go. Top up to keep generating.",
-  "@paywallNeedCredits": {"placeholders": {"needed": {"type": "int"}, "balance": {"type": "int"}, "missing": {"type": "int"}}},
+  "@paywallNeedCredits": {
+    "placeholders": {
+      "needed": {
+        "type": "int"
+      },
+      "balance": {
+        "type": "int"
+      },
+      "missing": {
+        "type": "int"
+      }
+    }
+  },
   "paywallSavedNotice": "Your script and characters are saved. After topping up, tap Resume on this run to continue.",
   "paywallTopUp": "Top up",
   "misconfiguredTitle": "Backend not configured.",
@@ -610,32 +1036,74 @@
   "artistChooseAvatar": "Choose avatar image",
   "artistAvatarSelected": "New avatar selected — it uploads when you save",
   "artistAvatarUploadFailed": "Avatar upload failed: {error}",
-  "@artistAvatarUploadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@artistAvatarUploadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "artistCreateButton": "Create artist",
   "artistSaveButton": "Save changes",
   "artistDeleteButton": "Delete artist",
   "artistDeleteConfirmTitle": "Delete artist?",
   "artistDeleteConfirmBody": "Songs stay playable but leave this discography. The saved voice is kept.",
   "artistDeleteFailed": "Delete failed: {error}",
-  "@artistDeleteFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@artistDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "artistSongCount": "{count, plural, =0{No songs yet} =1{1 song} other{{count} songs}}",
-  "@artistSongCount": {"placeholders": {"count": {"type": "int"}}},
+  "@artistSongCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "artistShare": "Share",
   "artistLinkCopied": "Artist link copied",
   "artistEdit": "Edit",
   "artistNewSongCta": "New song as {name}",
-  "@artistNewSongCta": {"placeholders": {"name": {"type": "String"}}},
+  "@artistNewSongCta": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "artistDiscographyTitle": "Discography",
   "artistNoSongsYet": "No songs yet — release the first one as {name}.",
-  "@artistNoSongsYet": {"placeholders": {"name": {"type": "String"}}},
+  "@artistNoSongsYet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "artistPickerLabel": "Sing as artist",
   "artistPickerNone": "None",
   "artistMakeFromSongButton": "Make this singer an artist",
   "artistMakeFromSongBody": "Saves this song's voice and creates an artist around it. This song joins the discography, and new songs can be made as this artist.",
   "artistCreatedSnack": "Artist \"{name}\" created",
-  "@artistCreatedSnack": {"placeholders": {"name": {"type": "String"}}},
+  "@artistCreatedSnack": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "artistCreateFailed": "Couldn't create artist: {error}",
-  "@artistCreateFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@artistCreateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "releaseButton": "Release to stores",
   "releaseButtonReleased": "Released ✓",
   "releaseDialogTitle": "Release to stores",
@@ -654,22 +1122,46 @@
   "releaseMarkedSnack": "Marked as released",
   "releaseUnmarkedSnack": "Release mark removed",
   "releaseMarkFailed": "Couldn't update release status: {error}",
-  "@releaseMarkFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@releaseMarkFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "releaseBadge": "Released",
   "ytSettingsTitle": "YouTube",
   "ytSettingsSubtitleDisconnected": "Publish songs to your channel",
   "ytSettingsConnected": "Connected: {channel}",
-  "@ytSettingsConnected": {"placeholders": {"channel": {"type": "String"}}},
+  "@ytSettingsConnected": {
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
   "ytConnect": "Connect",
   "ytDisconnect": "Disconnect",
   "ytDisconnectConfirmTitle": "Disconnect YouTube?",
   "ytDisconnectConfirmBody": "Publishing from the app stops until you connect again. Videos already on YouTube are not affected.",
   "ytDisconnectedSnack": "YouTube disconnected",
   "ytDisconnectFailed": "Couldn't disconnect: {error}",
-  "@ytDisconnectFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@ytDisconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "ytFinishInBrowser": "Finish connecting in the browser, then pull to refresh.",
   "ytConnectFailed": "Couldn't start YouTube connect: {error}",
-  "@ytConnectFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@ytConnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "ytPublishButton": "Publish to YouTube",
   "ytOnYoutubeButton": "On YouTube",
   "ytPublishDialogTitle": "Publish to YouTube",
@@ -677,11 +1169,27 @@
   "ytPublish": "Publish",
   "ytPublishedSnack": "Published to YouTube",
   "ytPublishFailed": "Publish failed: {error}",
-  "@ytPublishFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@ytPublishFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "ytNotConnectedSnack": "YouTube isn't connected — connect it from Settings first.",
   "ytBadge": "YouTube",
   "ytAutoPublishLabel": "Auto-publish new songs to YouTube",
   "ytAutoPublishSubtitle": "When a song finishes, it's uploaded to your channel automatically.",
   "ytAutoPublishSaveFailed": "Couldn't save the YouTube auto-publish setting: {error}",
-  "@ytAutoPublishSaveFailed": {"placeholders": {"error": {"type": "String"}}}
+  "@ytAutoPublishSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "newSongFaithfulness": "Faithfulness to the original",
+  "newSongFaithfulnessHigh": "High — the cover closely follows the original's melody and feel.",
+  "newSongFaithfulnessLow": "Low — more creative freedom, further from the original.",
+  "llmDegradedBanner": "Lyric quality reduced — the primary writing model is unavailable (check Anthropic credits)."
 }

@@ -2932,3 +2932,43 @@ def test_publish_youtube_409_not_connected(client_factory, monkeypatch, tmp_path
     r = c.post("/songs/2026-07-16-000010/publish-youtube")
     assert r.status_code == 409
     assert "not connected" in r.text
+
+
+def test_upload_cover_audio_weight_validated_and_persisted(client_factory, monkeypatch, tmp_path):
+    from pipeline import api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    api_mod.set_spawn_fn(lambda args, run_dir: 7)
+    c = client_factory(user_id="alice")
+    # invalid
+    r = c.post("/songs/upload-cover",
+               files={"file": ("s.mp3", b"\x00", "audio/mpeg")},
+               data={"language": "ar", "audio_weight": "1.5"})
+    assert r.status_code == 422
+    # valid → state
+    r = c.post("/songs/upload-cover",
+               files={"file": ("s.mp3", b"\x00", "audio/mpeg")},
+               data={"language": "ar", "audio_weight": "0.8"})
+    assert r.status_code == 201, r.text
+    state = json.loads((tmp_path / "alice" / r.json()["run_id"] /
+                        "api_state.json").read_text())
+    assert state["audio_weight"] == 0.8
+
+
+def test_llm_status_degraded_by_marker_age(client_factory, monkeypatch, tmp_path):
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice")
+    # no marker
+    assert c.get("/system/llm-status").json()["degraded"] is False
+    # fresh marker → degraded
+    (tmp_path / "llm_fallback.json").write_text(json.dumps({
+        "last_fallback_at": _dt.now(_tz.utc).isoformat(timespec="seconds"),
+        "error": "credit balance too low"}))
+    st = c.get("/system/llm-status").json()
+    assert st["degraded"] is True and "credit" in st["error"]
+    # stale marker (48h) → not degraded
+    (tmp_path / "llm_fallback.json").write_text(json.dumps({
+        "last_fallback_at": (_dt.now(_tz.utc) - _td(hours=48)).isoformat(timespec="seconds"),
+        "error": "old"}))
+    assert c.get("/system/llm-status").json()["degraded"] is False

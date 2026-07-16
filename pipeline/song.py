@@ -120,6 +120,8 @@ def submit_cover_job(
     callback_url: str = DEFAULT_CALLBACK_URL,
     vocal_gender: str | None = None,
     negative_tags: str | None = None,
+    audio_weight: float | None = None,
+    style_weight: float | None = None,
 ) -> str:
     """Submit a Suno upload-cover job; return taskId.
 
@@ -146,6 +148,13 @@ def submit_cover_job(
         body["vocalGender"] = vocal_gender
     if negative_tags:
         body["negativeTags"] = negative_tags
+    # Faithfulness knobs (0-1, 2dp). audioWeight = how closely the cover
+    # follows the SOURCE AUDIO's melody/feel — the "match the original"
+    # dial the user asked for. Omitted → Suno's own default.
+    if audio_weight is not None:
+        body["audioWeight"] = round(float(audio_weight), 2)
+    if style_weight is not None:
+        body["styleWeight"] = round(float(style_weight), 2)
     resp = client._post_json(SUNO_COVER_PATH, body)
     data = resp.get("data") or {}
     task_id = data.get("taskId") or resp.get("taskId")

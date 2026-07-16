@@ -507,3 +507,41 @@ def test_autopublish_failure_never_fails_the_run(tmp_path, monkeypatch):
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["status"] == "complete"
     assert "quota exceeded" in state["youtube_publish_error"]
+
+
+def test_cover_post_approve_passes_audio_weight(tmp_path: Path, monkeypatch):
+    """The faithfulness knob stored at upload time reaches submit_cover_job."""
+    run_dir = tmp_path / "song-run-cover-w"
+    run_dir.mkdir()
+    (run_dir / "reference.mp3").write_bytes(b"\x00")
+    (run_dir / "song.json").write_text(json.dumps({
+        "title": "Cover", "lyrics": "[Chorus]\nx", "style_prompt": "s",
+        "cover_prompt": "c", "language": "ar", "mode": "cover",
+        "reference_filename": "reference.mp3"}))
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "generating_song", "mode": "cover",
+        "reference_filename": "reference.mp3", "audio_weight": 0.8}))
+
+    seen = {}
+    def fake_cover_submit(client, *, upload_url, lyrics, style_prompt, title,
+                          model=song.SUNO_MODEL_ID, **extra):
+        seen.update(extra)
+        return "cover-task"
+    monkeypatch.setattr(song, "submit_cover_job", fake_cover_submit)
+    monkeypatch.setattr(song, "wait_for_song", lambda *a, **k: [
+        song.SongTake(url="https://kie.ai/t1.mp3", duration_s=3.0),
+        song.SongTake(url="https://kie.ai/t2.mp3", duration_s=2.8)])
+    monkeypatch.setattr(song, "download_take",
+                        lambda c, u, p: shutil.copy(FIXTURE_SONG, p))
+    monkeypatch.setattr(song_cover, "generate_cover_image",
+                        lambda *, client, cover_prompt, out_dir:
+                        (shutil.copy(FIXTURE_COVER, out_dir / "cover_raw.png"),
+                         out_dir / "cover_raw.png")[1])
+    from pipeline import video as video_mod
+    monkeypatch.setattr(video_mod, "_upload_file_get_url",
+                        lambda p, *, content_type: "https://u/r.mp3")
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+    assert rc == 0
+    assert seen.get("audio_weight") == 0.8

@@ -20,9 +20,14 @@ class FallbackLLM:
     is a safety net, not a quality equal. Keep the primary's balance funded.
     """
 
-    def __init__(self, primary, fallback):
+    def __init__(self, primary, fallback, on_fallback=None):
         self._primary = primary
         self._fallback = fallback
+        # Optional observer fired when the primary fails (before the fallback
+        # call). Lets the API persist a "quality degraded" marker so the UI
+        # can warn instead of silently shipping weaker lyrics. Observer errors
+        # are swallowed — telemetry must never break generation.
+        self._on_fallback = on_fallback
 
     def complete(self, prompt: str, system: str | None = None) -> str:
         try:
@@ -30,6 +35,11 @@ class FallbackLLM:
         except Exception as e:
             print(f"[llm] primary provider failed ({e}); "
                   f"falling back to secondary provider")
+            if self._on_fallback is not None:
+                try:
+                    self._on_fallback(e)
+                except Exception:
+                    pass
             return self._fallback.complete(prompt, system=system)
 
     def embed(self, text: str) -> list[float]:
