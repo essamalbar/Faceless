@@ -544,6 +544,9 @@ class SongRunSummary(BaseModel):
     # an extra /artists call.
     artist_id: str | None = None
     artist_name: str | None = None
+    # Distribution: user-confirmed "this song is live on stores" flag
+    # (set via POST /songs/{id}/mark-released after the manual upload).
+    released: bool = False
 
 
 class RunProgress(BaseModel):
@@ -2878,6 +2881,7 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         video_mode=state.get("video_mode", "static"),
         artist_id=state.get("artist_id"),
         artist_name=_artist_name_for(user, state.get("artist_id")),
+        released=bool(state.get("released", False)),
     )
 
 
@@ -2994,6 +2998,7 @@ def list_songs(user: User = Depends(require_user)):
             video_mode=state.get("video_mode", "static"),
             artist_id=state.get("artist_id"),
             artist_name=artist_names.get(state.get("artist_id")),
+            released=bool(state.get("released", False)),
         ))
     return out
 
@@ -3283,6 +3288,74 @@ def get_song_audio(
             f'attachment; filename="faceless-song-{run_id}{suffix}.mp3"'
         )
     return FileResponse(path, media_type="audio/mpeg", headers=headers)
+
+
+@app.get("/songs/{run_id}/release-package")
+def get_release_package(
+    run_id: str,
+    user: User = Depends(require_user_header_or_query),
+):
+    """Distribution (Route B): download a store-ready release zip — audio,
+    3000x3000 cover, metadata (json+txt), lyrics, upload checklist. 409 with
+    the missing-items list when the run isn't releasable yet. Query-token
+    auth: this is a browser download link."""
+    from pipeline import artists as artists_mod
+    from pipeline.release import (ReleaseNotReady, build_release_package,
+                                  song_slug)
+
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(
+            status_code=409,
+            detail={"detail": "song is not complete yet",
+                    "missing": [f"status={state.get('status')}"]},
+        )
+
+    artist = None
+    if state.get("artist_id"):
+        artist = artists_mod.find_by_id(
+            artists_mod.load_artists(_user_runs_root(user)),
+            state["artist_id"])
+
+    out_zip = run_dir / "release.zip"
+    try:
+        build_release_package(run_dir, artist, out_zip)
+    except ReleaseNotReady as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"detail": "release package not ready", "missing": e.missing},
+        )
+    slug = song_slug(state.get("title") or "")
+    prefix = (artist or {}).get("handle") or "faceless"
+    return FileResponse(
+        out_zip,
+        media_type="application/zip",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{prefix}-{slug}-release.zip"'},
+    )
+
+
+class MarkReleasedRequest(BaseModel):
+    released: bool = True
+
+
+@app.post("/songs/{run_id}/mark-released")
+def mark_released(
+    run_id: str,
+    req: MarkReleasedRequest,
+    user: User = Depends(require_user),
+):
+    """User-confirmed 'this song is live on stores' toggle (after the manual
+    distributor upload). Feeds the discography badge + future royalty UI."""
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    _write_state(run_dir, released=req.released)
+    return {"run_id": run_id, "released": req.released}
 
 
 @app.get("/songs/{run_id}/cover")
