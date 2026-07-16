@@ -52,3 +52,7 @@ assets/music/*.mp3
 Download.mp4
 reference.mp4
 *.reference.mp4
+
+# local debug screenshots / user drops
+/*.png
+/ai song.mp4
