@@ -77,6 +77,12 @@ LYRICS — REQUIRED SHAPE:
 
 The bracket tags are LOAD-BEARING. Suno reads them. Do not omit them.
 
+ARABIC PRONUNCIATION — REQUIRED:
+When the song's language is Arabic, write the lyrics FULLY DIACRITIZED
+(تشكيل كامل على كل كلمة) — the singing model reads the harakat. Keep the
+dialect's own spellings (do NOT fusha-ize dialect words); section tags stay
+in English.
+
 SINGABILITY — REQUIRED:
   - Consistent rhyme scheme (قافية موحّدة) within each section.
   - Singable, consistent meter: lines within a section carry roughly the
@@ -138,17 +144,35 @@ lyrics so a singing model pronounces every word correctly.
 RULES:
 - Add fatha/damma/kasra/sukun/shadda/tanwin to EVERY Arabic word.
 - Do NOT add, remove, reorder, translate, or change ANY word.
+- Do NOT "correct" dialect spellings toward فصحى (keep السما as السما, not
+  السماء) — only add marks to the letters that are already there.
 - Keep section tags ([Verse 1], [Chorus], ...) and line breaks EXACTLY as-is.
 - Non-Arabic words pass through untouched.
 - Output ONLY the diacritized lyrics — no commentary, no markdown."""
 
 
+# Anything that is NOT a letter/digit (Arabic or Latin) — punctuation,
+# quotes, dashes, brackets — is pronunciation-irrelevant and models freely
+# add/remove it while diacritizing.
+_NON_LETTER_RE = re.compile(r"[^\w\u0621-\u064A]+")
+
+
+def tashkeel_density(text: str) -> float:
+    """harakat marks per Arabic letter — a cheap 'is this diacritized?'
+    signal (fully diacritized text lands ~0.6-0.9; bare text < 0.1)."""
+    letters = sum(1 for c in text if "ء" <= c <= "ي")
+    if not letters:
+        return 0.0
+    return len(HARAKAT_RE.findall(text)) / letters
+
+
 def letter_skeleton(text: str) -> str:
-    """Text minus harakat/tatweel, hamza/alef variants folded, whitespace
-    normalized — two lyrics with the same skeleton contain the same words
-    (orthographic corrections like ا→أ are NOT word changes)."""
-    return " ".join(
-        HARAKAT_RE.sub("", text).translate(_ARABIC_FOLD).split())
+    """LETTERS ONLY: harakat/tatweel stripped, hamza/alef variants folded,
+    punctuation dropped, whitespace normalized — two lyrics with the same
+    skeleton contain the same words (orthographic corrections like ا→أ and
+    punctuation shuffles are NOT word changes)."""
+    folded = HARAKAT_RE.sub("", text).translate(_ARABIC_FOLD)
+    return " ".join(_NON_LETTER_RE.sub(" ", folded).split())
 
 
 def diacritize_lyrics(llm, lyrics: str) -> str | None:
@@ -167,7 +191,12 @@ def diacritize_lyrics(llm, lyrics: str) -> str | None:
     if not raw.startswith("[") and "[" in raw:
         raw = raw[raw.index("["):].strip()
     if letter_skeleton(raw) != letter_skeleton(lyrics):
-        print("[lyrics] diacritize pass changed words — rejected")
+        # Log the first divergent words so prod logs show WHY (this guard
+        # silently ate tashkeel once; never let it be a mystery again).
+        wa, wb = letter_skeleton(lyrics).split(), letter_skeleton(raw).split()
+        diffs = [f"{x!r}→{y!r}" for x, y in zip(wa, wb) if x != y][:5]
+        print(f"[lyrics] diacritize pass changed words — rejected "
+              f"(in={len(wa)}w out={len(wb)}w diffs={diffs})")
         return None
     return raw
 
@@ -231,14 +260,16 @@ def generate_song_script(
     lyrics = custom_lyrics if custom_lyrics else parsed["lyrics"]
     validate_section_tags(lyrics)
 
-    # Two-pass tashkeel: composed Arabic lyrics get a dedicated
-    # diacritization call (guarded — words can't change). User-provided
-    # custom lyrics are never auto-modified (the review screen's تشكيل
-    # button covers those on demand).
+    # Tashkeel: the compose contract already requires full diacritization
+    # (capable models deliver ~0.7+ harakat density). The dedicated
+    # diacritize pass is a RESCUE for low-density output only — running it
+    # unconditionally caused more harm than good (diacritizers fusha-ize
+    # dialect spellings → guard rejects → bare lyrics shipped).
     if not custom_lyrics and language.startswith("ar"):
-        diacritized = diacritize_lyrics(llm, lyrics)
-        if diacritized:
-            lyrics = diacritized
+        if tashkeel_density(lyrics) < 0.30:
+            diacritized = diacritize_lyrics(llm, lyrics)
+            if diacritized:
+                lyrics = diacritized
 
     return SongScript(
         title=parsed["title"],
