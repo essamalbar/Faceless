@@ -11,18 +11,75 @@ class _CaptureLLM:
         self.system = None
 
     def complete(self, prompt, system=None):
-        self.user_msg, self.system = prompt, system
+        if self.user_msg is None:  # capture the COMPOSE call only
+            self.user_msg, self.system = prompt, system
         return json.dumps({
             "title": "ت", "lyrics": "[Verse 1]\nكَلِمَات\n[Chorus]\nلَازِمَة",
             "style_prompt": "s", "cover_prompt": "c",
             "art_direction": "", "scene_prompts": []}, ensure_ascii=False)
 
 
-def test_lyrics_contract_requires_tashkeel_and_singability():
-    assert "FULLY DIACRITIZED" in _SYSTEM_PROMPT
-    assert "تشكيل كامل" in _SYSTEM_PROMPT
+def test_lyrics_contract_requires_singability():
+    # Tashkeel moved OUT of the compose pass (two-pass architecture) — the
+    # compose contract keeps the singability rules.
     assert "rhyme" in _SYSTEM_PROMPT.lower()
     assert "VERBATIM" in _SYSTEM_PROMPT
+
+
+def test_two_pass_diacritization_applies_to_composed_arabic():
+    """Arabic compose → a second dedicated diacritize call whose result is
+    used when the skeleton guard passes."""
+    calls = []
+    class _TwoPass:
+        def complete(self, prompt, system=None):
+            calls.append(system or "")
+            if len(calls) == 1:
+                return json.dumps({
+                    "title": "ت", "lyrics": "[Chorus]\nيا ليل يا عين",
+                    "style_prompt": "s", "cover_prompt": "c",
+                    "art_direction": "", "scene_prompts": []},
+                    ensure_ascii=False)
+            return "[Chorus]\nيَا لَيْلُ يَا عَيْنُ"
+    script = generate_song_script(llm=_TwoPass(), theme="x",
+                                  custom_lyrics=None, style_hint=None,
+                                  language="ar")
+    assert len(calls) == 2
+    assert "تشكيل" in calls[1]  # dedicated diacritize system prompt
+    assert script.lyrics == "[Chorus]\nيَا لَيْلُ يَا عَيْنُ"
+
+
+def test_two_pass_rejects_changed_words_keeps_composed():
+    class _BadPass2:
+        n = 0
+        def complete(self, prompt, system=None):
+            self.n += 1
+            if self.n == 1:
+                return json.dumps({
+                    "title": "ت", "lyrics": "[Chorus]\nيا ليل يا عين",
+                    "style_prompt": "s", "cover_prompt": "c",
+                    "art_direction": "", "scene_prompts": []},
+                    ensure_ascii=False)
+            return "[Chorus]\nيَا قَمَرُ يَا عَيْنُ"  # swapped a word
+    script = generate_song_script(llm=_BadPass2(), theme="x",
+                                  custom_lyrics=None, style_hint=None,
+                                  language="ar")
+    assert script.lyrics == "[Chorus]\nيا ليل يا عين"  # composed text kept
+
+
+def test_custom_lyrics_never_auto_diacritized():
+    calls = []
+    class _LLM:
+        def complete(self, prompt, system=None):
+            calls.append(1)
+            return json.dumps({
+                "title": "ت", "lyrics": "ignored",
+                "style_prompt": "s", "cover_prompt": "c",
+                "art_direction": "", "scene_prompts": []}, ensure_ascii=False)
+    script = generate_song_script(llm=_LLM(), theme="x",
+                                  custom_lyrics="[Chorus]\nكلماتي أنا",
+                                  style_hint=None, language="ar")
+    assert len(calls) == 1  # no second pass on user text
+    assert script.lyrics == "[Chorus]\nكلماتي أنا"
 
 
 def test_dialect_lands_in_user_msg():

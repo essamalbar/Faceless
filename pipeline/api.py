@@ -3440,18 +3440,11 @@ def diacritize_song(run_id: str, user: User = Depends(require_user)):
     if not lyrics.strip():
         raise HTTPException(409, "no lyrics to diacritize")
 
-    try:
-        raw = _build_song_llm().complete(lyrics, system=_DIACRITIZE_SYSTEM)
-    except Exception as e:
-        raise HTTPException(502, f"diacritize failed: {e}")
-    result = raw.strip()
-    if result.startswith("```"):
-        result = re.sub(r"^```[a-z]*\n?|\n?```$", "", result,
-                        flags=re.MULTILINE).strip()
-
-    if _letter_skeleton(result) != _letter_skeleton(lyrics):
+    from pipeline.song_lyrics import diacritize_lyrics
+    result = diacritize_lyrics(_build_song_llm(), lyrics)
+    if result is None:
         raise HTTPException(
-            502, "diacritize output changed the words — refused (retry)")
+            502, "diacritize failed or changed the words — refused (retry)")
 
     current["lyrics"] = result
     _atomic_write_json(script_path, current)

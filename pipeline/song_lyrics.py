@@ -77,12 +77,6 @@ LYRICS — REQUIRED SHAPE:
 
 The bracket tags are LOAD-BEARING. Suno reads them. Do not omit them.
 
-ARABIC PRONUNCIATION — REQUIRED:
-When the song's language is Arabic, the lyrics MUST be FULLY DIACRITIZED
-(تشكيل كامل — fatha/damma/kasra/sukun/shadda/tanwin on every word). Suno
-reads the harakat; undiacritized Arabic gets mispronounced. Section tags
-stay in English ([Verse 1], [Chorus], ...).
-
 SINGABILITY — REQUIRED:
   - Consistent rhyme scheme (قافية موحّدة) within each section.
   - Singable, consistent meter: lines within a section carry roughly the
@@ -114,6 +108,50 @@ ART DIRECTION + SCENE PROMPTS (for the cinematic music-video mode):
     repeat the art_direction text in them). No text in any image.
     Reuse the SAME chorus imagery concept whenever [Chorus] repeats.
 """
+
+
+# --- Two-pass tashkeel -------------------------------------------------------
+# Composing great lyrics and fully diacritizing them in ONE call degrades
+# both. Pass 1 composes naturally; pass 2 is a dedicated diacritization call
+# guarded so it can only ADD harakat — a changed word rejects the pass and
+# the composed lyrics ship undiacritized (the review screen's تشكيل button
+# can retry).
+
+# Arabic harakat + tatweel — stripped to compare letter skeletons.
+HARAKAT_RE = re.compile(r"[ً-ٰٟـ]")
+
+DIACRITIZE_SYSTEM = """You add FULL Arabic diacritics (تشكيل كامل) to song
+lyrics so a singing model pronounces every word correctly.
+
+RULES:
+- Add fatha/damma/kasra/sukun/shadda/tanwin to EVERY Arabic word.
+- Do NOT add, remove, reorder, translate, or change ANY word.
+- Keep section tags ([Verse 1], [Chorus], ...) and line breaks EXACTLY as-is.
+- Non-Arabic words pass through untouched.
+- Output ONLY the diacritized lyrics — no commentary, no markdown."""
+
+
+def letter_skeleton(text: str) -> str:
+    """Text minus harakat/tatweel with whitespace normalized — two lyrics
+    with the same skeleton contain exactly the same words."""
+    return " ".join(HARAKAT_RE.sub("", text).split())
+
+
+def diacritize_lyrics(llm, lyrics: str) -> str | None:
+    """Dedicated tashkeel pass. Returns the diacritized lyrics, or None when
+    the model changed words (skeleton mismatch) or errored — callers keep
+    the original in that case."""
+    try:
+        raw = llm.complete(lyrics, system=DIACRITIZE_SYSTEM).strip()
+    except Exception as e:
+        print(f"[lyrics] diacritize pass failed ({e}); keeping composed text")
+        return None
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
+    if letter_skeleton(raw) != letter_skeleton(lyrics):
+        print("[lyrics] diacritize pass changed words — rejected")
+        return None
+    return raw
 
 
 _DIALECT_NAMES = {
@@ -174,6 +212,15 @@ def generate_song_script(
 
     lyrics = custom_lyrics if custom_lyrics else parsed["lyrics"]
     validate_section_tags(lyrics)
+
+    # Two-pass tashkeel: composed Arabic lyrics get a dedicated
+    # diacritization call (guarded — words can't change). User-provided
+    # custom lyrics are never auto-modified (the review screen's تشكيل
+    # button covers those on demand).
+    if not custom_lyrics and language.startswith("ar"):
+        diacritized = diacritize_lyrics(llm, lyrics)
+        if diacritized:
+            lyrics = diacritized
 
     return SongScript(
         title=parsed["title"],
