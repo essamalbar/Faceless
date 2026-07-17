@@ -149,3 +149,21 @@ def test_high_density_compose_skips_rescue():
                              language="ar")
     assert len(calls) == 1  # no rescue needed
     assert "يَا" in s.lyrics
+
+
+def test_generate_retries_once_on_malformed_json():
+    outs = ['{"title": "x", "lyrics": "[Chorus]\\nيا "قلب" مكسور"}',  # broken
+            json.dumps({"title": "ت", "lyrics": "[Chorus]\u0644",
+                        "style_prompt": "s", "cover_prompt": "c",
+                        "art_direction": "", "scene_prompts": []},
+                       ensure_ascii=False)]
+    calls = []
+    class _Flaky:
+        def complete(self, prompt, system=None):
+            calls.append(prompt)
+            return outs[len(calls) - 1]
+    s = generate_song_script(llm=_Flaky(), theme="x", custom_lyrics=None,
+                             style_hint=None, language="en")
+    assert len(calls) == 2
+    assert "VALID JSON" in calls[1]
+    assert s.title == "ت"

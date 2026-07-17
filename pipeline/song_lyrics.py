@@ -241,21 +241,34 @@ def generate_song_script(
             + custom_lyrics
         )
 
-    raw = llm.complete(user_msg, system=_SYSTEM_PROMPT)
-    raw = raw.strip()
-    if raw.startswith("```"):
-        # Strip fenced-code wrappers (some models always wrap).
-        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
-    # The Groq/Llama fallback provider sometimes wraps the JSON in prose and
-    # emits raw newlines inside string values — both break strict json.loads.
-    # Extract the outermost {...} and parse non-strict so raw control chars in
-    # the lyrics are tolerated. Anthropic output already satisfies both, so
-    # this is purely additive robustness for the fallback path.
-    if not raw.startswith("{"):
-        start, end = raw.find("{"), raw.rfind("}")
-        if start != -1 and end > start:
-            raw = raw[start:end + 1]
-    parsed = json.loads(raw, strict=False)
+    # Free-tier writers occasionally emit ONE malformed JSON sample
+    # (unescaped quote mid-lyrics etc.) — a fresh sample almost always
+    # parses, so retry the call once before failing the request.
+    parsed = None
+    last_err: Exception | None = None
+    for attempt in range(2):
+        msg = user_msg if attempt == 0 else (
+            user_msg + "\n\nIMPORTANT: reply with ONLY a VALID JSON object — "
+                       "escape any double quotes inside string values.")
+        raw = llm.complete(msg, system=_SYSTEM_PROMPT).strip()
+        if raw.startswith("```"):
+            # Strip fenced-code wrappers (some models always wrap).
+            raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw,
+                         flags=re.MULTILINE).strip()
+        # Some providers wrap the JSON in prose / emit raw newlines inside
+        # string values — extract the outermost {...} and parse non-strict.
+        if not raw.startswith("{"):
+            start, end = raw.find("{"), raw.rfind("}")
+            if start != -1 and end > start:
+                raw = raw[start:end + 1]
+        try:
+            parsed = json.loads(raw, strict=False)
+            break
+        except json.JSONDecodeError as e:
+            last_err = e
+            print(f"[lyrics] JSON parse failed (attempt {attempt + 1}): {e}")
+    if parsed is None:
+        raise last_err  # surfaces as the existing 500 with a clear message
 
     lyrics = custom_lyrics if custom_lyrics else parsed["lyrics"]
     validate_section_tags(lyrics)
