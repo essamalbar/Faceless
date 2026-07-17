@@ -33,6 +33,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
   late String _language;
   late String _vocalGender;
   late bool _autoPublishYoutube;
+  late bool _morningDrafts;
   Uint8List? _avatarBytes; // picked but not yet uploaded (uploads on save)
   String? _avatarName;
   bool _saving = false;
@@ -52,6 +53,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
     _language = (a?.defaultLanguage == 'en') ? 'en' : 'ar';
     _vocalGender = (a?.defaultVocalGender == 'f') ? 'f' : 'm';
     _autoPublishYoutube = a?.autoPublishYoutube ?? false; // create: OFF
+    _morningDrafts = a?.morningDrafts ?? false; // create: OFF
   }
 
   @override
@@ -110,6 +112,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
           'default_language': _language,
           'default_vocal_gender': _vocalGender,
           'auto_publish_youtube': _autoPublishYoutube,
+          'morning_drafts': _morningDrafts,
         });
       } else {
         artist = await widget.client.createArtist(
@@ -123,10 +126,12 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
         // POST /artists doesn't accept the YouTube toggle — patch it on
         // right after create, but only when the user actually turned it
         // on (default is OFF). A failed patch shouldn't lose the artist.
-        if (_autoPublishYoutube) {
+        if (_autoPublishYoutube || _morningDrafts) {
           try {
-            artist = await widget.client
-                .patchArtist(artist.id, {'auto_publish_youtube': true});
+            artist = await widget.client.patchArtist(artist.id, {
+              if (_autoPublishYoutube) 'auto_publish_youtube': true,
+              if (_morningDrafts) 'morning_drafts': true,
+            });
           } catch (e) {
             messenger.showSnackBar(
                 SnackBar(content: Text(l10n.ytAutoPublishSaveFailed('$e'))));
@@ -345,6 +350,21 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
               onChanged: _saving
                   ? null
                   : (v) => setState(() => _autoPublishYoutube = v),
+            ),
+            // Morning drafts: a FREE draft each morning from the day's
+            // trends — the approve gate (and billing) is untouched.
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.draftMorningLabel),
+              subtitle: Text(
+                l10n.draftMorningSubtitle,
+                style: const TextStyle(
+                    fontSize: 12, color: FacelessTheme.textSecondary),
+              ),
+              value: _morningDrafts,
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _morningDrafts = v),
             ),
             const SizedBox(height: 20),
             if (_error != null)

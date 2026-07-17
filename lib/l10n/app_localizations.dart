@@ -3769,6 +3769,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Reading today\'s trends…'**
   String get trendGenerating;
+
+  /// No description provided for @draftMorningLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Morning drafts'**
+  String get draftMorningLabel;
+
+  /// No description provided for @draftMorningSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A free draft every morning from the day\'s trends — you only pay when you approve.'**
+  String get draftMorningSubtitle;
+
+  /// No description provided for @draftSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Morning drafts'**
+  String get draftSectionTitle;
+
+  /// No description provided for @draftReviewButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Review'**
+  String get draftReviewButton;
 }
 
 class _AppLocalizationsDelegate

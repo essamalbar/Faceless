@@ -684,6 +684,91 @@ class _HomeScreenState extends State<HomeScreen> {
         .then((_) => _refresh());
   }
 
+  /// Morning drafts: free overnight drafts awaiting the user's approval.
+  /// Data comes from the songs list itself — no extra endpoint.
+  Widget _morningDraftsSection(List<SongSummary> all) {
+    final drafts = all
+        .where((s) =>
+            s.source == 'morning_draft' && s.status == 'awaiting_approval')
+        .toList();
+    if (drafts.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: Text('🌅 ${context.l10n.draftSectionTitle}',
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+        ),
+        for (final d in drafts)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _openSong(d),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: FacelessTheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                      color: FacelessTheme.accent.withValues(alpha: 0.45)),
+                  boxShadow: FacelessTheme.softShadow,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(d.title ?? d.theme ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 15)),
+                          if ((d.trendRationale ?? '').isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Text(d.trendRationale!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12.5,
+                                      color: FacelessTheme.textSecondary)),
+                            ),
+                          if (d.artistName != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Text(d.artistName!,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: FacelessTheme.accent,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                      ),
+                      onPressed: () => _openSong(d),
+                      child: Text(context.l10n.draftReviewButton,
+                          style: const TextStyle(fontSize: 13)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   /// Trend Engine: "Trending now" — timely, ready-to-approve song briefs.
   /// Fire-and-forget: any fetch error hides the section entirely.
   Widget _trendsSection() {
@@ -865,6 +950,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return ListView(
             padding: const EdgeInsets.only(bottom: 28),
             children: [
+              _morningDraftsSection(all),
               _trendsSection(),
               _artistsSection(),
               _SongSearchBar(

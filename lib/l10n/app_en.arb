@@ -1195,5 +1195,9 @@
   "trendSectionTitle": "Trending now",
   "trendRefreshTooltip": "New ideas",
   "trendCreateButton": "Create",
-  "trendGenerating": "Reading today's trends…"
+  "trendGenerating": "Reading today's trends…",
+  "draftMorningLabel": "Morning drafts",
+  "draftMorningSubtitle": "A free draft every morning from the day's trends — you only pay when you approve.",
+  "draftSectionTitle": "Morning drafts",
+  "draftReviewButton": "Review"
 }

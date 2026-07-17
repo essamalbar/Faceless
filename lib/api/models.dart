@@ -322,6 +322,9 @@ class SongSummary {
   // Artist Core: which artist this song belongs to (null = unassigned).
   final String? artistId;
   final String? artistName;
+  // Morning drafts: origin + the brief's "why now" line.
+  final String? source;
+  final String? trendRationale;
   // Distribution: manual "live on stores" flag toggled by the user
   // after uploading the release package to a distributor.
   final bool released;
@@ -345,6 +348,8 @@ class SongSummary {
     this.artistName,
     this.released = false,
     this.youtubeUrl,
+    this.source,
+    this.trendRationale,
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -363,6 +368,8 @@ class SongSummary {
         artistName: j['artist_name'] as String?,
         released: (j['released'] as bool?) ?? false,
         youtubeUrl: j['youtube_url'] as String?,
+        source: j['source'] as String?,
+        trendRationale: j['trend_rationale'] as String?,
       );
 }
 
@@ -383,6 +390,7 @@ class Artist {
   // YouTube: when true, finished songs by this artist are uploaded to
   // the connected channel automatically.
   final bool autoPublishYoutube;
+  final bool morningDrafts;
 
   Artist({
     required this.id,
@@ -398,6 +406,7 @@ class Artist {
     required this.createdAt,
     this.songCount = 0,
     this.autoPublishYoutube = false,
+    this.morningDrafts = false,
   });
 
   bool get hasAvatar => avatarUpload != null || avatarRunId != null;
@@ -416,6 +425,7 @@ class Artist {
         createdAt: (j['created_at'] as String?) ?? '',
         songCount: (j['song_count'] as int?) ?? 0,
         autoPublishYoutube: (j['auto_publish_youtube'] as bool?) ?? false,
+        morningDrafts: (j['morning_drafts'] as bool?) ?? false,
       );
 }
 
