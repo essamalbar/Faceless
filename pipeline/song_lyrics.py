@@ -82,7 +82,12 @@ SINGABILITY — REQUIRED:
   - Singable, consistent meter: lines within a section carry roughly the
     same syllable count.
   - The [Chorus] hook repeats VERBATIM every time (including its tashkeel).
-  - Prefer simple, emotional, everyday words over literary flourish.
+  - Mature, poetic register (عمق شعري): vivid imagery, authentic idioms,
+    contemporary adult language — NEVER childish, nursery-rhyme, or naive
+    phrasing, and no worn-out clichés.
+  - Emotionally specific: concrete moments and sensory details over
+    abstract generalities.
+  - Singable words — but depth first: this is music for adults.
   - No tongue-twisters or consonant pile-ups.
 
 STYLE PROMPT — REQUIRED SHAPE (comma-separated):
@@ -119,6 +124,13 @@ ART DIRECTION + SCENE PROMPTS (for the cinematic music-video mode):
 
 # Arabic harakat + tatweel — stripped to compare letter skeletons.
 HARAKAT_RE = re.compile(r"[ً-ٰٟـ]")
+# Orthographic variants diacritizers legitimately normalize (hamza seats,
+# alef forms, alef maqsura) — folded before comparison so a hamza-seat
+# correction (ا→أ) doesn't read as a "changed word".
+_ARABIC_FOLD = str.maketrans({
+    "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا",
+    "ى": "ي", "ئ": "ي", "ؤ": "و",
+})
 
 DIACRITIZE_SYSTEM = """You add FULL Arabic diacritics (تشكيل كامل) to song
 lyrics so a singing model pronounces every word correctly.
@@ -132,9 +144,11 @@ RULES:
 
 
 def letter_skeleton(text: str) -> str:
-    """Text minus harakat/tatweel with whitespace normalized — two lyrics
-    with the same skeleton contain exactly the same words."""
-    return " ".join(HARAKAT_RE.sub("", text).split())
+    """Text minus harakat/tatweel, hamza/alef variants folded, whitespace
+    normalized — two lyrics with the same skeleton contain the same words
+    (orthographic corrections like ا→أ are NOT word changes)."""
+    return " ".join(
+        HARAKAT_RE.sub("", text).translate(_ARABIC_FOLD).split())
 
 
 def diacritize_lyrics(llm, lyrics: str) -> str | None:
@@ -148,6 +162,10 @@ def diacritize_lyrics(llm, lyrics: str) -> str | None:
         return None
     if raw.startswith("```"):
         raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
+    # Models sometimes prepend commentary; lyrics always start at a section
+    # tag — cut anything before the first '['.
+    if not raw.startswith("[") and "[" in raw:
+        raw = raw[raw.index("["):].strip()
     if letter_skeleton(raw) != letter_skeleton(lyrics):
         print("[lyrics] diacritize pass changed words — rejected")
         return None

@@ -108,3 +108,27 @@ def test_letter_skeleton_ignores_harakat_only():
     assert _letter_skeleton(plain) == _letter_skeleton(diacritized)
     changed = "[Chorus]\nيا قمر يا عين"
     assert _letter_skeleton(plain) != _letter_skeleton(changed)
+
+
+def test_skeleton_folds_hamza_and_alef_variants():
+    """Diacritizers legitimately correct hamza seats (ا→أ) — the guard must
+    not treat that as a changed word."""
+    from pipeline.song_lyrics import letter_skeleton
+    composed = "[Chorus]\nانت الحبيب ومعك الامان يا قلبي"
+    diacritized = "[Chorus]\nأَنْتَ الحَبِيبُ وَمَعَكَ الأَمَانُ يَا قَلْبِي"
+    assert letter_skeleton(composed) == letter_skeleton(diacritized)
+
+
+def test_diacritize_cuts_model_preamble():
+    from pipeline.song_lyrics import diacritize_lyrics
+    class _Chatty:
+        def complete(self, prompt, system=None):
+            return "إليك الكلمات مشكّلة:\n[Chorus]\nيَا لَيْلُ يَا عَيْنُ"
+    out = diacritize_lyrics(_Chatty(), "[Chorus]\nيا ليل يا عين")
+    assert out == "[Chorus]\nيَا لَيْلُ يَا عَيْنُ"
+
+
+def test_contract_bans_childish_register():
+    from pipeline.song_lyrics import _SYSTEM_PROMPT
+    assert "NEVER childish" in _SYSTEM_PROMPT
+    assert "عمق شعري" in _SYSTEM_PROMPT
