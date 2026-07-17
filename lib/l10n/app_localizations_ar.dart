@@ -2180,4 +2180,17 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get trendGenerating => 'جارٍ قراءة اتجاهات اليوم…';
+
+  @override
+  String get draftMorningLabel => 'مسودات الصباح';
+
+  @override
+  String get draftMorningSubtitle =>
+      'مسودة مجانية كل صباح من اتجاهات اليوم — لا تدفع إلا عند الموافقة.';
+
+  @override
+  String get draftSectionTitle => 'مسودات الصباح';
+
+  @override
+  String get draftReviewButton => 'مراجعة';
 }

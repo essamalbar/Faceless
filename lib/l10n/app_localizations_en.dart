@@ -2142,4 +2142,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trendGenerating => 'Reading today\'s trends…';
+
+  @override
+  String get draftMorningLabel => 'Morning drafts';
+
+  @override
+  String get draftMorningSubtitle =>
+      'A free draft every morning from the day\'s trends — you only pay when you approve.';
+
+  @override
+  String get draftSectionTitle => 'Morning drafts';
+
+  @override
+  String get draftReviewButton => 'Review';
 }

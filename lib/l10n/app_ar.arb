@@ -611,5 +611,9 @@
   "trendSectionTitle": "رائج الآن",
   "trendRefreshTooltip": "أفكار جديدة",
   "trendCreateButton": "إنشاء",
-  "trendGenerating": "جارٍ قراءة اتجاهات اليوم…"
+  "trendGenerating": "جارٍ قراءة اتجاهات اليوم…",
+  "draftMorningLabel": "مسودات الصباح",
+  "draftMorningSubtitle": "مسودة مجانية كل صباح من اتجاهات اليوم — لا تدفع إلا عند الموافقة.",
+  "draftSectionTitle": "مسودات الصباح",
+  "draftReviewButton": "مراجعة"
 }
