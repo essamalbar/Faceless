@@ -385,6 +385,8 @@ class Artist {
   final String defaultStyle;
   final String defaultLanguage;
   final String defaultVocalGender;
+  // Arabic quality: preferred dialect for new songs ('' = unset).
+  final String defaultDialect;
   final String createdAt;
   final int songCount;
   // YouTube: when true, finished songs by this artist are uploaded to
@@ -403,6 +405,7 @@ class Artist {
     this.defaultStyle = '',
     this.defaultLanguage = 'ar',
     this.defaultVocalGender = 'm',
+    this.defaultDialect = '',
     required this.createdAt,
     this.songCount = 0,
     this.autoPublishYoutube = false,
@@ -422,6 +425,7 @@ class Artist {
         defaultStyle: (j['default_style'] as String?) ?? '',
         defaultLanguage: (j['default_language'] as String?) ?? 'ar',
         defaultVocalGender: (j['default_vocal_gender'] as String?) ?? 'm',
+        defaultDialect: (j['default_dialect'] as String?) ?? '',
         createdAt: (j['created_at'] as String?) ?? '',
         songCount: (j['song_count'] as int?) ?? 0,
         autoPublishYoutube: (j['auto_publish_youtube'] as bool?) ?? false,

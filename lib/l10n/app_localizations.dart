@@ -3793,6 +3793,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Review'**
   String get draftReviewButton;
+
+  /// No description provided for @qualityEditStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit style'**
+  String get qualityEditStyle;
+
+  /// No description provided for @qualityDiacritize.
+  ///
+  /// In en, this message translates to:
+  /// **'Add diacritics'**
+  String get qualityDiacritize;
+
+  /// No description provided for @qualityDiacritizeDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Diacritics added to the lyrics'**
+  String get qualityDiacritizeDone;
+
+  /// No description provided for @qualityDiacritizeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t add diacritics: {error}'**
+  String qualityDiacritizeFailed(String error);
+
+  /// No description provided for @qualityDialectLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Dialect'**
+  String get qualityDialectLabel;
+
+  /// No description provided for @qualityDialectAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get qualityDialectAuto;
+
+  /// No description provided for @qualityDialectMsa.
+  ///
+  /// In en, this message translates to:
+  /// **'Modern Standard Arabic'**
+  String get qualityDialectMsa;
+
+  /// No description provided for @qualityDialectEgyptian.
+  ///
+  /// In en, this message translates to:
+  /// **'Egyptian'**
+  String get qualityDialectEgyptian;
+
+  /// No description provided for @qualityDialectKhaleeji.
+  ///
+  /// In en, this message translates to:
+  /// **'Khaleeji (Gulf)'**
+  String get qualityDialectKhaleeji;
+
+  /// No description provided for @qualityDialectLevantine.
+  ///
+  /// In en, this message translates to:
+  /// **'Levantine'**
+  String get qualityDialectLevantine;
+
+  /// No description provided for @qualityDialectIraqi.
+  ///
+  /// In en, this message translates to:
+  /// **'Iraqi'**
+  String get qualityDialectIraqi;
 }
 
 class _AppLocalizationsDelegate

@@ -615,5 +615,16 @@
   "draftMorningLabel": "مسودات الصباح",
   "draftMorningSubtitle": "مسودة مجانية كل صباح من اتجاهات اليوم — لا تدفع إلا عند الموافقة.",
   "draftSectionTitle": "مسودات الصباح",
-  "draftReviewButton": "مراجعة"
+  "draftReviewButton": "مراجعة",
+  "qualityEditStyle": "تعديل الأسلوب",
+  "qualityDiacritize": "تشكيل",
+  "qualityDiacritizeDone": "تمت إضافة التشكيل إلى الكلمات",
+  "qualityDiacritizeFailed": "تعذّرت إضافة التشكيل: {error}",
+  "qualityDialectLabel": "اللهجة",
+  "qualityDialectAuto": "تلقائي",
+  "qualityDialectMsa": "الفصحى",
+  "qualityDialectEgyptian": "مصري",
+  "qualityDialectKhaleeji": "خليجي",
+  "qualityDialectLevantine": "شامي",
+  "qualityDialectIraqi": "عراقي"
 }
