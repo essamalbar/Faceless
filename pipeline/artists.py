@@ -66,6 +66,8 @@ def new_artist(
         "default_vocal_gender": default_vocal_gender,
         # Channel Autopilot: publish finished songs to YouTube automatically.
         "auto_publish_youtube": False,
+        # Channel Autopilot: a free draft each morning from the day's trends.
+        "morning_drafts": False,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 

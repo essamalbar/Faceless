@@ -481,6 +481,8 @@ class ArtistSummary(BaseModel):
     default_vocal_gender: str = "m"
     # Channel Autopilot: publish each finished song to YouTube automatically.
     auto_publish_youtube: bool = False
+    # Channel Autopilot: a free draft each morning from the day's trends.
+    morning_drafts: bool = False
     created_at: str
     song_count: int = 0
 
@@ -504,6 +506,7 @@ class PatchArtistRequest(BaseModel):
     default_language: str | None = None
     default_vocal_gender: str | None = None
     auto_publish_youtube: bool | None = None
+    morning_drafts: bool | None = None
 
 
 class CreateArtistFromSongRequest(BaseModel):
@@ -552,6 +555,9 @@ class SongRunSummary(BaseModel):
     released: bool = False
     # YouTube auto-publish: the published video URL (None = not published).
     youtube_url: str | None = None
+    # Morning drafts: how this song originated + the brief's "why now" line.
+    source: str | None = None
+    trend_rationale: str | None = None
 
 
 class RunProgress(BaseModel):
@@ -851,6 +857,177 @@ def trend_briefs(refresh: bool = False, language: str = "ar",
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     trends_mod.save_cache(user_root, generated_at, briefs)
     return {"generated_at": generated_at, "briefs": briefs, "stale": False}
+
+
+# ---------------------------------------------------------------------------
+# Morning drafts — the autopilot's second gear. Cloud Scheduler hits the
+# admin endpoint daily; each opted-in artist gets a FREE draft written from
+# the freshest trend brief. Approval (and billing) is untouched.
+# Spec: docs/superpowers/specs/2026-07-17-morning-drafts-design.md.
+# ---------------------------------------------------------------------------
+
+
+def _write_song_draft(
+    user_id: str,
+    user_root: Path,
+    *,
+    theme: str,
+    style_hint: str | None,
+    language: str,
+    artist: dict,
+    source: str,
+    trend_rationale: str | None,
+) -> str:
+    """Writer pass for a server-initiated draft (same shape create_song
+    produces): run dir + state + LLM script + song.json + awaiting_approval.
+    $0 by construction. Raises on LLM failure (run marked failed first)."""
+    from pipeline.song_lyrics import generate_song_script
+
+    user_root.mkdir(parents=True, exist_ok=True)
+    run_id = _make_run_id(root=user_root)
+    run_dir = user_root / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    _write_state(
+        run_dir,
+        kind="song",
+        status="writing_lyrics",
+        user_id=user_id,
+        theme=theme,
+        video_mode="static",
+        artist_id=artist["id"],
+        source=source,
+        trend_rationale=trend_rationale,
+        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
+    try:
+        script = generate_song_script(
+            llm=_build_song_llm(), theme=theme, custom_lyrics=None,
+            style_hint=style_hint, language=language)
+    except Exception as e:
+        _write_state(run_dir, status="failed",
+                     last_error=f"lyrics LLM failed: {e}")
+        raise
+    (run_dir / "song.json").write_text(json.dumps({
+        "title": script.title,
+        "lyrics": script.lyrics,
+        "style_prompt": script.style_prompt,
+        "cover_prompt": script.cover_prompt,
+        "language": script.language,
+        "vocal_gender": artist.get("default_vocal_gender") or "m",
+        "persona_id": artist.get("persona_id"),
+        "suno_model": None,
+        "video_mode": "static",
+        "art_direction": script.art_direction,
+        "scene_prompts": script.scene_prompts,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    (run_dir / "lyrics.txt").write_text(script.lyrics, encoding="utf-8")
+    _write_state(run_dir, status="awaiting_approval", title=script.title)
+    return run_id
+
+
+def _has_morning_draft_today(user_root: Path, artist_id: str) -> bool:
+    """Idempotency: a NON-FAILED morning draft for this artist created today
+    already exists (failed ones don't block — the next run retries)."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    if not user_root.exists():
+        return False
+    for d in user_root.iterdir():
+        if not d.is_dir():
+            continue
+        st = _read_state(d)
+        if (st.get("source") == "morning_draft"
+                and st.get("artist_id") == artist_id
+                and str(st.get("created_at", "")).startswith(today)
+                and st.get("status") != "failed"):
+            return True
+    return False
+
+
+@app.post("/admin/run-morning-drafts")
+def run_morning_drafts(user: User = Depends(require_user)):
+    """Service-token only (Cloud Scheduler). Sweeps every user; each artist
+    with morning_drafts=true gets one free draft from the freshest trend
+    briefs. Idempotent per day; per-artist failures never abort the sweep."""
+    from pipeline import artists as artists_mod
+    from pipeline import trends as trends_mod
+
+    if user.role != "service":
+        raise HTTPException(403, "service token required")
+
+    created = skipped = failed = 0
+    details: list[dict] = []
+    root = _out_root()
+    if not root.exists():
+        return {"created": 0, "skipped": 0, "failed": 0, "details": []}
+
+    for user_dir in sorted(root.iterdir()):
+        if not user_dir.is_dir():
+            continue
+        artists = [a for a in artists_mod.load_artists(user_dir)
+                   if a.get("morning_drafts")]
+        if not artists:
+            continue
+        uid = user_dir.name
+
+        # Brief pool for this user: cached when fresh, else generated in the
+        # first opted-in artist's language.
+        briefs: list[dict] = []
+        cached = trends_mod.load_cache(user_dir)
+        if cached:
+            try:
+                age_h = (datetime.now(timezone.utc)
+                         - datetime.fromisoformat(cached["generated_at"])
+                         ).total_seconds() / 3600
+                if age_h <= _TRENDS_TTL_H:
+                    briefs = cached["briefs"]
+            except (KeyError, TypeError, ValueError):
+                pass
+        if not briefs:
+            try:
+                api_key = os.environ.get("YOUTUBE_API_KEY", "")
+                trending = (trends_mod.fetch_trending_music(api_key)
+                            if api_key else [])
+                briefs = trends_mod.build_briefs(
+                    _build_song_llm(), trending,
+                    language=artists[0].get("default_language", "ar"),
+                    today=datetime.now(timezone.utc).date().isoformat())
+                trends_mod.save_cache(
+                    user_dir,
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    briefs)
+            except Exception as e:
+                failed += len(artists)
+                details.append({"user": uid, "error": f"briefs failed: {e}"})
+                continue
+
+        for i, artist in enumerate(artists):
+            if _has_morning_draft_today(user_dir, artist["id"]):
+                skipped += 1
+                continue
+            brief = briefs[i % len(briefs)]
+            try:
+                run_id = _write_song_draft(
+                    uid, user_dir,
+                    theme=brief["theme"],
+                    # Artist's own style wins (voice/brand consistency);
+                    # the brief's style is the fallback.
+                    style_hint=(artist.get("default_style")
+                                or brief.get("style_hint") or None),
+                    language=artist.get("default_language", "ar"),
+                    artist=artist,
+                    source="morning_draft",
+                    trend_rationale=brief.get("rationale"),
+                )
+                created += 1
+                details.append({"user": uid, "artist": artist["name"],
+                                "run_id": run_id})
+            except Exception as e:
+                failed += 1
+                details.append({"user": uid, "artist": artist["name"],
+                                "error": str(e)[:200]})
+    return {"created": created, "skipped": skipped, "failed": failed,
+            "details": details}
 
 
 def _generate_script_inline(
@@ -2977,6 +3154,8 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         artist_name=_artist_name_for(user, state.get("artist_id")),
         released=bool(state.get("released", False)),
         youtube_url=state.get("youtube_url"),
+        source=state.get("source"),
+        trend_rationale=state.get("trend_rationale"),
     )
 
 
@@ -3095,6 +3274,8 @@ def list_songs(user: User = Depends(require_user)):
             artist_name=artist_names.get(state.get("artist_id")),
             released=bool(state.get("released", False)),
             youtube_url=state.get("youtube_url"),
+            source=state.get("source"),
+            trend_rationale=state.get("trend_rationale"),
         ))
     return out
 
@@ -4078,7 +4259,7 @@ def patch_artist(
             artists=artists, exclude_id=artist_id)
     for field in ("bio", "persona_id", "avatar_run_id", "default_style",
                   "default_language", "default_vocal_gender",
-                  "auto_publish_youtube"):
+                  "auto_publish_youtube", "morning_drafts"):
         val = getattr(req, field)
         if val is not None:
             artist[field] = val

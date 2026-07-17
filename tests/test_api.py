@@ -3040,3 +3040,104 @@ def test_trend_briefs_502_when_no_cache_and_failure(client_factory, monkeypatch,
                             trends_mod.TrendsError("llm down")))
     c = client_factory(user_id="alice")
     assert c.get("/trends/briefs").status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Morning drafts — /admin/run-morning-drafts
+# ---------------------------------------------------------------------------
+
+class _DraftScript:
+    title = "فجر"
+    lyrics = "[Verse 1]\nكلمات\n[Chorus]\nلازمة"
+    style_prompt = "arabic pop"
+    cover_prompt = "c"
+    language = "ar"
+    art_direction = ""
+    scene_prompts = []
+
+
+def _seed_trend_cache(user_dir, n=3):
+    import pipeline.trends as trends_mod
+    from datetime import datetime as _dt, timezone as _tz
+    trends_mod.save_cache(
+        user_dir, _dt.now(_tz.utc).isoformat(timespec="seconds"),
+        [{"id": f"tb_{i}", "title_idea": f"i{i}", "theme": f"موضوع {i}",
+          "style_hint": "pop", "language": "ar", "rationale": f"سبب {i}"}
+         for i in range(n)])
+
+
+def test_morning_drafts_requires_service_role(client_factory, monkeypatch, tmp_path):
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    c = client_factory(user_id="alice", role="user")
+    assert c.post("/admin/run-morning-drafts").status_code == 403
+
+
+def test_morning_drafts_creates_for_opted_in_artists_only(
+        client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    from pipeline import artists as artists_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
+    monkeypatch.setattr("pipeline.song_lyrics.generate_song_script",
+                        lambda **kw: _DraftScript())
+
+    user_dir = tmp_path / "alice"
+    a_on = artists_mod.new_artist(name="ليل", handle="layl",
+                                  persona_id="pers-1", default_style="my style")
+    a_on["morning_drafts"] = True
+    a_off = artists_mod.new_artist(name="Other", handle="other")
+    artists_mod.save_artists(user_dir, [a_on, a_off])
+    _seed_trend_cache(user_dir)
+
+    admin = client_factory(user_id="admin", role="service")
+    r = admin.post("/admin/run-morning-drafts")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["created"] == 1 and body["failed"] == 0
+
+    run_id = body["details"][0]["run_id"]
+    state = json.loads((user_dir / run_id / "api_state.json").read_text())
+    song = json.loads((user_dir / run_id / "song.json").read_text())
+    assert state["source"] == "morning_draft"
+    assert state["artist_id"] == a_on["id"]
+    assert state["status"] == "awaiting_approval"
+    assert state["trend_rationale"].startswith("سبب")
+    assert song["persona_id"] == "pers-1"  # artist voice carried
+
+    # summaries expose the draft origin
+    alice = client_factory(user_id="alice")
+    mine = next(s for s in alice.get("/songs").json() if s["id"] == run_id)
+    assert mine["source"] == "morning_draft"
+    assert mine["trend_rationale"]
+
+    # idempotent: same-day rerun skips
+    r2 = admin.post("/admin/run-morning-drafts")
+    assert r2.json()["created"] == 0 and r2.json()["skipped"] == 1
+
+
+def test_morning_drafts_per_artist_failure_does_not_abort(
+        client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    from pipeline import artists as artists_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
+    calls = {"n": 0}
+    def flaky(**kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("llm hiccup")
+        return _DraftScript()
+    monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", flaky)
+
+    user_dir = tmp_path / "alice"
+    a1 = artists_mod.new_artist(name="A", handle="aa"); a1["morning_drafts"] = True
+    a2 = artists_mod.new_artist(name="B", handle="bb"); a2["morning_drafts"] = True
+    artists_mod.save_artists(user_dir, [a1, a2])
+    _seed_trend_cache(user_dir)
+
+    admin = client_factory(user_id="admin", role="service")
+    body = admin.post("/admin/run-morning-drafts").json()
+    assert body["created"] == 1 and body["failed"] == 1
+    # failed draft doesn't block tomorrow… or even a rerun today
+    body2 = admin.post("/admin/run-morning-drafts").json()
+    assert body2["created"] == 1 and body2["skipped"] == 1
