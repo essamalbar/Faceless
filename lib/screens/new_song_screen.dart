@@ -103,6 +103,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
   Uint8List? _pickedBytes; // upload mode: the chosen audio file
   String? _pickedName;
   String _language = 'ar';
+  String? _dialect;           // Arabic dialect (null = auto; ar-only)
   String _videoMode = 'static'; // 'static' | 'cinematic'
   double _audioWeight = 0.8;   // cover faithfulness (Kie audioWeight)
   String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
@@ -178,6 +179,9 @@ class _NewSongScreenState extends State<NewSongScreen> {
       _artist = a;
       _language = a.defaultLanguage;
       _vocalGender = a.defaultVocalGender;
+      if (a.defaultDialect.isNotEmpty) {
+        _dialect = a.defaultDialect;
+      }
       if (_styleCtrl.text.trim().isEmpty && a.defaultStyle.isNotEmpty) {
         _styleCtrl.text = a.defaultStyle;
       }
@@ -264,6 +268,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
           sunoModel: _sunoModel,
           videoMode: _videoMode,
           artistId: _artist?.id,
+          dialect: _language == 'ar' ? _dialect : null,
         );
       }
       if (!mounted) return;
@@ -500,6 +505,36 @@ class _NewSongScreenState extends State<NewSongScreen> {
               ],
               onChanged: (v) => setState(() => _language = v ?? 'ar'),
             ),
+            // Arabic dialect — only meaningful when the song is Arabic.
+            // null = Auto (server / LLM decides).
+            if (_language == 'ar') ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String?>(
+                initialValue: _dialect,
+                decoration: InputDecoration(
+                  labelText: l10n.qualityDialectLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                items: <DropdownMenuItem<String?>>[
+                  DropdownMenuItem(
+                      value: null, child: Text(l10n.qualityDialectAuto)),
+                  DropdownMenuItem(
+                      value: 'msa', child: Text(l10n.qualityDialectMsa)),
+                  DropdownMenuItem(
+                      value: 'egyptian',
+                      child: Text(l10n.qualityDialectEgyptian)),
+                  DropdownMenuItem(
+                      value: 'khaleeji',
+                      child: Text(l10n.qualityDialectKhaleeji)),
+                  DropdownMenuItem(
+                      value: 'levantine',
+                      child: Text(l10n.qualityDialectLevantine)),
+                  DropdownMenuItem(
+                      value: 'iraqi', child: Text(l10n.qualityDialectIraqi)),
+                ],
+                onChanged: (v) => setState(() => _dialect = v),
+              ),
+            ],
             const SizedBox(height: 16),
             // Vocal gender — defaults to Male to match the reference
             // ai song.mp4 sound. Pinning gender raises probability but

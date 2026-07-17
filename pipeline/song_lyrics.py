@@ -77,6 +77,20 @@ LYRICS — REQUIRED SHAPE:
 
 The bracket tags are LOAD-BEARING. Suno reads them. Do not omit them.
 
+ARABIC PRONUNCIATION — REQUIRED:
+When the song's language is Arabic, the lyrics MUST be FULLY DIACRITIZED
+(تشكيل كامل — fatha/damma/kasra/sukun/shadda/tanwin on every word). Suno
+reads the harakat; undiacritized Arabic gets mispronounced. Section tags
+stay in English ([Verse 1], [Chorus], ...).
+
+SINGABILITY — REQUIRED:
+  - Consistent rhyme scheme (قافية موحّدة) within each section.
+  - Singable, consistent meter: lines within a section carry roughly the
+    same syllable count.
+  - The [Chorus] hook repeats VERBATIM every time (including its tashkeel).
+  - Prefer simple, emotional, everyday words over literary flourish.
+  - No tongue-twisters or consonant pile-ups.
+
 STYLE PROMPT — REQUIRED SHAPE (comma-separated):
   Genre/sub-genre, tempo (with BPM), instrumentation, vocal description,
   era/production style, mood + key.
@@ -102,6 +116,15 @@ ART DIRECTION + SCENE PROMPTS (for the cinematic music-video mode):
 """
 
 
+_DIALECT_NAMES = {
+    "msa": "Modern Standard Arabic (فصحى)",
+    "egyptian": "Egyptian Arabic (مصري)",
+    "khaleeji": "Gulf Arabic (خليجي)",
+    "levantine": "Levantine Arabic (شامي)",
+    "iraqi": "Iraqi Arabic (عراقي)",
+}
+
+
 def generate_song_script(
     *,
     llm,
@@ -109,15 +132,21 @@ def generate_song_script(
     custom_lyrics: str | None,
     style_hint: str | None,
     language: str,
+    dialect: str | None = None,
 ) -> SongScript:
     """One-shot LLM call; returns a validated SongScript.
 
     If `custom_lyrics` is given, it is passed through verbatim — the LLM's
     lyrics field is ignored. If `style_hint` is given, it is appended to
     the user prompt as a "must include" so it surfaces in the LLM's
-    style_prompt output.
+    style_prompt output. `dialect` (msa/egyptian/khaleeji/levantine/iraqi)
+    pins the Arabic variety the lyrics are written in.
     """
     user_msg = f"Theme: {theme}\nLanguage: {language}"
+    if dialect and dialect in _DIALECT_NAMES:
+        user_msg += (f"\nDialect: write the lyrics in "
+                     f"{_DIALECT_NAMES[dialect]} — authentic vocabulary and "
+                     f"expressions of that dialect, still fully diacritized.")
     if style_hint:
         user_msg += f"\nMust include in style: {style_hint}"
     if custom_lyrics:

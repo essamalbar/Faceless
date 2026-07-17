@@ -32,6 +32,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
   late final TextEditingController _styleCtrl;
   late String _language;
   late String _vocalGender;
+  String? _defaultDialect; // null = unset/auto ('' on the wire)
   late bool _autoPublishYoutube;
   late bool _morningDrafts;
   Uint8List? _avatarBytes; // picked but not yet uploaded (uploads on save)
@@ -52,6 +53,8 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
     _styleCtrl = TextEditingController(text: a?.defaultStyle ?? '');
     _language = (a?.defaultLanguage == 'en') ? 'en' : 'ar';
     _vocalGender = (a?.defaultVocalGender == 'f') ? 'f' : 'm';
+    _defaultDialect =
+        (a == null || a.defaultDialect.isEmpty) ? null : a.defaultDialect;
     _autoPublishYoutube = a?.autoPublishYoutube ?? false; // create: OFF
     _morningDrafts = a?.morningDrafts ?? false; // create: OFF
   }
@@ -111,6 +114,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
           'default_style': _styleCtrl.text.trim(),
           'default_language': _language,
           'default_vocal_gender': _vocalGender,
+          'default_dialect': _defaultDialect ?? '',
           'auto_publish_youtube': _autoPublishYoutube,
           'morning_drafts': _morningDrafts,
         });
@@ -123,14 +127,17 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
           defaultLanguage: _language,
           defaultVocalGender: _vocalGender,
         );
-        // POST /artists doesn't accept the YouTube toggle — patch it on
-        // right after create, but only when the user actually turned it
-        // on (default is OFF). A failed patch shouldn't lose the artist.
-        if (_autoPublishYoutube || _morningDrafts) {
+        // POST /artists doesn't accept the YouTube toggle (or the dialect)
+        // — patch them on right after create, but only when the user
+        // actually set them (defaults are OFF / unset). A failed patch
+        // shouldn't lose the artist.
+        if (_autoPublishYoutube || _morningDrafts || _defaultDialect != null) {
           try {
             artist = await widget.client.patchArtist(artist.id, {
               if (_autoPublishYoutube) 'auto_publish_youtube': true,
               if (_morningDrafts) 'morning_drafts': true,
+              if (_defaultDialect != null)
+                'default_dialect': _defaultDialect!,
             });
           } catch (e) {
             messenger.showSnackBar(
@@ -321,6 +328,33 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
               ],
               onChanged: (v) => setState(() => _language = v ?? 'ar'),
             ),
+            // Default Arabic dialect for this artist's new songs.
+            if (_language == 'ar') ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String?>(
+                initialValue: _defaultDialect,
+                decoration:
+                    InputDecoration(labelText: l10n.qualityDialectLabel),
+                items: <DropdownMenuItem<String?>>[
+                  DropdownMenuItem(
+                      value: null, child: Text(l10n.qualityDialectAuto)),
+                  DropdownMenuItem(
+                      value: 'msa', child: Text(l10n.qualityDialectMsa)),
+                  DropdownMenuItem(
+                      value: 'egyptian',
+                      child: Text(l10n.qualityDialectEgyptian)),
+                  DropdownMenuItem(
+                      value: 'khaleeji',
+                      child: Text(l10n.qualityDialectKhaleeji)),
+                  DropdownMenuItem(
+                      value: 'levantine',
+                      child: Text(l10n.qualityDialectLevantine)),
+                  DropdownMenuItem(
+                      value: 'iraqi', child: Text(l10n.qualityDialectIraqi)),
+                ],
+                onChanged: (v) => setState(() => _defaultDialect = v),
+              ),
+            ],
             const SizedBox(height: 16),
             Text(l10n.artistVocalLabel,
                 style: Theme.of(context).textTheme.labelLarge),

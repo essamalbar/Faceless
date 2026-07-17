@@ -2155,4 +2155,39 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get draftReviewButton => 'Review';
+
+  @override
+  String get qualityEditStyle => 'Edit style';
+
+  @override
+  String get qualityDiacritize => 'Add diacritics';
+
+  @override
+  String get qualityDiacritizeDone => 'Diacritics added to the lyrics';
+
+  @override
+  String qualityDiacritizeFailed(String error) {
+    return 'Couldn\'t add diacritics: $error';
+  }
+
+  @override
+  String get qualityDialectLabel => 'Dialect';
+
+  @override
+  String get qualityDialectAuto => 'Auto';
+
+  @override
+  String get qualityDialectMsa => 'Modern Standard Arabic';
+
+  @override
+  String get qualityDialectEgyptian => 'Egyptian';
+
+  @override
+  String get qualityDialectKhaleeji => 'Khaleeji (Gulf)';
+
+  @override
+  String get qualityDialectLevantine => 'Levantine';
+
+  @override
+  String get qualityDialectIraqi => 'Iraqi';
 }

@@ -1199,5 +1199,23 @@
   "draftMorningLabel": "Morning drafts",
   "draftMorningSubtitle": "A free draft every morning from the day's trends — you only pay when you approve.",
   "draftSectionTitle": "Morning drafts",
-  "draftReviewButton": "Review"
+  "draftReviewButton": "Review",
+  "qualityEditStyle": "Edit style",
+  "qualityDiacritize": "Add diacritics",
+  "qualityDiacritizeDone": "Diacritics added to the lyrics",
+  "qualityDiacritizeFailed": "Couldn't add diacritics: {error}",
+  "@qualityDiacritizeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "qualityDialectLabel": "Dialect",
+  "qualityDialectAuto": "Auto",
+  "qualityDialectMsa": "Modern Standard Arabic",
+  "qualityDialectEgyptian": "Egyptian",
+  "qualityDialectKhaleeji": "Khaleeji (Gulf)",
+  "qualityDialectLevantine": "Levantine",
+  "qualityDialectIraqi": "Iraqi"
 }

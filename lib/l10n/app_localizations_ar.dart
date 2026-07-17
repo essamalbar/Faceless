@@ -2193,4 +2193,39 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get draftReviewButton => 'مراجعة';
+
+  @override
+  String get qualityEditStyle => 'تعديل الأسلوب';
+
+  @override
+  String get qualityDiacritize => 'تشكيل';
+
+  @override
+  String get qualityDiacritizeDone => 'تمت إضافة التشكيل إلى الكلمات';
+
+  @override
+  String qualityDiacritizeFailed(String error) {
+    return 'تعذّرت إضافة التشكيل: $error';
+  }
+
+  @override
+  String get qualityDialectLabel => 'اللهجة';
+
+  @override
+  String get qualityDialectAuto => 'تلقائي';
+
+  @override
+  String get qualityDialectMsa => 'الفصحى';
+
+  @override
+  String get qualityDialectEgyptian => 'مصري';
+
+  @override
+  String get qualityDialectKhaleeji => 'خليجي';
+
+  @override
+  String get qualityDialectLevantine => 'شامي';
+
+  @override
+  String get qualityDialectIraqi => 'عراقي';
 }

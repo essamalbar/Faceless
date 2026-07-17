@@ -589,12 +589,14 @@ class FacelessApiClient {
     String? sunoModel,
     String videoMode = 'static',
     String? artistId,
+    String? dialect,
   }) async {
     final body = <String, dynamic>{
       'theme': theme,
       if (customLyrics != null && customLyrics.isNotEmpty) 'custom_lyrics': customLyrics,
       if (styleHint != null && styleHint.isNotEmpty) 'style_hint': styleHint,
       'language': language,
+      if (dialect != null) 'dialect': dialect,
       if (personaId != null && personaId.isNotEmpty) 'persona_id': personaId,
       'vocal_gender': vocalGender,
       if (sunoModel != null) 'suno_model': sunoModel,
@@ -881,6 +883,18 @@ class FacelessApiClient {
       body: jsonEncode(body),
     );
     _checkOk(r);
+  }
+
+  /// Arabic quality: add full tashkeel (diacritics) to the draft lyrics.
+  /// Returns the diacritized lyrics (also persisted server-side). 502 when
+  /// the model misbehaved, 409 when the run has no lyrics — both surface
+  /// as [FacelessApiException] with the server's message.
+  Future<String> diacritizeSong(String id) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/diacritize'),
+      headers: await _headers(),
+    );
+    return _parse(r, (j) => (j as Map<String, dynamic>)['lyrics'] as String);
   }
 
   Future<void> swapTake(String id, int take) async {

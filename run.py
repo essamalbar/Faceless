@@ -1056,6 +1056,11 @@ def _run_song_post_approve(args) -> int:
                 script.get("suno_model")
                 or (cfg.song.suno_model if cfg.song else song.SUNO_MODEL_ID)
             )
+            # Quality: steer Suno away from the obviously-AI sound. A
+            # song.json override wins (future editability).
+            _negative_tags = (script.get("negative_tags")
+                              or "robotic vocal, autotune artifacts, "
+                                 "off-key, muffled, low quality")
             is_cover = (current_state.get("mode") == "cover"
                         or script.get("mode") == "cover")
             if is_cover:
@@ -1079,6 +1084,7 @@ def _run_song_post_approve(args) -> int:
                     title=script["title"],
                     model=_model,
                     vocal_gender=script.get("vocal_gender"),
+                    negative_tags=_negative_tags,
                     # Faithfulness knob from the upload form (state-stored;
                     # None → Suno's default).
                     audio_weight=current_state.get("audio_weight"),
@@ -1094,6 +1100,7 @@ def _run_song_post_approve(args) -> int:
                     model=_model,
                     vocal_gender=script.get("vocal_gender"),
                     persona_id=script.get("persona_id"),
+                    negative_tags=_negative_tags,
                 )
             takes = song.wait_for_song(client, task_id)
             takes_dir.mkdir(exist_ok=True)

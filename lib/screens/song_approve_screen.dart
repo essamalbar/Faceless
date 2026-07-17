@@ -140,6 +140,82 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
     }
   }
 
+  /// Mirror of [_editLyrics] for the style prompt — same dialog shape,
+  /// same save path (`/songs/{id}/edit`, style_prompt only).
+  Future<void> _editStyle(SongScript s) async {
+    final ctrl = TextEditingController(text: s.stylePrompt);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(ctx.l10n.qualityEditStyle),
+        content: SizedBox(
+          width: 560,
+          child: TextField(
+            controller: ctrl,
+            maxLines: 8,
+            style: const TextStyle(fontSize: 15, height: 1.6),
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              alignLabelWithHint: true,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text(ctx.l10n.commonCancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              child: Text(ctx.l10n.commonSave)),
+        ],
+      ),
+    );
+    if (saved != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await widget.client.editSong(widget.runId, stylePrompt: ctrl.text);
+      final script = await widget.client.getSongScript(widget.runId);
+      if (!mounted) return;
+      setState(() => _script = script);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Arabic quality: add full tashkeel to the draft lyrics so Suno's
+  /// pronunciation is unambiguous. Server persists the result; we swap
+  /// the returned lyrics into the displayed script.
+  Future<void> _diacritize(SongScript s) async {
+    final l10n = context.l10n;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final lyrics = await widget.client.diacritizeSong(widget.runId);
+      if (!mounted) return;
+      setState(() {
+        _script = SongScript(
+          title: s.title,
+          lyrics: lyrics,
+          stylePrompt: s.stylePrompt,
+          coverPrompt: s.coverPrompt,
+          language: s.language,
+          costCredits: s.costCredits,
+          costUsd: s.costUsd,
+          videoMode: s.videoMode,
+        );
+      });
+      messenger.showSnackBar(
+          SnackBar(content: Text(l10n.qualityDiacritizeDone)));
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+          SnackBar(content: Text(l10n.qualityDiacritizeFailed('$e'))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _regenLyrics() async {
     setState(() => _busy = true);
     try {
@@ -259,6 +335,12 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                     label: Text(l10n.approveEdit),
                     onPressed: _busy ? null : () => _editLyrics(s),
                   ),
+                  // Arabic quality: full-tashkeel pass, Arabic scripts only.
+                  if (s.language == 'ar')
+                    OutlinedButton(
+                      onPressed: _busy ? null : () => _diacritize(s),
+                      child: Text(l10n.qualityDiacritize),
+                    ),
                   TextButton.icon(
                     icon: const Icon(Icons.refresh),
                     label: Text(l10n.approveReroll),
@@ -269,6 +351,13 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
               _SectionCard(
                 title: l10n.approveStyleSection,
                 body: Text(s.stylePrompt),
+                actions: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.edit_outlined),
+                    label: Text(l10n.approveEdit),
+                    onPressed: _busy ? null : () => _editStyle(s),
+                  ),
+                ],
               ),
               _SectionCard(
                 title: l10n.approveCoverPromptSection,
@@ -364,9 +453,16 @@ class _SectionCard extends StatelessWidget {
               body,
               if (actions != null) ...[
                 const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: actions!,
+                // Wrap (not Row): the lyrics card can carry three actions
+                // (Edit / تشكيل / Re-roll) which overflow a Row on phones.
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: actions!,
+                  ),
                 ),
               ],
             ],
