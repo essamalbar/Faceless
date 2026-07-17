@@ -322,6 +322,8 @@ RULES:
 - The repeated lines are the [Chorus] — there MUST be at least one [Chorus].
 - Do NOT change, add, remove, translate, reorder, or rewrite ANY words.
   Only group the EXISTING lines under section tags.
+- If the words are Arabic, ADD FULL DIACRITICS (تشكيل كامل) to every word —
+  diacritics pin the pronunciation without changing the words themselves.
 - Output ONLY the tagged lyrics — no commentary, no markdown."""
 
 

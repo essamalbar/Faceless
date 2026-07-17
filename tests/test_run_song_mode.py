@@ -545,3 +545,35 @@ def test_cover_post_approve_passes_audio_weight(tmp_path: Path, monkeypatch):
     rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
     assert rc == 0
     assert seen.get("audio_weight") == 0.8
+
+
+def test_song_post_approve_passes_default_negative_tags(tmp_path: Path, monkeypatch):
+    """Both Suno branches must carry the quality negative tags."""
+    run_dir = tmp_path / "song-run-negtags"
+    run_dir.mkdir()
+    (run_dir / "song.json").write_text(json.dumps({
+        "title": "Test", "lyrics": "[Verse 1]\nhi\n[Chorus]\nworld",
+        "style_prompt": "s", "cover_prompt": "sea", "language": "ar"}))
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "generating_song"}))
+
+    seen = {}
+    def fake_submit(client, *, lyrics, style_prompt, title,
+                    model=song.SUNO_MODEL_ID, **extra):
+        seen.update(extra)
+        return "fake-task"
+    monkeypatch.setattr(song, "submit_song_job", fake_submit)
+    monkeypatch.setattr(song, "wait_for_song", lambda *a, **k: [
+        song.SongTake(url="https://kie.ai/t1.mp3", duration_s=3.0),
+        song.SongTake(url="https://kie.ai/t2.mp3", duration_s=2.8)])
+    monkeypatch.setattr(song, "download_take",
+                        lambda c, u, p: shutil.copy(FIXTURE_SONG, p))
+    monkeypatch.setattr(song_cover, "generate_cover_image",
+                        lambda *, client, cover_prompt, out_dir:
+                        (shutil.copy(FIXTURE_COVER, out_dir / "cover_raw.png"),
+                         out_dir / "cover_raw.png")[1])
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+    assert rc == 0
+    assert "robotic vocal" in seen.get("negative_tags", "")

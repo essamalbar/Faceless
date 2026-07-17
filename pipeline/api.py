@@ -401,6 +401,16 @@ class CreateSongRequest(BaseModel):
     # style fill any fields the request left empty, and the run is stamped
     # with artist_id so it lands in the artist's discography. 404 if unknown.
     artist_id: str | None = None
+    # Arabic dialect for the lyrics (msa/egyptian/khaleeji/levantine/iraqi).
+    dialect: str | None = None
+
+    @field_validator("dialect")
+    @classmethod
+    def _check_dialect(cls, v: str | None) -> str | None:
+        if v is not None and v not in (
+                "msa", "egyptian", "khaleeji", "levantine", "iraqi"):
+            raise ValueError("unknown dialect")
+        return v
 
     @field_validator("video_mode")
     @classmethod
@@ -483,6 +493,8 @@ class ArtistSummary(BaseModel):
     auto_publish_youtube: bool = False
     # Channel Autopilot: a free draft each morning from the day's trends.
     morning_drafts: bool = False
+    # Arabic dialect identity (msa/egyptian/khaleeji/levantine/iraqi, "" = unset).
+    default_dialect: str = ""
     created_at: str
     song_count: int = 0
 
@@ -507,6 +519,7 @@ class PatchArtistRequest(BaseModel):
     default_vocal_gender: str | None = None
     auto_publish_youtube: bool | None = None
     morning_drafts: bool | None = None
+    default_dialect: str | None = None
 
 
 class CreateArtistFromSongRequest(BaseModel):
@@ -903,7 +916,8 @@ def _write_song_draft(
     try:
         script = generate_song_script(
             llm=_build_song_llm(), theme=theme, custom_lyrics=None,
-            style_hint=style_hint, language=language)
+            style_hint=style_hint, language=language,
+            dialect=artist.get("default_dialect") or None)
     except Exception as e:
         _write_state(run_dir, status="failed",
                      last_error=f"lyrics LLM failed: {e}")
@@ -2757,6 +2771,7 @@ def create_song(
     # clean 404.
     persona_id = req.persona_id
     style_hint = req.style_hint
+    dialect = req.dialect
     if req.artist_id:
         from pipeline import artists as artists_mod
         artist = artists_mod.find_by_id(
@@ -2767,6 +2782,8 @@ def create_song(
             persona_id = artist.get("persona_id")
         if not style_hint:
             style_hint = artist.get("default_style") or None
+        if not dialect:
+            dialect = artist.get("default_dialect") or None
 
     user_root = _user_runs_root(user)
     user_root.mkdir(parents=True, exist_ok=True)
@@ -2793,6 +2810,7 @@ def create_song(
             custom_lyrics=req.custom_lyrics,
             style_hint=style_hint,
             language=req.language,
+            dialect=dialect,
         )
     except Exception as e:
         _write_state(run_dir, status="failed", last_error=f"lyrics LLM failed: {e}")
@@ -3385,6 +3403,60 @@ def edit_song(
     if req.lyrics is not None:
         (run_dir / "lyrics.txt").write_text(req.lyrics, encoding="utf-8")
     return {"ok": True}
+
+
+# Arabic harakat + tatweel — stripped to compare letter skeletons, so the
+# diacritize pass can be VERIFIED to have only added pronunciation marks.
+_HARAKAT_RE = re.compile(r"[ً-ٰٟـ]")
+
+_DIACRITIZE_SYSTEM = """You add FULL Arabic diacritics (تشكيل كامل) to song
+lyrics so a singing model pronounces every word correctly.
+
+RULES:
+- Add fatha/damma/kasra/sukun/shadda/tanwin to EVERY Arabic word.
+- Do NOT add, remove, reorder, translate, or change ANY word.
+- Keep section tags ([Verse 1], [Chorus], ...) and line breaks EXACTLY as-is.
+- Non-Arabic words pass through untouched.
+- Output ONLY the diacritized lyrics — no commentary, no markdown."""
+
+
+def _letter_skeleton(text: str) -> str:
+    """Text minus harakat/tatweel with whitespace normalized — two lyrics
+    with the same skeleton contain exactly the same words."""
+    return " ".join(_HARAKAT_RE.sub("", text).split())
+
+
+@app.post("/songs/{run_id}/diacritize")
+def diacritize_song(run_id: str, user: User = Depends(require_user)):
+    """One LLM pass adds full tashkeel to the CURRENT lyrics (custom lyrics,
+    old drafts, post-edit text). Verified: the result's letter skeleton must
+    equal the input's — the model can only have added pronunciation marks,
+    never changed words — else 502 and nothing is written."""
+    run_dir = _resolve_song_dir(run_id, user)
+    _require_song_awaiting_approval(run_dir)
+    script_path = run_dir / "song.json"
+    current = json.loads(script_path.read_text())
+    lyrics = str(current.get("lyrics") or "")
+    if not lyrics.strip():
+        raise HTTPException(409, "no lyrics to diacritize")
+
+    try:
+        raw = _build_song_llm().complete(lyrics, system=_DIACRITIZE_SYSTEM)
+    except Exception as e:
+        raise HTTPException(502, f"diacritize failed: {e}")
+    result = raw.strip()
+    if result.startswith("```"):
+        result = re.sub(r"^```[a-z]*\n?|\n?```$", "", result,
+                        flags=re.MULTILINE).strip()
+
+    if _letter_skeleton(result) != _letter_skeleton(lyrics):
+        raise HTTPException(
+            502, "diacritize output changed the words — refused (retry)")
+
+    current["lyrics"] = result
+    _atomic_write_json(script_path, current)
+    (run_dir / "lyrics.txt").write_text(result, encoding="utf-8")
+    return {"lyrics": result}
 
 
 @app.post("/songs/{run_id}/cancel")
@@ -4259,7 +4331,8 @@ def patch_artist(
             artists=artists, exclude_id=artist_id)
     for field in ("bio", "persona_id", "avatar_run_id", "default_style",
                   "default_language", "default_vocal_gender",
-                  "auto_publish_youtube", "morning_drafts"):
+                  "auto_publish_youtube", "morning_drafts",
+                  "default_dialect"):
         val = getattr(req, field)
         if val is not None:
             artist[field] = val

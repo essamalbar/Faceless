@@ -3141,3 +3141,81 @@ def test_morning_drafts_per_artist_failure_does_not_abort(
     # failed draft doesn't block tomorrow… or even a rerun today
     body2 = admin.post("/admin/run-morning-drafts").json()
     assert body2["created"] == 1 and body2["skipped"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Arabic quality pack — diacritize endpoint
+# ---------------------------------------------------------------------------
+
+def _awaiting_song(tmp_path, run_id="2026-07-17-000001", lyrics="[Chorus]\nيا ليل يا عين"):
+    d = tmp_path / "alice" / run_id
+    d.mkdir(parents=True)
+    (d / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "awaiting_approval", "user_id": "alice",
+        "created_at": "2026-07-17T00:00:00+00:00"}))
+    (d / "song.json").write_text(json.dumps({
+        "title": "t", "lyrics": lyrics, "style_prompt": "s",
+        "cover_prompt": "c", "language": "ar"}, ensure_ascii=False))
+    return d
+
+
+def test_diacritize_updates_lyrics(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    d = _awaiting_song(tmp_path)
+    class _LLM:
+        def complete(self, prompt, system=None):
+            return "[Chorus]\nيَا لَيْلُ يَا عَيْنُ"
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: _LLM())
+    c = client_factory(user_id="alice")
+    r = c.post("/songs/2026-07-17-000001/diacritize")
+    assert r.status_code == 200, r.text
+    assert "يَا" in r.json()["lyrics"]
+    song = json.loads((d / "song.json").read_text())
+    assert song["lyrics"] == "[Chorus]\nيَا لَيْلُ يَا عَيْنُ"
+    assert (d / "lyrics.txt").read_text() == song["lyrics"]
+
+
+def test_diacritize_refuses_word_changes(client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    d = _awaiting_song(tmp_path)
+    original = json.loads((d / "song.json").read_text())["lyrics"]
+    class _BadLLM:
+        def complete(self, prompt, system=None):
+            return "[Chorus]\nيَا قَمَرُ يَا عَيْنُ"  # swapped a word
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: _BadLLM())
+    c = client_factory(user_id="alice")
+    r = c.post("/songs/2026-07-17-000001/diacritize")
+    assert r.status_code == 502
+    # nothing written
+    assert json.loads((d / "song.json").read_text())["lyrics"] == original
+
+
+def test_create_song_accepts_dialect_and_artist_default(
+        client_factory, monkeypatch, tmp_path):
+    import pipeline.api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
+    seen = {}
+    def fake_gen(**kw):
+        seen.update(kw)
+        class S:
+            title = "t"; lyrics = "[Chorus]\nx"; style_prompt = "s"
+            cover_prompt = "c"; language = "ar"; art_direction = ""
+            scene_prompts = []
+        return S()
+    monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_gen)
+
+    c = client_factory(user_id="alice")
+    # explicit dialect
+    r = c.post("/songs", json={"theme": "x", "dialect": "khaleeji"})
+    assert r.status_code == 201 and seen["dialect"] == "khaleeji"
+    # invalid dialect → 422
+    assert c.post("/songs", json={"theme": "x", "dialect": "zz"}).status_code == 422
+    # artist default fills when request omits it
+    a = _mk_artist(c, name="Layl", handle="layl-dq")
+    c.patch(f"/artists/{a['id']}", json={"default_dialect": "egyptian"})
+    c.post("/songs", json={"theme": "x", "artist_id": a["id"]})
+    assert seen["dialect"] == "egyptian"
