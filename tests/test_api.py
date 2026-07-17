@@ -3219,3 +3219,48 @@ def test_create_song_accepts_dialect_and_artist_default(
     c.patch(f"/artists/{a['id']}", json={"default_dialect": "egyptian"})
     c.post("/songs", json={"theme": "x", "artist_id": a["id"]})
     assert seen["dialect"] == "egyptian"
+
+
+# ---------------------------------------------------------------------------
+# Free-quality LLM router: Anthropic → Gemini → Groq
+# ---------------------------------------------------------------------------
+
+def test_router_prefers_gemini_over_groq(monkeypatch):
+    """With no Anthropic key, Gemini (free, good Arabic) must be primary and
+    Groq the last resort."""
+    import pipeline.api as api_mod
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
+    monkeypatch.setenv("GROQ_API_KEY", "q-key")
+    from pipeline.llm import FallbackLLM, GeminiClient
+    from pipeline.llm_groq import GroqClient
+    chain = api_mod._build_llm()
+    assert isinstance(chain, FallbackLLM)
+    assert isinstance(chain._primary, GeminiClient)
+    assert isinstance(chain._fallback, GroqClient)
+
+
+def test_router_full_chain_anthropic_gemini_groq(monkeypatch):
+    import pipeline.api as api_mod
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
+    monkeypatch.setenv("GROQ_API_KEY", "q-key")
+    from pipeline.llm import FallbackLLM, GeminiClient
+    from pipeline.llm_anthropic import AnthropicClient
+    from pipeline.llm_groq import GroqClient
+    chain = api_mod._build_llm()
+    assert isinstance(chain, FallbackLLM)
+    assert isinstance(chain._primary, AnthropicClient)
+    inner = chain._fallback
+    assert isinstance(inner, FallbackLLM)
+    assert isinstance(inner._primary, GeminiClient)
+    assert isinstance(inner._fallback, GroqClient)
+
+
+def test_router_single_provider_returned_bare(monkeypatch):
+    import pipeline.api as api_mod
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
+    from pipeline.llm import GeminiClient
+    assert isinstance(api_mod._build_llm(), GeminiClient)

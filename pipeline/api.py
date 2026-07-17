@@ -756,33 +756,35 @@ def _cost_estimate_usd(beats: list[dict]) -> float:
 
 
 def _build_llm():
-    """LLM router: Anthropic (primary) → Groq (fallback) → Gemini.
+    """LLM router: Anthropic → Gemini → Groq, best-available-first.
 
-    When BOTH the Anthropic and Groq keys are set, returns a FallbackLLM so an
-    Anthropic failure (exhausted credits, outage) falls back to Groq instead of
-    hard-failing lyrics/script generation. Groq writes lower-quality Arabic, so
-    it's a safety net — keep the Anthropic balance funded for best results.
-    Inlined here so the script-gen call doesn't require importing run.py (which
-    pulls every pipeline stage)."""
+    Quality order for Arabic lyrics: Anthropic (best, paid) > Gemini
+    (very good, FREE tier via an AI Studio key) > Groq/Llama (weak — last
+    resort only). Every configured provider is chained with FallbackLLM so
+    an upstream failure (exhausted credits, outage) degrades one step
+    instead of hard-failing; each hop records the degradation marker that
+    drives the in-app quality banner. Inlined here so the script-gen call
+    doesn't require importing run.py (which pulls every pipeline stage)."""
     import os
-    primary = None
+    providers = []
     if os.environ.get("ANTHROPIC_API_KEY"):
         from pipeline.llm_anthropic import AnthropicClient
-        primary = AnthropicClient()
-    fallback = None
+        providers.append(AnthropicClient())
+    if os.environ.get("GEMINI_API_KEY"):
+        from pipeline.llm import GeminiClient
+        providers.append(GeminiClient())
     if os.environ.get("GROQ_API_KEY"):
         from pipeline.llm_groq import GroqClient
-        fallback = GroqClient()
-    if primary and fallback:
-        from pipeline.llm import FallbackLLM
-        return FallbackLLM(primary, fallback,
-                           on_fallback=_record_llm_fallback)
-    if primary:
-        return primary
-    if fallback:
-        return fallback
-    from pipeline.llm import GeminiClient
-    return GeminiClient()
+        providers.append(GroqClient())
+    if not providers:
+        from pipeline.llm import GeminiClient
+        return GeminiClient()  # raises a clear GEMINI_API_KEY error
+    from pipeline.llm import FallbackLLM
+    chain = providers[-1]
+    for provider in reversed(providers[:-1]):
+        chain = FallbackLLM(provider, chain,
+                            on_fallback=_record_llm_fallback)
+    return chain
 
 
 def _llm_fallback_marker() -> Path:
