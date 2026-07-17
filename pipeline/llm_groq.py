@@ -31,9 +31,13 @@ class GroqClient:
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "llama-3.3-70b-versatile",
+        model: str | None = None,
         base_url: str = GROQ_BASE_URL,
     ):
+        # gpt-oss-120b writes far better Arabic (incl. tashkeel) than the
+        # old llama-3.3 default — bake-off verified 2026-07-17. Env override
+        # for experimentation.
+        model = model or os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
         key = api_key or os.environ.get("GROQ_API_KEY")
         if not key:
             raise GroqError("GROQ_API_KEY not set")
@@ -52,6 +56,10 @@ class GroqClient:
             "messages": messages,
             "temperature": 0.8,  # Stories benefit from some creativity
         }
+        # gpt-oss models spend tokens on hidden reasoning by default; lyrics
+        # don't need it and it eats the output budget.
+        if "gpt-oss" in self._model:
+            body["reasoning_effort"] = "low"
         # Groq/Llama emits invalid JSON freely (raw newlines, trailing commas,
         # single quotes) — the cause of intermittent "lyrics generation failed"
         # parse errors on the fallback path. When the caller asks for JSON,

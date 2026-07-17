@@ -19,16 +19,16 @@ class _CaptureLLM:
             "art_direction": "", "scene_prompts": []}, ensure_ascii=False)
 
 
-def test_lyrics_contract_requires_singability():
-    # Tashkeel moved OUT of the compose pass (two-pass architecture) — the
-    # compose contract keeps the singability rules.
+def test_lyrics_contract_requires_singability_and_tashkeel():
     assert "rhyme" in _SYSTEM_PROMPT.lower()
     assert "VERBATIM" in _SYSTEM_PROMPT
+    assert "تشكيل كامل" in _SYSTEM_PROMPT           # compose diacritized
+    assert "fusha-ize" in _SYSTEM_PROMPT             # …without fusha-izing
 
 
-def test_two_pass_diacritization_applies_to_composed_arabic():
-    """Arabic compose → a second dedicated diacritize call whose result is
-    used when the skeleton guard passes."""
+def test_rescue_diacritization_fires_only_on_low_density():
+    """Composed BARE Arabic (density < 0.3) → rescue pass fires and its
+    result is used when the guard passes."""
     calls = []
     class _TwoPass:
         def complete(self, prompt, system=None):
@@ -48,7 +48,7 @@ def test_two_pass_diacritization_applies_to_composed_arabic():
     assert script.lyrics == "[Chorus]\nيَا لَيْلُ يَا عَيْنُ"
 
 
-def test_two_pass_rejects_changed_words_keeps_composed():
+def test_rescue_rejects_changed_words_keeps_composed():
     class _BadPass2:
         n = 0
         def complete(self, prompt, system=None):
@@ -132,3 +132,20 @@ def test_contract_bans_childish_register():
     from pipeline.song_lyrics import _SYSTEM_PROMPT
     assert "NEVER childish" in _SYSTEM_PROMPT
     assert "عمق شعري" in _SYSTEM_PROMPT
+
+
+def test_high_density_compose_skips_rescue():
+    calls = []
+    class _Diacritized:
+        def complete(self, prompt, system=None):
+            calls.append(1)
+            return json.dumps({
+                "title": "ت",
+                "lyrics": "[Chorus]\nيَا لَيْلُ يَا عَيْنُ قَلْبِي مَعَكْ",
+                "style_prompt": "s", "cover_prompt": "c",
+                "art_direction": "", "scene_prompts": []}, ensure_ascii=False)
+    s = generate_song_script(llm=_Diacritized(), theme="x",
+                             custom_lyrics=None, style_hint=None,
+                             language="ar")
+    assert len(calls) == 1  # no rescue needed
+    assert "يَا" in s.lyrics
