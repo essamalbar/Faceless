@@ -3264,3 +3264,15 @@ def test_router_single_provider_returned_bare(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "g-key")
     from pipeline.llm import GeminiClient
     assert isinstance(api_mod._build_llm(), GeminiClient)
+
+
+def test_router_marks_degradation_only_into_groq(monkeypatch):
+    """Anthropic→Gemini is a quality-fine hop (no banner); the hop INTO
+    Groq carries the degradation marker."""
+    import pipeline.api as api_mod
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a")
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    monkeypatch.setenv("GROQ_API_KEY", "q")
+    chain = api_mod._build_llm()
+    assert chain._on_fallback is None          # anthropic→(gemini chain)
+    assert chain._fallback._on_fallback is not None  # gemini→groq

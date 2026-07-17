@@ -780,10 +780,16 @@ def _build_llm():
         from pipeline.llm import GeminiClient
         return GeminiClient()  # raises a clear GEMINI_API_KEY error
     from pipeline.llm import FallbackLLM
+    from pipeline.llm_groq import GroqClient
     chain = providers[-1]
     for provider in reversed(providers[:-1]):
-        chain = FallbackLLM(provider, chain,
-                            on_fallback=_record_llm_fallback)
+        # The quality-degraded banner only fires when we drop INTO the weak
+        # writer (Groq). Anthropic→Gemini is a quality-fine hop — a permanent
+        # banner there would just train the user to ignore alarms.
+        into_weak = isinstance(chain, GroqClient)
+        chain = FallbackLLM(
+            provider, chain,
+            on_fallback=_record_llm_fallback if into_weak else None)
     return chain
 
 
