@@ -69,7 +69,8 @@ class GeminiClient:
       embed(text) -> list[float]
     """
 
-    def __init__(self, api_key: str | None = None, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: str | None = None, model: str | None = None):
+        model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         key = api_key or os.environ.get("GEMINI_API_KEY")
         if not key:
             raise GeminiError("GEMINI_API_KEY not set")
