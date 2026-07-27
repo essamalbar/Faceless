@@ -327,21 +327,35 @@ def build_negatives(recipe: Recipe) -> str:
 def infer_genre(theme: str, style_hint: str | None = None,
                 language: str = "ar", dialect: str | None = None) -> str:
     """Deterministic genre pick. No LLM. Language-gated so English themes
-    never match Arabic-only recipes."""
+    never match Arabic-only recipes. An explicit style_hint that names a
+    genre wins outright (spec rule 1) before the theme keyword scan; the
+    dialect nudge is a tie-breaker for the theme scan only."""
     is_ar = (language or "").startswith("ar")
     candidates = {
         k: v for k, v in GENRE_RECIPES.items()
         if is_ar or k not in _ARABIC_ONLY
     }
-    hay = f"{theme or ''} {style_hint or ''}".lower()
-    scores = {
-        k: sum(1 for a in r.aliases if a in hay) for k, r in candidates.items()
-    }
-    if dialect == "khaleeji" and "khaleeji" in scores:
-        scores["khaleeji"] += 1
-    best = max(scores, key=lambda k: scores[k])
-    if scores[best] > 0:
-        return best
+
+    def _pick(hay: str, use_dialect: bool) -> str | None:
+        scores = {
+            k: sum(1 for a in r.aliases if a in hay)
+            for k, r in candidates.items()
+        }
+        if use_dialect and dialect == "khaleeji" and "khaleeji" in scores:
+            scores["khaleeji"] += 1
+        best = max(scores, key=lambda k: scores[k])
+        return best if scores[best] > 0 else None
+
+    # Rule 1: an explicit style_hint that names a genre wins outright.
+    if style_hint:
+        hit = _pick(style_hint.lower(), use_dialect=False)
+        if hit:
+            return hit
+    # Rule 2: keyword-scan theme (+ style_hint as a weaker combined signal),
+    # with the dialect nudge as tie-breaker.
+    hit = _pick(f"{theme or ''} {style_hint or ''}".lower(), use_dialect=True)
+    if hit:
+        return hit
     if is_ar:
         return "arabic_pop"
     return "pop" if language else "generic"
