@@ -11,6 +11,9 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from pipeline.llm import resolve_tier
+from pipeline.song_style import compose_style
+
 
 _SECTION_TAG_RE = re.compile(r"\[(Verse|Pre-Chorus|Chorus|Bridge|Outro)[\s\d]*\]", re.I)
 
@@ -26,6 +29,11 @@ class SongScript:
     # Empty for static-only runs / older payloads.
     art_direction: str = ""
     scene_prompts: list = field(default_factory=list)
+    negative_tags: str = ""
+    # Provenance: which writer tier served the lyrics, and whether the style
+    # came from the producer LLM ("producer:<tier>") or the recipe fallback.
+    style_source: str = ""
+    writer_tier: str = ""
 
 
 def validate_section_tags(lyrics: str) -> None:
@@ -218,6 +226,7 @@ def generate_song_script(
     style_hint: str | None,
     language: str,
     dialect: str | None = None,
+    vocal_gender: str | None = "m",
 ) -> SongScript:
     """One-shot LLM call; returns a validated SongScript.
 
@@ -284,12 +293,28 @@ def generate_song_script(
             if diacritized:
                 lyrics = diacritized
 
+    # Capture which writer tier produced the lyrics BEFORE the producer pass
+    # (compose_style makes its own call and would overwrite last_tier).
+    writer_tier = resolve_tier(llm)
+
+    # Producer pass: authoritative Suno style + negative tags. The lyrics-JSON
+    # style_prompt (parsed["style_prompt"]) is intentionally ignored — a weak
+    # writer's blob is exactly what this replaces.
+    style = compose_style(
+        llm, theme=theme, title=parsed["title"], lyrics=lyrics,
+        language=language, dialect=dialect, style_hint=style_hint,
+        vocal_gender=vocal_gender,
+    )
+
     return SongScript(
         title=parsed["title"],
         lyrics=lyrics,
-        style_prompt=parsed["style_prompt"],
+        style_prompt=style.style_prompt,
         cover_prompt=parsed["cover_prompt"],
         language=language,
         art_direction=str(parsed.get("art_direction", "")),
         scene_prompts=list(parsed.get("scene_prompts", []) or []),
+        negative_tags=style.negative_tags,
+        style_source=style.source,
+        writer_tier=writer_tier,
     )

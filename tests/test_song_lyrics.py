@@ -186,3 +186,40 @@ def test_song_script_tolerates_messy_groq_output():
     assert s.title == "ليل"
     assert "[Chorus]" in s.lyrics
     assert "90 BPM" in s.style_prompt
+
+
+def _routing_llm(lyrics_json: str, producer_json: str):
+    """Fake LLM: returns producer JSON when it sees the producer system prompt,
+    otherwise the lyrics JSON (also covers the optional diacritize call)."""
+    llm = MagicMock()
+
+    def _complete(prompt, system=None):
+        if system and "music producer" in system.lower():
+            return producer_json
+        return lyrics_json
+
+    llm.complete = MagicMock(side_effect=_complete)
+    llm.last_tier = "anthropic"
+    return llm
+
+
+def test_generate_song_script_populates_producer_fields():
+    lyrics_json = """{
+        "title": "قمر",
+        "lyrics": "[Verse 1]\\nكَلِمَات\\n[Chorus]\\nلَازِمَة",
+        "style_prompt": "weak blob to be ignored",
+        "cover_prompt": "moonlit portrait"
+    }"""
+    producer_json = """{
+        "style_prompt": "Arabic pop ballad, cinematic strings and soft piano, warm male vocal, professionally mixed and mastered",
+        "negative_tags": "robotic vocal, off-key"
+    }"""
+    llm = _routing_llm(lyrics_json, producer_json)
+    script = generate_song_script(
+        llm=llm, theme="أغنية حب حزينة", custom_lyrics=None,
+        style_hint=None, language="ar", vocal_gender="m",
+    )
+    assert "mixed and mastered" in script.style_prompt
+    assert script.negative_tags == "robotic vocal, off-key"
+    assert script.style_source.startswith("producer:")
+    assert script.writer_tier == "anthropic"
