@@ -10,17 +10,20 @@ See docs/superpowers/specs/2026-07-27-song-producer-pass-design.md.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # --- Quality spine (injected into every genre) ------------------------------
+# Kept compact so the full spine + genre + a user style_hint all fit inside
+# MAX_STYLE_CHARS for every recipe (the longest recipe lands ~432/450). The
+# _looks_weak gate (Task 3) keys off "mixed and mastered" / "radio-ready" /
+# "studio production", which must remain present here.
 SPINE_PRODUCTION = (
-    "professionally mixed and mastered, radio-ready, high-fidelity studio "
-    "production, warm analog low-end, airy detailed highs, wide natural "
-    "stereo, balanced dynamics not over-compressed"
+    "professionally mixed and mastered, radio-ready studio production, "
+    "warm analog low-end, wide clean stereo"
 )
 SPINE_VOCAL = (
-    "expressive human lead vocal, natural breath and vibrato, emotional "
-    "phrasing, intimate and present, real singer"
+    "expressive human lead vocal, natural breath and vibrato, real singer"
 )
 SHARED_NEGATIVES = (
     "robotic vocal, autotune artifacts, pitchy, off-key, muffled, muddy mix, "
@@ -219,8 +222,12 @@ def infer_genre(theme: str, style_hint: str | None = None,
     }
 
     def _pick(hay: str, use_dialect: bool) -> str | None:
+        # Word-boundary match so short aliases don't fire inside unrelated
+        # words ("dance" in "abundance", "rap" in "wrapping", "band" in
+        # "husband", "808" only when standalone).
         scores = {
-            k: sum(1 for a in r.aliases if a in hay)
+            k: sum(1 for a in r.aliases
+                   if re.search(rf"\b{re.escape(a)}\b", hay))
             for k, r in candidates.items()
         }
         if use_dialect and dialect == "khaleeji" and "khaleeji" in scores:
@@ -245,13 +252,20 @@ def infer_genre(theme: str, style_hint: str | None = None,
 
 def _recipe_style(recipe: Recipe, vocal_gender: str | None,
                   style_hint: str | None = None) -> tuple[str, str]:
-    """Deterministic fallback: build style + negatives straight from the recipe."""
-    pieces = [
-        recipe.genre, recipe.tempo, recipe.instrumentation,
-        _fill_vocal(recipe, vocal_gender), recipe.era,
-        SPINE_PRODUCTION, SPINE_VOCAL,
-    ]
+    """Deterministic fallback: build style + negatives straight from the recipe.
+
+    Pieces are ordered by DESCENDING importance because _trim_to_last_comma
+    drops from the tail: genre, the user's style_hint, the vocal, and both
+    quality-spine blocks sit ahead of tempo/instrumentation/era so the
+    anti-AI cues and the user's intent always survive the 450-char budget.
+    era is the first thing sacrificed when a long style_hint is supplied."""
+    pieces = [recipe.genre]
     if style_hint:
         pieces.append(style_hint.strip())
+    pieces += [
+        _fill_vocal(recipe, vocal_gender),
+        SPINE_PRODUCTION, SPINE_VOCAL,
+        recipe.tempo, recipe.instrumentation, recipe.era,
+    ]
     style = _trim_to_last_comma(", ".join(pieces))
     return style, build_negatives(recipe)

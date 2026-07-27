@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pipeline.song_style import (
     GENRE_RECIPES,
+    SHARED_NEGATIVES,
     SPINE_PRODUCTION,
     build_negatives,
     infer_genre,
@@ -64,3 +65,36 @@ def test_trim_to_last_comma_lands_on_boundary():
     assert not out.endswith(",")
     # trimmed at a comma boundary → the last kept token is whole
     assert out.split(", ")[-1] in long.split(", ")
+
+
+def test_recipe_style_keeps_vocal_spine_and_hint():
+    # The vocal-realism spine and a user style_hint are the two things most
+    # load-bearing for "not AI" — they must survive the 450-char trim.
+    style, _ = _recipe_style(GENRE_RECIPES["arabic_pop"], "f",
+                             style_hint="nostalgic 90s Lebanese warmth")
+    assert "natural breath and vibrato" in style          # SPINE_VOCAL survived
+    assert "nostalgic 90s Lebanese warmth" in style        # user hint survived
+    assert len(style) <= 450
+
+
+def test_recipe_style_all_genres_fit_with_full_spine():
+    # Every recipe must fit genre + vocal + both spine blocks within budget
+    # (no genre may silently lose its vocal-realism spine).
+    for key, recipe in GENRE_RECIPES.items():
+        style, _ = _recipe_style(recipe, "m")
+        assert "natural breath and vibrato" in style, key
+        assert "mixed and mastered" in style, key
+        assert len(style) <= 450, key
+
+
+def test_infer_genre_word_boundary_no_false_positives():
+    # short aliases must not match inside unrelated words
+    assert infer_genre("a song about abundance and hope",
+                       language="en") != "edm_electropop"   # not "dance" in "abundance"
+    assert infer_genre("my husband and me", language="en") != "rock"  # not "band"
+
+
+def test_recipe_remove_negatives_are_valid_tokens():
+    shared = {p.strip() for p in SHARED_NEGATIVES.split(",")}
+    for recipe in GENRE_RECIPES.values():
+        assert set(recipe.remove_negatives) <= shared, recipe.key
