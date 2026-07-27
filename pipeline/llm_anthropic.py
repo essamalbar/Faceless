@@ -35,6 +35,8 @@ class AnthropicClient:
     """Messages API wrapper. Default model is Sonnet 4.6 — best price/quality
     for the Shorts script generator."""
 
+    tier = "anthropic"
+
     def __init__(
         self,
         api_key: str | None = None,

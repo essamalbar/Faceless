@@ -28,10 +28,16 @@ class FallbackLLM:
         # can warn instead of silently shipping weaker lyrics. Observer errors
         # are swallowed — telemetry must never break generation.
         self._on_fallback = on_fallback
+        # Tier of the provider that actually served the most recent complete().
+        # Read via resolve_tier(). A fresh FallbackLLM is built per generation
+        # request (see api._build_llm), so this instance attribute is not shared.
+        self.last_tier = None
 
     def complete(self, prompt: str, system: str | None = None) -> str:
         try:
-            return self._primary.complete(prompt, system=system)
+            out = self._primary.complete(prompt, system=system)
+            self.last_tier = getattr(self._primary, "tier", "unknown")
+            return out
         except Exception as e:
             print(f"[llm] primary provider failed ({e}); "
                   f"falling back to secondary provider")
@@ -40,7 +46,11 @@ class FallbackLLM:
                     self._on_fallback(e)
                 except Exception:
                     pass
-            return self._fallback.complete(prompt, system=system)
+            out = self._fallback.complete(prompt, system=system)
+            # Unwrap a nested FallbackLLM so we report the LEAF tier that served.
+            self.last_tier = (getattr(self._fallback, "last_tier", None)
+                              or getattr(self._fallback, "tier", "unknown"))
+            return out
 
     def embed(self, text: str) -> list[float]:
         # Embeddings only have one real provider (Gemini); never fall back.
@@ -68,6 +78,8 @@ class GeminiClient:
       complete(prompt, system=None) -> str
       embed(text) -> list[float]
     """
+
+    tier = "gemini"
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
@@ -106,3 +118,17 @@ class GeminiClient:
                 if attempt < _MAX_RETRIES - 1:
                     _SLEEP(_BACKOFF_S[attempt])
         raise GeminiError(f"embed failed after {_MAX_RETRIES} attempts: {last_exc}")
+
+
+def resolve_tier(llm) -> str:
+    """Which provider actually served the last complete(): a FallbackLLM's
+    last_tier, else a bare client's tier, else 'unknown'.
+
+    Only str values count — a test double (e.g. MagicMock) auto-creates any
+    attribute, so guarding on isinstance(str) keeps those out of run state and
+    off the JSON write path (a MagicMock would raise in json.dumps)."""
+    for attr in ("last_tier", "tier"):
+        val = getattr(llm, attr, None)
+        if isinstance(val, str) and val:
+            return val
+    return "unknown"

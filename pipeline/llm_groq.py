@@ -28,6 +28,8 @@ class GroqError(RuntimeError):
 class GroqClient:
     """OpenAI-compatible Chat Completions wrapper for Groq."""
 
+    tier = "groq"
+
     def __init__(
         self,
         api_key: str | None = None,
