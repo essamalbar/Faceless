@@ -105,3 +105,76 @@ def test_recipe_remove_negatives_are_valid_tokens():
     shared = {p.strip() for p in SHARED_NEGATIVES.split(",")}
     for recipe in GENRE_RECIPES.values():
         assert set(recipe.remove_negatives) <= shared, recipe.key
+
+
+import json
+
+from pipeline.song_style import StyleResult, compose_style
+
+
+class _StubLLM:
+    def __init__(self, response=None, raises=False):
+        self._response = response
+        self._raises = raises
+
+    def complete(self, prompt, system=None):
+        if self._raises:
+            raise RuntimeError("llm down")
+        return self._response
+
+
+_GOOD_PRODUCER_JSON = json.dumps({
+    "style_prompt": ("Arabic pop ballad, cinematic strings and soft piano, "
+                     "warm male vocal, professionally mixed and mastered"),
+    "negative_tags": "robotic vocal, off-key",
+})
+
+
+def _compose(llm, theme="أغنية حزينة عن الفراق", genre_hint=None):
+    # "حزينة" contains the arabic_ballad alias "حزين" (Arabic substring match)
+    # → infer_genre returns "arabic_ballad", which the fallback tests assert.
+    return compose_style(
+        llm, theme=theme, title="عنوان", lyrics="[Verse 1]\nكلمات\n[Chorus]\nلازمة",
+        language="ar", dialect=None, style_hint=genre_hint, vocal_gender="m",
+    )
+
+
+def test_compose_style_uses_producer_when_valid():
+    res = _compose(_StubLLM(_GOOD_PRODUCER_JSON))
+    assert isinstance(res, StyleResult)
+    assert res.source.startswith("producer:")
+    assert "mixed and mastered" in res.style_prompt
+    assert res.negative_tags == "robotic vocal, off-key"
+
+
+def test_compose_style_falls_back_on_exception():
+    res = _compose(_StubLLM(raises=True))
+    assert res.source == "fallback:recipe"
+    assert "mixed and mastered" in res.style_prompt  # recipe spine present
+    assert res.genre_key == "arabic_ballad"
+
+
+def test_compose_style_falls_back_on_weak_output():
+    weak = json.dumps({"style_prompt": "pop song", "negative_tags": ""})
+    res = _compose(_StubLLM(weak))
+    assert res.source == "fallback:recipe"
+
+
+def test_compose_style_rejects_leaked_section_tags():
+    leaked = json.dumps({
+        "style_prompt": ("Arabic pop ballad, cinematic strings, professionally "
+                         "mixed and mastered [Chorus]"),
+        "negative_tags": "",
+    })
+    res = _compose(_StubLLM(leaked))
+    assert res.source == "fallback:recipe"
+
+
+def test_compose_style_trims_overlong_producer_output():
+    huge = json.dumps({
+        "style_prompt": ("professionally mixed and mastered, Arabic pop ballad, "
+                         "cinematic strings, ") + ", ".join(["extra tag"] * 200),
+        "negative_tags": "",
+    })
+    res = _compose(_StubLLM(huge))
+    assert len(res.style_prompt) <= 450

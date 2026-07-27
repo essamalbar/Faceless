@@ -10,8 +10,11 @@ See docs/superpowers/specs/2026-07-27-song-producer-pass-design.md.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+
+from pipeline.llm import resolve_tier
 
 # --- Quality spine (injected into every genre) ------------------------------
 # Kept compact so the full spine + genre + a user style_hint all fit inside
@@ -279,3 +282,105 @@ def _recipe_style(recipe: Recipe, vocal_gender: str | None,
     ]
     style = _trim_to_last_comma(", ".join(pieces))
     return style, build_negatives(recipe)
+
+
+@dataclass(frozen=True)
+class StyleResult:
+    style_prompt: str
+    negative_tags: str
+    genre_key: str
+    source: str   # "producer:<tier>" | "fallback:recipe"
+
+
+_PRODUCER_SYSTEM = """You are a hit-record music producer writing the STYLE
+field for Suno V5.5 — NOT a lyricist. Given a genre recipe and the finished
+lyrics, output the single best comma-separated style descriptor.
+
+OUTPUT: a JSON object, no markdown, no commentary:
+  {"style_prompt": "...", "negative_tags": "..."}
+
+RULES for style_prompt:
+  - Comma-separated descriptors only. No sentences, no lyrics, no [section] tags.
+  - MUST keep professional-production language (mixed and mastered, radio-ready,
+    studio production) and vocal-realism cues from the recipe.
+  - MUST reflect the recipe's instrumentation and era; adapt tempo/mood to the
+    actual lyrics.
+  - Keep it under 60 words.
+negative_tags: comma-separated things to exclude for this genre."""
+
+
+def _producer_user_msg(recipe: Recipe, title: str, lyrics: str, language: str,
+                       dialect: str | None, style_hint: str | None,
+                       vocal_gender: str | None) -> str:
+    return (
+        f"Genre recipe (scaffold — refine, don't just copy):\n"
+        f"  genre: {recipe.genre}\n"
+        f"  tempo: {recipe.tempo}\n"
+        f"  instrumentation: {recipe.instrumentation}\n"
+        f"  vocal: {_fill_vocal(recipe, vocal_gender)}\n"
+        f"  era: {recipe.era}\n"
+        f"  production spine (keep): {SPINE_PRODUCTION}\n"
+        f"  vocal spine (keep): {SPINE_VOCAL}\n"
+        f"  negative tags (baseline): {build_negatives(recipe)}\n"
+        f"Song title: {title}\n"
+        f"Language: {language}" + (f" ({dialect})" if dialect else "") + "\n"
+        + (f"User style hint (honor it): {style_hint}\n" if style_hint else "")
+        + f"Lyrics:\n{lyrics}"
+    )
+
+
+def _parse_json_object(raw: str) -> dict:
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", raw, flags=re.MULTILINE).strip()
+    if not raw.startswith("{"):
+        start, end = raw.find("{"), raw.rfind("}")
+        if start != -1 and end > start:
+            raw = raw[start:end + 1]
+    return json.loads(raw, strict=False)
+
+
+def _key_tokens(recipe: Recipe) -> list[str]:
+    raw = f"{recipe.genre} {recipe.instrumentation}".lower()
+    return [w for w in re.split(r"[,\s]+", raw) if len(w) > 3]
+
+
+def _looks_weak(style: str, recipe: Recipe) -> bool:
+    if not style or len(style) < 20:
+        return True
+    if "[" in style or "]" in style or "\n" in style:
+        return True
+    low = style.lower()
+    if not any(t in low for t in
+               ("mixed and mastered", "radio-ready", "studio production")):
+        return True
+    if sum(1 for t in _key_tokens(recipe) if t in low) < 2:
+        return True
+    return False
+
+
+def compose_style(llm, *, theme: str, title: str, lyrics: str, language: str,
+                  dialect: str | None, style_hint: str | None,
+                  vocal_gender: str | None) -> StyleResult:
+    """Producer pass: strongest-model style prompt, recipe fallback on
+    failure or weak output. Never raises — always returns a usable steer."""
+    genre_key = infer_genre(theme, style_hint, language, dialect)
+    recipe = GENRE_RECIPES[genre_key]
+    fb_style, fb_neg = _recipe_style(recipe, vocal_gender, style_hint)
+    try:
+        raw = llm.complete(
+            _producer_user_msg(recipe, title, lyrics, language, dialect,
+                               style_hint, vocal_gender),
+            system=_PRODUCER_SYSTEM,
+        )
+        parsed = _parse_json_object(raw)
+        style = _trim_to_last_comma(str(parsed.get("style_prompt", "")).strip())
+        neg = str(parsed.get("negative_tags", "")).strip() or fb_neg
+        if _looks_weak(style, recipe):
+            print(f"[song-style] producer output looked weak for {genre_key}; "
+                  f"using recipe fallback")
+            return StyleResult(fb_style, fb_neg, genre_key, "fallback:recipe")
+        return StyleResult(style, neg, genre_key, f"producer:{resolve_tier(llm)}")
+    except Exception as e:
+        print(f"[song-style] producer pass failed ({e}); using recipe fallback")
+        return StyleResult(fb_style, fb_neg, genre_key, "fallback:recipe")
