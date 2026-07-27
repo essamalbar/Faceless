@@ -1020,6 +1020,8 @@ Replace the final `return SongScript(...)` block with:
 Run: `uv run pytest tests/test_song_lyrics.py -v`
 Expected: PASS. The existing `test_generate_song_script_from_theme_only` still passes — its single-return stub feeds the producer call the lyrics JSON, which fails the validation gate and falls back to the `arabic_ballad` recipe whose style still contains `"BPM"`.
 
+One existing test needs a one-assertion update (intended behavior change): `test_song_script_tolerates_messy_groq_output` asserted `"90 BPM" in style_prompt` (the raw lyrics-JSON value). `style_prompt` now comes from the producer pass; the messy Groq style has no spine token, so it falls back to the recipe steer. Update its tail assertions to `s.style_source == "fallback:recipe"` and `"mixed and mastered" in s.style_prompt` (keep the `title`/`[Chorus]` assertions — the parsing-tolerance the test exists for is unchanged).
+
 - [ ] **Step 6: Commit**
 
 ```bash

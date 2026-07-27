@@ -185,7 +185,11 @@ def test_song_script_tolerates_messy_groq_output():
     )
     assert s.title == "ليل"
     assert "[Chorus]" in s.lyrics
-    assert "90 BPM" in s.style_prompt
+    # style_prompt now comes from the producer pass, not the raw lyrics JSON.
+    # This messy Groq style lacks the required spine language, so compose_style
+    # judges it weak and ships the recipe fallback (which carries the spine).
+    assert s.style_source == "fallback:recipe"
+    assert "mixed and mastered" in s.style_prompt
 
 
 def _routing_llm(lyrics_json: str, producer_json: str):
