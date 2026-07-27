@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import pytest
+from unittest.mock import MagicMock
 
 from pipeline.llm import FallbackLLM, resolve_tier
 
@@ -46,3 +46,19 @@ def test_resolve_tier_unknown_when_absent():
         def complete(self, p, system=None):
             return p
     assert resolve_tier(Bare()) == "unknown"
+
+
+def test_resolve_tier_ignores_non_str_truthy_attribute():
+    # The isinstance(str) guard exists precisely so a MagicMock's auto-created
+    # (truthy, non-str) attribute resolves to "unknown" instead of leaking a
+    # MagicMock onto the JSON write path.
+    assert resolve_tier(MagicMock()) == "unknown"
+
+
+def test_fallback_records_leaf_tier_when_nested_on_primary():
+    # Symmetric with the fallback-side nesting: a FallbackLLM nested as the
+    # PRIMARY that succeeds must still report its leaf tier, not "unknown".
+    inner = FallbackLLM(_Stub("gemini", raises=True), _Stub("groq"))
+    outer = FallbackLLM(inner, _Stub("anthropic"))
+    outer.complete("hi")
+    assert outer.last_tier == "groq"

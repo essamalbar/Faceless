@@ -478,7 +478,7 @@ Create `tests/test_llm_tier.py`:
 ```python
 from __future__ import annotations
 
-import pytest
+from unittest.mock import MagicMock
 
 from pipeline.llm import FallbackLLM, resolve_tier
 
@@ -524,6 +524,22 @@ def test_resolve_tier_unknown_when_absent():
         def complete(self, p, system=None):
             return p
     assert resolve_tier(Bare()) == "unknown"
+
+
+def test_resolve_tier_ignores_non_str_truthy_attribute():
+    # The isinstance(str) guard exists precisely so a MagicMock's auto-created
+    # (truthy, non-str) attribute resolves to "unknown" instead of leaking a
+    # MagicMock onto the JSON write path.
+    assert resolve_tier(MagicMock()) == "unknown"
+
+
+def test_fallback_records_leaf_tier_when_nested_on_primary():
+    # Symmetric with the fallback-side nesting: a FallbackLLM nested as the
+    # PRIMARY that succeeds must still report its leaf tier, not "unknown".
+    inner = FallbackLLM(_Stub("gemini", raises=True), _Stub("groq"))
+    outer = FallbackLLM(inner, _Stub("anthropic"))
+    outer.complete("hi")
+    assert outer.last_tier == "groq"
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -548,7 +564,10 @@ Replace `FallbackLLM.complete` with:
     def complete(self, prompt: str, system: str | None = None) -> str:
         try:
             out = self._primary.complete(prompt, system=system)
-            self.last_tier = getattr(self._primary, "tier", "unknown")
+            # Unwrap a nested FallbackLLM (symmetric with the fallback path)
+            # so a chain nested on the primary side still reports the leaf.
+            self.last_tier = (getattr(self._primary, "last_tier", None)
+                              or getattr(self._primary, "tier", "unknown"))
             return out
         except Exception as e:
             print(f"[llm] primary provider failed ({e}); "
@@ -596,7 +615,7 @@ In `pipeline/llm_groq.py`, add `tier = "groq"` as a class attribute on `GroqClie
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_llm_tier.py -v`
-Expected: PASS (5 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 6: Run the existing LLM/router tests to confirm no regression**
 

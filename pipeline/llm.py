@@ -36,7 +36,10 @@ class FallbackLLM:
     def complete(self, prompt: str, system: str | None = None) -> str:
         try:
             out = self._primary.complete(prompt, system=system)
-            self.last_tier = getattr(self._primary, "tier", "unknown")
+            # Unwrap a nested FallbackLLM (symmetric with the fallback path)
+            # so a chain nested on the primary side still reports the leaf.
+            self.last_tier = (getattr(self._primary, "last_tier", None)
+                              or getattr(self._primary, "tier", "unknown"))
             return out
         except Exception as e:
             print(f"[llm] primary provider failed ({e}); "
