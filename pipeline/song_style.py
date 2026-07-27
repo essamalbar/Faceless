@@ -301,11 +301,13 @@ OUTPUT: a JSON object, no markdown, no commentary:
 
 RULES for style_prompt:
   - Comma-separated descriptors only. No sentences, no lyrics, no [section] tags.
-  - MUST keep professional-production language (mixed and mastered, radio-ready,
-    studio production) and vocal-realism cues from the recipe.
+  - START with the mandatory production + vocal-realism language ("professionally
+    mixed and mastered, radio-ready studio production, ... expressive human lead
+    vocal ...") so it can never be lost; THEN add genre, instrumentation,
+    tempo and era from the recipe.
   - MUST reflect the recipe's instrumentation and era; adapt tempo/mood to the
     actual lyrics.
-  - Keep it under 60 words.
+  - Keep it SHORT — under 45 words — so it fits without truncation.
 negative_tags: comma-separated things to exclude for this genre."""
 
 
@@ -337,7 +339,10 @@ def _parse_json_object(raw: str) -> dict:
         start, end = raw.find("{"), raw.rfind("}")
         if start != -1 and end > start:
             raw = raw[start:end + 1]
-    return json.loads(raw, strict=False)
+    data = json.loads(raw, strict=False)
+    if not isinstance(data, dict):
+        raise ValueError("producer output was not a JSON object")
+    return data
 
 
 def _key_tokens(recipe: Recipe) -> list[str]:
@@ -374,6 +379,11 @@ def compose_style(llm, *, theme: str, title: str, lyrics: str, language: str,
             system=_PRODUCER_SYSTEM,
         )
         parsed = _parse_json_object(raw)
+        # Trim BEFORE the weak-check on purpose: this guarantees the SHIPPED
+        # style always carries the spine tokens. If trimming a too-long
+        # response drops them, _looks_weak fails and we ship the spine-bearing
+        # recipe fallback instead. _PRODUCER_SYSTEM front-loads the spine so
+        # this rarely fires.
         style = _trim_to_last_comma(str(parsed.get("style_prompt", "")).strip())
         neg = str(parsed.get("negative_tags", "")).strip() or fb_neg
         if _looks_weak(style, recipe):

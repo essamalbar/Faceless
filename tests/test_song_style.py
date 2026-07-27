@@ -178,3 +178,21 @@ def test_compose_style_trims_overlong_producer_output():
     })
     res = _compose(_StubLLM(huge))
     assert len(res.style_prompt) <= 450
+
+
+def test_compose_style_falls_back_on_non_json_text():
+    # LLM returned prose, not JSON → JSONDecodeError → fallback, no crash.
+    res = _compose(_StubLLM("here is your style: pop, upbeat, fun"))
+    assert res.source == "fallback:recipe"
+
+
+def test_compose_style_falls_back_on_non_object_json():
+    # Valid JSON but a list, not an object → ValueError guard → fallback.
+    res = _compose(_StubLLM(json.dumps(["pop", "upbeat"])))
+    assert res.source == "fallback:recipe"
+
+
+def test_compose_style_falls_back_on_missing_keys():
+    # Object without style_prompt → empty style → weak → fallback.
+    res = _compose(_StubLLM(json.dumps({"foo": "bar"})))
+    assert res.source == "fallback:recipe"
