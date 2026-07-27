@@ -674,7 +674,9 @@ _GOOD_PRODUCER_JSON = json.dumps({
 })
 
 
-def _compose(llm, theme="حب ضائع", genre_hint=None):
+def _compose(llm, theme="أغنية حزينة عن الفراق", genre_hint=None):
+    # "حزينة" contains the arabic_ballad alias "حزين" (Arabic substring match)
+    # → infer_genre returns "arabic_ballad", which the fallback tests assert.
     return compose_style(
         llm, theme=theme, title="عنوان", lyrics="[Verse 1]\nكلمات\n[Chorus]\nلازمة",
         language="ar", dialect=None, style_hint=genre_hint, vocal_gender="m",
