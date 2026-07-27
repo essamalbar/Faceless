@@ -88,10 +88,17 @@ def test_recipe_style_all_genres_fit_with_full_spine():
 
 
 def test_infer_genre_word_boundary_no_false_positives():
-    # short aliases must not match inside unrelated words
+    # short LATIN aliases must not match inside unrelated words
     assert infer_genre("a song about abundance and hope",
                        language="en") != "edm_electropop"   # not "dance" in "abundance"
     assert infer_genre("my husband and me", language="en") != "rock"  # not "band"
+
+
+def test_infer_genre_matches_inflected_arabic_aliases():
+    # Arabic inflects by attaching suffixes/prefixes directly, so alias
+    # matching must still catch inflected forms (خليجية ⊃ خليجي, الطرب ⊃ طرب).
+    assert infer_genre("أغنية خليجية أصيلة", language="ar") == "khaleeji"
+    assert infer_genre("أحب الطرب الأصيل", language="ar") == "tarab_classic"
 
 
 def test_recipe_remove_negatives_are_valid_tokens():

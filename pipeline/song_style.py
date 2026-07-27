@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 # --- Quality spine (injected into every genre) ------------------------------
 # Kept compact so the full spine + genre + a user style_hint all fit inside
-# MAX_STYLE_CHARS for every recipe (the longest recipe lands ~432/450). The
+# MAX_STYLE_CHARS for every recipe (the longest recipe lands ~438/450). The
 # _looks_weak gate (Task 3) keys off "mixed and mastered" / "radio-ready" /
 # "studio production", which must remain present here.
 SPINE_PRODUCTION = (
@@ -209,6 +209,20 @@ def build_negatives(recipe: Recipe) -> str:
     return ", ".join(parts)
 
 
+def _alias_hit(alias: str, hay: str) -> bool:
+    """Whether an alias occurs in the haystack.
+
+    Latin-script aliases need BOTH word boundaries so short words don't fire
+    inside longer ones ("dance" in "abundance", "band" in "husband", "808" in
+    "808s"). Arabic inflects by attaching prefixes/suffixes directly
+    (خليجي → خليجية, طرب → الطرب), so word boundaries would miss real matches;
+    Arabic-script aliases are distinctive enough that a plain substring match
+    is safe and catches inflected forms."""
+    if re.search(r"[؀-ۿ]", alias):
+        return alias in hay
+    return re.search(rf"\b{re.escape(alias)}\b", hay) is not None
+
+
 def infer_genre(theme: str, style_hint: str | None = None,
                 language: str = "ar", dialect: str | None = None) -> str:
     """Deterministic genre pick. No LLM. Language-gated so English themes
@@ -222,12 +236,8 @@ def infer_genre(theme: str, style_hint: str | None = None,
     }
 
     def _pick(hay: str, use_dialect: bool) -> str | None:
-        # Word-boundary match so short aliases don't fire inside unrelated
-        # words ("dance" in "abundance", "rap" in "wrapping", "band" in
-        # "husband", "808" only when standalone).
         scores = {
-            k: sum(1 for a in r.aliases
-                   if re.search(rf"\b{re.escape(a)}\b", hay))
+            k: sum(1 for a in r.aliases if _alias_hit(a, hay))
             for k, r in candidates.items()
         }
         if use_dialect and dialect == "khaleeji" and "khaleeji" in scores:
