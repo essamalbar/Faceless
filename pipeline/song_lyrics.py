@@ -48,6 +48,10 @@ def validate_section_tags(lyrics: str) -> None:
         raise ValueError("lyrics missing [Chorus] section")
 
 
+# NOTE: this contract still asks the writer for `style_prompt`, but
+# generate_song_script now OVERRIDES it with the dedicated producer pass
+# (pipeline.song_style.compose_style). The field is retained only as a
+# harmless optional seed; the producer output is authoritative.
 _SYSTEM_PROMPT = """You write song lyrics for Suno V5.5.
 
 OUTPUT FORMAT: a JSON object with these keys (no surrounding markdown, no commentary):
@@ -282,6 +286,13 @@ def generate_song_script(
     lyrics = custom_lyrics if custom_lyrics else parsed["lyrics"]
     validate_section_tags(lyrics)
 
+    # Capture which writer tier produced the LYRICS here — before the rescue
+    # diacritize pass AND the producer pass, both of which make their own
+    # llm.complete() calls that would overwrite last_tier and misattribute
+    # provenance (e.g. a transient diacritize-only fallback to Groq would
+    # otherwise make writer_tier read "groq" for lyrics Anthropic wrote).
+    writer_tier = resolve_tier(llm)
+
     # Tashkeel: the compose contract already requires full diacritization
     # (capable models deliver ~0.7+ harakat density). The dedicated
     # diacritize pass is a RESCUE for low-density output only — running it
@@ -292,10 +303,6 @@ def generate_song_script(
             diacritized = diacritize_lyrics(llm, lyrics)
             if diacritized:
                 lyrics = diacritized
-
-    # Capture which writer tier produced the lyrics BEFORE the producer pass
-    # (compose_style makes its own call and would overwrite last_tier).
-    writer_tier = resolve_tier(llm)
 
     # Producer pass: authoritative Suno style + negative tags. The lyrics-JSON
     # style_prompt (parsed["style_prompt"]) is intentionally ignored — a weak

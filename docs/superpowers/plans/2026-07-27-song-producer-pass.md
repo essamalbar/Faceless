@@ -985,13 +985,26 @@ def generate_song_script(
 ) -> SongScript:
 ```
 
-Replace the final `return SongScript(...)` block with:
+Capture `writer_tier` right after `validate_section_tags(lyrics)` — BEFORE the
+tashkeel/diacritize block — so it reflects the tier that wrote the LYRICS, not a
+tier a later diacritize rescue or the producer pass may fall back to:
 
 ```python
-    # Capture which writer tier produced the lyrics BEFORE the producer pass
-    # (compose_style makes its own call and would overwrite last_tier).
-    writer_tier = resolve_tier(llm)
+    lyrics = custom_lyrics if custom_lyrics else parsed["lyrics"]
+    validate_section_tags(lyrics)
 
+    # Capture which writer tier produced the LYRICS here — before the rescue
+    # diacritize pass AND the producer pass, both of which make their own
+    # llm.complete() calls that would overwrite last_tier and misattribute
+    # provenance (e.g. a transient diacritize-only fallback to Groq would
+    # otherwise make writer_tier read "groq" for lyrics Anthropic wrote).
+    writer_tier = resolve_tier(llm)
+```
+
+Then replace the final `return SongScript(...)` block with (note: no
+`writer_tier = ...` here — it was captured above):
+
+```python
     # Producer pass: authoritative Suno style + negative tags. The lyrics-JSON
     # style_prompt (parsed["style_prompt"]) is intentionally ignored — a weak
     # writer's blob is exactly what this replaces.
@@ -1015,12 +1028,17 @@ Replace the final `return SongScript(...)` block with:
     )
 ```
 
-- [ ] **Step 5: Run the new test + the whole song_lyrics suite**
+- [ ] **Step 5: Run the FULL suite (the producer pass adds an llm.complete call)**
 
-Run: `uv run pytest tests/test_song_lyrics.py -v`
+Run: `uv run pytest tests/test_song_lyrics.py tests/test_arabic_quality.py -v` (and then the whole suite before Task 7).
 Expected: PASS. The existing `test_generate_song_script_from_theme_only` still passes — its single-return stub feeds the producer call the lyrics JSON, which fails the validation gate and falls back to the `arabic_ballad` recipe whose style still contains `"BPM"`.
 
-One existing test needs a one-assertion update (intended behavior change): `test_song_script_tolerates_messy_groq_output` asserted `"90 BPM" in style_prompt` (the raw lyrics-JSON value). `style_prompt` now comes from the producer pass; the messy Groq style has no spine token, so it falls back to the recipe steer. Update its tail assertions to `s.style_source == "fallback:recipe"` and `"mixed and mastered" in s.style_prompt` (keep the `title`/`[Chorus]` assertions — the parsing-tolerance the test exists for is unchanged).
+The unconditional producer-pass call means `generate_song_script` now makes ONE extra `llm.complete` call. Tests that assert exact call counts or the raw lyrics-JSON `style_prompt` need updating (intended behavior change — preserve each test's real invariant, do not weaken it):
+- `tests/test_song_lyrics.py::test_song_script_tolerates_messy_groq_output`: `"90 BPM"` assertion → `s.style_source == "fallback:recipe"` + `"mixed and mastered" in s.style_prompt` (keep the `title`/`[Chorus]` parsing-tolerance checks).
+- `tests/test_arabic_quality.py::test_rescue_diacritization_fires_only_on_low_density`: `len(calls) == 2` → `== 3` (compose + diacritize + producer).
+- `tests/test_arabic_quality.py::test_custom_lyrics_never_auto_diacritized` and `test_high_density_compose_skips_rescue`: replace the brittle `len(calls) == 1` with the real invariant `DIACRITIZE_SYSTEM not in calls` (import `DIACRITIZE_SYSTEM`; note `_SYSTEM_PROMPT` itself mentions تشكيل, so a substring check is wrong).
+- `tests/test_arabic_quality.py::test_generate_retries_once_on_malformed_json`: make the flaky stub return a valid producer object for calls beyond the 2 lyrics attempts; `len(calls) == 2` → `== 3`.
+Also add `tests/test_song_lyrics.py::test_writer_tier_reflects_lyrics_call_not_diacritize_fallback` — a stub whose `last_tier` mutates per call (anthropic for lyrics, groq for the rescue/producer) asserting `writer_tier == "anthropic"` (locks the capture-before-diacritize fix).
 
 - [ ] **Step 6: Commit**
 

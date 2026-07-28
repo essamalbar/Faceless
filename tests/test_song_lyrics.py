@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from pipeline.song_lyrics import (
+    DIACRITIZE_SYSTEM,
     SongScript,
     generate_song_script,
     validate_section_tags,
@@ -226,4 +228,38 @@ def test_generate_song_script_populates_producer_fields():
     assert "mixed and mastered" in script.style_prompt
     assert script.negative_tags == "robotic vocal, off-key"
     assert script.style_source.startswith("producer:")
+    assert script.writer_tier == "anthropic"
+
+
+def test_writer_tier_reflects_lyrics_call_not_diacritize_fallback():
+    # If the diacritize rescue pass (or the producer pass) falls back to a
+    # weaker tier, writer_tier must still report the tier that wrote the
+    # LYRICS — captured before those later calls mutate last_tier.
+    lyrics_json = json.dumps({
+        "title": "ت", "lyrics": "[Chorus]\nيا ليل",  # bare → triggers rescue
+        "style_prompt": "s", "cover_prompt": "c",
+    }, ensure_ascii=False)
+
+    class _TierMutating:
+        """Mimics a FallbackLLM whose last_tier changes per call: the lyrics
+        call is served by anthropic, but the later rescue/producer calls fall
+        back to groq."""
+        def __init__(self):
+            self.last_tier = None
+
+        def complete(self, prompt, system=None):
+            sys = system or ""
+            if sys == DIACRITIZE_SYSTEM:            # diacritize rescue
+                self.last_tier = "groq"
+                return "[Chorus]\nيَا لَيْلُ"
+            if "music producer" in sys.lower():     # producer pass
+                self.last_tier = "groq"
+                return json.dumps({"style_prompt": "x", "negative_tags": ""})
+            self.last_tier = "anthropic"            # lyrics compose
+            return lyrics_json
+
+    script = generate_song_script(
+        llm=_TierMutating(), theme="حب", custom_lyrics=None,
+        style_hint=None, language="ar",
+    )
     assert script.writer_tier == "anthropic"

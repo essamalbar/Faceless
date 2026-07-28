@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 
-from pipeline.song_lyrics import _SYSTEM_PROMPT, generate_song_script
+from pipeline.song_lyrics import (
+    DIACRITIZE_SYSTEM,
+    _SYSTEM_PROMPT,
+    generate_song_script,
+)
 
 
 class _CaptureLLM:
@@ -43,7 +47,8 @@ def test_rescue_diacritization_fires_only_on_low_density():
     script = generate_song_script(llm=_TwoPass(), theme="x",
                                   custom_lyrics=None, style_hint=None,
                                   language="ar")
-    assert len(calls) == 2
+    # compose (1) + diacritize rescue (2) + producer pass (3)
+    assert len(calls) == 3
     assert "تشكيل" in calls[1]  # dedicated diacritize system prompt
     assert script.lyrics == "[Chorus]\nيَا لَيْلُ يَا عَيْنُ"
 
@@ -70,7 +75,7 @@ def test_custom_lyrics_never_auto_diacritized():
     calls = []
     class _LLM:
         def complete(self, prompt, system=None):
-            calls.append(1)
+            calls.append(system or "")
             return json.dumps({
                 "title": "ت", "lyrics": "ignored",
                 "style_prompt": "s", "cover_prompt": "c",
@@ -78,7 +83,10 @@ def test_custom_lyrics_never_auto_diacritized():
     script = generate_song_script(llm=_LLM(), theme="x",
                                   custom_lyrics="[Chorus]\nكلماتي أنا",
                                   style_hint=None, language="ar")
-    assert len(calls) == 1  # no second pass on user text
+    # The real invariant: no diacritize rescue pass runs on user-supplied text.
+    # (A producer-pass call may still fire; it just must not be the rescue.)
+    # NB: _SYSTEM_PROMPT itself mentions تشكيل, so match the exact rescue prompt.
+    assert DIACRITIZE_SYSTEM not in calls
     assert script.lyrics == "[Chorus]\nكلماتي أنا"
 
 
@@ -138,7 +146,7 @@ def test_high_density_compose_skips_rescue():
     calls = []
     class _Diacritized:
         def complete(self, prompt, system=None):
-            calls.append(1)
+            calls.append(system or "")
             return json.dumps({
                 "title": "ت",
                 "lyrics": "[Chorus]\nيَا لَيْلُ يَا عَيْنُ قَلْبِي مَعَكْ",
@@ -147,7 +155,9 @@ def test_high_density_compose_skips_rescue():
     s = generate_song_script(llm=_Diacritized(), theme="x",
                              custom_lyrics=None, style_hint=None,
                              language="ar")
-    assert len(calls) == 1  # no rescue needed
+    # Already-diacritized compose → no rescue pass fires (match exact prompt;
+    # _SYSTEM_PROMPT also mentions تشكيل).
+    assert DIACRITIZE_SYSTEM not in calls
     assert "يَا" in s.lyrics
 
 
@@ -161,9 +171,16 @@ def test_generate_retries_once_on_malformed_json():
     class _Flaky:
         def complete(self, prompt, system=None):
             calls.append(prompt)
-            return outs[len(calls) - 1]
+            i = len(calls) - 1
+            if i < len(outs):
+                return outs[i]
+            # Beyond the two lyrics attempts: the producer pass. Return a
+            # valid producer object so compose_style doesn't error (it would
+            # fall back anyway; this keeps the test focused on the retry).
+            return json.dumps({"style_prompt": "s", "negative_tags": ""})
     s = generate_song_script(llm=_Flaky(), theme="x", custom_lyrics=None,
                              style_hint=None, language="en")
-    assert len(calls) == 2
+    # two lyrics attempts (broken → retry → valid) + one producer pass
+    assert len(calls) == 3
     assert "VALID JSON" in calls[1]
     assert s.title == "ت"
