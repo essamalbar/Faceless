@@ -2819,6 +2819,7 @@ def create_song(
             style_hint=style_hint,
             language=req.language,
             dialect=dialect,
+            vocal_gender=req.vocal_gender,
         )
     except Exception as e:
         _write_state(run_dir, status="failed", last_error=f"lyrics LLM failed: {e}")
@@ -2829,6 +2830,9 @@ def create_song(
             "title": script.title,
             "lyrics": script.lyrics,
             "style_prompt": script.style_prompt,
+            "negative_tags": script.negative_tags,
+            "style_source": script.style_source,
+            "writer_tier": script.writer_tier,
             "cover_prompt": script.cover_prompt,
             "language": script.language,
             # Voice-control fields persist into the worker's Suno call.

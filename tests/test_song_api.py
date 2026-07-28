@@ -1155,3 +1155,21 @@ def test_normal_song_get_does_not_refund(app, monkeypatch):
         f"credits.refund must not be called for a normal (non-downgraded) song, "
         f"but got calls: {refund_calls}"
     )
+
+
+def test_post_songs_persists_producer_fields(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    r = client.post(
+        "/songs",
+        json={"theme": "sad Arabic ballad about the moon", "language": "ar",
+              "vocal_gender": "m"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 201, r.text
+    run_dir = _find_run_dir(r.json()["run_id"])
+    song_json = json.loads((run_dir / "song.json").read_text())
+    # New producer fields present and JSON-serialisable (no MagicMock leak).
+    assert song_json["style_source"] == "fallback:recipe"
+    assert song_json["writer_tier"] == "unknown"
+    assert "robotic vocal" in song_json["negative_tags"]  # recipe negatives

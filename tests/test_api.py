@@ -2577,6 +2577,7 @@ def test_create_song_with_artist_inherits_voice_and_style(
             title = "t"; lyrics = "[Verse 1]\nx\n[Chorus]\ny"
             style_prompt = "s"; cover_prompt = "c"; language = "ar"
             art_direction = ""; scene_prompts = []
+            negative_tags = ""; style_source = ""; writer_tier = ""
         return S()
     monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_gen)
     monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
@@ -2622,6 +2623,7 @@ def test_delete_artist_detaches_songs(client_factory, monkeypatch, tmp_path):
             title = "t"; lyrics = "[Chorus]\ny"; style_prompt = "s"
             cover_prompt = "c"; language = "ar"; art_direction = ""
             scene_prompts = []
+            negative_tags = ""; style_source = ""; writer_tier = ""
         return S()
     monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_gen)
     monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
@@ -3205,6 +3207,7 @@ def test_create_song_accepts_dialect_and_artist_default(
             title = "t"; lyrics = "[Chorus]\nx"; style_prompt = "s"
             cover_prompt = "c"; language = "ar"; art_direction = ""
             scene_prompts = []
+            negative_tags = ""; style_source = ""; writer_tier = ""
         return S()
     monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_gen)
 
