@@ -120,3 +120,16 @@ def test_maybe_master_handles_missing_song_config(tmp_path):
     mp3 = tmp_path / "song.mp3"
     mp3.write_bytes(b"fake")
     assert maybe_master(mp3, SimpleNamespace(song=None)) is False
+
+
+def test_maybe_master_never_shells_out_even_when_flag_on(tmp_path, monkeypatch):
+    # Locks the seam contract: Approach B is NOT built, so maybe_master must
+    # not invoke ffmpeg/subprocess under any branch — including flag ON.
+    import subprocess
+    def _boom(*a, **k):
+        raise AssertionError("maybe_master must not shell out (seam is a no-op)")
+    monkeypatch.setattr(subprocess, "run", _boom)
+    monkeypatch.setattr(subprocess, "Popen", _boom)
+    mp3 = tmp_path / "song.mp3"
+    mp3.write_bytes(b"fake")
+    assert maybe_master(mp3, SimpleNamespace(song=SimpleNamespace(master_pass=True))) is False

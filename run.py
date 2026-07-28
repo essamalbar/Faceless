@@ -1130,8 +1130,9 @@ def _run_song_post_approve(args) -> int:
                     dst.write(chunk)
             write_state(chosen_take=chosen)
 
-            from pipeline.song_assemble import maybe_master
-            maybe_master(song_mp3, cfg)
+            # Approach-B seam: no-op today (see maybe_master docstring); the
+            # return value is intentionally ignored until B is built.
+            song_assemble.maybe_master(song_mp3, cfg)
 
         # --- Stage 2: cover ---
         # Skip the Flux call if cover_raw.png is already on disk; just

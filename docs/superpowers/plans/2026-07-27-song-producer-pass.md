@@ -1190,6 +1190,19 @@ def test_maybe_master_handles_missing_song_config(tmp_path):
     mp3 = tmp_path / "song.mp3"
     mp3.write_bytes(b"fake")
     assert maybe_master(mp3, SimpleNamespace(song=None)) is False
+
+
+def test_maybe_master_never_shells_out_even_when_flag_on(tmp_path, monkeypatch):
+    # Locks the seam contract: Approach B is NOT built, so maybe_master must
+    # not invoke ffmpeg/subprocess under any branch — including flag ON.
+    import subprocess
+    def _boom(*a, **k):
+        raise AssertionError("maybe_master must not shell out (seam is a no-op)")
+    monkeypatch.setattr(subprocess, "run", _boom)
+    monkeypatch.setattr(subprocess, "Popen", _boom)
+    mp3 = tmp_path / "song.mp3"
+    mp3.write_bytes(b"fake")
+    assert maybe_master(mp3, SimpleNamespace(song=SimpleNamespace(master_pass=True))) is False
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1235,11 +1248,12 @@ In `config.yaml`, under `song:` (after `bars_per_cut: 4`):
 
 - [ ] **Step 5: Call the seam from the worker**
 
-In `run.py`, immediately after `write_state(chosen_take=chosen)` (~line 1131, end of the song-generation stage), add:
+In `run.py`, immediately after `write_state(chosen_take=chosen)` (~line 1131, end of the song-generation stage), add (use the module already imported at the top of the function — `song_assemble` is in scope):
 
 ```python
-            from pipeline.song_assemble import maybe_master
-            maybe_master(song_mp3, cfg)
+            # Approach-B seam: no-op today (see maybe_master docstring); the
+            # return value is intentionally ignored until B is built.
+            song_assemble.maybe_master(song_mp3, cfg)
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
