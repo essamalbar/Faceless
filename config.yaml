@@ -107,3 +107,6 @@ song:
   cinematic_credits_per_song: 3
   cinematic_pool_size: 7
   bars_per_cut: 4
+  master_pass: false            # Approach B (ffmpeg tonal master) — seam only,
+                                # not yet implemented. See spec
+                                # 2026-07-27-song-producer-pass.

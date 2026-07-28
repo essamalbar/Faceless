@@ -1130,6 +1130,9 @@ def _run_song_post_approve(args) -> int:
                     dst.write(chunk)
             write_state(chosen_take=chosen)
 
+            from pipeline.song_assemble import maybe_master
+            maybe_master(song_mp3, cfg)
+
         # --- Stage 2: cover ---
         # Skip the Flux call if cover_raw.png is already on disk; just
         # re-do the title overlay (which is free and deterministic).

@@ -340,3 +340,18 @@ def assemble_song_video(
     # file or the new one, never a torn read. GCS Fuse supports
     # atomic rename on objects without the .tmp prefix conflict.
     tmp_path.replace(out_mp4)
+
+
+def maybe_master(mp3_path: Path, cfg) -> bool:
+    """Approach-B seam (optional free tonal-master pass). Returns True if a
+    master pass ran. Currently ALWAYS a no-op — the flag + call site exist so
+    Approach B is a contained drop-in later. When built, this applies (in
+    ffmpeg): high-pass rumble cut, de-ess, gentle compression, and a -1 dBTP
+    true-peak limiter. It must NOT loudnorm — Suno already ships at -14 LUFS.
+    See docs/superpowers/specs/2026-07-27-song-producer-pass-design.md."""
+    if not (cfg and getattr(cfg, "song", None)
+            and getattr(cfg.song, "master_pass", False)):
+        return False
+    print("[song] master_pass is enabled but the Approach-B chain is not "
+          "implemented yet — skipping (no-op).")
+    return False

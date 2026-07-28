@@ -94,3 +94,29 @@ def test_assemble_video_has_faststart_moov_at_front(tmp_path: Path):
     assert moov_pos != -1, "moov atom not found in first 64KB"
     if mdat_pos != -1:
         assert moov_pos < mdat_pos, "moov atom must precede mdat (faststart)"
+
+
+from types import SimpleNamespace
+
+from pipeline.song_assemble import maybe_master
+
+
+def test_maybe_master_noop_when_flag_off(tmp_path):
+    mp3 = tmp_path / "song.mp3"
+    mp3.write_bytes(b"fake")
+    cfg = SimpleNamespace(song=SimpleNamespace(master_pass=False))
+    assert maybe_master(mp3, cfg) is False
+
+
+def test_maybe_master_noop_when_flag_on_not_yet_implemented(tmp_path):
+    mp3 = tmp_path / "song.mp3"
+    mp3.write_bytes(b"fake")
+    cfg = SimpleNamespace(song=SimpleNamespace(master_pass=True))
+    # Seam exists; Approach B not built yet → still a no-op, never raises.
+    assert maybe_master(mp3, cfg) is False
+
+
+def test_maybe_master_handles_missing_song_config(tmp_path):
+    mp3 = tmp_path / "song.mp3"
+    mp3.write_bytes(b"fake")
+    assert maybe_master(mp3, SimpleNamespace(song=None)) is False
