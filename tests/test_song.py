@@ -39,6 +39,31 @@ def test_submit_song_job_returns_task_id():
     assert isinstance(body.get("callBackUrl"), str) and len(body["callBackUrl"]) > 0
 
 
+def _long_negatives() -> str:
+    s = ", ".join(f"bad tag number {i}" for i in range(40))
+    assert len(s) > 200  # sanity: this fixture actually exceeds Suno's limit
+    return s
+
+
+def test_submit_song_job_clamps_negative_tags_to_200():
+    # Suno hard-rejects negativeStyle > 200 chars (HTTP 422); submit must clamp.
+    c = _stub_client(post_resp={"code": 200, "data": {"taskId": "t"}})
+    song.submit_song_job(c, lyrics="[Chorus]\nx", style_prompt="pop",
+                         title="T", negative_tags=_long_negatives())
+    _, body = c._post_json.call_args[0]
+    assert len(body["negativeTags"]) <= 200
+    assert not body["negativeTags"].endswith(",")
+
+
+def test_submit_cover_job_clamps_negative_tags_to_200():
+    c = _stub_client(post_resp={"code": 200, "data": {"taskId": "t"}})
+    song.submit_cover_job(c, upload_url="https://x/y.mp3", lyrics="[Chorus]\nx",
+                          style_prompt="pop", title="T",
+                          negative_tags=_long_negatives())
+    _, body = c._post_json.call_args[0]
+    assert len(body["negativeTags"]) <= 200
+
+
 def test_submit_cover_job_posts_to_cover_path_with_upload_url():
     c = _stub_client(post_resp={"code": 200, "data": {"taskId": "cov-9"}})
     task_id = song.submit_cover_job(

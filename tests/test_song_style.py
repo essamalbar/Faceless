@@ -196,3 +196,19 @@ def test_compose_style_falls_back_on_missing_keys():
     # Object without style_prompt → empty style → weak → fallback.
     res = _compose(_StubLLM(json.dumps({"foo": "bar"})))
     assert res.source == "fallback:recipe"
+
+
+def test_compose_style_caps_negative_tags_at_200():
+    # Suno rejects negativeStyle > 200 chars; a verbose producer negatives
+    # list must be trimmed before it's persisted/sent.
+    long_neg = ", ".join(f"bad tag {i}" for i in range(60))
+    assert len(long_neg) > 200
+    payload = json.dumps({
+        "style_prompt": ("Arabic pop ballad, cinematic strings, professionally "
+                         "mixed and mastered"),
+        "negative_tags": long_neg,
+    })
+    res = _compose(_StubLLM(payload))
+    assert res.source.startswith("producer:")   # producer output was accepted
+    assert len(res.negative_tags) <= 200
+    assert not res.negative_tags.endswith(",")

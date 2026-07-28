@@ -47,6 +47,21 @@ _SUCCESS_STATUSES = {"SUCCESS"}
 _PERMANENT_FAILURE_STATUSES = {"GENERATE_AUDIO_FAILED", "SENSITIVE_WORD_ERROR"}
 _TRANSIENT_FAILURE_STATUSES = {"CREATE_TASK_FAILED"}
 
+# Suno hard-rejects (HTTP 422) a negativeStyle longer than 200 chars. This is
+# the last line of defense at the API boundary — it protects every caller AND
+# any already-persisted song.json whose negative_tags predate the compose-time
+# cap. Trim at a comma boundary so a tag isn't cut mid-word.
+SUNO_MAX_NEGATIVE_TAGS = 200
+
+
+def _clamp_negative_tags(tags: str) -> str:
+    tags = (tags or "").strip()
+    if len(tags) <= SUNO_MAX_NEGATIVE_TAGS:
+        return tags
+    cut = tags[:SUNO_MAX_NEGATIVE_TAGS]
+    i = cut.rfind(",")
+    return (cut[:i] if i > 0 else cut).strip().rstrip(",")
+
 
 class SongGenerationError(KieError):
     """Suno-side failure that should not be retried automatically."""
@@ -100,7 +115,7 @@ def submit_song_job(
     if persona_id:
         body["personaId"] = persona_id
     if negative_tags:
-        body["negativeTags"] = negative_tags
+        body["negativeTags"] = _clamp_negative_tags(negative_tags)
     resp = client._post_json(SUNO_GENERATE_PATH, body)
     data = resp.get("data") or {}
     task_id = data.get("taskId") or resp.get("taskId")
@@ -147,7 +162,7 @@ def submit_cover_job(
     if vocal_gender in ("m", "f"):
         body["vocalGender"] = vocal_gender
     if negative_tags:
-        body["negativeTags"] = negative_tags
+        body["negativeTags"] = _clamp_negative_tags(negative_tags)
     # Faithfulness knobs (0-1, 2dp). audioWeight = how closely the cover
     # follows the SOURCE AUDIO's melody/feel — the "match the original"
     # dial the user asked for. Omitted → Suno's own default.

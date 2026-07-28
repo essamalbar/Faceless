@@ -35,6 +35,9 @@ SHARED_NEGATIVES = (
 )
 
 MAX_STYLE_CHARS = 450
+# Suno rejects negativeStyle > 200 chars (HTTP 422). Cap what we persist so a
+# verbose producer-LLM negatives list never reaches the Suno submit.
+MAX_NEGATIVE_CHARS = 200
 _GENDER = {"m": "male vocal", "f": "female vocal"}
 
 
@@ -372,6 +375,7 @@ def compose_style(llm, *, theme: str, title: str, lyrics: str, language: str,
     genre_key = infer_genre(theme, style_hint, language, dialect)
     recipe = GENRE_RECIPES[genre_key]
     fb_style, fb_neg = _recipe_style(recipe, vocal_gender, style_hint)
+    fb_neg = _trim_to_last_comma(fb_neg, MAX_NEGATIVE_CHARS)
     try:
         raw = llm.complete(
             _producer_user_msg(recipe, title, lyrics, language, dialect,
@@ -385,7 +389,9 @@ def compose_style(llm, *, theme: str, title: str, lyrics: str, language: str,
         # recipe fallback instead. _PRODUCER_SYSTEM front-loads the spine so
         # this rarely fires.
         style = _trim_to_last_comma(str(parsed.get("style_prompt", "")).strip())
-        neg = str(parsed.get("negative_tags", "")).strip() or fb_neg
+        neg = _trim_to_last_comma(
+            str(parsed.get("negative_tags", "")).strip(), MAX_NEGATIVE_CHARS
+        ) or fb_neg
         if _looks_weak(style, recipe):
             print(f"[song-style] producer output looked weak for {genre_key}; "
                   f"using recipe fallback")
