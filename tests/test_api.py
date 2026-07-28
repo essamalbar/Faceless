@@ -3056,6 +3056,9 @@ class _DraftScript:
     language = "ar"
     art_direction = ""
     scene_prompts = []
+    negative_tags = "robotic vocal, off-key"
+    style_source = "fallback:recipe"
+    writer_tier = "unknown"
 
 
 def _seed_trend_cache(user_dir, n=3):
@@ -3105,6 +3108,11 @@ def test_morning_drafts_creates_for_opted_in_artists_only(
     assert state["status"] == "awaiting_approval"
     assert state["trend_rationale"].startswith("سبب")
     assert song["persona_id"] == "pers-1"  # artist voice carried
+    # Producer-pass outputs persist on the morning-draft path too, so the
+    # genre-aware negatives reach Suno (not just the generic fallback).
+    assert song["negative_tags"] == "robotic vocal, off-key"
+    assert song["style_source"] == "fallback:recipe"
+    assert song["writer_tier"] == "unknown"
 
     # summaries expose the draft origin
     alice = client_factory(user_id="alice")

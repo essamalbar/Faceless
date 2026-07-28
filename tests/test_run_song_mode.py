@@ -261,7 +261,7 @@ def test_import_analyze_stage_writes_script(tmp_path: Path, monkeypatch):
             title="ليل", lyrics="[Verse 1]\nx\n\n[Chorus]\ny\n",
             style_prompt="pop, 90 BPM", cover_prompt="c",
             language="ar", art_direction="moonlit",
-            scene_prompts=["a", "b"]),
+            scene_prompts=["a", "b"], negative_tags="robotic vocal, off-key"),
     )
 
     # Stub the LLM builder so _build_song_llm() doesn't reach for real keys.
@@ -272,6 +272,9 @@ def test_import_analyze_stage_writes_script(tmp_path: Path, monkeypatch):
 
     assert rc == 0
     assert (run_dir / "song.json").exists()
+    song_json = json.loads((run_dir / "song.json").read_text())
+    # Producer-pass negatives persist on the import path so they reach Suno.
+    assert song_json["negative_tags"] == "robotic vocal, off-key"
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["status"] == "awaiting_approval"
     assert state["title"] == "ليل"

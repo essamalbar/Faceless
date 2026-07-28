@@ -990,6 +990,11 @@ def _run_song_post_approve(args) -> int:
                 "style_prompt": script.style_prompt, "cover_prompt": script.cover_prompt,
                 "language": script.language, "art_direction": script.art_direction,
                 "scene_prompts": script.scene_prompts,
+                # Producer-pass outputs — persist so the post-approve submit
+                # sends the genre-aware negatives to Suno.
+                "negative_tags": script.negative_tags,
+                "style_source": script.style_source,
+                "writer_tier": script.writer_tier,
                 "vocal_gender": current_state.get("vocal_gender"),
                 "persona_id": None,
                 "suno_model": current_state.get("suno_model"),

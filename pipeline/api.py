@@ -942,6 +942,11 @@ def _write_song_draft(
         "video_mode": "static",
         "art_direction": script.art_direction,
         "scene_prompts": script.scene_prompts,
+        # Producer-pass outputs — persist so run.py sends the genre-aware
+        # negatives to Suno (not just the generic hardcoded fallback).
+        "negative_tags": script.negative_tags,
+        "style_source": script.style_source,
+        "writer_tier": script.writer_tier,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     (run_dir / "lyrics.txt").write_text(script.lyrics, encoding="utf-8")
     _write_state(run_dir, status="awaiting_approval", title=script.title)
