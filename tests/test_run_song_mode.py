@@ -588,6 +588,101 @@ def test_premium_shadow_mode_uses_signal_not_judge(tmp_path, monkeypatch):
     assert winner.path.name == "take_1.mp3"
 
 
+def test_premium_worker_persists_winner_and_survives_one_bad_job(tmp_path: Path, monkeypatch):
+    """End-to-end premium run through _run_song_post_approve: best_of=6 (the
+    repo config default) submits 3 jobs; one of them fails outright (Kie/Suno
+    error) and must be skipped, not crash the paid render. The surviving 4
+    takes are screened+judged (mocked so the winner is deterministic) and the
+    WINNER's own task_id/audio_id — not just whatever was submitted last —
+    must land in state so a Persona can later be saved from this song."""
+    from pipeline import song_ar
+
+    run_dir = tmp_path / "song-run-premium"
+    run_dir.mkdir()
+    (run_dir / "song.json").write_text(json.dumps({
+        "title": "Test", "lyrics": "[Verse 1]\nhi\n[Chorus]\nworld",
+        "style_prompt": "Arabic pop ballad, slow tempo 72 BPM, oud, male vocal",
+        "cover_prompt": "moonlight over the sea", "language": "ar",
+        "quality_tier": "premium",
+    }))
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "generating_song",
+    }))
+
+    submit_calls = {"n": 0}
+
+    def fake_submit(client, *, lyrics, style_prompt, title,
+                    model=song.SUNO_MODEL_ID, **_extra):
+        submit_calls["n"] += 1
+        return f"job-{submit_calls['n']}"
+
+    def fake_wait(client, task_id, *, poll_interval_s=5, timeout_s=600):
+        if task_id == "job-2":
+            # One bad job — must be logged and skipped, not fatal.
+            raise RuntimeError("kie 500")
+        return [
+            song.SongTake(url=f"https://kie.ai/{task_id}-a.mp3", duration_s=3.0,
+                         audio_id=f"{task_id}-a"),
+            song.SongTake(url=f"https://kie.ai/{task_id}-b.mp3", duration_s=3.0,
+                         audio_id=f"{task_id}-b"),
+        ]
+
+    def fake_download(client, url, out_path):
+        shutil.copy(FIXTURE_SONG, out_path)
+
+    monkeypatch.setattr(song, "submit_song_job", fake_submit)
+    monkeypatch.setattr(song, "wait_for_song", fake_wait)
+    monkeypatch.setattr(song, "download_take", fake_download)
+
+    # job-1 -> take_1, take_2 ; job-2 fails (contributes nothing) ;
+    # job-3 -> take_3, take_4. Make take_3 the clear winner on BOTH the
+    # signal path (shadow mode, the repo default) and the judge path, so the
+    # test doesn't depend on ar_judge_enabled's config value.
+    def fake_screen(paths, **k):
+        out = []
+        for p in paths:
+            p = Path(p)
+            silence = 0.0 if p.name == "take_3.mp3" else 0.3
+            out.append(song_ar.ScreenedTake(p, 60.0, 0.0, silence, True, ""))
+        return out
+
+    def fake_judge(audio_llm, screened, **k):
+        return [
+            song_ar.JudgedTake(s.path, 95.0 if s.path.name == "take_3.mp3" else 60.0,
+                               {}, "", "gemini")
+            for s in screened
+        ]
+
+    monkeypatch.setattr(song_ar, "screen_takes", fake_screen)
+    monkeypatch.setattr(song_ar, "judge_takes", fake_judge)
+    monkeypatch.setattr(run_mod, "_build_audio_judge", lambda: None)
+
+    def fake_cover(*, client, cover_prompt, out_dir):
+        out = out_dir / "cover_raw.png"
+        shutil.copy(FIXTURE_COVER, out)
+        return out
+    monkeypatch.setattr(song_cover, "generate_cover_image", fake_cover)
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    assert rc == 0
+    assert (run_dir / "final.mp4").exists()
+    assert (run_dir / "song.mp3").exists()
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "complete"
+    assert state["chosen_take"] == 1
+    # The winner is take_3 (job-3's first take) — its OWN provenance must be
+    # saved, not job-1's or a generic "last submitted" placeholder.
+    assert state["suno_task_id"] == "job-3"
+    assert state["take_audio_ids"] == ["job-3-a"]
+    assert state["takes_generated"] == 4  # 2 (job-1) + 0 (job-2 failed) + 2 (job-3)
+    # Bar cleared on round 0 (best_of=6, quality_bar=70 default) — no regen
+    # round spend: exactly the 3 round-0 jobs, never 3 + regen_extra_takes.
+    assert submit_calls["n"] == 3
+
+
 def test_song_post_approve_passes_default_negative_tags(tmp_path: Path, monkeypatch):
     """Both Suno branches must carry the quality negative tags."""
     run_dir = tmp_path / "song-run-negtags"

@@ -906,6 +906,11 @@ def _select_best_take(take_paths, *, audio_llm, style_prompt, language, dialect,
     signal = [song_ar.JudgedTake(s.path, song_ar._signal_composite(s), {}, "", "signal")
               for s in screened if s.passed] or \
              [song_ar.JudgedTake(s.path, 0.0, {}, "", "signal") for s in screened]
+    if not signal:
+        # Mirrors song_ar.pick_best's empty-batch guard: no takes at all is a
+        # genuine generation failure (Suno returned nothing), not a silent
+        # IndexError three lines down.
+        raise ValueError("_select_best_take: no takes to choose from")
     # tie-break signal ties by duration (the old "pick longer" heuristic)
     dur = {s.path: s.duration_s for s in screened}
     signal.sort(key=lambda j: (j.composite, dur.get(j.path, 0.0)), reverse=True)
@@ -914,43 +919,126 @@ def _select_best_take(take_paths, *, audio_llm, style_prompt, language, dialect,
                            "signal", best.composite >= quality_bar)
 
 
-def _generate_song_best_of(client, script, *, model, negative_tags, takes_dir, cfg):
-    """Best-of-N + regenerate loop. Returns (chosen_path, Verdict, total_takes)."""
+def _take_index_from_path(path: Path) -> int:
+    """Parse the N out of a "take_N.mp3" filename; used to resume the take
+    counter without colliding with numbers already used by a prior attempt.
+    Falls back to 0 for any name that doesn't match — defensive only, every
+    path here is one we or a prior run named; the caller floors the result
+    at len(records) so an unparsed name can't push the counter backwards."""
+    stem = Path(path).stem
+    try:
+        return int(stem.rsplit("_", 1)[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
+def _generate_song_best_of(client, script, *, model, negative_tags, takes_dir, cfg,
+                           existing_records=None, on_progress=None):
+    """Best-of-N + regenerate loop. Returns (chosen_path, Verdict, total_takes, winner).
+
+    winner is the take record {"path", "task_id", "audio_id"} for the chosen
+    take — the caller needs task_id/audio_id to persist suno_task_id/
+    take_audio_ids so a Persona can later be saved from this song (mirrors
+    what the standard path already writes).
+
+    Fault tolerance: one bad Suno job (submit/wait/download) is logged and
+    skipped, not fatal — a paid render must survive a single flaky job. Only
+    an empty `records` after every round is a genuine failure (Suno produced
+    nothing usable at all).
+
+    Resume: existing_records (a run's persisted take_records from a crashed
+    prior attempt) seeds `records` — filtered to takes still on disk — so a
+    resumed run judges what it already paid for BEFORE spending on more,
+    mirroring the standard path's "skip Suno if takes already on disk" resume
+    behavior. on_progress(records), if given, is called after each round's
+    downloads so the caller can persist take_records for crash-recovery.
+    """
     from pipeline import song, song_ar
     sc = cfg.song
     takes_dir.mkdir(exist_ok=True)
     audio_llm = _build_audio_judge()   # may be None if no GEMINI key
-    all_paths: list = []
-    n = 0
+
+    records: list[dict] = []
+    if existing_records:
+        records = [dict(r) for r in existing_records if Path(r["path"]).exists()]
+    n = max([len(records)] + [_take_index_from_path(r["path"]) for r in records])
+
+    def _judge(recs):
+        return _select_best_take(
+            [Path(r["path"]) for r in recs], audio_llm=audio_llm,
+            style_prompt=script["style_prompt"], language=script.get("language", "ar"),
+            dialect=script.get("dialect"), quality_bar=sc.quality_bar,
+            ar_judge_enabled=bool(sc.ar_judge_enabled))
+
     rounds = 1 + int(sc.regen_max_rounds)
+    verdict = None
     for rnd in range(rounds):
         want = sc.best_of if rnd == 0 else sc.regen_extra_takes
-        jobs = math.ceil(want / 2)
-        # Parallel: submit all jobs first, then wait each (Suno runs concurrently).
-        task_ids = [song.submit_song_job(
-            client, lyrics=script["lyrics"], style_prompt=script["style_prompt"],
-            title=script["title"], model=model,
-            vocal_gender=script.get("vocal_gender"),
-            persona_id=script.get("persona_id"), negative_tags=negative_tags)
-            for _ in range(jobs)]
-        for tid in task_ids:
-            for take in song.wait_for_song(client, tid):
-                n += 1
-                p = takes_dir / f"take_{n}.mp3"
-                song.download_take(client, take.url, p)
-                all_paths.append(p)
-            if n >= sc.max_takes:
-                break
-        verdict = _select_best_take(
-            all_paths, audio_llm=audio_llm, style_prompt=script["style_prompt"],
-            language=script.get("language", "ar"), dialect=script.get("dialect"),
-            quality_bar=sc.quality_bar, ar_judge_enabled=bool(sc.ar_judge_enabled))
-        if verdict.clears_bar or n >= sc.max_takes or rnd == rounds - 1:
+        # Resuming with takes already on disk: judge them BEFORE generating
+        # more — only submit new jobs for the shortfall, or none at all if
+        # they already clear the bar (don't re-bill a resumed round 1).
+        if rnd == 0 and records:
+            verdict = _judge(records)
+            if verdict.clears_bar or len(records) >= sc.max_takes:
+                want = 0
+            else:
+                want = max(0, want - len(records))
+
+        if want > 0:
+            jobs = math.ceil(want / 2)
+            # Parallel: submit all jobs first, then wait each (Suno runs
+            # concurrently). A submit failure just means fewer jobs this
+            # round, not a crashed render.
+            task_ids: list[str] = []
+            for _ in range(jobs):
+                try:
+                    task_ids.append(song.submit_song_job(
+                        client, lyrics=script["lyrics"], style_prompt=script["style_prompt"],
+                        title=script["title"], model=model,
+                        vocal_gender=script.get("vocal_gender"),
+                        persona_id=script.get("persona_id"), negative_tags=negative_tags))
+                except Exception as e:
+                    print(f"[song-ar] submit_song_job failed ({e}); skipping this job")
+            for tid in task_ids:
+                try:
+                    takes = song.wait_for_song(client, tid)
+                except Exception as e:
+                    print(f"[song-ar] job {tid} failed ({e}); skipping")
+                    continue
+                for take in takes:
+                    n += 1
+                    p = takes_dir / f"take_{n}.mp3"
+                    try:
+                        song.download_take(client, take.url, p)
+                    except Exception as e:
+                        print(f"[song-ar] download failed for take {n} ({e}); skipping")
+                        continue
+                    records.append({"path": str(p), "task_id": tid, "audio_id": take.audio_id})
+                if len(records) >= sc.max_takes:
+                    break
+            if on_progress:
+                on_progress(records)
+            verdict = None  # the take set changed — force a fresh judge below
+
+        if not records:
+            # Every job/take attempted this round failed outright.
+            if rnd == rounds - 1:
+                raise RuntimeError("song-ar: no takes produced (all jobs/takes failed)")
+            continue
+
+        if verdict is None:
+            verdict = _judge(records)
+        if verdict.clears_bar or len(records) >= sc.max_takes or rnd == rounds - 1:
             if not verdict.clears_bar:
-                print(f"[song-ar] shipped best of {n} takes @ {verdict.composite} "
+                print(f"[song-ar] shipped best of {len(records)} takes @ {verdict.composite} "
                       f"< bar {sc.quality_bar} (cap reached)")
-            return verdict.path, verdict, n
-    return verdict.path, verdict, n
+            winner = next(r for r in records if r["path"] == str(verdict.path))
+            return verdict.path, verdict, len(records), winner
+
+    if not records:
+        raise RuntimeError("song-ar: no takes produced (all jobs/takes failed)")
+    winner = next(r for r in records if r["path"] == str(verdict.path))
+    return verdict.path, verdict, len(records), winner
 
 
 def _build_audio_judge():
@@ -1159,14 +1247,27 @@ def _run_song_post_approve(args) -> int:
             _tier = (script.get("quality_tier")
                      or (cfg.song.quality_tier_default if cfg.song else "standard"))
             if _tier == "premium" and cfg.song and not is_cover:
-                chosen_path, verdict, n_takes = _generate_song_best_of(
+                chosen_path, verdict, n_takes, winner = _generate_song_best_of(
                     client, script, model=_model, negative_tags=_negative_tags,
                     takes_dir=takes_dir, cfg=cfg,
+                    existing_records=current_state.get("take_records"),
+                    on_progress=lambda records: write_state(take_records=records),
                 )
-                write_state(chosen_take=1, takes_generated=n_takes,
-                            ar_score=verdict.composite, ar_reason=verdict.reason,
-                            judge_source=verdict.source,
-                            quality_bar_cleared=verdict.clears_bar)
+                # chosen_take=1 is correct because take_audio_ids has exactly
+                # ONE entry (the winner) — save_persona_from_song's
+                # take_index = chosen_take-1 = 0 resolves to it, and
+                # suno_task_id is the winner's own job (not just the last
+                # one submitted), so a persona can be saved from any premium
+                # song's actual winning take.
+                write_state(
+                    chosen_take=1,
+                    suno_task_id=winner["task_id"],
+                    take_audio_ids=[winner["audio_id"]],
+                    takes_generated=n_takes,
+                    ar_score=verdict.composite, ar_reason=verdict.reason,
+                    judge_source=verdict.source,
+                    quality_bar_cleared=verdict.clears_bar,
+                )
             else:
                 if is_cover:
                     # Faithful cover: hand Suno the uploaded reference so it keeps
