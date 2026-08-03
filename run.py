@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from datetime import datetime
@@ -888,6 +889,88 @@ def main_with_args(argv: list[str]) -> int:
         log.close()
 
 
+def _select_best_take(take_paths, *, audio_llm, style_prompt, language, dialect,
+                      quality_bar, ar_judge_enabled):
+    """Screen → judge → pick. In shadow mode (ar_judge_enabled=False) the judge
+    still runs (scores logged) but selection is signal-based so an unvalidated
+    ear never decides a real render. Returns a song_ar.Verdict."""
+    from pipeline import song_ar
+    screened = song_ar.screen_takes(take_paths)
+    judged = song_ar.judge_takes(audio_llm, screened, style_prompt=style_prompt,
+                                 language=language, dialect=dialect)
+    for j in judged:
+        print(f"[song-ar] {j.path.name}: {j.composite} ({j.source}) {j.reason}")
+    if ar_judge_enabled:
+        return song_ar.pick_best(judged, quality_bar=quality_bar)
+    # Shadow mode: pick by signal composite (defect-pruned, longest-clean).
+    signal = [song_ar.JudgedTake(s.path, song_ar._signal_composite(s), {}, "", "signal")
+              for s in screened if s.passed] or \
+             [song_ar.JudgedTake(s.path, 0.0, {}, "", "signal") for s in screened]
+    # tie-break signal ties by duration (the old "pick longer" heuristic)
+    dur = {s.path: s.duration_s for s in screened}
+    signal.sort(key=lambda j: (j.composite, dur.get(j.path, 0.0)), reverse=True)
+    best = signal[0]
+    return song_ar.Verdict(best.path, best.composite, {}, "shadow-signal",
+                           "signal", best.composite >= quality_bar)
+
+
+def _generate_song_best_of(client, script, *, model, negative_tags, takes_dir, cfg):
+    """Best-of-N + regenerate loop. Returns (chosen_path, Verdict, total_takes)."""
+    from pipeline import song, song_ar
+    sc = cfg.song
+    takes_dir.mkdir(exist_ok=True)
+    audio_llm = _build_audio_judge()   # may be None if no GEMINI key
+    all_paths: list = []
+    n = 0
+    rounds = 1 + int(sc.regen_max_rounds)
+    for rnd in range(rounds):
+        want = sc.best_of if rnd == 0 else sc.regen_extra_takes
+        jobs = math.ceil(want / 2)
+        # Parallel: submit all jobs first, then wait each (Suno runs concurrently).
+        task_ids = [song.submit_song_job(
+            client, lyrics=script["lyrics"], style_prompt=script["style_prompt"],
+            title=script["title"], model=model,
+            vocal_gender=script.get("vocal_gender"),
+            persona_id=script.get("persona_id"), negative_tags=negative_tags)
+            for _ in range(jobs)]
+        for tid in task_ids:
+            for take in song.wait_for_song(client, tid):
+                n += 1
+                p = takes_dir / f"take_{n}.mp3"
+                song.download_take(client, take.url, p)
+                all_paths.append(p)
+            if n >= sc.max_takes:
+                break
+        verdict = _select_best_take(
+            all_paths, audio_llm=audio_llm, style_prompt=script["style_prompt"],
+            language=script.get("language", "ar"), dialect=script.get("dialect"),
+            quality_bar=sc.quality_bar, ar_judge_enabled=bool(sc.ar_judge_enabled))
+        if verdict.clears_bar or n >= sc.max_takes or rnd == rounds - 1:
+            if not verdict.clears_bar:
+                print(f"[song-ar] shipped best of {n} takes @ {verdict.composite} "
+                      f"< bar {sc.quality_bar} (cap reached)")
+            return verdict.path, verdict, n
+    return verdict.path, verdict, n
+
+
+def _build_audio_judge():
+    """The Gemini audio judge, or None if GEMINI_API_KEY is absent (→ judge_takes
+    signal-fallback)."""
+    try:
+        from pipeline.llm_gemini_audio import GeminiAudioJudge
+        return GeminiAudioJudge()
+    except Exception as e:
+        print(f"[song-ar] no audio judge ({e}); signal fallback")
+        return None
+
+
+def _genre_key_from(script) -> str:
+    """Recover the genre for reference-master lookup: infer from theme/style."""
+    from pipeline.song_style import infer_genre
+    return infer_genre(script.get("theme", ""), script.get("style_prompt"),
+                       script.get("language", "ar"), script.get("dialect"))
+
+
 def _run_song_post_approve(args) -> int:
     """Song-mode post-approve stage: Suno → cover → assemble.
 
@@ -1068,64 +1151,85 @@ def _run_song_post_approve(args) -> int:
                                  "off-key, muffled, low quality")
             is_cover = (current_state.get("mode") == "cover"
                         or script.get("mode") == "cover")
-            if is_cover:
-                # Faithful cover: hand Suno the uploaded reference so it keeps
-                # the source's core melody, singing the reviewed words.
-                from pipeline import video as _video
-                ref_name = (current_state.get("reference_filename")
-                            or script.get("reference_filename"))
-                ref_path = run_dir / ref_name if ref_name else None
-                if not ref_path or not ref_path.exists():
-                    raise FileNotFoundError(
-                        f"cover run missing reference audio: {ref_name!r}")
-                upload_url = _video._upload_file_get_url(
-                    ref_path, content_type="audio/mpeg")
-                print(f"[song-post-approve] cover mode — uploaded reference to {upload_url}")
-                task_id = song.submit_cover_job(
-                    client,
-                    upload_url=upload_url,
-                    lyrics=script["lyrics"],
-                    style_prompt=script["style_prompt"],
-                    title=script["title"],
-                    model=_model,
-                    vocal_gender=script.get("vocal_gender"),
-                    negative_tags=_negative_tags,
-                    # Faithfulness knob from the upload form (state-stored;
-                    # None → Suno's default).
-                    audio_weight=current_state.get("audio_weight"),
-                )
-            else:
-                task_id = song.submit_song_job(
-                    client,
-                    lyrics=script["lyrics"],
-                    style_prompt=script["style_prompt"],
-                    title=script["title"],
-                    # Per-song model override (set by POST /songs) wins
-                    # over config default, falling back to V5_5 baseline.
-                    model=_model,
-                    vocal_gender=script.get("vocal_gender"),
-                    persona_id=script.get("persona_id"),
-                    negative_tags=_negative_tags,
-                )
-            takes = song.wait_for_song(client, task_id)
-            takes_dir.mkdir(exist_ok=True)
-            for i, take in enumerate(takes, start=1):
-                song.download_take(client, take.url, takes_dir / f"take_{i}.mp3")
 
-            # Persist Suno taskId + per-take audioIds so a future
-            # /save-persona call has the references it needs (Kie's
-            # persona/generate endpoint requires both).
-            write_state(
-                suno_task_id=task_id,
-                take_audio_ids=[t.audio_id for t in takes],
-            )
-
-            # Pick the longer take (Suno truncates one ~20% of the time)
-            if len(takes) >= 2:
-                chosen = 1 if takes[0].duration_s >= takes[1].duration_s else 2
+            # Premium tier: best-of-N + regenerate loop with an A&R judge
+            # (screen -> judge -> pick, see pipeline/song_ar.py). Cover mode
+            # always uses the standard single-job path below — premium
+            # best-of-N for covers is a noted follow-up, not built yet.
+            _tier = (script.get("quality_tier")
+                     or (cfg.song.quality_tier_default if cfg.song else "standard"))
+            if _tier == "premium" and cfg.song and not is_cover:
+                chosen_path, verdict, n_takes = _generate_song_best_of(
+                    client, script, model=_model, negative_tags=_negative_tags,
+                    takes_dir=takes_dir, cfg=cfg,
+                )
+                write_state(chosen_take=1, takes_generated=n_takes,
+                            ar_score=verdict.composite, ar_reason=verdict.reason,
+                            judge_source=verdict.source,
+                            quality_bar_cleared=verdict.clears_bar)
             else:
-                chosen = 1
-            chosen_path = takes_dir / f"take_{chosen}.mp3"
+                if is_cover:
+                    # Faithful cover: hand Suno the uploaded reference so it keeps
+                    # the source's core melody, singing the reviewed words.
+                    from pipeline import video as _video
+                    ref_name = (current_state.get("reference_filename")
+                                or script.get("reference_filename"))
+                    ref_path = run_dir / ref_name if ref_name else None
+                    if not ref_path or not ref_path.exists():
+                        raise FileNotFoundError(
+                            f"cover run missing reference audio: {ref_name!r}")
+                    upload_url = _video._upload_file_get_url(
+                        ref_path, content_type="audio/mpeg")
+                    print(f"[song-post-approve] cover mode — uploaded reference to {upload_url}")
+                    task_id = song.submit_cover_job(
+                        client,
+                        upload_url=upload_url,
+                        lyrics=script["lyrics"],
+                        style_prompt=script["style_prompt"],
+                        title=script["title"],
+                        model=_model,
+                        vocal_gender=script.get("vocal_gender"),
+                        negative_tags=_negative_tags,
+                        # Faithfulness knob from the upload form (state-stored;
+                        # None → Suno's default).
+                        audio_weight=current_state.get("audio_weight"),
+                    )
+                else:
+                    task_id = song.submit_song_job(
+                        client,
+                        lyrics=script["lyrics"],
+                        style_prompt=script["style_prompt"],
+                        title=script["title"],
+                        # Per-song model override (set by POST /songs) wins
+                        # over config default, falling back to V5_5 baseline.
+                        model=_model,
+                        vocal_gender=script.get("vocal_gender"),
+                        persona_id=script.get("persona_id"),
+                        negative_tags=_negative_tags,
+                    )
+                takes = song.wait_for_song(client, task_id)
+                takes_dir.mkdir(exist_ok=True)
+                for i, take in enumerate(takes, start=1):
+                    song.download_take(client, take.url, takes_dir / f"take_{i}.mp3")
+
+                # Persist Suno taskId + per-take audioIds so a future
+                # /save-persona call has the references it needs (Kie's
+                # persona/generate endpoint requires both).
+                write_state(
+                    suno_task_id=task_id,
+                    take_audio_ids=[t.audio_id for t in takes],
+                )
+
+                # Pick the longer take (Suno truncates one ~20% of the time)
+                if len(takes) >= 2:
+                    chosen = 1 if takes[0].duration_s >= takes[1].duration_s else 2
+                else:
+                    chosen = 1
+                chosen_path = takes_dir / f"take_{chosen}.mp3"
+                write_state(chosen_take=chosen)
+
+            # --- both paths converge here: copy the winning take to
+            # song.mp3 and run the (premium-gated) master pass ONCE. ---
             # GCS Fuse (Cloud Run mount) refuses unlink with EPERM, but
             # accepts truncate-on-write. Copy via binary write rather
             # than shutil.copy(.., unlink-first) so the same code path
@@ -1133,11 +1237,10 @@ def _run_song_post_approve(args) -> int:
             with chosen_path.open("rb") as src, song_mp3.open("wb") as dst:
                 while chunk := src.read(1 << 20):
                     dst.write(chunk)
-            write_state(chosen_take=chosen)
 
-            # Approach-B seam: no-op today (see maybe_master docstring); the
-            # return value is intentionally ignored until B is built.
-            song_assemble.maybe_master(song_mp3, cfg)
+            # Mastering: premium-gated inside maybe_master (master_pass
+            # flag). No-op/False → ship unmastered. Never raises.
+            song_assemble.maybe_master(song_mp3, cfg, genre_key=_genre_key_from(script))
 
         # --- Stage 2: cover ---
         # Skip the Flux call if cover_raw.png is already on disk; just

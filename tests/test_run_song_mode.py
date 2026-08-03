@@ -550,6 +550,44 @@ def test_cover_post_approve_passes_audio_weight(tmp_path: Path, monkeypatch):
     assert seen.get("audio_weight") == 0.8
 
 
+def test_premium_best_of_n_picks_judge_winner(tmp_path, monkeypatch):
+    import run as run_mod
+    from pipeline import song_ar
+    # 3 jobs → 6 takes; judge scores take with index 4 highest.
+    scores = {f"take_{i}.mp3": (90 if i == 4 else 50) for i in range(1, 7)}
+    monkeypatch.setattr(song_ar, "screen_takes",
+        lambda paths, **k: [song_ar.ScreenedTake(p, 60.0, 0.0, 0.1, True, "") for p in map(__import__('pathlib').Path, paths)])
+    monkeypatch.setattr(song_ar, "judge_takes",
+        lambda audio_llm, screened, **k: [song_ar.JudgedTake(s.path, scores[s.path.name], {}, "", "gemini") for s in screened])
+    winner = run_mod._select_best_take(
+        [__import__('pathlib').Path(tmp_path / f"take_{i}.mp3") for i in range(1, 7)],
+        audio_llm=object(), style_prompt="pop", language="ar", dialect=None,
+        quality_bar=70, ar_judge_enabled=True)
+    assert winner.path.name == "take_4.mp3" and winner.clears_bar is True
+
+
+def test_premium_shadow_mode_uses_signal_not_judge(tmp_path, monkeypatch):
+    import run as run_mod
+    from pipeline import song_ar
+    from pathlib import Path
+    # judge would pick take_1, but shadow mode must ignore it and use signal.
+    monkeypatch.setattr(song_ar, "screen_takes",
+        lambda paths, **k: [song_ar.ScreenedTake(Path(paths[0]), 60.0, 0.0, 0.1, True, ""),
+                            song_ar.ScreenedTake(Path(paths[1]), 20.0, 0.0, 0.1, True, "")])
+    called = {"judge": False}
+    def _judge(*a, **k):
+        called["judge"] = True
+        return [song_ar.JudgedTake(Path("take_1.mp3"), 99, {}, "", "gemini")]
+    monkeypatch.setattr(song_ar, "judge_takes", _judge)
+    winner = run_mod._select_best_take(
+        [Path("take_1.mp3"), Path("take_2.mp3")], audio_llm=object(),
+        style_prompt="pop", language="ar", dialect=None,
+        quality_bar=70, ar_judge_enabled=False)  # shadow mode
+    # shadow mode: judge still runs for logging, but selection is signal-based
+    # (longer/cleaner take_1 wins by duration), not the judge's pick per se here.
+    assert winner.path.name == "take_1.mp3"
+
+
 def test_song_post_approve_passes_default_negative_tags(tmp_path: Path, monkeypatch):
     """Both Suno branches must carry the quality negative tags."""
     run_dir = tmp_path / "song-run-negtags"

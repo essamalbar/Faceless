@@ -108,12 +108,17 @@ def test_maybe_master_noop_when_flag_off(tmp_path):
     assert maybe_master(mp3, cfg) is False
 
 
-def test_maybe_master_noop_when_flag_on_not_yet_implemented(tmp_path):
+def test_maybe_master_noop_when_flag_on_not_yet_implemented(tmp_path, monkeypatch):
+    # Approach B is now built (pipeline.mastering.master_track); this locks
+    # the graceful-degradation contract instead: if the delegate can't
+    # produce a master (e.g. no reference + ffmpeg unavailable), maybe_master
+    # must still return False and never raise — mp3_path stays untouched.
+    monkeypatch.setattr("pipeline.mastering.master_track", lambda i, o, **k: False)
     mp3 = tmp_path / "song.mp3"
     mp3.write_bytes(b"fake")
-    cfg = SimpleNamespace(song=SimpleNamespace(master_pass=True))
-    # Seam exists; Approach B not built yet → still a no-op, never raises.
+    cfg = SimpleNamespace(song=SimpleNamespace(master_pass=True, master_engine="ffmpeg"))
     assert maybe_master(mp3, cfg) is False
+    assert mp3.read_bytes() == b"fake"  # untouched on failure
 
 
 def test_maybe_master_handles_missing_song_config(tmp_path):
@@ -123,13 +128,37 @@ def test_maybe_master_handles_missing_song_config(tmp_path):
 
 
 def test_maybe_master_never_shells_out_even_when_flag_on(tmp_path, monkeypatch):
-    # Locks the seam contract: Approach B is NOT built, so maybe_master must
-    # not invoke ffmpeg/subprocess under any branch — including flag ON.
+    # Contract flip (Approach B is now built): maybe_master itself no longer
+    # shells out directly — it delegates entirely to mastering.master_track.
+    # Lock that seam: master_track is called with the right args, and
+    # maybe_master's OWN frame never touches subprocess directly (mastering
+    # is free to shell out internally; that's covered by test_mastering.py).
     import subprocess
     def _boom(*a, **k):
-        raise AssertionError("maybe_master must not shell out (seam is a no-op)")
+        raise AssertionError("maybe_master must not shell out directly")
     monkeypatch.setattr(subprocess, "run", _boom)
     monkeypatch.setattr(subprocess, "Popen", _boom)
+
+    calls = {}
+    def _fake_master_track(in_path, out_path, *, genre_key, cfg):
+        calls["args"] = (Path(in_path), Path(out_path), genre_key)
+        Path(out_path).write_bytes(b"mastered")
+        return True
+    monkeypatch.setattr("pipeline.mastering.master_track", _fake_master_track)
+
     mp3 = tmp_path / "song.mp3"
     mp3.write_bytes(b"fake")
-    assert maybe_master(mp3, SimpleNamespace(song=SimpleNamespace(master_pass=True))) is False
+    cfg = SimpleNamespace(song=SimpleNamespace(master_pass=True, master_engine="ffmpeg"))
+    assert maybe_master(mp3, cfg, genre_key="arabic_pop") is True
+    assert calls["args"][0] == mp3
+    assert calls["args"][2] == "arabic_pop"
+    assert mp3.read_bytes() == b"mastered"
+
+
+def test_maybe_master_delegates_when_flag_on(tmp_path, monkeypatch):
+    mp3 = tmp_path / "song.mp3"; mp3.write_bytes(b"orig")
+    monkeypatch.setattr("pipeline.mastering.master_track",
+                        lambda i, o, **k: (Path(o).write_bytes(b"mastered"), True)[1])
+    cfg = SimpleNamespace(song=SimpleNamespace(master_pass=True, master_engine="ffmpeg"))
+    assert maybe_master(mp3, cfg, genre_key="arabic_pop") is True
+    assert mp3.read_bytes() == b"mastered"

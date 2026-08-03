@@ -342,16 +342,25 @@ def assemble_song_video(
     tmp_path.replace(out_mp4)
 
 
-def maybe_master(mp3_path: Path, cfg) -> bool:
-    """Approach-B seam (optional free tonal-master pass). Returns True if a
-    master pass ran. Currently ALWAYS a no-op — the flag + call site exist so
-    Approach B is a contained drop-in later. When built, this applies (in
-    ffmpeg): high-pass rumble cut, de-ess, gentle compression, and a -1 dBTP
-    true-peak limiter. It must NOT loudnorm — Suno already ships at -14 LUFS.
-    See docs/superpowers/specs/2026-07-27-song-producer-pass-design.md."""
+def maybe_master(mp3_path: Path, cfg, *, genre_key: str = "generic") -> bool:
+    """Master the track in place when enabled (Approach-B seam, now wired up).
+    Premium tier sets master_pass; delegates to pipeline.mastering.master_track
+    (Matchering, ffmpeg fallback). Returns True if a master pass ran and
+    mp3_path was overwritten with the mastered audio, else False (ship
+    unmastered). Never raises — mastering.master_track already swallows its
+    own failures. See docs/superpowers/specs/2026-08-03-song-ar-quality-pipeline-design.md."""
     if not (cfg and getattr(cfg, "song", None)
             and getattr(cfg.song, "master_pass", False)):
         return False
-    print("[song] master_pass is enabled but the Approach-B chain is not "
-          "implemented yet — skipping (no-op).")
+    from pipeline import mastering
+    tmp = mp3_path.with_suffix(".mastered.mp3")
+    if mastering.master_track(mp3_path, tmp, genre_key=genre_key, cfg=cfg):
+        with tmp.open("rb") as src, mp3_path.open("wb") as dst:
+            while chunk := src.read(1 << 20):
+                dst.write(chunk)
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return True
     return False
