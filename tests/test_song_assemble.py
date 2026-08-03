@@ -162,3 +162,22 @@ def test_maybe_master_delegates_when_flag_on(tmp_path, monkeypatch):
     cfg = SimpleNamespace(song=SimpleNamespace(master_pass=True, master_engine="ffmpeg"))
     assert maybe_master(mp3, cfg, genre_key="arabic_pop") is True
     assert mp3.read_bytes() == b"mastered"
+
+
+def test_maybe_master_masters_premium_even_without_flag(tmp_path, monkeypatch):
+    # Premium tier masters by default (part of the surcharge), even with
+    # master_pass off — this is what the approve-gate "+ master" promises.
+    mp3 = tmp_path / "song.mp3"; mp3.write_bytes(b"orig")
+    monkeypatch.setattr("pipeline.mastering.master_track",
+                        lambda i, o, **k: (Path(o).write_bytes(b"mastered"), True)[1])
+    cfg = SimpleNamespace(song=SimpleNamespace(master_pass=False, master_engine="ffmpeg"))
+    assert maybe_master(mp3, cfg, genre_key="arabic_pop", quality_tier="premium") is True
+    assert mp3.read_bytes() == b"mastered"
+
+
+def test_maybe_master_skips_standard_without_flag(tmp_path):
+    # Standard tier with master_pass off must NOT master (spec: premium-only).
+    mp3 = tmp_path / "song.mp3"; mp3.write_bytes(b"orig")
+    cfg = SimpleNamespace(song=SimpleNamespace(master_pass=False, master_engine="ffmpeg"))
+    assert maybe_master(mp3, cfg, genre_key="x", quality_tier="standard") is False
+    assert mp3.read_bytes() == b"orig"

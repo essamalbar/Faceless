@@ -342,15 +342,18 @@ def assemble_song_video(
     tmp_path.replace(out_mp4)
 
 
-def maybe_master(mp3_path: Path, cfg, *, genre_key: str = "generic") -> bool:
-    """Master the track in place when enabled (Approach-B seam, now wired up).
-    Premium tier sets master_pass; delegates to pipeline.mastering.master_track
-    (Matchering, ffmpeg fallback). Returns True if a master pass ran and
-    mp3_path was overwritten with the mastered audio, else False (ship
-    unmastered). Never raises — mastering.master_track already swallows its
+def maybe_master(mp3_path: Path, cfg, *, genre_key: str = "generic",
+                 quality_tier: str = "standard") -> bool:
+    """Master the track in place. The premium tier masters by default (it's
+    part of what the premium surcharge pays for, per spec); `cfg.song.master_pass`
+    is an explicit global override to ALSO master standard-tier songs (default
+    off). Delegates to pipeline.mastering.master_track (Matchering, ffmpeg
+    fallback). Returns True if a master ran and mp3_path was overwritten, else
+    False (ship unmastered). Never raises — mastering.master_track swallows its
     own failures. See docs/superpowers/specs/2026-08-03-song-ar-quality-pipeline-design.md."""
-    if not (cfg and getattr(cfg, "song", None)
-            and getattr(cfg.song, "master_pass", False)):
+    song_cfg = getattr(cfg, "song", None) if cfg else None
+    enabled = quality_tier == "premium" or bool(getattr(song_cfg, "master_pass", False))
+    if not (song_cfg and enabled):
         return False
     from pipeline import mastering
     tmp = mp3_path.with_suffix(".mastered.mp3")

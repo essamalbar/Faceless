@@ -1339,9 +1339,11 @@ def _run_song_post_approve(args) -> int:
                 while chunk := src.read(1 << 20):
                     dst.write(chunk)
 
-            # Mastering: premium-gated inside maybe_master (master_pass
-            # flag). No-op/False → ship unmastered. Never raises.
-            song_assemble.maybe_master(song_mp3, cfg, genre_key=_genre_key_from(script))
+            # Mastering: premium tier masters by default (master_pass is a
+            # global override for standard). No-op/False → ship unmastered.
+            # Never raises.
+            song_assemble.maybe_master(song_mp3, cfg, genre_key=_genre_key_from(script),
+                                       quality_tier=_tier)
 
         # --- Stage 2: cover ---
         # Skip the Flux call if cover_raw.png is already on disk; just
