@@ -1,9 +1,12 @@
 """A&R quality pipeline: given Suno takes, return the best one + why.
 
 Three stages: screen_takes (free signal defect prune) → judge_takes (Gemini
-audio A&R) → pick_best. Every stage degrades gracefully; nothing here ever
-raises into the worker (a quality pipeline must not turn a paid render into a
-hard failure). See docs/superpowers/specs/2026-08-03-song-ar-quality-pipeline-design.md.
+audio A&R) → pick_best. screen_takes and judge_takes degrade gracefully per
+take (a broken/unjudgeable take never crashes the batch — bad audio → defect
+flag, unreachable judge → signal fallback), so the pipeline doesn't turn a paid
+render into a hard failure. pick_best requires ≥1 judged take — an empty batch
+means Suno returned nothing, a genuine generation failure the worker surfaces.
+See docs/superpowers/specs/2026-08-03-song-ar-quality-pipeline-design.md.
 """
 from __future__ import annotations
 
@@ -139,7 +142,11 @@ def _parse_json_object(raw: str) -> dict:
 
 
 def _composite(sub: dict, deal_breakers: list) -> float:
-    score = sum(_WEIGHTS[k] * float(sub.get(k, 0) or 0) for k in _WEIGHTS)
+    def _clamp(v) -> float:
+        # Clamp to the documented 0-100 range so an LLM that ignores the scale
+        # (e.g. returns 150) can't inflate the composite past the quality bar.
+        return max(0.0, min(100.0, float(v or 0)))
+    score = sum(_WEIGHTS[k] * _clamp(sub.get(k, 0)) for k in _WEIGHTS)
     if deal_breakers:
         score = min(score, _DEAL_BREAKER_CAP)
     return round(score, 1)
@@ -164,6 +171,11 @@ def judge_takes(audio_llm, screened, *, style_prompt, language,
                 s.path, _JUDGE_SYSTEM,
                 _judge_user_msg(style_prompt, language, dialect))
             parsed = _parse_json_object(raw)
+            if not any(k in parsed for k in _WEIGHTS):
+                # Valid JSON but none of the score keys (prompt/schema drift) —
+                # treat as unusable so we fall back to the signal ranking rather
+                # than silently shipping a 0-composite "gemini" take.
+                raise ValueError("judge output missing all score keys")
             sub = {k: parsed.get(k, 0) for k in _WEIGHTS}
             comp = _composite(sub, parsed.get("deal_breakers") or [])
             out.append(JudgedTake(s.path, comp, sub,
@@ -176,6 +188,11 @@ def judge_takes(audio_llm, screened, *, style_prompt, language,
 
 
 def pick_best(judged, *, quality_bar: int) -> Verdict:
+    if not judged:
+        # An empty batch means Suno returned zero usable takes — a genuine
+        # generation failure the worker surfaces (raise a clear error, not an
+        # opaque max() ValueError).
+        raise ValueError("pick_best: no takes to judge")
     best = max(judged, key=lambda j: j.composite)
     return Verdict(best.path, best.composite, best.subscores, best.reason,
                    best.source, best.composite >= quality_bar)

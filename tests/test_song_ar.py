@@ -117,3 +117,22 @@ def test_pick_best_picks_highest_and_sets_clears_bar():
     assert v.path.name == "b.mp3" and v.clears_bar is True
     v2 = pick_best([judged[0]], quality_bar=70)
     assert v2.clears_bar is False
+
+
+def test_pick_best_empty_raises_clear_error():
+    import pytest
+    with pytest.raises(ValueError):
+        pick_best([], quality_bar=70)
+
+
+def test_composite_clamps_out_of_range_subscores():
+    sub = {k: 150 for k in ("vocal_realism", "artifacts", "pronunciation",
+                            "production", "style_fit")}
+    assert _composite(sub, []) == 100.0  # clamped to 100, not 150
+
+
+def test_judge_takes_missing_all_score_keys_falls_back():
+    bad = json.dumps({"foo": "bar"})  # valid JSON, none of the score keys
+    judged = judge_takes(_FakeJudge(bad), [_screened()],
+                         style_prompt="pop", language="ar")
+    assert judged[0].source == "signal-fallback"
