@@ -16,11 +16,29 @@ def _reference_for(genre_key: str) -> Path | None:
 
 def _master_matchering(in_path: Path, out_path: Path, reference: Path) -> bool:
     import matchering as mg
+    # matchering's pcm16 result must be a PCM-capable container (WAV) — it
+    # raises "MP3 format does not have PCM_16 subtype" on an .mp3 target. So
+    # master to a temp WAV, then deliver out_path's actual container.
+    tmp_wav = out_path.with_suffix(".mastered.wav")
     mg.process(
         target=str(in_path),
         reference=str(reference),
-        results=[mg.pcm16(str(out_path))],
+        results=[mg.pcm16(str(tmp_wav))],
     )
+    if not tmp_wav.exists():
+        return False
+    if out_path.suffix.lower() == ".wav":
+        tmp_wav.replace(out_path)
+    else:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(tmp_wav),
+             "-c:a", "libmp3lame", "-q:a", "2", str(out_path)],
+            check=True, capture_output=True,
+        )
+        try:
+            tmp_wav.unlink()
+        except OSError:
+            pass
     return out_path.exists()
 
 
@@ -48,7 +66,16 @@ def master_track(in_path, out_path, *, genre_key: str, cfg) -> bool:
         if engine == "matchering":
             ref = _reference_for(genre_key)
             if ref:
-                return _master_matchering(in_path, out_path, ref)
+                try:
+                    if _master_matchering(in_path, out_path, ref):
+                        return True
+                    print("[mastering] matchering produced no output; ffmpeg fallback")
+                except Exception as e:
+                    # Matchering errored (bad reference, transcode fail, ...) —
+                    # fall back to ffmpeg per spec ("ffmpeg when Matchering errors
+                    # OR no reference"), not straight to unmastered.
+                    print(f"[mastering] matchering failed ({e}); ffmpeg fallback")
+                return _master_ffmpeg(in_path, out_path)
             print(f"[mastering] no reference master for {genre_key!r}; ffmpeg fallback")
             return _master_ffmpeg(in_path, out_path)
         if engine == "api":
