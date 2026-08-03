@@ -1211,7 +1211,7 @@ EOF
 - [ ] **Step 1: Run the entire suite**
 
 Run: `uv run pytest -q`
-Expected: **30 failed, N passed** — the 30 are the known pre-existing baseline (ffmpeg/libass + `test_api` max-spend + `test_llm_groq` stale model). Confirm NO new failures in `test_song_ar`, `test_mastering`, `test_llm_gemini_audio`, `test_config`, `test_song_api`, `test_song_assemble`, `test_run_song_mode` (the premium/standard paths). If any new failure appears, fix the stub/assertion (do NOT weaken real logic) and re-run.
+Expected: **7 failed, N passed** — the pre-existing baseline (`test_api` max-spend, `test_llm_groq` stale model, 2× `test_mp4_faststart`, 3× `test_run_shorts_smoke`). NOTE: an earlier draft said "30" — the local ffmpeg/libass was repaired since, so ~23 formerly-failing ffmpeg tests now pass; 7 is the real baseline. Confirm NO new failures in `test_song_ar`, `test_mastering`, `test_llm_gemini_audio`, `test_config`, `test_song_api`, `test_song_assemble`, `test_run_song_mode`. If any new failure appears, fix the stub/assertion (do NOT weaken real logic) and re-run.
 
 - [ ] **Step 2: Offline smoke — premium selection with no external services**
 
@@ -1265,3 +1265,11 @@ EOF
 - Paid mastering API if Matchering proves insufficient.
 - Extract the duplicated `_parse_json_object` (song_style, song_ar, song_lyrics, song_import, trends) into one shared helper.
 - Premium best-of-N for the **cover** path (currently premium falls through to the standard single-job cover behavior).
+
+### Follow-ups surfaced during implementation review (not blocking)
+
+- **`POST /songs/{id}/cancel` never refunds** (`api.py` ~3509) — kills the process + sets status=canceled but never calls `refund_run_charges`. Pre-existing, but the premium surcharge raises stranded credits per incident from 1–3 to 5–7. Wire it to `refund_run_charges` like the generic `/runs/{id}/cancel` does.
+- **Loose `google-genai>=0.3.0` pin** while the lock resolves 2.0.1 (the API changed materially across that range). A loose lock regen could pull an incompatible version. Tighten the lower bound to match 2.x.
+- **matchering pulls heavy transitive deps** (pandas, statsmodels, resampy) — grows the Docker image. If image size matters, consider a lighter mastering path or a slim extra.
+- **No dedicated resume-path test** for premium best-of-N (the `existing_records`/`on_progress` logic is verified by inspection + exercised structurally by the integration test, but a direct "crash mid-render → resume reuses takes, re-bills nothing" test would lock it).
+- **Validation gate (required before flipping `ar_judge_enabled: true`):** run the Gemini audio judge on a labeled set of ~10 known-good + ~10 known-bad real Suno takes; confirm the composite separates them (good median clearly above bad, and above `quality_bar`). Document the result before enabling in prod. This is manual/offline, not an automated test.
