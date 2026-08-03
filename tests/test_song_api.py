@@ -1173,3 +1173,25 @@ def test_post_songs_persists_producer_fields(app):
     assert song_json["style_source"] == "fallback:recipe"
     assert song_json["writer_tier"] == "unknown"
     assert "robotic vocal" in song_json["negative_tags"]  # recipe negatives
+
+
+def test_premium_quality_tier_surcharges_credits_and_persists(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    r = client.post("/songs",
+                    json={"theme": "x", "language": "ar", "quality_tier": "premium"},
+                    headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 201, r.text
+    run_dir = _find_run_dir(r.json()["run_id"])
+    song_json = json.loads((run_dir / "song.json").read_text())
+    assert song_json["quality_tier"] == "premium"
+
+
+def test_song_credit_amount_premium_surcharge():
+    from pipeline.api import _song_credit_amount
+    from pipeline.config import load_config
+    from pathlib import Path
+    cfg = load_config(Path("config.yaml"))
+    std = _song_credit_amount("static", "standard", cfg)
+    prem = _song_credit_amount("static", "premium", cfg)
+    assert prem == std + cfg.song.premium_credit_surcharge

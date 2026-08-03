@@ -403,6 +403,9 @@ class CreateSongRequest(BaseModel):
     artist_id: str | None = None
     # Arabic dialect for the lyrics (msa/egyptian/khaleeji/levantine/iraqi).
     dialect: str | None = None
+    # A&R quality pipeline (2026-08-03 spec). "standard" = today's single-job
+    # path. "premium" = best-of-N + Gemini A&R judge + master, surcharged.
+    quality_tier: str = "standard"   # "standard" | "premium" (best-of-N + A&R)
 
     @field_validator("dialect")
     @classmethod
@@ -417,6 +420,13 @@ class CreateSongRequest(BaseModel):
     def _check_video_mode(cls, v: str) -> str:
         if v not in ("static", "cinematic"):
             raise ValueError("video_mode must be 'static' or 'cinematic'")
+        return v
+
+    @field_validator("quality_tier")
+    @classmethod
+    def _check_quality_tier(cls, v: str) -> str:
+        if v not in ("standard", "premium"):
+            raise ValueError("quality_tier must be 'standard' or 'premium'")
         return v
 
 
@@ -461,6 +471,10 @@ class SongScriptResponse(BaseModel):
     cost_credits: int
     cost_usd: float
     video_mode: str = "static"
+    # Premium-tier disclosure shown at the approve gate before spend
+    # (best-of-N + A&R + master — up to N takes, ~$X, N credits). None for
+    # standard-tier songs.
+    max_spend_note: str | None = None
 
 
 class CreatePersonaRequest(BaseModel):
@@ -2773,7 +2787,7 @@ def create_song(
         str(REPO_ROOT / "config.yaml"),
     )))
     # song.json isn't written yet at this point, so price from the request.
-    credits_required = _song_credit_amount(req.video_mode, cfg)
+    credits_required = _song_credit_amount(req.video_mode, req.quality_tier, cfg)
 
     if user.role != "service" and get_balance(user.id) < credits_required:
         _raise_402_insufficient_credits(get_balance(user.id), credits_required)
@@ -2855,6 +2869,9 @@ def create_song(
             # Render mode + cinematic art direction. video_mode drives the
             # 1-vs-3 credit price and the static-vs-beat-synced render path.
             "video_mode": req.video_mode,
+            # A&R quality pipeline tier. Drives the credit surcharge + the
+            # premium best-of-N/regenerate/master path in run.py.
+            "quality_tier": req.quality_tier,
             "art_direction": script.art_direction,
             "scene_prompts": script.scene_prompts,
         }, ensure_ascii=False, indent=2),
@@ -2876,7 +2893,9 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
 
     cfg = load_config(Path(os.environ.get(
         "FACELESS_CONFIG", str(REPO_ROOT / "config.yaml"))))
-    credits_required = _song_credit_amount(req.video_mode, cfg)
+    # CreateSongImportRequest has no quality_tier field yet — premium best-of-N
+    # for the YouTube-import path is out of scope (spec follow-ups); price standard.
+    credits_required = _song_credit_amount(req.video_mode, "standard", cfg)
     if user.role != "service":
         balance = get_balance(user.id)
         if balance < credits_required:
@@ -2947,7 +2966,9 @@ def upload_cover_song(
 
     cfg = load_config(Path(os.environ.get(
         "FACELESS_CONFIG", str(REPO_ROOT / "config.yaml"))))
-    credits_required = _song_credit_amount(video_mode, cfg)
+    # upload_cover_song has no quality_tier form field — premium best-of-N for
+    # the cover path is out of scope (spec follow-ups); price standard.
+    credits_required = _song_credit_amount(video_mode, "standard", cfg)
     if user.role != "service":
         balance = get_balance(user.id)
         if balance < credits_required:
@@ -3013,15 +3034,18 @@ def upload_cover_song(
     return {"run_id": run_id, "status": "analyzing"}
 
 
-def _song_credit_amount(video_mode: str, cfg) -> int:
-    """Credit cost for one song render given video_mode. Single source of
-    truth so the create/script/approve/reroll paths can't drift. Falls back
-    to hard-coded defaults only when SongConfig is absent."""
+def _song_credit_amount(video_mode: str, quality_tier: str, cfg) -> int:
+    """Credit cost for one song render given video_mode + quality_tier.
+    Single source of truth so the create/script/approve/reroll paths can't
+    drift. Falls back to hard-coded defaults only when SongConfig is absent."""
     if cfg.song:
-        return (cfg.song.cinematic_credits_per_song
+        base = (cfg.song.cinematic_credits_per_song
                 if video_mode == "cinematic"
                 else cfg.song.credits_per_song)
-    return 3 if video_mode == "cinematic" else 1
+        surcharge = cfg.song.premium_credit_surcharge if quality_tier == "premium" else 0
+        return base + surcharge
+    base = 3 if video_mode == "cinematic" else 1
+    return base + (4 if quality_tier == "premium" else 0)
 
 
 def _reconcile_downgrade_refund(run_dir: Path, user: "User") -> None:
@@ -3205,13 +3229,25 @@ def get_song_script(run_id: str, user: User = Depends(require_user)):
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
     video_mode = script.get("video_mode", "static")
-    credits = _song_credit_amount(video_mode, cfg)
+    quality_tier = script.get("quality_tier", "standard")
+    credits = _song_credit_amount(video_mode, quality_tier, cfg)
     if cfg.song and video_mode == "cinematic":
         usd = cfg.song.suno_cost_usd + cfg.song.cinematic_pool_size * cfg.song.cover_cost_usd
     elif cfg.song:
         usd = cfg.song.suno_cost_usd + cfg.song.cover_cost_usd
     else:
         usd = 0.08
+    # Premium-tier disclosure so the app shows the best-of-N + A&R + master
+    # spend ceiling at the approve gate, before any Suno job is submitted.
+    max_spend_note = None
+    if quality_tier == "premium" and cfg.song:
+        max_takes = cfg.song.max_takes
+        max_usd = max_takes / 2 * cfg.song.suno_cost_usd
+        max_spend_note = (
+            f"Premium quality: best-of-N + AI A&R + master — up to "
+            f"{max_takes} takes, ~${max_usd:.2f}, "
+            f"{_song_credit_amount(video_mode, 'premium', cfg)} credits"
+        )
     return SongScriptResponse(
         title=script["title"],
         lyrics=script["lyrics"],
@@ -3221,6 +3257,7 @@ def get_song_script(run_id: str, user: User = Depends(require_user)):
         cost_credits=credits,
         cost_usd=usd,
         video_mode=video_mode,
+        max_spend_note=max_spend_note,
     )
 
 
@@ -3514,7 +3551,8 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     cfg = load_config(cfg_path)
     script = json.loads((run_dir / "song.json").read_text())
     video_mode = script.get("video_mode", "static")
-    amount = _song_credit_amount(video_mode, cfg)
+    quality_tier = script.get("quality_tier", "standard")
+    amount = _song_credit_amount(video_mode, quality_tier, cfg)
 
     if user.role != "service":
         balance = _credits.get_balance(user.id)
@@ -4015,7 +4053,8 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
     cfg = load_config(cfg_path)
     script = json.loads((run_dir / "song.json").read_text())
     video_mode = script.get("video_mode", "static")
-    amount = _song_credit_amount(video_mode, cfg)
+    quality_tier = script.get("quality_tier", "standard")
+    amount = _song_credit_amount(video_mode, quality_tier, cfg)
 
     if user.role != "service":
         balance = _credits.get_balance(user.id)
