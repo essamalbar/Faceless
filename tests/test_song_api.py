@@ -313,6 +313,41 @@ def test_approve_cinematic_song_deducts_three_credits(app, monkeypatch):
     assert r.json()["balance_after"] == 97
 
 
+def test_approve_premium_song_deducts_surcharged_credits(app, monkeypatch):
+    """Approving a song whose song.json has quality_tier='premium' must charge
+    base + premium surcharge (static 1 + 4 = 5), and deduct at the premium
+    amount — not just balance-check it."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod, credits
+
+    api_mod.set_spawn_fn(lambda args, run_dir: 12345)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    captured = {}
+    def _capture(user, *, amount, run_id, reason):
+        captured["amount"] = amount
+        return 100 - amount
+    monkeypatch.setattr(credits, "check_or_deduct", _capture)
+
+    create = client.post(
+        "/songs", json={"theme": "x", "quality_tier": "premium"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    # tier must persist to song.json so approve/worker read premium
+    assert json.loads((run_dir / "song.json").read_text())["quality_tier"] == "premium"
+
+    r = client.post(
+        f"/songs/{run_id}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["amount"] == 5          # static base 1 + premium surcharge 4
+    assert r.json()["balance_after"] == 95
+
+
 def test_approve_static_song_deducts_one_credit(app, monkeypatch):
     """Approving a song with video_mode='static' (or unset) must charge
     exactly 1 credit."""
@@ -1191,7 +1226,8 @@ def test_song_credit_amount_premium_surcharge():
     from pipeline.api import _song_credit_amount
     from pipeline.config import load_config
     from pathlib import Path
-    cfg = load_config(Path("config.yaml"))
+    cfg_path = Path(__file__).resolve().parent.parent / "config.yaml"
+    cfg = load_config(cfg_path)
     std = _song_credit_amount("static", "standard", cfg)
     prem = _song_credit_amount("static", "premium", cfg)
     assert prem == std + cfg.song.premium_credit_surcharge

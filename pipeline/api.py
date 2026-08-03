@@ -3242,7 +3242,10 @@ def get_song_script(run_id: str, user: User = Depends(require_user)):
     max_spend_note = None
     if quality_tier == "premium" and cfg.song:
         max_takes = cfg.song.max_takes
-        max_usd = max_takes / 2 * cfg.song.suno_cost_usd
+        # ceil(max_takes/2) jobs (Suno returns 2 takes/job) — match run.py's
+        # math.ceil(want/2) so the disclosed ceiling isn't understated for an
+        # odd max_takes.
+        max_usd = ((max_takes + 1) // 2) * cfg.song.suno_cost_usd
         max_spend_note = (
             f"Premium quality: best-of-N + AI A&R + master — up to "
             f"{max_takes} takes, ~${max_usd:.2f}, "
