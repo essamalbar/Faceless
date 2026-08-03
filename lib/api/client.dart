@@ -590,6 +590,7 @@ class FacelessApiClient {
     String videoMode = 'static',
     String? artistId,
     String? dialect,
+    String qualityTier = 'standard',
   }) async {
     final body = <String, dynamic>{
       'theme': theme,
@@ -602,6 +603,7 @@ class FacelessApiClient {
       if (sunoModel != null) 'suno_model': sunoModel,
       'video_mode': videoMode,
       if (artistId != null) 'artist_id': artistId,
+      'quality_tier': qualityTier,
     };
     final r = await _http.post(
       await _uri('/songs'),

@@ -503,6 +503,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newSongVideoCinematic => 'Cinematic video · 3 credits';
 
   @override
+  String get newSongQualityLabel => 'Quality';
+
+  @override
+  String get newSongQualityStandard => 'Standard';
+
+  @override
+  String get newSongQualityPremium => 'Premium · +4 credits';
+
+  @override
+  String get newSongQualityPremiumHint =>
+      'Generates several takes, an AI keeps the best-sounding one, then masters it.';
+
+  @override
   String get newSongVoiceLabel => 'Voice';
 
   @override

@@ -1016,6 +1016,30 @@ abstract class AppLocalizations {
   /// **'Cinematic video · 3 credits'**
   String get newSongVideoCinematic;
 
+  /// No description provided for @newSongQualityLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Quality'**
+  String get newSongQualityLabel;
+
+  /// No description provided for @newSongQualityStandard.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get newSongQualityStandard;
+
+  /// No description provided for @newSongQualityPremium.
+  ///
+  /// In en, this message translates to:
+  /// **'Premium · +4 credits'**
+  String get newSongQualityPremium;
+
+  /// No description provided for @newSongQualityPremiumHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Generates several takes, an AI keeps the best-sounding one, then masters it.'**
+  String get newSongQualityPremiumHint;
+
   /// No description provided for @newSongVoiceLabel.
   ///
   /// In en, this message translates to:

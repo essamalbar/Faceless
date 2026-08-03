@@ -501,6 +501,19 @@ class AppLocalizationsAr extends AppLocalizations {
   String get newSongVideoCinematic => 'فيديو سينمائي · 3 أرصدة';
 
   @override
+  String get newSongQualityLabel => 'الجودة';
+
+  @override
+  String get newSongQualityStandard => 'قياسي';
+
+  @override
+  String get newSongQualityPremium => 'بريميوم · +4 أرصدة';
+
+  @override
+  String get newSongQualityPremiumHint =>
+      'يولّد عدة نسخ، ويختار الذكاء الاصطناعي أفضلها صوتًا، ثم يعالجها (ماسترينغ).';
+
+  @override
   String get newSongVoiceLabel => 'الصوت';
 
   @override

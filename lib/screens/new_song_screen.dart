@@ -105,6 +105,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
   String _language = 'ar';
   String? _dialect;           // Arabic dialect (null = auto; ar-only)
   String _videoMode = 'static'; // 'static' | 'cinematic'
+  String _qualityTier = 'standard'; // 'standard' | 'premium' (best-of-N + A&R + master)
   double _audioWeight = 0.8;   // cover faithfulness (Kie audioWeight)
   String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
   String? _sunoModel;          // null = use server default (V5_5)
@@ -269,6 +270,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
           videoMode: _videoMode,
           artistId: _artist?.id,
           dialect: _language == 'ar' ? _dialect : null,
+          qualityTier: _qualityTier,
         );
       }
       if (!mounted) return;
@@ -600,6 +602,38 @@ class _NewSongScreenState extends State<NewSongScreen> {
               onSelectionChanged: (s) =>
                   setState(() => _videoMode = s.first),
             ),
+            // Quality tier — premium runs best-of-N + AI A&R + master. Only
+            // the text→song path supports it (cover/upload is standard).
+            if (_createMode != 'upload') ...[
+              const SizedBox(height: 16),
+              Text(
+                l10n.newSongQualityLabel,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(
+                    value: 'standard',
+                    label: Text(l10n.newSongQualityStandard),
+                  ),
+                  ButtonSegment(
+                    value: 'premium',
+                    label: Text(l10n.newSongQualityPremium),
+                  ),
+                ],
+                selected: {_qualityTier},
+                onSelectionChanged: (s) =>
+                    setState(() => _qualityTier = s.first),
+              ),
+              if (_qualityTier == 'premium') ...[
+                const SizedBox(height: 6),
+                Text(
+                  l10n.newSongQualityPremiumHint,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ],
             const SizedBox(height: 16),
             // Voice picker — only shows once user has saved at least
             // one persona. Default is "Auto" which lets Suno pick.
