@@ -96,6 +96,16 @@ class SongConfig:
     cinematic_pool_size: int = 7          # number of Flux stills generated for the pool
     bars_per_cut: int = 4                 # change image every N bars on the beat grid
     master_pass: bool = False   # Approach-B tonal master (seam only; not built)
+    # A&R quality pipeline (premium tier). Defaults keep old config blocks loading.
+    quality_tier_default: str = "standard"   # "premium" enables best-of-N + judge
+    best_of: int = 6                         # round-1 takes (→ ceil(best_of/2) jobs)
+    quality_bar: int = 70                    # composite (0-100) to accept
+    regen_max_rounds: int = 1                # max_takes is the binding cap at defaults
+    regen_extra_takes: int = 4               # takes added per regen round
+    max_takes: int = 10                      # hard budget backstop
+    premium_credit_surcharge: int = 4        # extra credits for premium tier
+    ar_judge_enabled: bool = False           # shadow-mode; flip after validation
+    master_engine: str = "matchering"        # matchering | ffmpeg (api reserved)
 
 
 @dataclass(frozen=True)

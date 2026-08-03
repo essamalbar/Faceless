@@ -110,3 +110,13 @@ song:
   master_pass: false            # Approach B (ffmpeg tonal master) — seam only,
                                 # not yet implemented. See spec
                                 # 2026-07-27-song-producer-pass.
+  # A&R quality pipeline (premium tier). See spec 2026-08-03.
+  quality_tier_default: standard
+  best_of: 6
+  quality_bar: 70
+  regen_max_rounds: 1
+  regen_extra_takes: 4
+  max_takes: 10
+  premium_credit_surcharge: 4
+  ar_judge_enabled: false        # shadow-mode: judge logs only until validated
+  master_engine: matchering      # matchering | ffmpeg (api reserved, not built)

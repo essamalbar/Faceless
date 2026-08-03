@@ -102,3 +102,29 @@ def test_song_config_cinematic_defaults_when_absent():
     assert c.cinematic_credits_per_song == 3
     assert c.cinematic_pool_size == 7
     assert c.bars_per_cut == 4
+
+
+def test_song_config_ar_pipeline_defaults(tmp_path):
+    from pipeline.config import load_config
+    import textwrap
+    cfg_path = tmp_path / "c.yaml"
+    cfg_path.write_text(textwrap.dedent("""
+      voice: {provider: edge_tts, name: x, rate: "+0%", pitch: "+0Hz"}
+      script: {word_count_target: 100, word_count_tolerance: 20, enable_critique_pass: false, repetition_threshold: 0.8, min_beats: 4, max_beats: 8, words_per_beat: 20}
+      flux: {steps: 4, guidance: 3.5, width: 1280, height: 720}
+      assemble: {output_width: 1920, output_height: 1080, shot_crossfade_ms: 350, music_duck_db: -18, music_silence_db: -8, fade_in_s: 1, fade_out_s: 1}
+      captions: {burn_in: false, font: X, font_size: 60}
+      kie: {model: veo3_fast, num_clips: 5, clip_duration_s: 8, aspect_ratio: "9:16", cost_per_second_usd: 0.1, max_spend_usd: 13, poll_interval_s: 5, poll_timeout_s: 300, flux_model: x, flux_cost_per_image_usd: 0.05, native_audio: true}
+      song: {suno_model: V5_5, suno_cost_usd: 0.05, cover_flux_model: x, cover_cost_usd: 0.03, credits_per_song: 1}
+    """))
+    c = load_config(cfg_path)
+    # New A&R fields default without being present in the config block:
+    assert c.song.quality_tier_default == "standard"
+    assert c.song.best_of == 6
+    assert c.song.quality_bar == 70
+    assert c.song.regen_max_rounds == 1
+    assert c.song.regen_extra_takes == 4
+    assert c.song.max_takes == 10
+    assert c.song.premium_credit_surcharge == 4
+    assert c.song.ar_judge_enabled is False
+    assert c.song.master_engine == "matchering"
