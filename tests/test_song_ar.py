@@ -28,6 +28,18 @@ def test_screen_rejects_truncated_clipped_silent_keeps_valid():
     assert by["take_4.mp3"].reject_reason == "mostly-silent"
 
 
+def test_screen_reject_precedence_truncated_wins():
+    # A take violating all three checks must be labeled by the FIRST failure
+    # (truncated) — locks the if/elif order against silent inversion.
+    paths = [Path("take_1.mp3"), Path("take_2.mp3")]
+    metrics = {
+        "take_1.mp3": (60.0, 0.0, 0.1),   # valid → non-zero median
+        "take_2.mp3": (10.0, 0.5, 0.9),   # truncated AND clipping AND silent
+    }
+    out = {s.path.name: s for s in screen_takes(paths, measure=_fake_measure(metrics))}
+    assert out["take_2.mp3"].reject_reason == "truncated"
+
+
 def test_screen_keeps_all_when_every_take_fails():
     paths = [Path("take_1.mp3"), Path("take_2.mp3")]
     metrics = {"take_1.mp3": (0.0, 1.0, 1.0), "take_2.mp3": (0.0, 1.0, 1.0)}
