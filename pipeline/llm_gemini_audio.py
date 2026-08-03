@@ -40,4 +40,9 @@ class GeminiAudioJudge:
             contents=contents,
             config={"system_instruction": system},
         )
+        # resp.text is None on a safety-blocked/empty response — surface it as a
+        # clear error (callers catch it and fall back) rather than returning None
+        # into a JSON parser several layers away.
+        if resp.text is None:
+            raise GeminiAudioError("empty response from Gemini audio judge")
         return resp.text

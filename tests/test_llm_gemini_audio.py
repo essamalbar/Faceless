@@ -36,3 +36,29 @@ def test_judge_audio_sends_audio_and_returns_text(monkeypatch, tmp_path):
     assert captured["model"] == "gemini-2.5-flash"
     # audio bytes must be in the request contents
     assert captured["contents"]  # non-empty parts list
+
+
+def test_model_env_override(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    monkeypatch.setenv("GEMINI_AUDIO_MODEL", "gemini-custom-audio")
+    monkeypatch.setattr("pipeline.llm_gemini_audio._client", lambda key: object())
+    assert GeminiAudioJudge()._model == "gemini-custom-audio"
+
+
+def test_empty_response_raises(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    mp3 = tmp_path / "t.mp3"
+    mp3.write_bytes(b"x")
+
+    class _Models:
+        def generate_content(self, **kwargs):
+            class R:
+                text = None
+            return R()
+
+    class _Client:
+        models = _Models()
+
+    monkeypatch.setattr("pipeline.llm_gemini_audio._client", lambda key: _Client())
+    with pytest.raises(GeminiAudioError):
+        GeminiAudioJudge().judge_audio(mp3, system="s", user="u")
