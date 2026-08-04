@@ -107,6 +107,18 @@ def _resolve_run_dir(args, out_root: Path) -> Path:
     return _make_run_dir(out_root, user_id=args.user_id)
 
 
+def _effective_user_id(run_dir: Path, out_root: Path) -> str:
+    """The user id owning a run = the path segment directly under out_root
+    (runs live at <out_root>/<user_id>/<run_id>). On --resume this recovers
+    the REAL user so paid stages charge/refund the right account instead of
+    defaulting to the free 'admin' service role. Falls back to 'admin'
+    (service/free) if the layout is unexpected — fail safe, never over-charge."""
+    try:
+        return run_dir.resolve().relative_to(out_root.resolve()).parts[0]
+    except (ValueError, IndexError):
+        return "admin"
+
+
 def _stage_seed(args, gemini, log: RunLog, paths: RunPaths,
                 project_theme_log: Path) -> ThemeSeed:
     seed_path = paths.root / "seed.json"
@@ -691,6 +703,11 @@ def main_with_args(argv: list[str]) -> int:
     project_story_history = out_root / "story_history.jsonl"
 
     run_dir = _resolve_run_dir(args, out_root)
+    # Recover the owning user from the run-dir path so resumed paid stages
+    # charge/refund the real user, not the default 'admin' service role.
+    # (Fresh runs already encode args.user_id in the path, so this is a no-op
+    # for them; resumes are where it matters.)
+    args.user_id = _effective_user_id(run_dir, out_root)
     paths = RunPaths(root=run_dir)
     log = RunLog(run_dir)
 
