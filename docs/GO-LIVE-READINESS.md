@@ -1,0 +1,103 @@
+# Go-Live Readiness Plan — Faceless Lab
+
+**Date:** 2026-08-04
+**Scope:** Launch the AI song/video system to real, paying, public users.
+**Method:** Four parallel code audits — auth/email, Stripe payments, credits ledger, ops/security/cost. Findings below are grounded in the code (file:line), not assumptions.
+
+## Verdict
+
+The engineering **foundation is sound**: per-user Supabase-JWT auth (correctly verified + tested), a **durable** external credit ledger (Supabase Postgres), secrets in Google Secret Manager, an approve-before-spend gate, and a single reconciled Stripe+pipeline ledger. **But it is NOT safe to charge real users today** — there are money-losing bugs (unbilled renders, no refunds on failure, double-spend, webhook double-grants) and missing operational + legal guardrails. Everything here is fixable; none is architectural.
+
+## Reality check — how billing actually works (corrected)
+
+Prior notes were stale. Confirmed against code:
+
+- **No signup / free-trial grant.** Removed 2026-05-13 (`pipeline/credits.py:7-12`; `ensure_signup_grant` never implemented). New users start at **0 credits**; script generation is free, every paid stage requires a subscription. → Confirm launch messaging matches (no "free trial" funnel).
+- **Plans:** Starter **12 cr / $9**, Creator **60 cr / $29**, Pro **200 cr / $79** (`pipeline/credits.py:28`, prices via `STRIPE_PRICE_*`). Design doc's 60/250/800 is stale.
+- **Top-up packs disabled** (`credits.py:29` `TOPUP_PACKS = {}`); `/billing/checkout-topup` always 400s.
+- **Ledger is durable** — Supabase Postgres, provisioned on the API Service and the worker Job. Survives redeploys/restarts. (The feared "ephemeral disk" risk does not apply.)
+
+## What's already solid (do not rebuild)
+
+- Auth: HS256 + ES256/RS256-via-JWKS, correct `alg` pinning, `exp`/`aud`/`sub` checks, admin endpoints gated to the service token. Tested (`tests/test_auth.py`).
+- Ledger: append-only `credit_transactions` + `user_balance` view; Stripe grants and pipeline deducts hit the **same** table (no drift); user-visible history via `GET /billing/transactions`.
+- Secrets: Secret Manager `secretKeyRef` in prod; `.env`/keys excluded from image; web bundle ships `FACELESS_API_TOKEN=` **empty** (only the public `SUPABASE_ANON_KEY` is baked in).
+- Stripe: webhook signature verified on the raw body; metadata plumbed to survive `invoice.payment_succeeded`; defenses against the 2025 Stripe API payload reshape (with regression tests).
+- Spend design: approve-before-spend genuinely gates Kie spend; per-user cost bounded by DB balance; Kie calls have real retry/backoff.
+
+---
+
+## TIER 1 — Money-integrity BLOCKERS (fix before ANY paying user)
+
+| # | Gap | Evidence | Fix | Owner |
+|---|-----|----------|-----|-------|
+| 1 | **Shorts/Veo pipeline never charges users.** Worker spawned without `--user-id` → runs as `admin`/`service` → `check_or_deduct` no-ops → **balance never decrements**. Any user with credits renders unlimited real-money Veo/Kling forever, unbilled. | 13 `_SPAWN_FN` sites in `api.py` pass no `--user-id`; `run.py:596-600` defaults to `"admin"`; `run.py:511-512` → role `service`; `credits.py:59-60` no-ops. | Pass `"--user-id", user.id` in every paid-stage spawn; `_stage_video_chained` + refund block already do the right thing once the id is correct. | Code |
+| 2 | **Song cancel + song failure never refund.** Credits deducted at approve; `cancel_song` and the song worker's failure handler don't refund → charged, got nothing. | `api.py:3513-3527` (cancel, no refund); `run.py:1532-1544` (failure, no refund); only the video path refunds (`run.py:814-865`, `api.py:2523-2566`). | Call `refund_run_charges(...)` in `cancel_song`; wrap `_run_song_post_approve` in try/except → refund on terminal failure. | Code |
+| 3 | **Double-spend race.** `check_or_deduct` is read→compare→insert with no DB lock; parallel approves both pass the balance check and go negative. File-based concurrency/daily caps are themselves TOCTOU races. | `credits.py:46-71` (no `FOR UPDATE`/`.rpc`); caps `api.py:3120-3132`, `3176-3189`. | Move check-and-deduct into a Postgres function via `.rpc()`: `UPDATE … WHERE balance >= amount RETURNING …` (or advisory lock on `user_id`). | Code |
+| 4 | **Stripe webhook not idempotent.** At-least-once delivery; a retried `invoice.payment_succeeded` double-grants credits (no unique constraint on `reference_id`). | `stripe_billing.py:219-231`, `176-183`; schema `…credits.sql:29-46` (reference_id plain text). | Dedup on Stripe `event.id` (unique index or check-before-insert on `(reference_id, kind)`). | Code + DB migration |
+| 5 | **No dunning.** Failed renewal card silently shows "active" for days/weeks; no `invoice.payment_failed` handled or subscribed. | `stripe_billing.py:147-155` (no branch); Dashboard event list omits it; UI has no past-due state (`billing_screen.dart:190-206`). | Subscribe to `invoice.payment_failed`; flag `payment_status='past_due'`; surface "update your card" in the app. | Code + Stripe Dashboard |
+
+## TIER 2 — Can't-operate-blind BLOCKERS (fix before launch)
+
+| # | Gap | Evidence | Fix | Owner |
+|---|-----|----------|-----|-------|
+| 6 | **No monitoring / alerting / error tracking.** All `print()`. Failed renders, Kie outages, the double-grant above — all invisible until a user complains. | No Sentry/structured logging/metrics anywhere (grep clean). | Add Sentry (or equivalent) + Cloud Monitoring alerts on 5xx, Job failure, and billing anomalies. | Infra |
+| 7 | **No infra spend ceiling.** Cloud Run `maxScale` unset (defaults 100) + no GCP billing budget + no Kie account cap, on an app that spends per request. | `deploy/cloud-run-service.yaml` (no maxScale); `setup-cloud-run.sh:208-210` public invoker. | Set `autoscaling.knative.dev/maxScale`; add a GCP Billing Budget with alerts; set a hard Kie.ai spend cap. | Infra |
+| 8 | **No Supabase backup** of the credit/payment ledger (financial system of record). | Nothing in-repo backs up Supabase. | Enable Supabase PITR / scheduled backups. | Infra |
+| 9 | **7 failing tests on the money/video path.** | `test_api::test_approve_passes_auto_computed_max_spend`, 2× `test_mp4_faststart`, 3× `test_run_shorts_smoke`, `test_llm_groq` stale model. | Green the spend-gate + faststart tests (fix or update stale assertions) before launch. | Code |
+
+## TIER 3 — Legal/compliance BLOCKERS (Stripe + app stores require; copyright exposure)
+
+| # | Gap | Fix | Owner |
+|---|-----|-----|-------|
+| 10 | **No Terms of Service / Privacy Policy / refund policy** (site or app). Stripe + app stores mandate them. | Publish ToS + Privacy + refund policy; add acceptance at signup/checkout; footer links. | Legal + Code (routes) |
+| 11 | **No content moderation + copyrighted-cover generation.** `upload-cover` + YouTube-`import` make "faithful covers" of any audio → feed Spotify/Apple distribution, no ownership check. | Ownership-attestation gate on cover/import; basic moderation on themes/lyrics/uploads. | Legal + Code |
+| 12 | **No DMCA/takedown process or abuse contact.** | Publish a takedown/abuse process + contact. | Legal |
+| 13 | **No GDPR deletion/export path** (EU users; ledger append-only, no `/account/delete`). | Add `/account/delete` (Supabase admin API) + data export; cookie consent for EU. | Code + Legal |
+
+## TIER 4 — IMPORTANT (right after launch / before scaling or marketing)
+
+- **Email confirmation not enforced server-side** — trusts a Supabase dashboard toggle, no code backstop (`auth.py:45-111`). Add a claim check; soft-gate spend if unconfirmed.
+- **No password-reset flow** (`lib/` has no `resetPasswordForEmail`). Add reset + confirmation screen.
+- **Anthropic out of credits → silent Gemini fallback** (lower-quality lyrics + slow ~70s writer pass; the Anthropic→Gemini hop shows no banner). Fund Anthropic; surface `writer_tier` in `/health`.
+- **No chargeback/dispute handling** (`charge.dispute.created` / `charge.refunded` unhandled) — disputed credits stay spendable.
+- **No Stripe Tax** (VAT/GST not calculated/collected). Enable Stripe Tax or accept liability explicitly.
+- **Stripe API version unpinned** — next Stripe reshape can silently break the webhook again.
+- **Rate/concurrency caps are file-based and racy** across Cloud Run instances (`_rate_limit.json` on GCS-Fuse). Move to the DB.
+- **LLM draft/regen endpoints unmetered/unthrottled** (`create_song`, `regenerate-lyrics`, morning-drafts) — unbounded Anthropic/Gemini spend for any user with ≥1 credit.
+- **Indefinite data retention** — generated songs/videos + uploaded reference audio persist forever (only failed song runs purge at 30d). Add a TTL / GCS lifecycle rule.
+- **Service token can leak into a public web build** via `run-app.sh --dart-define` — keep that launcher strictly local/dev; add a guard that refuses a non-empty token in a public build.
+- **Deploy hygiene:** no CI/CD (laptop deploy silently ships without the web app if `flutter` off PATH); single region (`us-central1`); no documented rollback; `flutter analyze` failing on the UI; CORS `allow_origins=["*"]` (low risk given header auth, but stale justification).
+
+## TIER 5 — NICE-TO-HAVE
+OAuth (Google/Apple) sign-in; `.env.example` template; finish or remove the disabled top-up packs; fix the secret-rotation doc (`latest` needs redeploy); cache headers on `main.dart.js`/canvaskit + delete the dead `inject-sw-skip-waiting.sh` reference; update stale design-doc numbers (plan credits, PLAN_GRANTS) to match code.
+
+---
+
+## Launch sequence
+
+**Phase 0 — Code (money bugs). Blocks everything. → engineering (can start now)**
+Fix #1 (unbilled Veo — highest priority, active loss), #2 (song cancel/failure refunds), #3 (atomic deduct), #4 (webhook idempotency + migration), #5 (dunning), #9 (green the 7 tests). Ship behind the existing shadow flags; verify with the same TDD + review flow used for the last two features.
+
+**Phase 1 — Infra safety net. → operator (~1 day, parallel with Phase 0)**
+GCP billing budget + `maxScale` + Kie spend cap (#7); Sentry + alerts (#6); Supabase backups (#8); fund Anthropic (Tier 4).
+
+**Phase 2 — Legal/compliance. → operator + a little code**
+ToS/Privacy/refund (#10), DMCA/abuse contact (#12), ownership-attestation gate + moderation (#11), GDPR delete/export (#13).
+
+**Phase 3 — Soft launch.** Enable payments for a small invited cohort. Watch dashboards (spend, failed renders, webhook events, balances). Confirm: a real subscription grants the right credits, a real render deducts them, a cancel/failure refunds, and no balance goes negative. Then open to the public.
+
+## Launch-day go/no-go checklist
+- [ ] Tier 1 (#1–5) fixed + tested; full suite green on the money/video path.
+- [ ] GCP billing budget alert + `maxScale` + Kie cap live.
+- [ ] Sentry receiving events; alert on failed render / 5xx / billing anomaly.
+- [ ] Supabase backups on.
+- [ ] ToS + Privacy + refund published and linked; acceptance at signup/checkout.
+- [ ] DMCA/abuse contact + ownership-attestation gate on cover/import.
+- [ ] GDPR delete path.
+- [ ] Anthropic funded; `writer_tier` reads `anthropic` in prod.
+- [ ] End-to-end money test on live Stripe (subscribe → render → deduct → cancel → refund) with a real test user.
+- [ ] Stripe: `invoice.payment_failed` subscribed; API version pinned; Tax decision made; receipts email on.
+
+## Post-launch watch (first 2 weeks)
+Balance-never-negative invariant; webhook delivery/idempotency; failed-render refund rate; Anthropic/Kie balances; abuse (mass renders, copyrighted covers); support volume on auth (reset/confirmation).
