@@ -107,6 +107,16 @@ def _resolve_run_dir(args, out_root: Path) -> Path:
     return _make_run_dir(out_root, user_id=args.user_id)
 
 
+def _resolve_out_root(args) -> Path:
+    """Resolve the run root: an explicit --out-root wins, else FACELESS_OUT_ROOT
+    (what Cloud Run sets, e.g. /mnt/runs — see pipeline/api.py's _out_root()),
+    else the local DEFAULT_OUT_ROOT. Must agree with pipeline/api.py's _out_root()
+    so a resumed run's run_dir and out_root land on the same root — otherwise
+    _effective_user_id's relative_to() raises and the owning user is lost
+    (silently falls back to the free 'admin' service role)."""
+    return Path(args.out_root or os.environ.get("FACELESS_OUT_ROOT", str(DEFAULT_OUT_ROOT)))
+
+
 def _effective_user_id(run_dir: Path, out_root: Path) -> str:
     """The user id owning a run = the path segment directly under out_root
     (runs live at <out_root>/<user_id>/<run_id>). On --resume this recovers
@@ -115,7 +125,7 @@ def _effective_user_id(run_dir: Path, out_root: Path) -> str:
     (service/free) if the layout is unexpected — fail safe, never over-charge."""
     try:
         return run_dir.resolve().relative_to(out_root.resolve()).parts[0]
-    except (ValueError, IndexError):
+    except (ValueError, IndexError, OSError):
         return "admin"
 
 
@@ -616,7 +626,11 @@ def main_with_args(argv: list[str]) -> int:
     p.add_argument("--burn-captions", action="store_true",
                    help="Burn captions into video (default: SRT only)")
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
-    p.add_argument("--out-root", default=str(DEFAULT_OUT_ROOT))
+    p.add_argument(
+        "--out-root", default=None,
+        help="Run root. Defaults to $FACELESS_OUT_ROOT if set (Cloud Run: "
+             "/mnt/runs), else the local out/ dir.",
+    )
     p.add_argument("--music-bundle", default=str(DEFAULT_MUSIC_BUNDLE))
     # Pipeline mode selector -----------------------------------------------
     p.add_argument(
@@ -697,7 +711,7 @@ def main_with_args(argv: list[str]) -> int:
     _maybe_load_freeform_controls_from_disk(args)
 
     cfg = load_config(Path(args.config))
-    out_root = Path(args.out_root)
+    out_root = _resolve_out_root(args)
     music_bundle = Path(args.music_bundle)
     project_theme_log = out_root / "theme_log.json"
     project_story_history = out_root / "story_history.jsonl"
