@@ -435,7 +435,7 @@ def test_record_grant_once_inserts_then_dedups(monkeypatch):
 
 `tests/test_stripe_billing.py` (**exists** — extend). Two gaps verified against code, must be handled or the suite breaks:
 - Its `mock_db` fixture currently monkeypatches `pipeline.stripe_billing.record_transaction`. After the refactor both grant sites call `record_grant_once` instead, so the fixture must stub `pipeline.stripe_billing.record_grant_once` (default return `True`); the `record_transaction` stub target will no longer exist once the import is dropped (see Step 3). Update the fixture accordingly.
-- The existing grant-asserting tests (`test_handle_webhook_subscription_renewal_grants`, and any of `test_handle_webhook_uses_item_period_end_for_newer_stripe` / `test_handle_webhook_invoice_paid_reads_parent_subscription_details` that assert the grant fired) assert via the `record_transaction` mock — repoint them to assert the grant went through `record_grant_once` (user_id/amount/kind/reference_id).
+- The existing grant-asserting tests read `mock_db["transactions"][-1]` (e.g. `test_handle_webhook_subscription_renewal_grants:124-126` asserts `amount==60`, `kind=="subscription_renewal"`). LEAST-INVASIVE fix: make the fixture's `record_grant_once` stub **append to the same `mock_db["transactions"]` list** (mirroring the existing `fake_record`) and return `True` — then those assertions pass unchanged and you don't rewrite them. The per-test dedup test below overrides the stub locally. (`test_handle_webhook_uses_item_period_end_for_newer_stripe` / `..._reads_parent_subscription_details` also land a grant — the same fixture change keeps them green.)
 
 New test: a duplicate `invoice.payment_succeeded` grants once — mock `record_grant_once` to return True then False and assert the second call yields a "duplicate invoice, no-op" note (no second grant).
 
@@ -501,19 +501,23 @@ alter table user_profiles
 
 - [ ] **Step 2: Write the failing tests**
 
-`tests/test_stripe_billing.py`:
+`tests/test_stripe_billing.py`. **There is NO `handle_webhook_event(et, data)` — the only entry is `handle_webhook(raw_body, signature)`.** Test through it exactly like the existing handler tests (`test_handle_webhook_subscription_deleted_resets_plan:130-140`): monkeypatch `stripe.Webhook.construct_event` to return a fake event dict, use the `stripe_env` + `mock_db` fixtures, and assert on `mock_db["profiles"]` (the fixture's `upsert_user_profile` stub writes there):
 ```python
-def test_invoice_payment_failed_marks_past_due(monkeypatch):
-    import pipeline.stripe_billing as sb
-    captured = {}
-    monkeypatch.setattr(sb, "upsert_user_profile",
-                        lambda uid, **f: captured.update(uid=uid, **f))
-    monkeypatch.setattr(sb.stripe.Subscription, "retrieve",
-                        lambda sid: {"metadata": {"user_id": "u1"}})
-    out = sb.handle_webhook_event("invoice.payment_failed", {"subscription": "sub_1"})
-    assert out.handled and captured.get("payment_status") == "past_due"
+def test_handle_webhook_invoice_failed_marks_past_due(stripe_env, mock_db, monkeypatch):
+    mock_db["profiles"]["u1"] = {"current_plan": "creator"}
+    fake_event = {
+        "type": "invoice.payment_failed",
+        "data": {"object": {"subscription": "sub_1"}},
+    }
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Subscription.retrieve",
+                        lambda sid: {"id": sid, "metadata": {"user_id": "u1"}})
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                        lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    assert mock_db["profiles"]["u1"]["payment_status"] == "past_due"
 ```
-(Use whatever internal dispatch entry the module exposes — the implementer wires `_on_invoice_failed` into the `handle_webhook` dispatch and tests through it, mirroring the existing handler tests.)
+(Confirm the `mock_db` fixture's `upsert_user_profile` stub merges `**fields` into `mock_db["profiles"][uid]` — the existing subscription-deleted test relies on that, so it does.)
 
 Add an `api` test that `/billing/plan` returns `payment_status`.
 
