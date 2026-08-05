@@ -125,7 +125,23 @@ def _effective_user_id(run_dir: Path, out_root: Path) -> str:
     (service/free) if the layout is unexpected — fail safe, never over-charge."""
     try:
         return run_dir.resolve().relative_to(out_root.resolve()).parts[0]
-    except (ValueError, IndexError, OSError):
+    except (ValueError, IndexError, OSError) as e:
+        # Could not derive the owner from the run-dir layout: run_dir is not
+        # under out_root (a FACELESS_OUT_ROOT divergence between the API and
+        # this worker) or the layout is unexpected. This path derivation is
+        # the ONLY billing seam for renders — no spawn passes --user-id — so a
+        # silent fallback to 'admin' (service/free) means the render is NOT
+        # billed. Log loudly so that leak is visible, not invisible. A genuine
+        # admin CLI run returns via the try above ('admin' as parts[0]) and
+        # never reaches here. See docs/GO-LIVE-READINESS.md Phase 0.
+        print(
+            f"[billing] WARNING: could not derive run owner from run_dir="
+            f"{run_dir} under out_root={out_root} ({type(e).__name__}: {e}); "
+            f"falling back to 'admin' (service/free) — this render will NOT be "
+            f"billed. Verify FACELESS_OUT_ROOT matches between the API and the "
+            f"worker.",
+            file=sys.stderr,
+        )
         return "admin"
 
 

@@ -38,6 +38,23 @@ def test_effective_user_id_deeper_nesting_recovers_top_segment(tmp_path):
     assert run._effective_user_id(rd, out) == "uuid-1"
 
 
+def test_effective_user_id_warns_loudly_on_divergence(tmp_path, capsys):
+    # Observability guard: the path derivation is the ONLY billing seam for
+    # renders, so a fallback-to-'admin' (unbilled) caused by an out_root
+    # divergence must be logged loudly, not silent. Fires on the except path…
+    assert run._effective_user_id(tmp_path / "x" / "y", tmp_path / "other") == "admin"
+    err = capsys.readouterr().err
+    assert "[billing] WARNING" in err and "will NOT be" in err
+
+
+def test_effective_user_id_legit_admin_run_stays_quiet(tmp_path, capsys):
+    # …but a genuine admin CLI run (out_root/admin/<run>) returns via the try
+    # and must NOT emit the leak warning (no false positives).
+    out = tmp_path / "out"
+    assert run._effective_user_id(out / "admin" / "2026-08-04-1200", out) == "admin"
+    assert "[billing] WARNING" not in capsys.readouterr().err
+
+
 def test_out_root_follows_faceless_out_root_env(monkeypatch, tmp_path):
     # Regression for the Cloud Run leak: with no --out-root, out_root must
     # follow $FACELESS_OUT_ROOT (what pipeline/api.py's _out_root() reads,
