@@ -101,3 +101,54 @@ ToS/Privacy/refund (#10), DMCA/abuse contact (#12), ownership-attestation gate +
 
 ## Post-launch watch (first 2 weeks)
 Balance-never-negative invariant; webhook delivery/idempotency; failed-render refund rate; Anthropic/Kie balances; abuse (mass renders, copyrighted covers); support volume on auth (reset/confirmation).
+
+---
+
+## Operator actions — Phase 0 (money-integrity fixes) — READY 2026-08-05
+
+Phase-0 code is complete on branch `billing-money-integrity` (Tasks 1–7). The code is **inert until the operator completes these steps** — the new SQL objects/columns don't exist in the live DB and the new Stripe event isn't subscribed until you act. Do them in order.
+
+**Commits (in order):** `77056a9` charge real user for video · `e87fca0` out-root leak · `81e53f1` song refund policy · `109ffcf` atomic deduct · `b554633` idempotent grants · `173e5d7` dunning · `755e1bb` green test path.
+
+### 1. Apply the 3 migrations to live Supabase — BEFORE the code deploy
+Task 5's `get_user_profile` SELECTs `payment_status`, which errors if the column is absent, so migrations must land first. All three are additive and safe on the running DB.
+```bash
+supabase db push
+# — or paste each, IN ORDER, into the Supabase SQL editor:
+#   supabase/migrations/20260804000001_deduct_credits_fn.sql   (deduct_credits() advisory-lock fn)
+#   supabase/migrations/20260804000002_grant_idempotency.sql   (uq_credit_grant_ref partial unique index)
+#   supabase/migrations/20260804000003_payment_status.sql      (user_profiles.payment_status column)
+```
+Verify:
+```sql
+select proname from pg_proc where proname = 'deduct_credits';                 -- 1 row
+select indexname from pg_indexes where indexname = 'uq_credit_grant_ref';     -- 1 row
+select column_name from information_schema.columns
+  where table_name = 'user_profiles' and column_name = 'payment_status';      -- 1 row
+```
+
+### 2. Stripe Dashboard — subscribe the new webhook event
+Developers → Webhooks → (existing endpoint) → **Add event** → `invoice.payment_failed`. Without it, dunning never fires (no `past_due` flag is ever set).
+
+### 3. Redeploy backend + app
+```bash
+./scripts/build-and-push.sh
+```
+(Confirm `flutter` is on PATH so the web app bundle rebuilds with the past-due banner + gen-l10n keys.)
+
+### 4. Post-deploy money test (real Stripe test-mode, one throwaway user)
+1. Fresh signup → balance starts at **0** (no signup grant).
+2. Subscribe (Stripe test card) → credits granted **once**; re-send the webhook from the dashboard → balance does NOT double (idempotency).
+3. Render a video → balance **decrements** (real user charged, not `admin`).
+4. Cancel a song mid-run → charge **refunded** (self-service).
+5. Fail a render then `/resume` → **not** re-charged, **not** auto-refunded (resume = free retry; failure keeps the charge).
+6. Force a failed renewal (Stripe test card) → app shows the **past-due banner**; a later successful payment clears it.
+7. Throughout: **no balance ever goes negative** (atomic deduction).
+
+### Verification captured at handoff (Task 7, 2026-08-05)
+- Full suite in a clean env (`env -u <all API-key vars> uv run pytest -q`): **819 passed, 0 failed**. The pre-Phase-0 baseline of 7 failures is fully greened; none were assertion-weakened (max-spend now derives from the active model rate; faststart exercises a realistic >50 KB clip with the corruption guard intact; shorts-smoke mocks the ElevenLabs boundary per the "mock all external services" invariant).
+- Offline smoke: service-bypass `check_or_deduct` returns the sentinel and `refund_run_charges`/`deduct_credits_atomic`/`record_grant_once` import cleanly — no traceback.
+- NOTE for future test runs: **run pytest in a clean env** — sourcing `.env` flips the failing set (see `reference_test_suite_verification` memory). **`flutter analyze` hangs in this env; use `dart analyze <files>`.**
+
+### What is NOT in Phase 0 (still required before charging real users — Tiers 2–3 above)
+Monitoring/alerting, infra spend ceiling (`maxScale` + GCP budget + Kie cap), Supabase backups, ToS/Privacy/refund policy, DMCA/abuse contact, ownership-attestation gate, GDPR delete/export. Phase 0 closes only the **money-integrity code** blockers (Tier 1). Also deferred: the video pipeline shares the same free-resume leak fixed for songs in Task 2 (assembly-failure refund + free `/resume` = free video on retry-success) — apply the same cancel-refunds/failure-keeps-charge policy there next.
