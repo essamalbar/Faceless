@@ -15,6 +15,11 @@ spec:
     metadata:
       annotations:
         run.googleapis.com/cpu-throttling: "true"
+        # Cap autoscaling (Cloud Run default is 100). The API is I/O-light and
+        # spawns credit-gated Cloud Run Jobs for the actual render, so a small
+        # ceiling is ample and prevents runaway scale-out cost. See
+        # docs/TIER2-INFRA.md.
+        autoscaling.knative.dev/maxScale: "4"
         run.googleapis.com/execution-environment: gen2
         # Mount the GCS bucket as a POSIX filesystem at /mnt/runs.
         run.googleapis.com/launch-stage: BETA
