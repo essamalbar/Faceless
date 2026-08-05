@@ -698,9 +698,16 @@ def test_song_worker_failure_does_not_refund(tmp_path: Path, monkeypatch):
         {"title": "t", "lyrics": "[Chorus]\nx", "style_prompt": "s",
          "cover_prompt": "c", "language": "ar"}))
 
-    def _must_not_call(*a, **k):
-        raise AssertionError("refund_run_charges must NOT be called on song failure")
-    monkeypatch.setattr("pipeline.credits.refund_run_charges", _must_not_call)
+    # Non-raising flag spy (not an AssertionError-raiser): the removed refund
+    # code was wrapped in `except Exception: print("REFUND FAILED")`, and
+    # AssertionError is an Exception — a revert-shaped regression that restores
+    # that wrapped block would swallow a raising spy and the test would falsely
+    # pass. A boolean flag checked after the run survives that swallow.
+    called = {"refund": False}
+    def _spy_refund(*a, **k):
+        called["refund"] = True
+        return 0
+    monkeypatch.setattr("pipeline.credits.refund_run_charges", _spy_refund)
     monkeypatch.setattr(song, "submit_song_job",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("suno boom")))
     monkeypatch.setenv("KIE_API_KEY", "stub")
@@ -713,6 +720,8 @@ def test_song_worker_failure_does_not_refund(tmp_path: Path, monkeypatch):
     assert rc == 1
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["status"] == "failed"
+    assert called["refund"] is False, \
+        "refund_run_charges must NOT be called on song failure"
 
 
 def test_song_post_approve_passes_default_negative_tags(tmp_path: Path, monkeypatch):
