@@ -23,8 +23,8 @@ echo
 
 # 1) Email notification channel (reuse if one with this email already exists)
 CHANNEL="$(gcloud beta monitoring channels list \
-  --filter="type=email AND labels.email_address=${ALERT_EMAIL}" \
-  --format='value(name)' | head -n1 || true)"
+  --filter="type='email' AND labels.email_address='${ALERT_EMAIL}'" \
+  --format='value(name)' 2>/dev/null | head -n1 || true)"
 if [[ -z "${CHANNEL}" ]]; then
   CHANNEL="$(gcloud beta monitoring channels create --type=email \
     --display-name="faceless-alerts" \
@@ -46,8 +46,11 @@ fi
 create_policy () {  # $1=display-name  $2=policy-json-file
   local name="$1" file="$2"
   local existing
+  # Quote the value: display names contain spaces, and an unquoted
+  # `displayName=faceless-api 5xx rate` breaks gcloud's filter parser
+  # (matches nothing -> false "not found" -> duplicate policies on re-run).
   existing="$(gcloud alpha monitoring policies list \
-    --filter="displayName=${name}" --format='value(name)' | head -n1 || true)"
+    --filter="displayName='${name}'" --format='value(name)' 2>/dev/null | head -n1 || true)"
   if [[ -n "${existing}" ]]; then
     echo "Policy '${name}' exists (${existing}); skipping (delete to recreate)."
   else
@@ -99,21 +102,26 @@ create_policy "faceless-pipeline job failures" "${TMP}/p2.json"
 # NOTE: deliberately NO resource.type restriction. The two anomalies this
 # targets — the worker's [billing] unbilled-fallback and per-clip REFUND FAILED
 # — originate in the Cloud Run JOB (cloud_run_job), not the API Service
-# (cloud_run_revision). Restricting to one resource would silently exclude them.
+# (cloud_run_revision). A metric-threshold condition REQUIRES a resource.type
+# restriction (GCP rejects it otherwise), which would pin the alert to ONE
+# resource and silently exclude the other. So use a conditionMatchedLog instead:
+# it fires directly on any log entry matching the filter, across all resources,
+# with no resource.type restriction. (The faceless_billing_anomaly log-based
+# metric above is kept for dashboards/graphs; the ALERT keys off the log match.)
+# conditionMatchedLog policies must declare a notificationRateLimit.
 cat > "${TMP}/p3.json" <<JSON
 {
   "displayName": "faceless billing anomaly",
   "combiner": "OR",
   "conditions": [{
     "displayName": "unbilled-fallback / refund failure logged",
-    "conditionThreshold": {
-      "filter": "metric.type=\"logging.googleapis.com/user/faceless_billing_anomaly\"",
-      "comparison": "COMPARISON_GT",
-      "thresholdValue": 0,
-      "duration": "0s",
-      "aggregations": [{"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_SUM"}]
+    "conditionMatchedLog": {
+      "filter": "severity>=WARNING AND (textPayload:\"[billing]\" OR jsonPayload.message:\"[billing]\" OR textPayload:\"REFUND FAILED\" OR jsonPayload.message:\"REFUND FAILED\")"
     }
-  }]
+  }],
+  "alertStrategy": {
+    "notificationRateLimit": {"period": "300s"}
+  }
 }
 JSON
 create_policy "faceless billing anomaly" "${TMP}/p3.json"

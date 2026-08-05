@@ -4,12 +4,28 @@ Code pieces (merged): GCP-native JSON logging + API 5xx handler
 (`pipeline/observability.py`), Cloud Run `maxScale=4`. This runbook covers the
 console/CLI steps code can't do. Run them before enabling payments.
 
-## 1. Redeploy (activates maxScale + structured logging)
+## 0. Enable the prerequisite APIs (one-time)
+
+    gcloud services enable billingbudgets.googleapis.com monitoring.googleapis.com \
+      logging.googleapis.com --project=<proj>
+
+(Allow a couple of minutes to propagate before the budget script works.)
+
+## 1. Redeploy (activates the structured logging code)
 
     ./scripts/build-and-push.sh
 
-Verify: Console > Cloud Run > faceless-api > Revisions shows max instances = 4,
-and Logs show JSON entries with a `severity` field (not plain text).
+Then apply the autoscaling cap ONCE (build-and-push does an image-only
+`services update`, which does NOT read the yaml's `maxScale` annotation; but an
+image-only update PRESERVES an already-set max-instances, so this is one-time):
+
+    gcloud run services update faceless-api --region=us-central1 \
+      --project=<proj> --max-instances=4
+
+Verify: `curl <service-url>/health` → `{"ok":true}` (note: the raw run.app
+`/healthz` is swallowed by Google's frontend — use `/health`), Console > Cloud
+Run > faceless-api shows max instances = 4, and Logs show JSON entries with a
+`severity` field (not plain text).
 
 ## 2. Billing budget
 
