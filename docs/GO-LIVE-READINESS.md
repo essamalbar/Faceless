@@ -46,6 +46,8 @@ Prior notes were stale. Confirmed against code:
 | 8 | **No Supabase backup** of the credit/payment ledger (financial system of record). | Nothing in-repo backs up Supabase. | Enable Supabase PITR / scheduled backups. | Infra |
 | 9 | **7 failing tests on the money/video path.** | `test_api::test_approve_passes_auto_computed_max_spend`, 2× `test_mp4_faststart`, 3× `test_run_shorts_smoke`, `test_llm_groq` stale model. | Green the spend-gate + faststart tests (fix or update stale assertions) before launch. | Code |
 
+> **Tier-2 status (2026-08-05):** the CODE pieces are done — GCP-native structured logging + API 5xx catch-all handler (`pipeline/observability.py`, wired into `pipeline/api.py` + `run.py`) and Cloud Run `autoscaling.knative.dev/maxScale: "4"`. Item 9 (the 7 failing tests) was greened in Phase 0. The remaining operator steps — billing budget, monitoring alerts, Supabase PITR, Kie account cap — are scripted (`scripts/setup-billing-budget.sh`, `scripts/setup-monitoring-alerts.sh`) and checklisted in **`docs/TIER2-INFRA.md`**. Chosen approach: GCP-native (no Sentry).
+
 ## TIER 3 — Legal/compliance BLOCKERS (Stripe + app stores require; copyright exposure)
 
 | # | Gap | Fix | Owner |

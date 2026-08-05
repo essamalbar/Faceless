@@ -3382,3 +3382,29 @@ def test_router_marks_degradation_only_into_groq(monkeypatch):
     chain = api_mod._build_llm()
     assert chain._on_fallback is None          # anthropic→(gemini chain)
     assert chain._fallback._on_fallback is not None  # gemini→groq
+
+
+def test_unhandled_exception_returns_500_and_is_logged(monkeypatch):
+    from fastapi.testclient import TestClient
+    from pipeline import api as api_mod
+
+    calls: list[dict] = []
+    monkeypatch.setattr(api_mod, "log_exception",
+                        lambda exc, **ctx: calls.append(ctx))
+
+    @api_mod.app.get("/__boom_test")
+    def _boom():  # pragma: no cover - body raises
+        raise RuntimeError("boom")
+
+    try:
+        c = TestClient(api_mod.app, raise_server_exceptions=False)
+        r = c.get("/__boom_test")
+        assert r.status_code == 500
+        assert r.json() == {"detail": "internal error"}
+        assert calls and calls[0].get("where") == "api"
+        assert "/__boom_test" in calls[0].get("path", "")
+    finally:
+        api_mod.app.router.routes[:] = [
+            rt for rt in api_mod.app.router.routes
+            if getattr(rt, "path", None) != "/__boom_test"
+        ]

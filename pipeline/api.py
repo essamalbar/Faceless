@@ -43,11 +43,18 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from pipeline.auth import User, require_user, require_user_header_or_query
+from pipeline.observability import setup_logging, log_exception, get_logger
 from pipeline.spawn_backends import LocalSubprocessBackend, select_backend
 
 
@@ -704,6 +711,18 @@ app = FastAPI(
     description="Mobile-app backend for the faceless TikTok generator.",
     version="0.1.0",
 )
+
+setup_logging()
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    # Catch-all for genuinely-unhandled 5xx. FastAPI routes HTTPException /
+    # RequestValidationError to their own handlers, so 402/404/409/422 are
+    # unaffected — this only fires for real server errors, surfacing them in
+    # Cloud Error Reporting instead of a bare stack trace.
+    log_exception(exc, where="api", path=request.url.path, method=request.method)
+    return JSONResponse(status_code=500, content={"detail": "internal error"})
 
 # CORS — the Flutter web app loads from localhost:5xxxx (or a Cloudflare
 # Tunnel URL) and calls this API on a different origin. Browsers block
@@ -2572,11 +2591,12 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
             run_id=run_id,
             reason="run cancelled by user before completion",
         )
-    except Exception:
-        # Don't fail the cancel because the refund failed. The kill
-        # path is the user-facing action; log + move on.
-        import logging
-        logging.exception("refund_run_charges failed during cancel")
+    except Exception as _e:
+        # Refund failure is a billing anomaly — surface it (alert metric
+        # matches "[billing]"). Must still NOT fail the cancel itself: the
+        # kill path is the user-facing action; log + move on.
+        get_logger().error("[billing] refund failed during cancel",
+                            exc_info=_e, extra={"where": "cancel", "run_id": run_id})
 
     _write_state(
         run_dir,
@@ -3567,9 +3587,11 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
     try:
         refunded = refund_run_charges(
             user, run_id=run_id, reason="song canceled by user")
-    except Exception:
-        import logging
-        logging.exception("refund_run_charges failed during song cancel")
+    except Exception as _e:
+        # Refund failure is a billing anomaly — surface it (alert metric
+        # matches "[billing]"). Must still NOT fail the cancel itself.
+        get_logger().error("[billing] refund failed during cancel",
+                            exc_info=_e, extra={"where": "cancel", "run_id": run_id})
     return {"ok": True, "refunded": refunded}
 
 
