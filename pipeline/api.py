@@ -2535,6 +2535,14 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
     from pipeline.credits import refund_run_charges
 
     run_dir = _run_dir(run_id, user)
+
+    # Never refund an already-delivered video: cancelling a completed run
+    # (final.mp4 on disk) would hand back a free finished render. Mirrors
+    # cancel_song's complete-guard. Video completion is derived from
+    # final.mp4 by derive_status(), not stored in state["status"].
+    if derive_status(run_dir) == "complete":
+        raise HTTPException(409, "run already complete")
+
     state = _read_state(run_dir)
     pid = state.get("pid")
 
@@ -2548,6 +2556,11 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
     if _process_alive(pid, run_dir):
         _stop_process_and_wait(pid, run_dir=run_dir)
         killed_pid = pid
+
+    # Re-check after reaping: the worker may have written final.mp4 during the
+    # kill/wait window. If it delivered, don't refund a now-completed video.
+    if derive_status(run_dir) == "complete":
+        raise HTTPException(409, "run already complete")
 
     # Always attempt the refund — even if the process was already dead
     # (cancel-after-failed-state). Net-safe: a no-op when the user has zero
