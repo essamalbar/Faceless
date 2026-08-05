@@ -967,6 +967,25 @@ def test_cancel_refunds_after_stopping_worker(client, auth, tmp_path: Path, monk
     assert calls == ["stop", "refund"], f"refund must follow the kill, got {calls}"
 
 
+def test_cancel_skips_refund_when_run_already_complete(client, auth, tmp_path: Path, monkeypatch):
+    """cancel_run must NOT refund an ALREADY-DELIVERED video (final.mp4 exists)
+    — refunding a completed render hands the user a free finished video. Mirror
+    cancel_song's complete-guard: return 409 and never call refund_run_charges."""
+    rd = _make_run_dir(tmp_path)
+    (rd / "final.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")  # run is complete
+
+    called = {"refund": False}
+    monkeypatch.setattr(
+        "pipeline.credits.refund_run_charges",
+        lambda *a, **k: (called.__setitem__("refund", True), 0)[1],
+    )
+
+    r = client.post(f"/runs/{rd.name}/cancel", headers=auth)
+    assert r.status_code == 409
+    assert "complete" in r.json().get("detail", "").lower()
+    assert called["refund"] is False, "must not refund a delivered (complete) run"
+
+
 # ---------------------------------------------------------------------------
 # GET /runs/{id}/video and /thumbnail
 # ---------------------------------------------------------------------------
