@@ -257,6 +257,65 @@ def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Pat
     assert (run_dir / "character_sheet.png").exists()
 
 
+def test_video_assembly_failure_does_not_refund(tmp_path, monkeypatch, music_bundle):
+    """VIDEO free-resume leak fix (mirrors the song policy): a POST-clip
+    (assembly) failure must NOT auto-refund. The clips are real, paid Veo work
+    already on disk; refunding on assembly failure while /resume re-runs the
+    FREE local assembly (clips skip, no re-charge) = a free video on the
+    retry-success path. Policy: a failed render KEEPS the charge; /resume is the
+    free retry; cancel_run is the refund path. Regression guard against
+    re-adding the run-level refund_run_charges block in main_with_args.
+
+    Non-raising boolean spy (not an AssertionError-raiser): the removed refund
+    was wrapped in `except Exception: log REFUND FAILED`, so a raising spy could
+    be swallowed by a revert-shaped regression and the test would falsely pass.
+    """
+    out_root = tmp_path / "out"
+    run_dir = out_root / "admin" / "2026-08-05-1200"
+    run_dir.mkdir(parents=True)
+    # Approved script on disk → the script stage loads it (no freeform LLM gen);
+    # coherence marker present → the coherence pass is skipped (no LLM call).
+    (run_dir / "script.json").write_text(
+        json.dumps(_MINIMAL_SCRIPT.to_dict(), ensure_ascii=False), encoding="utf-8")
+    (run_dir / "coherence_pass_v1.applied").write_text("v1", encoding="utf-8")
+
+    monkeypatch.setattr("run._build_gemini", lambda: object())
+    monkeypatch.setattr("run._build_kie", lambda: object())
+    monkeypatch.setattr("run._stage_character_sheet", lambda *a, **k: None)
+    # Clips "succeed" (already paid + on disk); this is the pre-try paid stage.
+    monkeypatch.setattr("run._stage_video_chained", lambda *a, **k: None)
+    # Cover both audio paths so the test is independent of cfg.kie.native_audio.
+    monkeypatch.setattr("run._stage_native_audio_timings", lambda *a, **k: [])
+    monkeypatch.setattr("run._stage_shorts_voice", lambda *a, **k: None)
+    monkeypatch.setattr("run._stage_align", lambda *a, **k: [])
+    # Assembly fails AFTER clips are charged — the exact leak scenario.
+    def _boom(*a, **k):
+        raise RuntimeError("assemble boom")
+    monkeypatch.setattr("run._stage_music", _boom)
+
+    called = {"refund": False}
+    def _spy_refund(*a, **k):
+        called["refund"] = True
+        return 0
+    monkeypatch.setattr("pipeline.credits.refund_run_charges", _spy_refund)
+
+    from run import main_with_args
+    rc = main_with_args([
+        "--shorts", "--resume", str(run_dir),
+        "--theme", "folkloric", "--seed", "بئر قديم",
+        "--out-root", str(out_root),
+        "--music-bundle", str(music_bundle),
+        "--config", str(REPO_ROOT / "config.yaml"),
+    ])
+
+    assert rc == 1
+    assert called["refund"] is False, (
+        "assembly failure must NOT auto-refund — clips are paid; /resume is the "
+        "free retry and cancel_run is the refund path (else fail→refund→resume→"
+        "success = a free video)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # PA-2 tests
 # ---------------------------------------------------------------------------
