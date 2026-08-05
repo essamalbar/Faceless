@@ -108,7 +108,7 @@ Balance-never-negative invariant; webhook delivery/idempotency; failed-render re
 
 Phase-0 code is complete on branch `billing-money-integrity` (Tasks 1–7). The code is **inert until the operator completes these steps** — the new SQL objects/columns don't exist in the live DB and the new Stripe event isn't subscribed until you act. Do them in order.
 
-**Commits (in order):** `77056a9` charge real user for video · `e87fca0` out-root leak · `81e53f1` song refund policy · `109ffcf` atomic deduct · `b554633` idempotent grants · `173e5d7` dunning · `755e1bb` green test path.
+**Commits (in order):** `77056a9` charge real user for video · `e87fca0` out-root leak · `81e53f1` song refund policy · `109ffcf` atomic deduct · `b554633` idempotent grants · `173e5d7` dunning · `755e1bb` green test path · `4b5e672` loud warning when owner-derivation falls back to admin (observability, from the final holistic review).
 
 ### 1. Apply the 3 migrations to live Supabase — BEFORE the code deploy
 Task 5's `get_user_profile` SELECTs `payment_status`, which errors if the column is absent, so migrations must land first. All three are additive and safe on the running DB.
@@ -146,7 +146,7 @@ Developers → Webhooks → (existing endpoint) → **Add event** → `invoice.p
 7. Throughout: **no balance ever goes negative** (atomic deduction).
 
 ### Verification captured at handoff (Task 7, 2026-08-05)
-- Full suite in a clean env (`env -u <all API-key vars> uv run pytest -q`): **819 passed, 0 failed**. The pre-Phase-0 baseline of 7 failures is fully greened; none were assertion-weakened (max-spend now derives from the active model rate; faststart exercises a realistic >50 KB clip with the corruption guard intact; shorts-smoke mocks the ElevenLabs boundary per the "mock all external services" invariant).
+- Full suite in a clean env (`env -u <all API-key vars> uv run pytest -q`): **821 passed, 0 failed** (819 after Task 6 + 2 observability tests from `4b5e672`). The pre-Phase-0 baseline of 7 failures is fully greened; none were assertion-weakened (max-spend now derives from the active model rate; faststart exercises a realistic >50 KB clip with the corruption guard intact; shorts-smoke mocks the ElevenLabs boundary per the "mock all external services" invariant).
 - Offline smoke: service-bypass `check_or_deduct` returns the sentinel and `refund_run_charges`/`deduct_credits_atomic`/`record_grant_once` import cleanly — no traceback.
 - NOTE for future test runs: **run pytest in a clean env** — sourcing `.env` flips the failing set (see `reference_test_suite_verification` memory). **`flutter analyze` hangs in this env; use `dart analyze <files>`.**
 
