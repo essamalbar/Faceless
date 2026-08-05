@@ -560,8 +560,14 @@ def test_approve_passes_auto_computed_max_spend(client, auth, tmp_path: Path):
     # Index right after the flag
     spend_str = args[args.index("--max-spend") + 1]
     spend = float(spend_str)
-    # 24 × 8 = 192 sec × $0.10 = $19.20 × 1.30 + 0.50 ≈ $25.46
-    assert 24 < spend < 30, f"unexpected max-spend: {spend}"
+    # Derive the expected cap from the active video model rather than a
+    # hardcoded Veo-$0.10 range: 24 beats × 8s × rate × buffer + flat.
+    rate = api_mod._cost_per_second_for_model(api_mod._active_video_model())
+    expected = (
+        24 * 8 * rate * api_mod.BUDGET_BUFFER_RATIO
+        + api_mod.BUDGET_BUFFER_FLAT_USD
+    )
+    assert abs(spend - expected) < 1.0, f"unexpected max-spend: {spend} vs {expected}"
 
 
 def test_failed_run_includes_actionable_error_hint(client, auth, tmp_path: Path):
