@@ -38,6 +38,7 @@ from pipeline.kie import KieClient
 from pipeline.llm import GeminiClient
 from pipeline.llm_groq import GroqClient
 from pipeline.music import select_music_track
+from pipeline.observability import get_logger, setup_logging
 from pipeline.runlog import RunLog
 from pipeline.script import generate_script_with_uniqueness
 from pipeline.seed import auto_seed, manual_seed, record_theme_use
@@ -134,13 +135,12 @@ def _effective_user_id(run_dir: Path, out_root: Path) -> str:
         # billed. Log loudly so that leak is visible, not invisible. A genuine
         # admin CLI run returns via the try above ('admin' as parts[0]) and
         # never reaches here. See docs/GO-LIVE-READINESS.md Phase 0.
-        print(
-            f"[billing] WARNING: could not derive run owner from run_dir="
-            f"{run_dir} under out_root={out_root} ({type(e).__name__}: {e}); "
-            f"falling back to 'admin' (service/free) — this render will NOT be "
-            f"billed. Verify FACELESS_OUT_ROOT matches between the API and the "
-            f"worker.",
-            file=sys.stderr,
+        get_logger().warning(
+            "[billing] could not derive run owner from run_dir=%s under "
+            "out_root=%s (%s: %s); falling back to 'admin' (service/free) — this "
+            "render will NOT be billed. Verify FACELESS_OUT_ROOT matches between "
+            "the API and the worker.",
+            run_dir, out_root, type(e).__name__, e,
         )
         return "admin"
 
@@ -625,6 +625,7 @@ def _stage_shorts_assemble(cfg: Config, script: Script, paths: RunPaths,
 
 
 def main_with_args(argv: list[str]) -> int:
+    setup_logging()
     p = argparse.ArgumentParser(description="Arabic horror faceless pipeline")
     p.add_argument("--theme", help="Theme tag (manual mode)")
     p.add_argument("--seed", help="Arabic premise (manual mode)")
@@ -903,6 +904,7 @@ def main_with_args(argv: list[str]) -> int:
         return 0
     except Exception as exc:
         log.error(f"FAILED: {type(exc).__name__}: {exc}")
+        get_logger().error("run failed", exc_info=exc, extra={"where": "worker"})
         return 1
     finally:
         log.close()
