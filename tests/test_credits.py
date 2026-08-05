@@ -50,9 +50,19 @@ def mock_db(monkeypatch):
         ][:limit]
         return rows
 
+    def fake_deduct_atomic(*, user_id, amount, kind, reference_id, description):
+        # Mirror the deduct_credits Postgres function: check balance, return -1
+        # if insufficient, otherwise insert the debit and return the new balance.
+        if state["balances"].get(user_id, 0) < amount:
+            return -1
+        fake_record(user_id=user_id, amount=-amount, kind=kind,
+                    reference_id=reference_id, description=description)
+        return state["balances"][user_id]
+
     monkeypatch.setattr("pipeline.credits.get_balance", fake_get_balance)
     monkeypatch.setattr("pipeline.credits.record_transaction", fake_record)
     monkeypatch.setattr("pipeline.credits.list_transactions", fake_list)
+    monkeypatch.setattr("pipeline.credits.deduct_credits_atomic", fake_deduct_atomic)
     return state
 
 
@@ -65,25 +75,33 @@ def test_plan_grants_match_locked_pricing():
     assert PLAN_GRANTS == {"starter": 12, "creator": 60, "pro": 200}
 
 
-def test_check_or_deduct_succeeds_when_balance_sufficient(mock_db):
-    mock_db["balances"]["u1"] = 10
-    new_balance = check_or_deduct(_user(), amount=3, run_id="run-1", reason="3 clips")
-    assert new_balance == 7
-    debits = [t for t in mock_db["transactions"] if t["kind"] == "run_charge"]
-    assert debits[0] == {
-        "user_id": "u1", "amount": -3, "kind": "run_charge",
-        "reference_id": "run-1", "description": "3 clips",
-    }
+def test_check_or_deduct_uses_atomic_rpc_and_returns_new_balance(monkeypatch):
+    from pipeline import credits
+    monkeypatch.setattr("pipeline.credits.deduct_credits_atomic",
+                        lambda **kw: 7)
+    from pipeline.auth import User
+    u = User(id="u1", email=None, role="user")
+    assert credits.check_or_deduct(u, amount=3, run_id="r1", reason="x") == 7
 
 
-def test_check_or_deduct_raises_when_balance_insufficient(mock_db):
-    mock_db["balances"]["u1"] = 2
-    with pytest.raises(InsufficientCredits) as exc:
-        check_or_deduct(_user(), amount=3, run_id="run-1", reason="")
-    assert exc.value.balance == 2
-    assert exc.value.required == 3
-    # No transaction written
-    assert mock_db["transactions"] == []
+def test_check_or_deduct_raises_when_atomic_returns_negative(monkeypatch):
+    import pytest
+    from pipeline import credits
+    monkeypatch.setattr("pipeline.credits.deduct_credits_atomic", lambda **kw: -1)
+    monkeypatch.setattr("pipeline.credits.get_balance", lambda uid: 2)
+    from pipeline.auth import User
+    u = User(id="u1", email=None, role="user")
+    with pytest.raises(credits.InsufficientCredits):
+        credits.check_or_deduct(u, amount=5, run_id="r1", reason="x")
+
+
+def test_check_or_deduct_service_bypass_skips_rpc(monkeypatch):
+    from pipeline import credits
+    monkeypatch.setattr("pipeline.credits.deduct_credits_atomic",
+                        lambda **kw: (_ for _ in ()).throw(AssertionError("should not call")))
+    from pipeline.auth import User
+    u = User(id="admin", email=None, role="service")
+    assert credits.check_or_deduct(u, amount=99, run_id="r1", reason="x") == 10**9
 
 
 def test_check_or_deduct_skips_service_user(mock_db):

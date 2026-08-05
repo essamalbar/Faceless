@@ -112,6 +112,18 @@ def record_transaction(
     _client().table("credit_transactions").insert(payload).execute()
 
 
+def deduct_credits_atomic(*, user_id: str, amount: int, kind: str,
+                          reference_id: str, description: str) -> int:
+    """Atomic check-and-deduct via the deduct_credits Postgres function
+    (per-user advisory lock). Returns the new balance, or -1 if the balance
+    was insufficient (nothing was deducted)."""
+    resp = _client().rpc("deduct_credits", {
+        "p_user_id": user_id, "p_amount": amount, "p_kind": kind,
+        "p_reference_id": reference_id, "p_description": description,
+    }).execute()
+    return int(resp.data)
+
+
 def list_transactions(user_id: str, limit: int = 50) -> list[Transaction]:
     resp = (
         _client()

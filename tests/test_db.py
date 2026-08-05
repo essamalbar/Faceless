@@ -9,6 +9,7 @@ import pytest
 from pipeline.db import (
     Transaction,
     UserProfile,
+    deduct_credits_atomic,
     get_balance,
     get_user_profile,
     list_transactions,
@@ -52,12 +53,25 @@ class _FakeTable:
     def upsert(self, *a, **kw):  return self.q.upsert(*a, **kw)
 
 
+class _FakeRpc:
+    """Mimics the supabase-py rpc() builder; returns a scalar on execute()."""
+    def __init__(self, data: Any):
+        self._data = data
+    def execute(self):
+        return _Resp(self._data)
+
+
 class _FakeClient:
     def __init__(self):
         self.tables: dict[str, _FakeQuery] = {}
+        self.rpc_calls: list[tuple[str, dict]] = []
+        self.rpc_result: Any = None
     def table(self, name: str) -> _FakeTable:
         q = self.tables.setdefault(name, _FakeQuery())
         return _FakeTable(q)
+    def rpc(self, name: str, params: dict) -> _FakeRpc:
+        self.rpc_calls.append((name, params))
+        return _FakeRpc(self.rpc_result)
 
 
 @pytest.fixture
@@ -153,3 +167,22 @@ def test_get_user_profile_handles_none_response_object(fake_client):
 def test_get_balance_handles_none_response_object(fake_client):
     fake_client.tables["user_balance"] = _FakeQuery(data=None)
     assert get_balance("u-fresh") == 0
+
+
+def test_deduct_credits_atomic_calls_rpc_and_returns_scalar(fake_client):
+    fake_client.rpc_result = 4
+    new_balance = deduct_credits_atomic(
+        user_id="u1", amount=3, kind="run_charge",
+        reference_id="r1", description="x",
+    )
+    assert new_balance == 4
+    assert len(fake_client.rpc_calls) == 1
+    name, params = fake_client.rpc_calls[0]
+    assert name == "deduct_credits"
+    assert params == {
+        "p_user_id": "u1",
+        "p_amount": 3,
+        "p_kind": "run_charge",
+        "p_reference_id": "r1",
+        "p_description": "x",
+    }
