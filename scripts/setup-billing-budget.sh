@@ -12,7 +12,11 @@
 set -euo pipefail
 
 : "${GCP_PROJECT_ID:?set GCP_PROJECT_ID}"
-: "${ALERT_EMAIL:?set ALERT_EMAIL}"
+# ALERT_EMAIL is optional here: GCP budget threshold emails go to the billing
+# account's Billing Admins by default (this script does not wire a custom
+# recipient — see the trailing note). Accepted for parity with the alerts
+# script + the runbook, but not required.
+ALERT_EMAIL="${ALERT_EMAIL:-}"
 BUDGET_USD="${BUDGET_USD:-50}"
 DISPLAY_NAME="faceless-monthly"
 

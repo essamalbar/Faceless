@@ -95,7 +95,11 @@ cat > "${TMP}/p2.json" <<JSON
 JSON
 create_policy "faceless-pipeline job failures" "${TMP}/p2.json"
 
-# Policy 3 — billing anomaly (on the log-based metric above)
+# Policy 3 — billing anomaly (on the log-based metric above).
+# NOTE: deliberately NO resource.type restriction. The two anomalies this
+# targets — the worker's [billing] unbilled-fallback and per-clip REFUND FAILED
+# — originate in the Cloud Run JOB (cloud_run_job), not the API Service
+# (cloud_run_revision). Restricting to one resource would silently exclude them.
 cat > "${TMP}/p3.json" <<JSON
 {
   "displayName": "faceless billing anomaly",
@@ -103,7 +107,7 @@ cat > "${TMP}/p3.json" <<JSON
   "conditions": [{
     "displayName": "unbilled-fallback / refund failure logged",
     "conditionThreshold": {
-      "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/faceless_billing_anomaly\"",
+      "filter": "metric.type=\"logging.googleapis.com/user/faceless_billing_anomaly\"",
       "comparison": "COMPARISON_GT",
       "thresholdValue": 0,
       "duration": "0s",
