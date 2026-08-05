@@ -18,7 +18,7 @@ import stripe
 
 from pipeline.auth import User
 from pipeline.credits import PLAN_GRANTS, TOPUP_PACKS
-from pipeline.db import get_user_profile, record_transaction, upsert_user_profile
+from pipeline.db import get_user_profile, record_grant_once, upsert_user_profile
 
 
 def _api_key() -> str:
@@ -173,7 +173,7 @@ def _on_checkout_completed(session) -> WebhookOutcome:
         pack = (session.get("metadata") or {}).get("pack")
         if pack not in TOPUP_PACKS:
             return WebhookOutcome("checkout.session.completed", False, f"unknown pack {pack!r}")
-        record_transaction(
+        record_grant_once(
             user_id=user_id,
             amount=TOPUP_PACKS[pack],
             kind="topup",
@@ -216,21 +216,17 @@ def _on_invoice_paid(invoice) -> WebhookOutcome:
         return WebhookOutcome("invoice.payment_succeeded", False,
                               f"missing user_id or plan (plan={plan!r})")
 
-    record_transaction(
-        user_id=user_id,
-        amount=PLAN_GRANTS[plan],
-        kind="subscription_renewal",
-        reference_id=invoice.get("id"),
-        description=f"{plan.capitalize()} plan renewal",
-    )
+    granted = record_grant_once(
+        user_id=user_id, amount=PLAN_GRANTS[plan], kind="subscription_renewal",
+        reference_id=invoice.get("id"), description=f"{plan.capitalize()} plan renewal")
     upsert_user_profile(
         user_id,
         current_plan=plan,
         current_period_end=_iso(period_end_unix),
         cancel_at_period_end=bool(subscription.get("cancel_at_period_end", False)),
     )
-    return WebhookOutcome("invoice.payment_succeeded", True,
-                          f"+{PLAN_GRANTS[plan]} for {plan}")
+    note = f"+{PLAN_GRANTS[plan]} for {plan}" if granted else "duplicate invoice, no-op"
+    return WebhookOutcome("invoice.payment_succeeded", True, note)
 
 
 def _on_subscription_updated(subscription) -> WebhookOutcome:

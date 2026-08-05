@@ -112,6 +112,28 @@ def record_transaction(
     _client().table("credit_transactions").insert(payload).execute()
 
 
+def _is_unique_violation(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return "23505" in s or "duplicate key" in s or "unique constraint" in s
+
+
+def record_grant_once(*, user_id: str, amount: int, kind: str,
+                      reference_id: str | None, description: str | None) -> bool:
+    """Insert a grant transaction idempotently. Returns False (no-op) if a grant
+    with the same (reference_id, kind) already exists — the unique index rejects
+    it — so a duplicate Stripe webhook delivery never double-grants."""
+    try:
+        _client().table("credit_transactions").insert({
+            "user_id": user_id, "amount": amount, "kind": kind,
+            "reference_id": reference_id, "description": description,
+        }).execute()
+        return True
+    except Exception as e:
+        if _is_unique_violation(e):
+            return False
+        raise
+
+
 def deduct_credits_atomic(*, user_id: str, amount: int, kind: str,
                           reference_id: str, description: str) -> int:
     """Atomic check-and-deduct via the deduct_credits Postgres function
