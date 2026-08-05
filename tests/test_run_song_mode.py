@@ -683,11 +683,13 @@ def test_premium_worker_persists_winner_and_survives_one_bad_job(tmp_path: Path,
     assert submit_calls["n"] == 3
 
 
-def test_song_worker_failure_refunds(tmp_path: Path, monkeypatch):
+def test_song_worker_failure_does_not_refund(tmp_path: Path, monkeypatch):
     """When the song worker's paid stage blows up, the terminal except block
-    in _run_song_post_approve must refund the real user (derived from the
-    run-dir path by Task 1's _effective_user_id) via refund_run_charges,
-    before returning rc=1."""
+    in _run_song_post_approve must NOT auto-refund. Auto-refunding here would
+    make songs free on the retry-success path (fail once -> refund -> resume
+    (already free) -> succeed on the same paid job). Policy: a failed render
+    keeps the charge; --resume is the free retry; cancel is the refund path
+    (see cancel_song in pipeline/api.py)."""
     run_dir = tmp_path / "out" / "user-uuid" / "2026-08-04-1200"
     run_dir.mkdir(parents=True)
     (run_dir / "api_state.json").write_text(json.dumps(
@@ -696,29 +698,19 @@ def test_song_worker_failure_refunds(tmp_path: Path, monkeypatch):
         {"title": "t", "lyrics": "[Chorus]\nx", "style_prompt": "s",
          "cover_prompt": "c", "language": "ar"}))
 
-    refunded = {}
-    monkeypatch.setattr(
-        "pipeline.credits.refund_run_charges",
-        lambda user, *, run_id, reason: refunded.update(
-            run_id=run_id, user=user.id) or 3,
-    )
+    def _must_not_call(*a, **k):
+        raise AssertionError("refund_run_charges must NOT be called on song failure")
+    monkeypatch.setattr("pipeline.credits.refund_run_charges", _must_not_call)
     monkeypatch.setattr(song, "submit_song_job",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("suno boom")))
     monkeypatch.setenv("KIE_API_KEY", "stub")
 
-    # --out-root must match the run_dir's parent-of-parent so
-    # _effective_user_id (Task 1) recovers "user-uuid" instead of falling
-    # back to "admin" — mirrors how the API server sets FACELESS_OUT_ROOT /
-    # --out-root to the real run root in production.
     rc = run_mod.main_with_args([
         "--mode", "song", "--resume", str(run_dir),
         "--out-root", str(tmp_path / "out"),
     ])
 
     assert rc == 1
-    assert refunded.get("run_id") == run_dir.name
-    assert refunded.get("user") == "user-uuid"  # real user (Task 1), not admin
-
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["status"] == "failed"
 

@@ -262,6 +262,47 @@ def test_cancel_song_refunds_charges(app, monkeypatch):
     assert rc.json().get("refunded") == 5
 
 
+def test_cancel_song_skips_refund_when_already_complete(app, monkeypatch):
+    """TOCTOU guard: if the worker delivers the song (writes status=complete)
+    in the window between cancel_song's first read + SIGTERM and its
+    re-read, cancel must NOT clobber the completed run to canceled and must
+    NOT refund a song that was actually delivered."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod
+
+    r = client.post(
+        "/songs", json={"theme": "x", "language": "ar"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = r.json()["run_id"]
+
+    real_read_state = api_mod._read_state
+    calls = {"n": 0}
+
+    def fake_read_state(run_dir):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real_read_state(run_dir)  # top-of-function guard: not complete yet
+        # Simulate the worker writing status=complete between the first
+        # read (+ SIGTERM) and cancel_song's re-read.
+        return {"kind": "song", "status": "complete"}
+
+    monkeypatch.setattr(api_mod, "_read_state", fake_read_state)
+    monkeypatch.setattr(
+        "pipeline.credits.refund_run_charges",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("refund_run_charges must NOT be called for an already-complete song")),
+    )
+
+    rc = client.post(
+        f"/songs/{run_id}/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert rc.status_code == 409
+    assert "already complete" in rc.json().get("detail", "")
+
+
 def test_approve_song_deducts_credits_and_spawns(app, monkeypatch):
     fastapi_app, token = app
     client = TestClient(fastapi_app)

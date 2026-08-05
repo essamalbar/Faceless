@@ -3525,6 +3525,15 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
             os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
+
+    # Re-read state: the worker may have raced us to "complete" between
+    # our first read (and the SIGTERM above) and here — i.e. the song was
+    # delivered. Never clobber a completed song to canceled, and never
+    # refund a song that was actually delivered.
+    state = _read_state(run_dir)
+    if state.get("status") == "complete":
+        raise HTTPException(409, "song already complete")
+
     _write_state(run_dir, status="canceled")
 
     # Refund any net credits charged for this song. Net-safe: a song
