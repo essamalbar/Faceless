@@ -433,7 +433,11 @@ def test_record_grant_once_inserts_then_dedups(monkeypatch):
                                 reference_id="inv_1", description="x") is False
 ```
 
-`tests/test_stripe_billing.py`: a duplicate `invoice.payment_succeeded` grants once — mock `record_grant_once` to return True then False and assert the second call yields a "already granted" outcome (no second grant).
+`tests/test_stripe_billing.py` (**exists** — extend). Two gaps verified against code, must be handled or the suite breaks:
+- Its `mock_db` fixture currently monkeypatches `pipeline.stripe_billing.record_transaction`. After the refactor both grant sites call `record_grant_once` instead, so the fixture must stub `pipeline.stripe_billing.record_grant_once` (default return `True`); the `record_transaction` stub target will no longer exist once the import is dropped (see Step 3). Update the fixture accordingly.
+- The existing grant-asserting tests (`test_handle_webhook_subscription_renewal_grants`, and any of `test_handle_webhook_uses_item_period_end_for_newer_stripe` / `test_handle_webhook_invoice_paid_reads_parent_subscription_details` that assert the grant fired) assert via the `record_transaction` mock — repoint them to assert the grant went through `record_grant_once` (user_id/amount/kind/reference_id).
+
+New test: a duplicate `invoice.payment_succeeded` grants once — mock `record_grant_once` to return True then False and assert the second call yields a "duplicate invoice, no-op" note (no second grant).
 
 - [ ] **Step 3: Implement**
 
@@ -462,7 +466,7 @@ def record_grant_once(*, user_id: str, amount: int, kind: str,
         raise
 ```
 
-In `pipeline/stripe_billing.py`, import `record_grant_once`; in `_on_invoice_paid`, replace the grant `record_transaction(...)` with:
+In `pipeline/stripe_billing.py`, add `record_grant_once` to the `from pipeline.db import (...)` line (line 21). After swapping BOTH grant sites below, `record_transaction` is no longer used in this module — **remove it from that import** (grep to confirm no other use) so there's no dead import. In `_on_invoice_paid`, replace the grant `record_transaction(...)` with:
 
 ```python
     granted = record_grant_once(
