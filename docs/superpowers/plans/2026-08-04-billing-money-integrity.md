@@ -273,11 +273,13 @@ begin
   return v_balance - p_amount;
 end $$;
 ```
-(Confirm `credit_transactions.user_id` is `uuid` in `20260511000000_credits.sql`; if it's `text`, change `p_user_id uuid`→`text` and drop the `::text` cast. The SQL is operator-applied — see Task 7 — so it is reviewed by reading, not unit-tested.)
+(Confirmed: `credit_transactions.user_id` is `uuid` in `20260511000000_credits.sql:31` — keep `p_user_id uuid` as written. The SQL is operator-applied — see Task 7 — so it is reviewed by reading, not unit-tested.)
 
 - [ ] **Step 2: Write the failing tests**
 
-Add to `tests/test_credits.py` (uses the existing `mock_db` fixture pattern — monkeypatch the db function `check_or_deduct` now calls):
+> **Remove the two now-obsolete tests first.** `check_or_deduct` will no longer call `get_balance`+`record_transaction` on the happy path (the DB function does the insert), so the existing `mock_db`-based `test_check_or_deduct_succeeds_when_balance_sufficient` (`tests/test_credits.py:68`) and `test_check_or_deduct_raises_when_balance_insufficient` (`:79`) will BREAK — `mock_db` doesn't stub `deduct_credits_atomic`, so a non-service call would hit the real client. Delete both; the three new tests below supersede them. Keep `test_check_or_deduct_skips_service_user` (`:89`) — the service branch is unchanged (though it's now partly redundant with the new bypass test).
+
+Add to `tests/test_credits.py` (the new tests monkeypatch `pipeline.credits.deduct_credits_atomic` directly — they do NOT use the `mock_db` fixture):
 
 ```python
 def test_check_or_deduct_uses_atomic_rpc_and_returns_new_balance(monkeypatch):
@@ -309,10 +311,14 @@ def test_check_or_deduct_service_bypass_skips_rpc(monkeypatch):
     assert credits.check_or_deduct(u, amount=99, run_id="r1", reason="x") == 10**9
 ```
 
-Add to `tests/test_db.py` (create if absent):
+Add to `tests/test_db.py` (**it already exists** — extend it; do NOT recreate). Prefer reusing the existing `fake_client` fixture (which monkeypatches `pipeline.db._client`) by giving `_FakeClient` an `rpc` method, rather than the standalone client below. Either is acceptable as long as it asserts the rpc name + params and returns the scalar:
 
 ```python
-from __future__ import annotations
+# Option A — extend the existing _FakeClient with an rpc() that records the call
+# and returns a _Resp(data=...), then a test that calls deduct_credits_atomic
+# through the fake_client fixture and asserts params + returned scalar.
+
+# Option B — self-contained (if you don't extend the fixture):
 import pipeline.db as db
 
 
