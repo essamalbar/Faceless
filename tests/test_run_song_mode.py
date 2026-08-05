@@ -683,6 +683,46 @@ def test_premium_worker_persists_winner_and_survives_one_bad_job(tmp_path: Path,
     assert submit_calls["n"] == 3
 
 
+def test_song_worker_failure_refunds(tmp_path: Path, monkeypatch):
+    """When the song worker's paid stage blows up, the terminal except block
+    in _run_song_post_approve must refund the real user (derived from the
+    run-dir path by Task 1's _effective_user_id) via refund_run_charges,
+    before returning rc=1."""
+    run_dir = tmp_path / "out" / "user-uuid" / "2026-08-04-1200"
+    run_dir.mkdir(parents=True)
+    (run_dir / "api_state.json").write_text(json.dumps(
+        {"kind": "song", "status": "generating_song"}))
+    (run_dir / "song.json").write_text(json.dumps(
+        {"title": "t", "lyrics": "[Chorus]\nx", "style_prompt": "s",
+         "cover_prompt": "c", "language": "ar"}))
+
+    refunded = {}
+    monkeypatch.setattr(
+        "pipeline.credits.refund_run_charges",
+        lambda user, *, run_id, reason: refunded.update(
+            run_id=run_id, user=user.id) or 3,
+    )
+    monkeypatch.setattr(song, "submit_song_job",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("suno boom")))
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+
+    # --out-root must match the run_dir's parent-of-parent so
+    # _effective_user_id (Task 1) recovers "user-uuid" instead of falling
+    # back to "admin" — mirrors how the API server sets FACELESS_OUT_ROOT /
+    # --out-root to the real run root in production.
+    rc = run_mod.main_with_args([
+        "--mode", "song", "--resume", str(run_dir),
+        "--out-root", str(tmp_path / "out"),
+    ])
+
+    assert rc == 1
+    assert refunded.get("run_id") == run_dir.name
+    assert refunded.get("user") == "user-uuid"  # real user (Task 1), not admin
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "failed"
+
+
 def test_song_post_approve_passes_default_negative_tags(tmp_path: Path, monkeypatch):
     """Both Suno branches must carry the quality negative tags."""
     run_dir = tmp_path / "song-run-negtags"

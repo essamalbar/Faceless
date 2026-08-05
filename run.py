@@ -1572,6 +1572,27 @@ def _run_song_post_approve(args) -> int:
             last_error=f"{type(e).__name__}: {e}",
         )
         print(f"[song-post-approve] failed: {e}", file=_sys.stderr)
+
+        # Refund any net credits charged for this song — the user paid at
+        # approve but a failure here means no finished song. Best-effort:
+        # a refund failure must never mask the original failure return.
+        try:
+            from pipeline.auth import User as _U
+            from pipeline.credits import refund_run_charges
+            _role = "service" if args.user_id == "admin" else "user"
+            refunded = refund_run_charges(
+                _U(id=args.user_id, email=None, role=_role),
+                run_id=run_dir.name,
+                reason=f"song render failed: {type(e).__name__}",
+            )
+            if refunded > 0:
+                print(f"[song-post-approve] REFUNDED {refunded} credits to "
+                      f"user {args.user_id} for run {run_dir.name}",
+                      file=_sys.stderr)
+        except Exception as refund_exc:
+            print(f"[song-post-approve] REFUND FAILED for {run_dir.name}: "
+                  f"{refund_exc}. Manual credit return may be required.",
+                  file=_sys.stderr)
         return 1
 
 

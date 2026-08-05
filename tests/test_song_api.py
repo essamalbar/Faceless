@@ -238,6 +238,30 @@ def test_cancel_pre_approval_sets_canceled_status(app):
     assert r2.json()["status"] == "canceled"
 
 
+def test_cancel_song_refunds_charges(app, monkeypatch):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+
+    captured = {}
+    monkeypatch.setattr(
+        "pipeline.credits.refund_run_charges",
+        lambda user, *, run_id, reason: captured.update(run_id=run_id) or 5,
+    )
+
+    r = client.post(
+        "/songs", json={"theme": "x", "language": "ar"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = r.json()["run_id"]
+    rc = client.post(
+        f"/songs/{run_id}/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert rc.status_code == 200, rc.text
+    assert captured.get("run_id") == run_id
+    assert rc.json().get("refunded") == 5
+
+
 def test_approve_song_deducts_credits_and_spawns(app, monkeypatch):
     fastapi_app, token = app
     client = TestClient(fastapi_app)

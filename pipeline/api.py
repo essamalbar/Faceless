@@ -3511,6 +3511,8 @@ def diacritize_song(run_id: str, user: User = Depends(require_user)):
 
 @app.post("/songs/{run_id}/cancel")
 def cancel_song(run_id: str, user: User = Depends(require_user)):
+    from pipeline.credits import refund_run_charges
+
     run_dir = _resolve_song_dir(run_id, user)
     state = _read_state(run_dir)
     if state.get("kind") != "song":
@@ -3524,7 +3526,18 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
         except ProcessLookupError:
             pass
     _write_state(run_dir, status="canceled")
-    return {"ok": True}
+
+    # Refund any net credits charged for this song. Net-safe: a song
+    # canceled before approval was never charged, so this is a 0 no-op.
+    # Refund telemetry must never fail the cancel itself.
+    refunded = 0
+    try:
+        refunded = refund_run_charges(
+            user, run_id=run_id, reason="song canceled by user")
+    except Exception:
+        import logging
+        logging.exception("refund_run_charges failed during song cancel")
+    return {"ok": True, "refunded": refunded}
 
 
 @app.post("/songs/{run_id}/approve")
