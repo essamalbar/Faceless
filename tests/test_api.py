@@ -943,6 +943,30 @@ def test_cancel_returns_null_pid_when_no_process_running(client, auth, tmp_path:
     assert r.json()["killed_pid"] is None
 
 
+def test_cancel_refunds_after_stopping_worker(client, auth, tmp_path: Path, monkeypatch):
+    """Cancel is the sole refund path (a failed render keeps its charge), so the
+    refund must happen AFTER the worker is confirmed dead — otherwise an
+    in-flight per-clip deduction could land between the refund and the kill,
+    re-charging the user with no video. Lock in the stop→refund ordering."""
+    rd = _make_run_dir(tmp_path)
+    from pipeline import api as api_mod
+    api_mod._write_state(rd, pid=4242)
+    monkeypatch.setattr(api_mod, "_process_alive", lambda pid, run_dir=None: pid == 4242)
+
+    calls: list[str] = []
+    monkeypatch.setattr(api_mod, "_stop_process_and_wait",
+                        lambda pid, run_dir=None: calls.append("stop"))
+    monkeypatch.setattr(
+        "pipeline.credits.refund_run_charges",
+        lambda user, *, run_id, reason: (calls.append("refund"), 3)[1],
+    )
+
+    r = client.post(f"/runs/{rd.name}/cancel", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["killed_pid"] == 4242
+    assert calls == ["stop", "refund"], f"refund must follow the kill, got {calls}"
+
+
 # ---------------------------------------------------------------------------
 # GET /runs/{id}/video and /thumbnail
 # ---------------------------------------------------------------------------

@@ -2538,9 +2538,20 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
     state = _read_state(run_dir)
     pid = state.get("pid")
 
-    # Always attempt the refund — even if the process is already dead
-    # (cancel-after-failed-state). It's a no-op when the user has
-    # zero net charges for this run.
+    # Stop the worker FIRST and wait for it to actually exit, THEN refund.
+    # Cancel is now the sole refund path (a failed render keeps its charge —
+    # see run.py's post-clip stages), so the refund must not race an in-flight
+    # per-clip deduction: if we refunded before SIGTERM, a clip that lands
+    # between the refund and the kill would leave the user re-charged with no
+    # video. Killing first closes that window.
+    killed_pid = None
+    if _process_alive(pid, run_dir):
+        _stop_process_and_wait(pid, run_dir=run_dir)
+        killed_pid = pid
+
+    # Always attempt the refund — even if the process was already dead
+    # (cancel-after-failed-state). Net-safe: a no-op when the user has zero
+    # net charges for this run, and for service tokens.
     refunded = 0
     try:
         refunded = refund_run_charges(
@@ -2554,9 +2565,6 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
         import logging
         logging.exception("refund_run_charges failed during cancel")
 
-    if not _process_alive(pid, run_dir):
-        return CancelAck(run_id=run_id, killed_pid=None)
-    _stop_process_and_wait(pid, run_dir=run_dir)
     _write_state(
         run_dir,
         last_error=(
@@ -2566,7 +2574,7 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
         ),
         last_action="cancel",
     )
-    return CancelAck(run_id=run_id, killed_pid=pid)
+    return CancelAck(run_id=run_id, killed_pid=killed_pid)
 
 
 @app.get("/runs/{run_id}/video",
