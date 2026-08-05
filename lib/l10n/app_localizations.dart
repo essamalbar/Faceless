@@ -2216,6 +2216,18 @@ abstract class AppLocalizations {
   /// **'Subscribe'**
   String get billingSubscribe;
 
+  /// No description provided for @billingPastDueWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Your last payment failed — update your card to keep your plan active.'**
+  String get billingPastDueWarning;
+
+  /// No description provided for @billingUpdateCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Update card'**
+  String get billingUpdateCard;
+
   /// No description provided for @transactionsTitle.
   ///
   /// In en, this message translates to:

@@ -256,17 +256,21 @@ class PlanInfo {
   final String plan;            // 'free' | 'starter' | 'creator' | 'pro'
   final String? currentPeriodEnd;
   final bool cancelAtPeriodEnd;
+  final String paymentStatus;   // 'active' | 'past_due' (dunning flag)
   final int balance;
   PlanInfo({
     required this.plan,
     required this.currentPeriodEnd,
     required this.balance,
     this.cancelAtPeriodEnd = false,
+    this.paymentStatus = 'active',
   });
+  bool get isPastDue => paymentStatus == 'past_due';
   factory PlanInfo.fromJson(Map<String, dynamic> j) => PlanInfo(
         plan: j['plan'] as String,
         currentPeriodEnd: j['current_period_end'] as String?,
         cancelAtPeriodEnd: (j['cancel_at_period_end'] as bool?) ?? false,
+        paymentStatus: (j['payment_status'] as String?) ?? 'active',
         balance: j['balance'] as int,
       );
 }

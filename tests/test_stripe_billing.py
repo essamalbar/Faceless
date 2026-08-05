@@ -125,6 +125,21 @@ def test_handle_webhook_subscription_renewal_grants(stripe_env, mock_db, monkeyp
     assert last_tx["amount"] == 60  # PLAN_GRANTS["creator"]
     assert last_tx["kind"] == "subscription_renewal"
     assert mock_db["profiles"]["u1"]["current_plan"] == "creator"
+    # A successful renewal clears any prior past_due dunning flag.
+    assert mock_db["profiles"]["u1"]["payment_status"] == "active"
+
+
+def test_handle_webhook_invoice_failed_marks_past_due(stripe_env, mock_db, monkeypatch):
+    mock_db["profiles"]["u1"] = {"current_plan": "creator"}
+    fake_event = {"type": "invoice.payment_failed",
+                  "data": {"object": {"subscription": "sub_1"}}}
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Subscription.retrieve",
+                        lambda sid: {"id": sid, "metadata": {"user_id": "u1"}})
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                        lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    assert mock_db["profiles"]["u1"]["payment_status"] == "past_due"
 
 
 def test_handle_webhook_duplicate_invoice_grants_only_once(

@@ -2022,8 +2022,27 @@ def test_get_plan_returns_subscription_for_existing_user(client_factory, monkeyp
         "plan": "creator",
         "current_period_end": "2026-06-11T00:00:00Z",
         "cancel_at_period_end": False,
+        "payment_status": "active",
         "balance": 234,
     }
+
+
+def test_get_plan_surfaces_past_due(client_factory, monkeypatch):
+    """Dunning: a failed renewal flags the profile past_due; /billing/plan
+    must surface that so the app can warn the user their card needs updating."""
+    from pipeline.db import UserProfile
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: UserProfile(
+            id=uid, stripe_customer_id="cus_1",
+            current_plan="creator", current_period_end="2026-06-11T00:00:00Z",
+            payment_status="past_due",
+        ),
+    )
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 234)
+    c = client_factory(user_id="alice")
+    body = c.get("/billing/plan").json()
+    assert body["payment_status"] == "past_due"
 
 
 def test_get_transactions_returns_list(client_factory, monkeypatch):
@@ -2325,6 +2344,7 @@ def test_billing_get_endpoints_bypass_db_for_service_tokens(client_factory, monk
         "plan": "free",
         "current_period_end": None,
         "cancel_at_period_end": False,
+        "payment_status": "active",
         "balance": 0,
     }
     assert c.get("/billing/transactions").json() == []

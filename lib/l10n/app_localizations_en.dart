@@ -1198,6 +1198,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get billingSubscribe => 'Subscribe';
 
   @override
+  String get billingPastDueWarning =>
+      'Your last payment failed — update your card to keep your plan active.';
+
+  @override
+  String get billingUpdateCard => 'Update card';
+
+  @override
   String get transactionsTitle => 'Transactions';
 
   @override

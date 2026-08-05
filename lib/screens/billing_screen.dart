@@ -122,6 +122,10 @@ class _BillingScreenState extends State<BillingScreen> {
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
+                    if (_plan!.isPastDue) ...[
+                      _PastDueBanner(onUpdateCard: _portal),
+                      const SizedBox(height: 16),
+                    ],
                     _BalanceCard(plan: _plan!),
                     const SizedBox(height: 24),
                     Text(l10n.billingSubscriptions,
@@ -156,6 +160,48 @@ class _BillingScreenState extends State<BillingScreen> {
                     for (final t in _txs) _TxRow(tx: t),
                   ],
                 ),
+    );
+  }
+}
+
+/// Dunning banner — shown only when the profile is past_due (a renewal
+/// payment failed). Wired to the Stripe billing portal so the user can
+/// update their card. `_portal` lives on the screen State, so it is passed
+/// in as a callback rather than reached from inside this widget.
+class _PastDueBanner extends StatelessWidget {
+  final VoidCallback onUpdateCard;
+  const _PastDueBanner({required this.onUpdateCard});
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: FacelessTheme.danger.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: FacelessTheme.danger),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+                     color: FacelessTheme.danger),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              l10n.billingPastDueWarning,
+              style: const TextStyle(
+                color: FacelessTheme.danger,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: onUpdateCard,
+            child: Text(l10n.billingUpdateCard),
+          ),
+        ],
+      ),
     );
   }
 }

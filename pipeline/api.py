@@ -631,6 +631,7 @@ class PlanResponse(BaseModel):
     plan: str                         # 'free' | 'starter' | 'creator' | 'pro'
     current_period_end: str | None    # ISO timestamp, null on 'free'
     cancel_at_period_end: bool = False  # true if user scheduled a cancel
+    payment_status: str = "active"    # 'active' | 'past_due' (dunning flag)
     balance: int
 
 
@@ -1266,6 +1267,7 @@ def get_plan_endpoint(user: User = Depends(require_user)):
             plan="free",
             current_period_end=None,
             cancel_at_period_end=False,
+            payment_status="active",
             balance=0,
         )
     from pipeline.db import get_balance, get_user_profile
@@ -1274,6 +1276,7 @@ def get_plan_endpoint(user: User = Depends(require_user)):
         plan=(profile.current_plan if profile else "free"),
         current_period_end=(profile.current_period_end if profile else None),
         cancel_at_period_end=(profile.cancel_at_period_end if profile else False),
+        payment_status=(profile.payment_status if profile else "active"),
         balance=get_balance(user.id),
     )
 
