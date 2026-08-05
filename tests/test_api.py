@@ -986,6 +986,32 @@ def test_cancel_skips_refund_when_run_already_complete(client, auth, tmp_path: P
     assert called["refund"] is False, "must not refund a delivered (complete) run"
 
 
+def test_cancel_skips_refund_when_worker_delivers_during_kill(client, auth, tmp_path: Path, monkeypatch):
+    """After-reaping guard (the deliver-during-cancel race): the worker has no
+    final.mp4 when cancel starts (up-front guard passes), but writes it while
+    being reaped. The re-check after _stop_process_and_wait must still 409 and
+    NOT refund the now-delivered video."""
+    rd = _make_run_dir(tmp_path)
+    from pipeline import api as api_mod
+    api_mod._write_state(rd, pid=4242)
+    monkeypatch.setattr(api_mod, "_process_alive", lambda pid, run_dir=None: pid == 4242)
+
+    # Simulate the worker delivering final.mp4 during the kill/wait window.
+    def _stop_and_deliver(pid, run_dir=None):
+        (run_dir / "final.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    monkeypatch.setattr(api_mod, "_stop_process_and_wait", _stop_and_deliver)
+
+    called = {"refund": False}
+    monkeypatch.setattr(
+        "pipeline.credits.refund_run_charges",
+        lambda *a, **k: (called.__setitem__("refund", True), 0)[1],
+    )
+
+    r = client.post(f"/runs/{rd.name}/cancel", headers=auth)
+    assert r.status_code == 409
+    assert called["refund"] is False, "must not refund a video delivered during cancel"
+
+
 # ---------------------------------------------------------------------------
 # GET /runs/{id}/video and /thumbnail
 # ---------------------------------------------------------------------------
