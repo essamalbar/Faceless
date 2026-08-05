@@ -119,7 +119,9 @@ EOF
 
 ---
 
-## Task 2: Refund song cancel + song failure (Fix 2)
+## Task 2: Refund song on cancel; failed render keeps the charge (Fix 2)
+
+> **REVISED during review (policy decision):** a failed render is NOT auto-refunded (that + free `/resume` = free songs). Refund on **cancel** only; failure keeps the charge (resume = free retry). `cancel_song` re-reads state after SIGTERM and skips refund if the run completed in the race window. The steps below that add a worker-failure refund are superseded — the worker's terminal except records `failed` and returns, no refund. See the design spec's Fix 2 for the authoritative version.
 
 **Files:** Modify `pipeline/api.py` (`cancel_song`), `run.py` (`_run_song_post_approve` failure handler). Tests: `tests/test_song_api.py`, `tests/test_run_song_mode.py`.
 

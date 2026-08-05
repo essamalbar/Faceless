@@ -54,14 +54,16 @@ Use that value wherever role/user is derived today (`run.py:511-512` video charg
 
 **Test:** a resumed video run under `out/<uuid>/…` deducts (role `user`); a run under `out/admin/…` does not (role `service`).
 
-## Fix 2 — Refund song cancel + song failure (`api.py`, `run.py`)
+## Fix 2 — Refund song on cancel; a failed render keeps the charge (`api.py`, `run.py`)
 
-`refund_run_charges(user, run_id, reason)` already exists and is net-safe (`credits.py:94-131`). Wire it into the two song holes:
+**Policy (decided during review):** songs charge once at approve, and `/resume` retries for free. Auto-refunding on *failure* would let the common transient-fail → resume → success path deliver a **free song** (net $0). So the refund is on **cancel** only; a failed render **keeps the charge** — the user's exits are *resume* (free retry, already paid) or *cancel* (self-service refund). This closes the audit's "charged, got nothing, only /admin/credit-back" hole (cancel is now a self-service refund) without opening a free-song leak.
 
-- **`cancel_song` (`api.py:3513-3527`)** — has the authenticated `user` via `require_user`; call `refund_run_charges(user, run_id=…, reason="song canceled")` after killing the process. Mirrors the video `cancel_run` (`api.py:2523-2566`).
-- **Song worker failure (`run.py` `_run_song_post_approve` catch-all, ~`run.py:1532-1544`)** — on terminal failure, refund the real user (from Fix 1's `_effective_user_id`) via `refund_run_charges`, mirroring the video assembly refund (`run.py:842-865`).
+`refund_run_charges(user, run_id, reason)` already exists and is net-safe (`credits.py:94-131`). Wire it into cancel only:
 
-**Test:** approving a song then cancelling refunds the net charge; a song worker exception refunds; a successful run does NOT refund; refund is net-safe (no double-refund if a partial refund already happened).
+- **`cancel_song` (`api.py`)** — has the authenticated `user` via `require_user`. After SIGTERM, **re-read state**; if it is now `"complete"` (the worker delivered in the race window), do NOT overwrite to canceled and do NOT refund (return already-complete). Otherwise `_write_state(status="canceled")` then `refund_run_charges(user, run_id=…, reason="song canceled by user")` in a try/except (refund never fails the cancel). Return `{"ok": True, "refunded": refunded}`.
+- **Song worker failure (`run.py` `_run_song_post_approve` terminal except)** — **no refund**; just record `status="failed"` + `failure_stage`/`last_error` and `return 1`. (The VIDEO pipeline's own assembly-failure refund is unchanged and out of scope here.)
+
+**Test:** cancel of a non-complete song forwards a refund; a worker failure does NOT refund (spy asserts no call); a cancel racing a `complete` write skips the refund; net-safety of `refund_run_charges` is already locked in `test_credits`.
 
 ## Fix 3 — Atomic deduction (`db.py`, `credits.py`, migration)
 
@@ -166,3 +168,5 @@ Fixes 2–5 are strictly safer (more refunds, atomic deduct, idempotent grants, 
 ## Follow-ups (out of scope)
 
 Chargeback/dispute handling, Stripe Tax, API-version pinning, rate-limit move to DB, LLM draft/regen metering, data-retention TTL — all tracked in `docs/GO-LIVE-READINESS.md` (Tier 4).
+
+**Video pipeline shares the same free-resume leak** (found in Task 2 review): its assembly-failure refund + `/resume`-without-recharge means a video render that fails then resumes-to-success also nets $0. Fix Task 2's policy there too (assembly failure keeps the charge; cancel refunds), or add re-charge-on-resume — deferred, tracked here.
