@@ -1214,6 +1214,13 @@ class AppLocalizationsAr extends AppLocalizations {
   String get billingSubscribe => 'اشترك';
 
   @override
+  String get billingPastDueWarning =>
+      'فشلت آخر عملية دفع — يرجى تحديث بطاقتك للحفاظ على اشتراكك نشطًا.';
+
+  @override
+  String get billingUpdateCard => 'تحديث البطاقة';
+
+  @override
   String get transactionsTitle => 'المعاملات';
 
   @override

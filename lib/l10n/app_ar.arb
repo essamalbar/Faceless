@@ -353,6 +353,8 @@
   "billingRenewsOn": "يتجدد في {date}",
   "billingCurrentPlanChip": "الحالية",
   "billingSubscribe": "اشترك",
+  "billingPastDueWarning": "فشلت آخر عملية دفع — يرجى تحديث بطاقتك للحفاظ على اشتراكك نشطًا.",
+  "billingUpdateCard": "تحديث البطاقة",
   "transactionsTitle": "المعاملات",
   "transactionsKindSongSpend": "إنفاق أغنية",
   "transactionsKindRefund": "استرداد",

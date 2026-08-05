@@ -22,11 +22,13 @@ def test_complete_sends_chat_payload(monkeypatch):
         return {"choices": [{"message": {"content": "مرحبا"}}]}
 
     monkeypatch.setattr(GroqClient, "_post", fake_post)
+    # Deterministic against a stray env override — assert the real default.
+    monkeypatch.delenv("GROQ_MODEL", raising=False)
     c = GroqClient(api_key="k")
     out = c.complete("hi", system="be brief")
     assert out == "مرحبا"
     assert captured["path"] == "/chat/completions"
-    assert captured["body"]["model"] == "llama-3.3-70b-versatile"
+    assert captured["body"]["model"] == "openai/gpt-oss-120b"
     assert captured["body"]["messages"][0] == {"role": "system", "content": "be brief"}
     assert captured["body"]["messages"][1] == {"role": "user", "content": "hi"}
 

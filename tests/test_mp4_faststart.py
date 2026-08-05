@@ -26,13 +26,24 @@ def _atom_order(path: Path) -> list[str]:
 
 
 def _make_test_mp4(path: Path) -> None:
-    """Use ffmpeg to make a tiny 1-second mp4 with moov at the END (no faststart)."""
+    """Use ffmpeg to make an mp4 with moov at the END (no faststart).
+
+    Uses a high-detail source (testsrc2) so the encoded file is comfortably
+    larger than mp4_faststart's 50 KB corruption guard — a solid `color=`
+    clip compresses to ~2 KB and would be discarded by that guard, leaving
+    moov at the end and defeating the point of the test.
+    """
     subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error",
-         "-f", "lavfi", "-i", "color=size=64x64:rate=10:duration=1",
+         "-f", "lavfi", "-i", "testsrc2=size=640x480:rate=30:duration=3",
          "-pix_fmt", "yuv420p",
          str(path)],
         check=True,
+    )
+    # Guard: the whole point is to exceed mp4_faststart's 50 KB threshold.
+    assert path.stat().st_size > 50_000, (
+        f"test fixture too small ({path.stat().st_size} B) — the faststart "
+        "corruption guard would discard the re-mux"
     )
 
 

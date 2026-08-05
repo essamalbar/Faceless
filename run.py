@@ -107,6 +107,44 @@ def _resolve_run_dir(args, out_root: Path) -> Path:
     return _make_run_dir(out_root, user_id=args.user_id)
 
 
+def _resolve_out_root(args) -> Path:
+    """Resolve the run root: an explicit --out-root wins, else FACELESS_OUT_ROOT
+    (what Cloud Run sets, e.g. /mnt/runs — see pipeline/api.py's _out_root()),
+    else the local DEFAULT_OUT_ROOT. Must agree with pipeline/api.py's _out_root()
+    so a resumed run's run_dir and out_root land on the same root — otherwise
+    _effective_user_id's relative_to() raises and the owning user is lost
+    (silently falls back to the free 'admin' service role)."""
+    return Path(args.out_root or os.environ.get("FACELESS_OUT_ROOT", str(DEFAULT_OUT_ROOT)))
+
+
+def _effective_user_id(run_dir: Path, out_root: Path) -> str:
+    """The user id owning a run = the path segment directly under out_root
+    (runs live at <out_root>/<user_id>/<run_id>). On --resume this recovers
+    the REAL user so paid stages charge/refund the right account instead of
+    defaulting to the free 'admin' service role. Falls back to 'admin'
+    (service/free) if the layout is unexpected — fail safe, never over-charge."""
+    try:
+        return run_dir.resolve().relative_to(out_root.resolve()).parts[0]
+    except (ValueError, IndexError, OSError) as e:
+        # Could not derive the owner from the run-dir layout: run_dir is not
+        # under out_root (a FACELESS_OUT_ROOT divergence between the API and
+        # this worker) or the layout is unexpected. This path derivation is
+        # the ONLY billing seam for renders — no spawn passes --user-id — so a
+        # silent fallback to 'admin' (service/free) means the render is NOT
+        # billed. Log loudly so that leak is visible, not invisible. A genuine
+        # admin CLI run returns via the try above ('admin' as parts[0]) and
+        # never reaches here. See docs/GO-LIVE-READINESS.md Phase 0.
+        print(
+            f"[billing] WARNING: could not derive run owner from run_dir="
+            f"{run_dir} under out_root={out_root} ({type(e).__name__}: {e}); "
+            f"falling back to 'admin' (service/free) — this render will NOT be "
+            f"billed. Verify FACELESS_OUT_ROOT matches between the API and the "
+            f"worker.",
+            file=sys.stderr,
+        )
+        return "admin"
+
+
 def _stage_seed(args, gemini, log: RunLog, paths: RunPaths,
                 project_theme_log: Path) -> ThemeSeed:
     seed_path = paths.root / "seed.json"
@@ -604,7 +642,11 @@ def main_with_args(argv: list[str]) -> int:
     p.add_argument("--burn-captions", action="store_true",
                    help="Burn captions into video (default: SRT only)")
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
-    p.add_argument("--out-root", default=str(DEFAULT_OUT_ROOT))
+    p.add_argument(
+        "--out-root", default=None,
+        help="Run root. Defaults to $FACELESS_OUT_ROOT if set (Cloud Run: "
+             "/mnt/runs), else the local out/ dir.",
+    )
     p.add_argument("--music-bundle", default=str(DEFAULT_MUSIC_BUNDLE))
     # Pipeline mode selector -----------------------------------------------
     p.add_argument(
@@ -685,12 +727,17 @@ def main_with_args(argv: list[str]) -> int:
     _maybe_load_freeform_controls_from_disk(args)
 
     cfg = load_config(Path(args.config))
-    out_root = Path(args.out_root)
+    out_root = _resolve_out_root(args)
     music_bundle = Path(args.music_bundle)
     project_theme_log = out_root / "theme_log.json"
     project_story_history = out_root / "story_history.jsonl"
 
     run_dir = _resolve_run_dir(args, out_root)
+    # Recover the owning user from the run-dir path so resumed paid stages
+    # charge/refund the real user, not the default 'admin' service role.
+    # (Fresh runs already encode args.user_id in the path, so this is a no-op
+    # for them; resumes are where it matters.)
+    args.user_id = _effective_user_id(run_dir, out_root)
     paths = RunPaths(root=run_dir)
     log = RunLog(run_dir)
 
@@ -1541,6 +1588,11 @@ def _run_song_post_approve(args) -> int:
             last_error=f"{type(e).__name__}: {e}",
         )
         print(f"[song-post-approve] failed: {e}", file=_sys.stderr)
+        # NOT auto-refunded: a failed song keeps the charge. The user
+        # can --resume for a free retry (already paid) or cancel the
+        # run to get the refund path (see cancel_song in pipeline/api.py).
+        # Auto-refunding here would make songs free on the retry-success
+        # path (fail once, refund, resume, succeed on the same paid job).
         return 1
 
 

@@ -631,6 +631,7 @@ class PlanResponse(BaseModel):
     plan: str                         # 'free' | 'starter' | 'creator' | 'pro'
     current_period_end: str | None    # ISO timestamp, null on 'free'
     cancel_at_period_end: bool = False  # true if user scheduled a cancel
+    payment_status: str = "active"    # 'active' | 'past_due' (dunning flag)
     balance: int
 
 
@@ -1266,6 +1267,7 @@ def get_plan_endpoint(user: User = Depends(require_user)):
             plan="free",
             current_period_end=None,
             cancel_at_period_end=False,
+            payment_status="active",
             balance=0,
         )
     from pipeline.db import get_balance, get_user_profile
@@ -1274,6 +1276,7 @@ def get_plan_endpoint(user: User = Depends(require_user)):
         plan=(profile.current_plan if profile else "free"),
         current_period_end=(profile.current_period_end if profile else None),
         cancel_at_period_end=(profile.cancel_at_period_end if profile else False),
+        payment_status=(profile.payment_status if profile else "active"),
         balance=get_balance(user.id),
     )
 
@@ -3511,6 +3514,8 @@ def diacritize_song(run_id: str, user: User = Depends(require_user)):
 
 @app.post("/songs/{run_id}/cancel")
 def cancel_song(run_id: str, user: User = Depends(require_user)):
+    from pipeline.credits import refund_run_charges
+
     run_dir = _resolve_song_dir(run_id, user)
     state = _read_state(run_dir)
     if state.get("kind") != "song":
@@ -3523,8 +3528,28 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
             os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
+
+    # Re-read state: the worker may have raced us to "complete" between
+    # our first read (and the SIGTERM above) and here — i.e. the song was
+    # delivered. Never clobber a completed song to canceled, and never
+    # refund a song that was actually delivered.
+    state = _read_state(run_dir)
+    if state.get("status") == "complete":
+        raise HTTPException(409, "song already complete")
+
     _write_state(run_dir, status="canceled")
-    return {"ok": True}
+
+    # Refund any net credits charged for this song. Net-safe: a song
+    # canceled before approval was never charged, so this is a 0 no-op.
+    # Refund telemetry must never fail the cancel itself.
+    refunded = 0
+    try:
+        refunded = refund_run_charges(
+            user, run_id=run_id, reason="song canceled by user")
+    except Exception:
+        import logging
+        logging.exception("refund_run_charges failed during song cancel")
+    return {"ok": True, "refunded": refunded}
 
 
 @app.post("/songs/{run_id}/approve")

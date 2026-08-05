@@ -18,7 +18,7 @@ import stripe
 
 from pipeline.auth import User
 from pipeline.credits import PLAN_GRANTS, TOPUP_PACKS
-from pipeline.db import get_user_profile, record_transaction, upsert_user_profile
+from pipeline.db import get_user_profile, record_grant_once, upsert_user_profile
 
 
 def _api_key() -> str:
@@ -148,6 +148,8 @@ def handle_webhook(raw_body: bytes, signature: str) -> WebhookOutcome:
         return _on_checkout_completed(data)
     if et == "invoice.payment_succeeded":
         return _on_invoice_paid(data)
+    if et == "invoice.payment_failed":
+        return _on_invoice_failed(data)
     if et == "customer.subscription.updated":
         return _on_subscription_updated(data)
     if et == "customer.subscription.deleted":
@@ -173,7 +175,7 @@ def _on_checkout_completed(session) -> WebhookOutcome:
         pack = (session.get("metadata") or {}).get("pack")
         if pack not in TOPUP_PACKS:
             return WebhookOutcome("checkout.session.completed", False, f"unknown pack {pack!r}")
-        record_transaction(
+        record_grant_once(
             user_id=user_id,
             amount=TOPUP_PACKS[pack],
             kind="topup",
@@ -216,21 +218,35 @@ def _on_invoice_paid(invoice) -> WebhookOutcome:
         return WebhookOutcome("invoice.payment_succeeded", False,
                               f"missing user_id or plan (plan={plan!r})")
 
-    record_transaction(
-        user_id=user_id,
-        amount=PLAN_GRANTS[plan],
-        kind="subscription_renewal",
-        reference_id=invoice.get("id"),
-        description=f"{plan.capitalize()} plan renewal",
-    )
+    granted = record_grant_once(
+        user_id=user_id, amount=PLAN_GRANTS[plan], kind="subscription_renewal",
+        reference_id=invoice.get("id"), description=f"{plan.capitalize()} plan renewal")
     upsert_user_profile(
         user_id,
         current_plan=plan,
         current_period_end=_iso(period_end_unix),
         cancel_at_period_end=bool(subscription.get("cancel_at_period_end", False)),
+        # A successful payment clears any prior past_due dunning flag.
+        payment_status="active",
     )
-    return WebhookOutcome("invoice.payment_succeeded", True,
-                          f"+{PLAN_GRANTS[plan]} for {plan}")
+    note = f"+{PLAN_GRANTS[plan]} for {plan}" if granted else "duplicate invoice, no-op"
+    return WebhookOutcome("invoice.payment_succeeded", True, note)
+
+
+def _on_invoice_failed(invoice) -> WebhookOutcome:
+    """A renewal charge failed. Flag the profile past_due so the app can warn
+    the user and prompt a card update before the subscription lapses."""
+    sub_id = invoice.get("subscription") or _invoice_subscription_id(invoice)
+    user_id = None
+    if sub_id:
+        raw = stripe.Subscription.retrieve(sub_id)
+        sub = raw.to_dict() if hasattr(raw, "to_dict") else dict(raw)
+        user_id = (sub.get("metadata") or {}).get("user_id")
+    user_id = user_id or _invoice_parent_metadata(invoice).get("user_id")
+    if not user_id:
+        return WebhookOutcome("invoice.payment_failed", False, "no user_id")
+    upsert_user_profile(user_id, payment_status="past_due")
+    return WebhookOutcome("invoice.payment_failed", True, "marked past_due")
 
 
 def _on_subscription_updated(subscription) -> WebhookOutcome:
@@ -290,6 +306,8 @@ def _on_subscription_deleted(subscription) -> WebhookOutcome:
         current_plan="free",
         current_period_end=None,
         cancel_at_period_end=False,
+        # A clean cancel is not a dunning state — clear any past_due flag.
+        payment_status="active",
     )
     return WebhookOutcome("customer.subscription.deleted", True, "plan reset to free")
 

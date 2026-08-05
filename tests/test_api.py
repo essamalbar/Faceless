@@ -560,8 +560,14 @@ def test_approve_passes_auto_computed_max_spend(client, auth, tmp_path: Path):
     # Index right after the flag
     spend_str = args[args.index("--max-spend") + 1]
     spend = float(spend_str)
-    # 24 × 8 = 192 sec × $0.10 = $19.20 × 1.30 + 0.50 ≈ $25.46
-    assert 24 < spend < 30, f"unexpected max-spend: {spend}"
+    # Derive the expected cap from the active video model rather than a
+    # hardcoded Veo-$0.10 range: 24 beats × 8s × rate × buffer + flat.
+    rate = api_mod._cost_per_second_for_model(api_mod._active_video_model())
+    expected = (
+        24 * 8 * rate * api_mod.BUDGET_BUFFER_RATIO
+        + api_mod.BUDGET_BUFFER_FLAT_USD
+    )
+    assert abs(spend - expected) < 1.0, f"unexpected max-spend: {spend} vs {expected}"
 
 
 def test_failed_run_includes_actionable_error_hint(client, auth, tmp_path: Path):
@@ -2022,8 +2028,27 @@ def test_get_plan_returns_subscription_for_existing_user(client_factory, monkeyp
         "plan": "creator",
         "current_period_end": "2026-06-11T00:00:00Z",
         "cancel_at_period_end": False,
+        "payment_status": "active",
         "balance": 234,
     }
+
+
+def test_get_plan_surfaces_past_due(client_factory, monkeypatch):
+    """Dunning: a failed renewal flags the profile past_due; /billing/plan
+    must surface that so the app can warn the user their card needs updating."""
+    from pipeline.db import UserProfile
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: UserProfile(
+            id=uid, stripe_customer_id="cus_1",
+            current_plan="creator", current_period_end="2026-06-11T00:00:00Z",
+            payment_status="past_due",
+        ),
+    )
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 234)
+    c = client_factory(user_id="alice")
+    body = c.get("/billing/plan").json()
+    assert body["payment_status"] == "past_due"
 
 
 def test_get_transactions_returns_list(client_factory, monkeypatch):
@@ -2325,6 +2350,7 @@ def test_billing_get_endpoints_bypass_db_for_service_tokens(client_factory, monk
         "plan": "free",
         "current_period_end": None,
         "cancel_at_period_end": False,
+        "payment_status": "active",
         "balance": 0,
     }
     assert c.get("/billing/transactions").json() == []

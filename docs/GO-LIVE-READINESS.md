@@ -32,7 +32,7 @@ Prior notes were stale. Confirmed against code:
 | # | Gap | Evidence | Fix | Owner |
 |---|-----|----------|-----|-------|
 | 1 | **Shorts/Veo pipeline never charges users.** Worker spawned without `--user-id` → runs as `admin`/`service` → `check_or_deduct` no-ops → **balance never decrements**. Any user with credits renders unlimited real-money Veo/Kling forever, unbilled. | 13 `_SPAWN_FN` sites in `api.py` pass no `--user-id`; `run.py:596-600` defaults to `"admin"`; `run.py:511-512` → role `service`; `credits.py:59-60` no-ops. | Pass `"--user-id", user.id` in every paid-stage spawn; `_stage_video_chained` + refund block already do the right thing once the id is correct. | Code |
-| 2 | **Song cancel + song failure never refund.** Credits deducted at approve; `cancel_song` and the song worker's failure handler don't refund → charged, got nothing. | `api.py:3513-3527` (cancel, no refund); `run.py:1532-1544` (failure, no refund); only the video path refunds (`run.py:814-865`, `api.py:2523-2566`). | Call `refund_run_charges(...)` in `cancel_song`; wrap `_run_song_post_approve` in try/except → refund on terminal failure. | Code |
+| 2 | **Song cancel leaves the user charged with nothing** (only `/admin/credit-back` could fix it). Credits deducted at approve; `cancel_song` didn't refund. | `api.py` `cancel_song` (no refund). | `cancel_song` refunds via `refund_run_charges` (self-service money-back). **Failure keeps the charge** — resume retries free (auto-refunding failure + free resume = free songs; policy decided in review). | Code |
 | 3 | **Double-spend race.** `check_or_deduct` is read→compare→insert with no DB lock; parallel approves both pass the balance check and go negative. File-based concurrency/daily caps are themselves TOCTOU races. | `credits.py:46-71` (no `FOR UPDATE`/`.rpc`); caps `api.py:3120-3132`, `3176-3189`. | Move check-and-deduct into a Postgres function via `.rpc()`: `UPDATE … WHERE balance >= amount RETURNING …` (or advisory lock on `user_id`). | Code |
 | 4 | **Stripe webhook not idempotent.** At-least-once delivery; a retried `invoice.payment_succeeded` double-grants credits (no unique constraint on `reference_id`). | `stripe_billing.py:219-231`, `176-183`; schema `…credits.sql:29-46` (reference_id plain text). | Dedup on Stripe `event.id` (unique index or check-before-insert on `(reference_id, kind)`). | Code + DB migration |
 | 5 | **No dunning.** Failed renewal card silently shows "active" for days/weeks; no `invoice.payment_failed` handled or subscribed. | `stripe_billing.py:147-155` (no branch); Dashboard event list omits it; UI has no past-due state (`billing_screen.dart:190-206`). | Subscribe to `invoice.payment_failed`; flag `payment_status='past_due'`; surface "update your card" in the app. | Code + Stripe Dashboard |
@@ -101,3 +101,54 @@ ToS/Privacy/refund (#10), DMCA/abuse contact (#12), ownership-attestation gate +
 
 ## Post-launch watch (first 2 weeks)
 Balance-never-negative invariant; webhook delivery/idempotency; failed-render refund rate; Anthropic/Kie balances; abuse (mass renders, copyrighted covers); support volume on auth (reset/confirmation).
+
+---
+
+## Operator actions — Phase 0 (money-integrity fixes) — READY 2026-08-05
+
+Phase-0 code is complete on branch `billing-money-integrity` (Tasks 1–7). The code is **inert until the operator completes these steps** — the new SQL objects/columns don't exist in the live DB and the new Stripe event isn't subscribed until you act. Do them in order.
+
+**Commits (in order):** `77056a9` charge real user for video · `e87fca0` out-root leak · `81e53f1` song refund policy · `109ffcf` atomic deduct · `b554633` idempotent grants · `173e5d7` dunning · `755e1bb` green test path · `4b5e672` loud warning when owner-derivation falls back to admin (observability, from the final holistic review).
+
+### 1. Apply the 3 migrations to live Supabase — BEFORE the code deploy
+Task 5's `get_user_profile` SELECTs `payment_status`, which errors if the column is absent, so migrations must land first. All three are additive and safe on the running DB.
+```bash
+supabase db push
+# — or paste each, IN ORDER, into the Supabase SQL editor:
+#   supabase/migrations/20260804000001_deduct_credits_fn.sql   (deduct_credits() advisory-lock fn)
+#   supabase/migrations/20260804000002_grant_idempotency.sql   (uq_credit_grant_ref partial unique index)
+#   supabase/migrations/20260804000003_payment_status.sql      (user_profiles.payment_status column)
+```
+Verify:
+```sql
+select proname from pg_proc where proname = 'deduct_credits';                 -- 1 row
+select indexname from pg_indexes where indexname = 'uq_credit_grant_ref';     -- 1 row
+select column_name from information_schema.columns
+  where table_name = 'user_profiles' and column_name = 'payment_status';      -- 1 row
+```
+
+### 2. Stripe Dashboard — subscribe the new webhook event
+Developers → Webhooks → (existing endpoint) → **Add event** → `invoice.payment_failed`. Without it, dunning never fires (no `past_due` flag is ever set).
+
+### 3. Redeploy backend + app
+```bash
+./scripts/build-and-push.sh
+```
+(Confirm `flutter` is on PATH so the web app bundle rebuilds with the past-due banner + gen-l10n keys.)
+
+### 4. Post-deploy money test (real Stripe test-mode, one throwaway user)
+1. Fresh signup → balance starts at **0** (no signup grant).
+2. Subscribe (Stripe test card) → credits granted **once**; re-send the webhook from the dashboard → balance does NOT double (idempotency).
+3. Render a video → balance **decrements** (real user charged, not `admin`).
+4. Cancel a song mid-run → charge **refunded** (self-service).
+5. Fail a render then `/resume` → **not** re-charged, **not** auto-refunded (resume = free retry; failure keeps the charge).
+6. Force a failed renewal (Stripe test card) → app shows the **past-due banner**; a later successful payment clears it.
+7. Throughout: **no balance ever goes negative** (atomic deduction).
+
+### Verification captured at handoff (Task 7, 2026-08-05)
+- Full suite in a clean env (`env -u <all API-key vars> uv run pytest -q`): **821 passed, 0 failed** (819 after Task 6 + 2 observability tests from `4b5e672`). The pre-Phase-0 baseline of 7 failures is fully greened; none were assertion-weakened (max-spend now derives from the active model rate; faststart exercises a realistic >50 KB clip with the corruption guard intact; shorts-smoke mocks the ElevenLabs boundary per the "mock all external services" invariant).
+- Offline smoke: service-bypass `check_or_deduct` returns the sentinel and `refund_run_charges`/`deduct_credits_atomic`/`record_grant_once` import cleanly — no traceback.
+- NOTE for future test runs: **run pytest in a clean env** — sourcing `.env` flips the failing set (see `reference_test_suite_verification` memory). **`flutter analyze` hangs in this env; use `dart analyze <files>`.**
+
+### What is NOT in Phase 0 (still required before charging real users — Tiers 2–3 above)
+Monitoring/alerting, infra spend ceiling (`maxScale` + GCP budget + Kie cap), Supabase backups, ToS/Privacy/refund policy, DMCA/abuse contact, ownership-attestation gate, GDPR delete/export. Phase 0 closes only the **money-integrity code** blockers (Tier 1). Also deferred: the video pipeline shares the same free-resume leak fixed for songs in Task 2 (assembly-failure refund + free `/resume` = free video on retry-success) — apply the same cancel-refunds/failure-keeps-charge policy there next.

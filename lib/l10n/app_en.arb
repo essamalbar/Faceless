@@ -629,6 +629,8 @@
   },
   "billingCurrentPlanChip": "current",
   "billingSubscribe": "Subscribe",
+  "billingPastDueWarning": "Your last payment failed — update your card to keep your plan active.",
+  "billingUpdateCard": "Update card",
   "transactionsTitle": "Transactions",
   "transactionsKindSongSpend": "Song spend",
   "transactionsKindRefund": "Refund",

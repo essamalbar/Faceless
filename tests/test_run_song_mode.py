@@ -683,6 +683,47 @@ def test_premium_worker_persists_winner_and_survives_one_bad_job(tmp_path: Path,
     assert submit_calls["n"] == 3
 
 
+def test_song_worker_failure_does_not_refund(tmp_path: Path, monkeypatch):
+    """When the song worker's paid stage blows up, the terminal except block
+    in _run_song_post_approve must NOT auto-refund. Auto-refunding here would
+    make songs free on the retry-success path (fail once -> refund -> resume
+    (already free) -> succeed on the same paid job). Policy: a failed render
+    keeps the charge; --resume is the free retry; cancel is the refund path
+    (see cancel_song in pipeline/api.py)."""
+    run_dir = tmp_path / "out" / "user-uuid" / "2026-08-04-1200"
+    run_dir.mkdir(parents=True)
+    (run_dir / "api_state.json").write_text(json.dumps(
+        {"kind": "song", "status": "generating_song"}))
+    (run_dir / "song.json").write_text(json.dumps(
+        {"title": "t", "lyrics": "[Chorus]\nx", "style_prompt": "s",
+         "cover_prompt": "c", "language": "ar"}))
+
+    # Non-raising flag spy (not an AssertionError-raiser): the removed refund
+    # code was wrapped in `except Exception: print("REFUND FAILED")`, and
+    # AssertionError is an Exception — a revert-shaped regression that restores
+    # that wrapped block would swallow a raising spy and the test would falsely
+    # pass. A boolean flag checked after the run survives that swallow.
+    called = {"refund": False}
+    def _spy_refund(*a, **k):
+        called["refund"] = True
+        return 0
+    monkeypatch.setattr("pipeline.credits.refund_run_charges", _spy_refund)
+    monkeypatch.setattr(song, "submit_song_job",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("suno boom")))
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+
+    rc = run_mod.main_with_args([
+        "--mode", "song", "--resume", str(run_dir),
+        "--out-root", str(tmp_path / "out"),
+    ])
+
+    assert rc == 1
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "failed"
+    assert called["refund"] is False, \
+        "refund_run_charges must NOT be called on song failure"
+
+
 def test_song_post_approve_passes_default_negative_tags(tmp_path: Path, monkeypatch):
     """Both Suno branches must carry the quality negative tags."""
     run_dir = tmp_path / "song-run-negtags"

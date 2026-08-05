@@ -48,8 +48,8 @@ def mock_db(monkeypatch):
         lambda uid, **f: db_state["profiles"].setdefault(uid, {}).update(f) or None,
     )
     monkeypatch.setattr(
-        "pipeline.stripe_billing.record_transaction",
-        lambda **kw: db_state["transactions"].append(kw),
+        "pipeline.stripe_billing.record_grant_once",
+        lambda **kw: (db_state["transactions"].append(kw), True)[1],
     )
     return db_state
 
@@ -125,6 +125,59 @@ def test_handle_webhook_subscription_renewal_grants(stripe_env, mock_db, monkeyp
     assert last_tx["amount"] == 60  # PLAN_GRANTS["creator"]
     assert last_tx["kind"] == "subscription_renewal"
     assert mock_db["profiles"]["u1"]["current_plan"] == "creator"
+    # A successful renewal clears any prior past_due dunning flag.
+    assert mock_db["profiles"]["u1"]["payment_status"] == "active"
+
+
+def test_handle_webhook_invoice_failed_marks_past_due(stripe_env, mock_db, monkeypatch):
+    mock_db["profiles"]["u1"] = {"current_plan": "creator"}
+    fake_event = {"type": "invoice.payment_failed",
+                  "data": {"object": {"subscription": "sub_1"}}}
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Subscription.retrieve",
+                        lambda sid: {"id": sid, "metadata": {"user_id": "u1"}})
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                        lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    assert mock_db["profiles"]["u1"]["payment_status"] == "past_due"
+
+
+def test_handle_webhook_duplicate_invoice_grants_only_once(
+    stripe_env, mock_db, monkeypatch,
+):
+    """Stripe delivers webhooks at-least-once. A retried
+    invoice.payment_succeeded must grant credits only on the first delivery;
+    the second hits the unique index (record_grant_once returns False) and is
+    reported as a no-op — still handled=True so Stripe stops retrying."""
+    fake_event = {
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {"id": "inv_dup", "subscription": "sub_1"}},
+    }
+    monkeypatch.setattr(
+        "pipeline.stripe_billing.stripe.Subscription.retrieve",
+        lambda sid: {
+            "id": sid,
+            "metadata": {"user_id": "u1", "plan": "creator"},
+            "current_period_end": 1788000000,
+        },
+    )
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                       lambda **kw: fake_event)
+    # First delivery grants (True), second is deduped (False).
+    grant_calls = {"n": 0}
+    def fake_grant_once(**kw):
+        grant_calls["n"] += 1
+        return grant_calls["n"] == 1
+    monkeypatch.setattr("pipeline.stripe_billing.record_grant_once", fake_grant_once)
+
+    first = handle_webhook(b"{}", "sig")
+    assert first.handled
+    assert "+60" in first.note
+
+    second = handle_webhook(b"{}", "sig")
+    assert second.handled
+    assert second.note == "duplicate invoice, no-op"
+    assert grant_calls["n"] == 2
 
 
 def test_handle_webhook_subscription_deleted_resets_plan(stripe_env, mock_db, monkeypatch):

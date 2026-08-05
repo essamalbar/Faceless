@@ -49,6 +49,31 @@ def fixtures_dir() -> Path:
     return Path(__file__).parent / "fixtures"
 
 
+def _mock_shorts_voice(monkeypatch) -> None:
+    """Mock the ElevenLabs / Edge-TTS voice boundary so the shorts voice stage
+    is hermetic and never needs a real ELEVENLABS_API_KEY.
+
+    Copied verbatim from test_run_shorts_full_pipeline's mocks so behavior
+    matches; upholds the "every external API is mocked in tests" invariant.
+    The shorts voice stage runs before the character-sheet pause point, so
+    pause/resume tests need it even though they never reach video.
+    """
+    sample_mp3 = (Path(__file__).parent / "fixtures" / "narration_sample.mp3").read_bytes()
+
+    def fake_synthesize(text, voice, rate, pitch, mp3_path):
+        mp3_path.write_bytes(sample_mp3)
+        return [{"word": "ج", "offset_ms": 0, "duration_ms": 400}]
+    monkeypatch.setattr("pipeline.voice._synthesize", fake_synthesize)
+
+    class FakeEL:
+        def synthesize(self, text, voice_id, model, out_path, **kw):
+            out_path.write_bytes(sample_mp3)
+    monkeypatch.setattr("pipeline.voice._build_elevenlabs", lambda: FakeEL())
+    monkeypatch.setattr("pipeline.voice._ffmpeg_concat_mp3s",
+                        lambda parts, out: out.write_bytes(sample_mp3))
+    monkeypatch.setattr("pipeline.voice._audio_duration_ms_safe", lambda p: 1000)
+
+
 def test_run_shorts_full_pipeline(monkeypatch, tmp_path: Path, fixtures_dir: Path, music_bundle: Path):
     sample_mp3 = (fixtures_dir / "narration_sample.mp3").read_bytes()
 
@@ -536,6 +561,7 @@ def test_pause_after_character_sheet_exits_after_flux(
 
     monkeypatch.setattr("run._stage_character_sheet", fake_sheet)
     monkeypatch.setattr("run._stage_video_chained", fake_video)
+    _mock_shorts_voice(monkeypatch)
 
     import run
     config_path = Path(__file__).parent.parent / "config.yaml"
@@ -954,6 +980,7 @@ def test_resume_auto_loads_freeform_controls(tmp_path, monkeypatch, music_bundle
     monkeypatch.setattr(
         "pipeline.character_sheet.generate_character_sheet", fake_sheet)
     monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
+    _mock_shorts_voice(monkeypatch)
 
     config_path = REPO_ROOT / "config.yaml"
     import run
@@ -990,6 +1017,7 @@ def test_explicit_freeform_flag_still_works_without_file(tmp_path, monkeypatch, 
     monkeypatch.setattr(
         "pipeline.character_sheet.generate_character_sheet", fake_sheet)
     monkeypatch.setattr("run._stage_video_chained", lambda *a, **kw: None)
+    _mock_shorts_voice(monkeypatch)
 
     config_path = REPO_ROOT / "config.yaml"
     import run

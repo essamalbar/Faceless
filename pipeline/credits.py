@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 from pipeline.auth import User
 from pipeline.db import (
+    deduct_credits_atomic,
     get_balance,
     list_transactions,
     record_transaction,
@@ -53,22 +54,20 @@ def check_or_deduct(
     """Verify the user has at least `amount` credits, then deduct.
     Returns the new balance. Service tokens bypass entirely.
 
-    Note: simple non-locked variant — concurrent runs from the same user could
-    transiently overspend by one clip. Accepted tradeoff for v1.
+    Delegates the check-and-deduct to an atomic Postgres function
+    (`deduct_credits`) that serializes concurrent runs from the same user
+    with a per-user advisory lock — so two parallel approvals can't both
+    pass the balance check and drive the balance negative.
     """
     if _is_service(user):
         return 10**9  # sentinel — callers won't divide by this
-    balance = get_balance(user.id)
-    if balance < amount:
-        raise InsufficientCredits(balance=balance, required=amount)
-    record_transaction(
-        user_id=user.id,
-        amount=-amount,
-        kind="run_charge",
-        reference_id=run_id,
-        description=reason,
+    new_balance = deduct_credits_atomic(
+        user_id=user.id, amount=amount, kind="run_charge",
+        reference_id=run_id, description=reason,
     )
-    return balance - amount
+    if new_balance < 0:
+        raise InsufficientCredits(balance=get_balance(user.id), required=amount)
+    return new_balance
 
 
 def refund(

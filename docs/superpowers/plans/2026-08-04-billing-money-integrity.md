@@ -119,7 +119,9 @@ EOF
 
 ---
 
-## Task 2: Refund song cancel + song failure (Fix 2)
+## Task 2: Refund song on cancel; failed render keeps the charge (Fix 2)
+
+> **REVISED during review (policy decision):** a failed render is NOT auto-refunded (that + free `/resume` = free songs). Refund on **cancel** only; failure keeps the charge (resume = free retry). `cancel_song` re-reads state after SIGTERM and skips refund if the run completed in the race window. The steps below that add a worker-failure refund are superseded — the worker's terminal except records `failed` and returns, no refund. See the design spec's Fix 2 for the authoritative version.
 
 **Files:** Modify `pipeline/api.py` (`cancel_song`), `run.py` (`_run_song_post_approve` failure handler). Tests: `tests/test_song_api.py`, `tests/test_run_song_mode.py`.
 
@@ -271,11 +273,13 @@ begin
   return v_balance - p_amount;
 end $$;
 ```
-(Confirm `credit_transactions.user_id` is `uuid` in `20260511000000_credits.sql`; if it's `text`, change `p_user_id uuid`→`text` and drop the `::text` cast. The SQL is operator-applied — see Task 7 — so it is reviewed by reading, not unit-tested.)
+(Confirmed: `credit_transactions.user_id` is `uuid` in `20260511000000_credits.sql:31` — keep `p_user_id uuid` as written. The SQL is operator-applied — see Task 7 — so it is reviewed by reading, not unit-tested.)
 
 - [ ] **Step 2: Write the failing tests**
 
-Add to `tests/test_credits.py` (uses the existing `mock_db` fixture pattern — monkeypatch the db function `check_or_deduct` now calls):
+> **Remove the two now-obsolete tests first.** `check_or_deduct` will no longer call `get_balance`+`record_transaction` on the happy path (the DB function does the insert), so the existing `mock_db`-based `test_check_or_deduct_succeeds_when_balance_sufficient` (`tests/test_credits.py:68`) and `test_check_or_deduct_raises_when_balance_insufficient` (`:79`) will BREAK — `mock_db` doesn't stub `deduct_credits_atomic`, so a non-service call would hit the real client. Delete both; the three new tests below supersede them. Keep `test_check_or_deduct_skips_service_user` (`:89`) — the service branch is unchanged (though it's now partly redundant with the new bypass test).
+
+Add to `tests/test_credits.py` (the new tests monkeypatch `pipeline.credits.deduct_credits_atomic` directly — they do NOT use the `mock_db` fixture):
 
 ```python
 def test_check_or_deduct_uses_atomic_rpc_and_returns_new_balance(monkeypatch):
@@ -307,10 +311,14 @@ def test_check_or_deduct_service_bypass_skips_rpc(monkeypatch):
     assert credits.check_or_deduct(u, amount=99, run_id="r1", reason="x") == 10**9
 ```
 
-Add to `tests/test_db.py` (create if absent):
+Add to `tests/test_db.py` (**it already exists** — extend it; do NOT recreate). Prefer reusing the existing `fake_client` fixture (which monkeypatches `pipeline.db._client`) by giving `_FakeClient` an `rpc` method, rather than the standalone client below. Either is acceptable as long as it asserts the rpc name + params and returns the scalar:
 
 ```python
-from __future__ import annotations
+# Option A — extend the existing _FakeClient with an rpc() that records the call
+# and returns a _Resp(data=...), then a test that calls deduct_credits_atomic
+# through the fake_client fixture and asserts params + returned scalar.
+
+# Option B — self-contained (if you don't extend the fixture):
 import pipeline.db as db
 
 
@@ -425,7 +433,11 @@ def test_record_grant_once_inserts_then_dedups(monkeypatch):
                                 reference_id="inv_1", description="x") is False
 ```
 
-`tests/test_stripe_billing.py`: a duplicate `invoice.payment_succeeded` grants once — mock `record_grant_once` to return True then False and assert the second call yields a "already granted" outcome (no second grant).
+`tests/test_stripe_billing.py` (**exists** — extend). Two gaps verified against code, must be handled or the suite breaks:
+- Its `mock_db` fixture currently monkeypatches `pipeline.stripe_billing.record_transaction`. After the refactor both grant sites call `record_grant_once` instead, so the fixture must stub `pipeline.stripe_billing.record_grant_once` (default return `True`); the `record_transaction` stub target will no longer exist once the import is dropped (see Step 3). Update the fixture accordingly.
+- The existing grant-asserting tests read `mock_db["transactions"][-1]` (e.g. `test_handle_webhook_subscription_renewal_grants:124-126` asserts `amount==60`, `kind=="subscription_renewal"`). LEAST-INVASIVE fix: make the fixture's `record_grant_once` stub **append to the same `mock_db["transactions"]` list** (mirroring the existing `fake_record`) and return `True` — then those assertions pass unchanged and you don't rewrite them. The per-test dedup test below overrides the stub locally. (`test_handle_webhook_uses_item_period_end_for_newer_stripe` / `..._reads_parent_subscription_details` also land a grant — the same fixture change keeps them green.)
+
+New test: a duplicate `invoice.payment_succeeded` grants once — mock `record_grant_once` to return True then False and assert the second call yields a "duplicate invoice, no-op" note (no second grant).
 
 - [ ] **Step 3: Implement**
 
@@ -454,7 +466,7 @@ def record_grant_once(*, user_id: str, amount: int, kind: str,
         raise
 ```
 
-In `pipeline/stripe_billing.py`, import `record_grant_once`; in `_on_invoice_paid`, replace the grant `record_transaction(...)` with:
+In `pipeline/stripe_billing.py`, add `record_grant_once` to the `from pipeline.db import (...)` line (line 21). After swapping BOTH grant sites below, `record_transaction` is no longer used in this module — **remove it from that import** (grep to confirm no other use) so there's no dead import. In `_on_invoice_paid`, replace the grant `record_transaction(...)` with:
 
 ```python
     granted = record_grant_once(
@@ -489,19 +501,23 @@ alter table user_profiles
 
 - [ ] **Step 2: Write the failing tests**
 
-`tests/test_stripe_billing.py`:
+`tests/test_stripe_billing.py`. **There is NO `handle_webhook_event(et, data)` — the only entry is `handle_webhook(raw_body, signature)`.** Test through it exactly like the existing handler tests (`test_handle_webhook_subscription_deleted_resets_plan:130-140`): monkeypatch `stripe.Webhook.construct_event` to return a fake event dict, use the `stripe_env` + `mock_db` fixtures, and assert on `mock_db["profiles"]` (the fixture's `upsert_user_profile` stub writes there):
 ```python
-def test_invoice_payment_failed_marks_past_due(monkeypatch):
-    import pipeline.stripe_billing as sb
-    captured = {}
-    monkeypatch.setattr(sb, "upsert_user_profile",
-                        lambda uid, **f: captured.update(uid=uid, **f))
-    monkeypatch.setattr(sb.stripe.Subscription, "retrieve",
-                        lambda sid: {"metadata": {"user_id": "u1"}})
-    out = sb.handle_webhook_event("invoice.payment_failed", {"subscription": "sub_1"})
-    assert out.handled and captured.get("payment_status") == "past_due"
+def test_handle_webhook_invoice_failed_marks_past_due(stripe_env, mock_db, monkeypatch):
+    mock_db["profiles"]["u1"] = {"current_plan": "creator"}
+    fake_event = {
+        "type": "invoice.payment_failed",
+        "data": {"object": {"subscription": "sub_1"}},
+    }
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Subscription.retrieve",
+                        lambda sid: {"id": sid, "metadata": {"user_id": "u1"}})
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                        lambda **kw: fake_event)
+    outcome = handle_webhook(b"{}", "sig")
+    assert outcome.handled
+    assert mock_db["profiles"]["u1"]["payment_status"] == "past_due"
 ```
-(Use whatever internal dispatch entry the module exposes — the implementer wires `_on_invoice_failed` into the `handle_webhook` dispatch and tests through it, mirroring the existing handler tests.)
+(Confirm the `mock_db` fixture's `upsert_user_profile` stub merges `**fields` into `mock_db["profiles"][uid]` — the existing subscription-deleted test relies on that, so it does.)
 
 Add an `api` test that `/billing/plan` returns `payment_status`.
 
@@ -540,6 +556,12 @@ Now that the column exists, add `payment_status="active"` to the `upsert_user_pr
 - [ ] **Step 1: Diagnose all 7**
 
 Run each and read the error: `uv run pytest tests/test_api.py::test_approve_passes_auto_computed_max_spend tests/test_llm_groq.py::test_complete_sends_chat_payload tests/test_mp4_faststart.py tests/test_run_shorts_smoke.py -v`. Classify each as (a) stale assertion, (b) real defect, (c) local-ffmpeg-only environment failure.
+
+> **Diagnosis already done (2026-08-05, evidence captured) — start from this, re-confirm, don't re-derive:**
+> - `test_approve_passes_auto_computed_max_spend` → **(a) stale assertion.** Actual max-spend = **12.98**; asserts `24 < spend < 30`. Formula reverse-engineered and confirmed: `24 beats × 8 s × $0.05 (kling/v2-1-pro) × 1.30 buffer + 0.50 pad = 12.98`. Fix per Step 2.
+> - `test_complete_sends_chat_payload` → **(a) stale assertion.** Asserts model `"llama-3.3-70b-versatile"`; actual default `"openai/gpt-oss-120b"`. One-line update.
+> - `test_mp4_faststart` (2 tests) → **NOT a prod defect and NOT an ffmpeg-version issue — it's a too-small test fixture.** Confirmed empirically: local ffmpeg 8.1 DOES faststart correctly (a real re-mux yields atom order `['ftyp','moov','free','mdat']` — moov first). The test's `_make_test_mp4` produces a **1849-byte** clip (64×64, 1 s, solid color). `pipeline/mp4_faststart.py:51` has a safety guard `if out_size < max(50_000, in_size*0.5): return` (refuse to overwrite the original with suspiciously-tiny output — a real corruption guard). 1849 < 50000 → the guard trips → the faststart'd temp is discarded, the original (moov-at-end) is left in place → the test sees `['ftyp','free','mdat','moov']` and fails. **Fix in Step 3: enlarge the test clip past the 50 KB floor (real Veo clips are MBs, so this is the realistic case) — e.g. `testsrc2=size=640x480:rate=30:duration=3` (high-detail source doesn't compress to near-nothing the way solid `color=` does; verify the produced file is > 50 KB). Do NOT weaken the 50 KB guard and do NOT skip the test — the moov-first invariant must still be asserted.** Expected order after faststart on a >50 KB clip: moov before mdat.
+> - `test_run_shorts_smoke` (3 tests) → **environment/ordering-sensitive, NOT a hard failure.** They PASS when run in isolation (`uv run pytest tests/test_run_shorts_smoke.py`, with `.env` sourced) but were reported failing in the full-suite run. Step 3: reproduce by running the FULL suite (`uv run pytest -q`), read the actual failure (likely test-ordering shared state or a missing env/tool only in the full run), then fix the isolation cause or add a precise env-guarded skip — do not weaken assertions.
 
 - [ ] **Step 2: Fix the two stale assertions**
 

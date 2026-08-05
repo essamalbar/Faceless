@@ -6,12 +6,15 @@ from typing import Any
 
 import pytest
 
+import pipeline.db as db
 from pipeline.db import (
     Transaction,
     UserProfile,
+    deduct_credits_atomic,
     get_balance,
     get_user_profile,
     list_transactions,
+    record_grant_once,
     record_transaction,
     upsert_user_profile,
 )
@@ -52,12 +55,25 @@ class _FakeTable:
     def upsert(self, *a, **kw):  return self.q.upsert(*a, **kw)
 
 
+class _FakeRpc:
+    """Mimics the supabase-py rpc() builder; returns a scalar on execute()."""
+    def __init__(self, data: Any):
+        self._data = data
+    def execute(self):
+        return _Resp(self._data)
+
+
 class _FakeClient:
     def __init__(self):
         self.tables: dict[str, _FakeQuery] = {}
+        self.rpc_calls: list[tuple[str, dict]] = []
+        self.rpc_result: Any = None
     def table(self, name: str) -> _FakeTable:
         q = self.tables.setdefault(name, _FakeQuery())
         return _FakeTable(q)
+    def rpc(self, name: str, params: dict) -> _FakeRpc:
+        self.rpc_calls.append((name, params))
+        return _FakeRpc(self.rpc_result)
 
 
 @pytest.fixture
@@ -153,3 +169,59 @@ def test_get_user_profile_handles_none_response_object(fake_client):
 def test_get_balance_handles_none_response_object(fake_client):
     fake_client.tables["user_balance"] = _FakeQuery(data=None)
     assert get_balance("u-fresh") == 0
+
+
+def test_record_grant_once_inserts_then_dedups(monkeypatch):
+    calls = {"n": 0}
+    class _Q:
+        def execute(self):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise Exception('duplicate key value violates unique constraint '
+                                '"uq_credit_grant_ref" (code 23505)')
+            class R: data = [{}]
+            return R()
+    class _T:
+        def insert(self, payload): return _Q()
+    class _Client:
+        def table(self, name): return _T()
+    monkeypatch.setattr(db, "_client", lambda: _Client())
+    assert db.record_grant_once(user_id="u", amount=60, kind="subscription_renewal",
+                                reference_id="inv_1", description="x") is True
+    assert db.record_grant_once(user_id="u", amount=60, kind="subscription_renewal",
+                                reference_id="inv_1", description="x") is False
+
+
+def test_record_grant_once_reraises_unrelated_error(monkeypatch):
+    """The unique-violation swallow must be narrow: any other DB error
+    (network, permissions, etc.) has to propagate, not be masked as a no-op."""
+    class _Q:
+        def execute(self):
+            raise Exception("connection refused: could not reach Supabase")
+    class _T:
+        def insert(self, payload): return _Q()
+    class _Client:
+        def table(self, name): return _T()
+    monkeypatch.setattr(db, "_client", lambda: _Client())
+    with pytest.raises(Exception, match="connection refused"):
+        record_grant_once(user_id="u", amount=60, kind="subscription_renewal",
+                          reference_id="inv_1", description="x")
+
+
+def test_deduct_credits_atomic_calls_rpc_and_returns_scalar(fake_client):
+    fake_client.rpc_result = 4
+    new_balance = deduct_credits_atomic(
+        user_id="u1", amount=3, kind="run_charge",
+        reference_id="r1", description="x",
+    )
+    assert new_balance == 4
+    assert len(fake_client.rpc_calls) == 1
+    name, params = fake_client.rpc_calls[0]
+    assert name == "deduct_credits"
+    assert params == {
+        "p_user_id": "u1",
+        "p_amount": 3,
+        "p_kind": "run_charge",
+        "p_reference_id": "r1",
+        "p_description": "x",
+    }
