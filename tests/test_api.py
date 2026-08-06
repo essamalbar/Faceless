@@ -2099,6 +2099,9 @@ def test_get_plan_returns_subscription_for_existing_user(client_factory, monkeyp
         "cancel_at_period_end": False,
         "payment_status": "active",
         "balance": 234,
+        # This profile left tos_accepted_version at its default (None), so the
+        # T3 legal gate reports the terms as not-yet-current.
+        "terms_current": False,
     }
 
 
@@ -2421,6 +2424,8 @@ def test_billing_get_endpoints_bypass_db_for_service_tokens(client_factory, monk
         "cancel_at_period_end": False,
         "payment_status": "active",
         "balance": 0,
+        # Service tokens are always treated as terms-current (they bypass the gate).
+        "terms_current": True,
     }
     assert c.get("/billing/transactions").json() == []
 

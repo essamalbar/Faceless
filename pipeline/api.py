@@ -77,6 +77,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_ROOT = REPO_ROOT / "out"
 RUNPY = REPO_ROOT / "run.py"
 
+# Bump this to force every user to re-accept the ToS/Privacy policy before the
+# next paid/generation action. `_require_terms_accepted` compares a profile's
+# recorded `tos_accepted_version` against this exact string.
+CURRENT_LEGAL_VERSION = "2026-08-05"
+
 # Per-model Kie.ai pricing as of May 2026. Keep this in lockstep with the
 # config.yaml `kie.model` selection — the budget guard reads the model
 # field from script.json (or the loaded config) and looks up the rate
@@ -640,6 +645,7 @@ class PlanResponse(BaseModel):
     cancel_at_period_end: bool = False  # true if user scheduled a cancel
     payment_status: str = "active"    # 'active' | 'past_due' (dunning flag)
     balance: int
+    terms_current: bool = True        # false if the user must (re-)accept the ToS
 
 
 class TransactionRow(BaseModel):
@@ -1288,6 +1294,7 @@ def get_plan_endpoint(user: User = Depends(require_user)):
             cancel_at_period_end=False,
             payment_status="active",
             balance=0,
+            terms_current=True,
         )
     from pipeline.db import get_balance, get_user_profile
     profile = get_user_profile(user.id)
@@ -1297,7 +1304,51 @@ def get_plan_endpoint(user: User = Depends(require_user)):
         cancel_at_period_end=(profile.cancel_at_period_end if profile else False),
         payment_status=(profile.payment_status if profile else "active"),
         balance=get_balance(user.id),
+        terms_current=(
+            bool(profile)
+            and profile.tos_accepted_version == CURRENT_LEGAL_VERSION
+        ),
     )
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _require_terms_accepted(user: User) -> None:
+    """Soft-gate for paid/generation actions. Service tokens bypass. Raises 403
+    with a machine-readable code the app catches to prompt (re-)acceptance of
+    the current ToS/Privacy policy."""
+    if user.role == "service":
+        return
+    from pipeline.db import get_user_profile
+    profile = get_user_profile(user.id)
+    if profile is None or profile.tos_accepted_version != CURRENT_LEGAL_VERSION:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "terms_not_accepted",
+                    "version": CURRENT_LEGAL_VERSION},
+        )
+
+
+class AcceptTermsResponse(BaseModel):
+    ok: bool
+    version: str
+
+
+@app.post("/account/accept-terms", response_model=AcceptTermsResponse)
+def accept_terms(user: User = Depends(require_user)):
+    """Record that the caller accepted the current ToS/Privacy version.
+
+    Service tokens (CLI / cron) have no profile row and skip the write."""
+    if user.role != "service":
+        from pipeline.db import upsert_user_profile
+        upsert_user_profile(
+            user.id,
+            tos_accepted_version=CURRENT_LEGAL_VERSION,
+            tos_accepted_at=_now_iso(),
+        )
+    return AcceptTermsResponse(ok=True, version=CURRENT_LEGAL_VERSION)
 
 
 @app.get(
@@ -1589,6 +1640,7 @@ def create_run_from_script(req: CreateFromScriptRequest, user: User = Depends(re
 
     The run lands in `awaiting_approval` immediately; the same Edit / Approve
     flow applies, so you can still tweak before paying for Veo."""
+    _require_terms_accepted(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1657,6 +1709,7 @@ def create_run(req: CreateRunRequest, user: User = Depends(require_user)):
     Sunstoriz-style defaults. Kept for back-compat with old API clients;
     new clients should call POST /runs/freeform directly with their
     chosen controls."""
+    _require_terms_accepted(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1855,6 +1908,7 @@ class ApprovalAck(BaseModel):
     dependencies=[Depends(require_user)],
 )
 def approve_run(run_id: str, user: User = Depends(require_user)):
+    _require_terms_accepted(user)
     run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_approval":
@@ -2822,6 +2876,7 @@ def create_song(
 ):
     """Writer pass: generate lyrics + style + cover prompt inline.
     No spend; returns awaiting_approval immediately."""
+    _require_terms_accepted(user)
     from pipeline.song_lyrics import generate_song_script
     from pipeline.config import load_config
     from pipeline.db import get_balance
@@ -2932,6 +2987,7 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
     """Start a YouTube-import song run. Writes a draft run and spawns the
     worker for the `analyzing` pre-stage (download + analyse + write an
     original script). No spend until the user approves the result."""
+    _require_terms_accepted(user)
     from pipeline.config import load_config
     from pipeline.db import get_balance
 
@@ -2994,6 +3050,7 @@ def upload_cover_song(
     transcribe, then build a cover script that keeps the words). The melody is
     retained by Suno's upload-cover endpoint at generate time. No spend until
     the user approves. See the song-upload-cover design spec."""
+    _require_terms_accepted(user)
     from pipeline.config import load_config
     from pipeline.db import get_balance
 
@@ -3597,6 +3654,7 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
 
 @app.post("/songs/{run_id}/approve")
 def approve_song(run_id: str, user: User = Depends(require_user)):
+    _require_terms_accepted(user)
     import pipeline.credits as _credits
     from pipeline.config import load_config
 
