@@ -33,10 +33,29 @@ if command -v flutter >/dev/null 2>&1; then
     --region="${REGION}" --project="${PROJECT_ID}" \
     --format="value(status.url)" 2>/dev/null || true)
 
+  # -------------------------------------------------------------------------
+  # Service-token-leak guard (Tier-4B): the PUBLIC web bundle MUST ship an
+  # EMPTY FACELESS_API_TOKEN — real users authenticate via Supabase, and the
+  # admin service token must never be embedded in a client anyone can
+  # download. BAKED_TOKEN is the value actually compiled into the bundle
+  # (empty by design). We guard the BAKED value, not the sourced env var:
+  # `source .env` above intentionally loads FACELESS_API_TOKEN for other
+  # tooling, so guarding the env var would trip on every normal build. Refuse
+  # to proceed if a non-empty token would be baked, unless an operator
+  # explicitly opts in with ALLOW_TOKEN_IN_PROD_BUILD=1 (private build only).
+  # -------------------------------------------------------------------------
+  BAKED_TOKEN=""
+  if [ -n "${BAKED_TOKEN}" ] && [ "${ALLOW_TOKEN_IN_PROD_BUILD:-0}" != "1" ]; then
+    echo "ERROR: refusing to bake FACELESS_API_TOKEN into the PUBLIC web bundle." >&2
+    echo "       The prod build must ship an empty token (users auth via Supabase)." >&2
+    echo "       Set ALLOW_TOKEN_IN_PROD_BUILD=1 only for a private/internal build." >&2
+    exit 1
+  fi
+
   flutter build web --release \
     --base-href /app/ \
     --dart-define="FACELESS_API_URL=${PROD_API_URL}" \
-    --dart-define="FACELESS_API_TOKEN=" \
+    --dart-define="FACELESS_API_TOKEN=${BAKED_TOKEN}" \
     --dart-define="SUPABASE_URL=${SUPABASE_URL:-}" \
     --dart-define="SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}"
   echo "-> Flutter web bundle ready at build/web"

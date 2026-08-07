@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# LOCAL-DEV ONLY. This launcher BAKES the admin service token (FACELESS_API_TOKEN)
+# into the Flutter build via --dart-define for convenience on your own machine.
+# NEVER use it to produce a public/prod web bundle — that would leak the admin
+# token to anyone who downloads the client. Prod builds go through
+# scripts/build-and-push.sh, which ships an EMPTY token (users auth via Supabase).
+#
 # Zero-config launcher. Reads .env, makes sure the API + Cloudflare Tunnel are
 
 # running, captures the live tunnel URL, and starts Flutter with all secrets
