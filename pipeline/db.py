@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 from supabase import Client, create_client
@@ -168,6 +169,38 @@ def deduct_credits_atomic(*, user_id: str, amount: int, kind: str,
         "p_reference_id": reference_id, "p_description": description,
     }).execute()
     return int(resp.data)
+
+
+def record_rate_event(user_id: str, action: str) -> None:
+    """Append one rate-limit event for (user, action). Backs the DB-backed
+    daily song cap and the LLM draft/regen throttle — shared across all
+    Cloud Run instances, unlike the old per-instance JSON file."""
+    _client().table("rate_events").insert(
+        {"user_id": user_id, "action": action}
+    ).execute()
+
+
+def count_rate_events(user_id: str, action: str, within_seconds: int) -> int:
+    """Count this user's events for `action` in the last `within_seconds`.
+    Uses count="exact" (resp.count) when the client populates it, falling
+    back to len(data) otherwise — the window is tiny (soft caps), so either
+    is cheap."""
+    since = (
+        datetime.now(timezone.utc) - timedelta(seconds=within_seconds)
+    ).isoformat()
+    resp = (
+        _client()
+        .table("rate_events")
+        .select("id", count="exact")
+        .eq("user_id", user_id)
+        .eq("action", action)
+        .gte("created_at", since)
+        .execute()
+    )
+    count = getattr(resp, "count", None)
+    if count is not None:
+        return count
+    return len(resp.data or [])
 
 
 def list_transactions(user_id: str, limit: int = 50) -> list[Transaction]:

@@ -10,11 +10,13 @@ import pipeline.db as db
 from pipeline.db import (
     Transaction,
     UserProfile,
+    count_rate_events,
     deduct_credits_atomic,
     get_balance,
     get_user_profile,
     list_transactions,
     record_grant_once,
+    record_rate_event,
     record_transaction,
     upsert_user_profile,
 )
@@ -22,8 +24,9 @@ from pipeline.db import (
 
 class _FakeQuery:
     """Mimics the supabase-py builder; records the calls."""
-    def __init__(self, data: list[dict] | dict | None = None):
+    def __init__(self, data: list[dict] | dict | None = None, count: Any = None):
         self._data = data
+        self._count = count
         self.calls: list[tuple[str, tuple, dict]] = []
 
     def _record(self, name, *args, **kwargs):
@@ -32,6 +35,7 @@ class _FakeQuery:
 
     def select(self, *a, **kw): return self._record("select", *a, **kw)
     def eq(self, *a, **kw):     return self._record("eq", *a, **kw)
+    def gte(self, *a, **kw):    return self._record("gte", *a, **kw)
     def order(self, *a, **kw):  return self._record("order", *a, **kw)
     def limit(self, *a, **kw):  return self._record("limit", *a, **kw)
     def insert(self, *a, **kw): return self._record("insert", *a, **kw)
@@ -40,12 +44,13 @@ class _FakeQuery:
     def maybe_single(self, *a, **kw): return self._record("maybe_single", *a, **kw)
 
     def execute(self):
-        return _Resp(self._data)
+        return _Resp(self._data, self._count)
 
 
 @dataclass
 class _Resp:
     data: Any
+    count: Any = None
 
 
 class _FakeTable:
@@ -262,3 +267,41 @@ def test_get_grant_by_reference_ignores_non_grant_rows(fake_client):
         {"user_id": "u1", "amount": -1, "kind": "run_charge"},
     ])
     assert db.get_grant_by_reference("r1") is None
+
+
+# ── rate_events (Tier-4C abuse & cost controls) ────────────────────────────
+
+def test_record_rate_event_inserts_user_and_action(fake_client):
+    record_rate_event("u1", "song_approve")
+    q = fake_client.tables["rate_events"]
+    insert_call = next(c for c in q.calls if c[0] == "insert")
+    assert insert_call[1][0] == {"user_id": "u1", "action": "song_approve"}
+
+
+def test_count_rate_events_uses_exact_count_and_filters_by_user_action_time(fake_client):
+    # supabase-py 2.30.0 populates resp.count when count="exact" is requested.
+    fake_client.tables["rate_events"] = _FakeQuery(data=[], count=5)
+    n = count_rate_events("u1", "llm_call", 3600)
+    assert n == 5
+
+    q = fake_client.tables["rate_events"]
+    eq_pairs = [(c[1][0], c[1][1]) for c in q.calls if c[0] == "eq"]
+    assert ("user_id", "u1") in eq_pairs
+    assert ("action", "llm_call") in eq_pairs
+    gte_calls = [c for c in q.calls if c[0] == "gte"]
+    assert len(gte_calls) == 1
+    # filters created_at against an ISO cutoff string
+    assert gte_calls[0][1][0] == "created_at"
+    assert isinstance(gte_calls[0][1][1], str) and "T" in gte_calls[0][1][1]
+
+
+def test_count_rate_events_falls_back_to_len_when_count_absent(fake_client):
+    # Older/degraded supabase-py may not populate .count — fall back to len(data).
+    fake_client.tables["rate_events"] = _FakeQuery(
+        data=[{"id": 1}, {"id": 2}, {"id": 3}], count=None)
+    assert count_rate_events("u1", "song_approve", 86400) == 3
+
+
+def test_count_rate_events_zero_when_no_rows_and_no_count(fake_client):
+    fake_client.tables["rate_events"] = _FakeQuery(data=None, count=None)
+    assert count_rate_events("u1", "song_approve", 86400) == 0
