@@ -1300,3 +1300,67 @@ def test_song_credit_amount_premium_surcharge():
     std = _song_credit_amount("static", "standard", cfg)
     prem = _song_credit_amount("static", "premium", cfg)
     assert prem == std + cfg.song.premium_credit_surcharge
+
+
+# ─────────────── Tier-4C — DB-backed daily song cap ───────────────────────
+
+def test_approve_429_when_daily_song_cap_reached(app, monkeypatch):
+    """The daily song-approve cap is now DB-backed (count_rate_events).
+    When a non-service user is at/over _SONG_DAILY_LIMIT for the last 24h,
+    /approve refuses with 429 and the same 'daily song limit reached'
+    message — before any credit check or spawn."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod, credits, db
+    from pipeline.auth import User, require_user
+
+    # Create the song as the service user (default fixture auth).
+    create = client.post("/songs", json={"theme": "x"},
+                         headers={"Authorization": f"Bearer {token}"})
+    run_id = create.json()["run_id"]
+
+    # Approve as a non-service user who is already at the daily cap.
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+    monkeypatch.setattr(db, "count_rate_events",
+                        lambda uid, action, within: api_mod._SONG_DAILY_LIMIT)
+    fastapi_app.dependency_overrides[require_user] = lambda: User(
+        id="admin", email="t@example.com", role="user")
+    try:
+        r = client.post(f"/songs/{run_id}/approve",
+                        headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 429, r.text
+        assert "daily song limit reached" in r.text
+    finally:
+        fastapi_app.dependency_overrides.pop(require_user, None)
+
+
+def test_approve_records_song_approve_rate_event(app, monkeypatch):
+    """A successful non-service approve records a 'song_approve' rate event
+    (replaces the old file-based _record_song_approval), so it counts toward
+    the DB-backed daily cap across instances."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod, credits, db
+    from pipeline.auth import User, require_user
+
+    create = client.post("/songs", json={"theme": "x"},
+                         headers={"Authorization": f"Bearer {token}"})
+    run_id = create.json()["run_id"]
+
+    recorded: list[tuple] = []
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+    monkeypatch.setattr(credits, "check_or_deduct",
+                        lambda user, amount, run_id, reason: 100 - amount)
+    monkeypatch.setattr(db, "count_rate_events", lambda uid, action, within: 0)
+    monkeypatch.setattr(db, "record_rate_event",
+                        lambda uid, action: recorded.append((uid, action)))
+    api_mod.set_spawn_fn(lambda args, run_dir: 4242)
+    fastapi_app.dependency_overrides[require_user] = lambda: User(
+        id="admin", email="t@example.com", role="user")
+    try:
+        r = client.post(f"/songs/{run_id}/approve",
+                        headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, r.text
+        assert recorded == [("admin", "song_approve")]
+    finally:
+        fastapi_app.dependency_overrides.pop(require_user, None)

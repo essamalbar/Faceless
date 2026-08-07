@@ -191,3 +191,25 @@ def _auto_accept_terms(monkeypatch):
             tos_accepted_version=api_mod.CURRENT_LEGAL_VERSION,
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def _auto_disable_rate_limits(monkeypatch):
+    """Tier-4C abuse controls: the DB-backed daily song cap
+    (`_enforce_daily_song_limit`) and the LLM draft/regen throttle
+    (`_enforce_llm_rate_limit`) call `pipeline.db.count_rate_events` /
+    `record_rate_event`, which hit Supabase (`_client()`) for any
+    non-service caller. The pre-existing endpoint tests never set up a DB,
+    so default the rate primitive to transparent — count 0 (under every cap),
+    record a no-op — exactly as `_auto_accept_terms` makes the legal gate
+    transparent.
+
+    A test that needs the cap to actually fire monkeypatches
+    `pipeline.db.count_rate_events` itself; that override wins because it
+    runs after this fixture's setup. `tests/test_db.py` uses names imported
+    directly from `pipeline.db` (bound at import), so the real
+    implementations there are unaffected by this module-attr patch — same as
+    `get_user_profile` above.
+    """
+    monkeypatch.setattr("pipeline.db.count_rate_events", lambda *a, **k: 0)
+    monkeypatch.setattr("pipeline.db.record_rate_event", lambda *a, **k: None)

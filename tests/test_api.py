@@ -3429,3 +3429,98 @@ def test_unhandled_exception_returns_500_and_is_logged(monkeypatch):
             rt for rt in api_mod.app.router.routes
             if getattr(rt, "path", None) != "/__boom_test"
         ]
+
+
+# ---------------------------------------------------------------------------
+# Tier-4C — DB-backed daily song cap + LLM draft/regen throttle
+# ---------------------------------------------------------------------------
+
+def _user(role: str = "user", uid: str = "u-abuse"):
+    from pipeline.auth import User
+    return User(id=uid, email="t@example.com", role=role)
+
+
+def _boom_count(*a, **k):
+    raise AssertionError("count_rate_events must not be called for service tokens")
+
+
+# --- LLM throttle unit behavior -------------------------------------------
+
+def test_enforce_llm_rate_limit_records_under_cap(monkeypatch):
+    from pipeline import api as api_mod
+    recorded: list[tuple] = []
+    monkeypatch.setattr("pipeline.db.count_rate_events", lambda *a, **k: 0)
+    monkeypatch.setattr("pipeline.db.record_rate_event",
+                        lambda uid, action: recorded.append((uid, action)))
+    api_mod._enforce_llm_rate_limit(_user())
+    assert recorded == [("u-abuse", "llm_call")]
+
+
+def test_enforce_llm_rate_limit_429_over_cap(monkeypatch):
+    from pipeline import api as api_mod
+    from fastapi import HTTPException
+    monkeypatch.setattr("pipeline.db.count_rate_events",
+                        lambda *a, **k: api_mod._LLM_HOURLY_LIMIT)
+    monkeypatch.setattr("pipeline.db.record_rate_event",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("must not record when over cap")))
+    with pytest.raises(HTTPException) as ei:
+        api_mod._enforce_llm_rate_limit(_user())
+    assert ei.value.status_code == 429
+    assert ei.value.detail == {"code": "llm_rate_limited"}
+
+
+def test_enforce_llm_rate_limit_service_bypass(monkeypatch):
+    from pipeline import api as api_mod
+    monkeypatch.setattr("pipeline.db.count_rate_events", _boom_count)
+    monkeypatch.setattr("pipeline.db.record_rate_event",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("service must not record")))
+    # No count/record calls, no raise.
+    api_mod._enforce_llm_rate_limit(_user(role="service"))
+
+
+# --- daily song cap unit behavior -----------------------------------------
+
+def test_enforce_daily_song_limit_429_over_cap(monkeypatch):
+    from pipeline import api as api_mod
+    from fastapi import HTTPException
+    monkeypatch.setattr("pipeline.db.count_rate_events",
+                        lambda *a, **k: api_mod._SONG_DAILY_LIMIT)
+    with pytest.raises(HTTPException) as ei:
+        api_mod._enforce_daily_song_limit(_user())
+    assert ei.value.status_code == 429
+    assert "daily song limit reached" in ei.value.detail
+
+
+def test_enforce_daily_song_limit_passes_under_cap(monkeypatch):
+    from pipeline import api as api_mod
+    monkeypatch.setattr("pipeline.db.count_rate_events", lambda *a, **k: 0)
+    api_mod._enforce_daily_song_limit(_user())  # no raise
+
+
+def test_enforce_daily_song_limit_service_bypass(monkeypatch):
+    from pipeline import api as api_mod
+    monkeypatch.setattr("pipeline.db.count_rate_events", _boom_count)
+    api_mod._enforce_daily_song_limit(_user(role="service"))  # no count, no raise
+
+
+# --- LLM throttle wiring, per endpoint ------------------------------------
+
+@pytest.mark.parametrize(
+    "method,path,body",
+    [
+        ("post", "/songs", {"theme": "x", "ownership_attested": True}),
+        ("post", "/songs/bogus-run/regenerate-lyrics", None),
+        ("post", "/songs/bogus-run/regenerate-cover-prompt", None),
+    ],
+)
+def test_llm_endpoints_429_when_over_hourly_cap(client_factory, monkeypatch,
+                                                method, path, body):
+    from pipeline import api as api_mod
+    monkeypatch.setattr("pipeline.db.count_rate_events",
+                        lambda *a, **k: api_mod._LLM_HOURLY_LIMIT + 5)
+    c = client_factory(user_id="u-abuse", role="user")
+    r = getattr(c, method)(path, json=body)
+    assert r.status_code == 429, r.text
+    assert r.json()["detail"] == {"code": "llm_rate_limited"}
