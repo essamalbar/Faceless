@@ -67,6 +67,22 @@ def ensure_customer(user: User) -> str:
     return customer.id
 
 
+def _tax_session_kwargs() -> dict:
+    """Stripe Tax checkout kwargs — collect the billing address + let Stripe
+    compute tax. OFF by default: `automatic_tax.enabled=true` on a session
+    ERRORS at checkout until Tax is activated + registrations are added in the
+    Stripe Dashboard, so this ships inert. The operator flips FACELESS_STRIPE_TAX=1
+    only AFTER completing that Dashboard setup. Returns {} when disabled so the
+    Session.create call is byte-for-byte the current behavior."""
+    if os.environ.get("FACELESS_STRIPE_TAX", "0") != "1":
+        return {}
+    return {
+        "automatic_tax": {"enabled": True},
+        "billing_address_collection": "required",
+        "customer_update": {"address": "auto"},
+    }
+
+
 def create_subscription_checkout(
     user: User, plan: str, success_url: str, cancel_url: str,
 ) -> str:
@@ -85,6 +101,7 @@ def create_subscription_checkout(
         # CRITICAL: must duplicate metadata onto the subscription so the
         # invoice.payment_succeeded webhook can find the user.
         subscription_data={"metadata": {"user_id": user.id, "plan": plan}},
+        **_tax_session_kwargs(),
     )
     return session.url
 
@@ -104,6 +121,7 @@ def create_topup_checkout(
         success_url=success_url,
         cancel_url=cancel_url,
         metadata={"user_id": user.id, "pack": pack},
+        **_tax_session_kwargs(),
     )
     return session.url
 

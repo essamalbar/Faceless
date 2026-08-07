@@ -73,7 +73,7 @@ Prior notes were stale. Confirmed against code:
 - **No password-reset flow** (`lib/` has no `resetPasswordForEmail`). Add reset + confirmation screen.
 - **Anthropic out of credits → silent Gemini fallback** (lower-quality lyrics + slow ~70s writer pass; the Anthropic→Gemini hop shows no banner). Fund Anthropic; surface `writer_tier` in `/health`.
 - **No chargeback/dispute handling** (`charge.dispute.created` / `charge.refunded` unhandled) — disputed credits stay spendable.
-- **No Stripe Tax** (VAT/GST not calculated/collected). Enable Stripe Tax or accept liability explicitly.
+- ~~**No Stripe Tax**~~ **CODE DONE (env-gated, OFF by default)**: `_tax_session_kwargs()` adds `automatic_tax`/`billing_address_collection`/`customer_update` to both checkout sessions when `FACELESS_STRIPE_TAX=1`. Ships inert (default off) because `automatic_tax` errors at checkout until Tax is activated. **Operator to enable:** activate Stripe Tax + add tax registrations in the Dashboard, then set `FACELESS_STRIPE_TAX=1` — or leave off + accept liability explicitly.
 - **Stripe API version unpinned** — next Stripe reshape can silently break the webhook again.
 - **Rate/concurrency caps are file-based and racy** across Cloud Run instances (`_rate_limit.json` on GCS-Fuse). Move to the DB.
 - **LLM draft/regen endpoints unmetered/unthrottled** (`create_song`, `regenerate-lyrics`, morning-drafts) — unbounded Anthropic/Gemini spend for any user with ≥1 credit.
