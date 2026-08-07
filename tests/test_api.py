@@ -45,7 +45,102 @@ def auth(api_token: str) -> dict:
 def test_healthz_no_auth_required(client):
     r = client.get("/healthz")
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    body = r.json()
+    assert body["ok"] is True
+    # Tier-4D: writer visibility is exposed on the public health probe.
+    assert "writer_tier" in body
+    assert "writer_degraded" in body
+
+
+# ---------------------------------------------------------------------------
+# Tier-4D — writer_tier + writer_degraded in /healthz (D1)
+# ---------------------------------------------------------------------------
+
+def _clear_llm_keys(monkeypatch):
+    for k in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+
+
+def test_healthz_writer_tier_anthropic(client, monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    body = client.get("/healthz").json()
+    assert body["writer_tier"] == "anthropic"
+
+
+def test_healthz_writer_tier_gemini_when_only_gemini(client, monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test")
+    body = client.get("/healthz").json()
+    assert body["writer_tier"] == "gemini"
+
+
+def test_healthz_writer_tier_groq_when_only_groq(client, monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    monkeypatch.setenv("GROQ_API_KEY", "groq-test")
+    body = client.get("/healthz").json()
+    assert body["writer_tier"] == "groq"
+
+
+def test_healthz_writer_tier_none_when_no_keys(client, monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    body = client.get("/healthz").json()
+    assert body["writer_tier"] == "none"
+
+
+def test_healthz_writer_tier_prefers_anthropic_over_gemini(client, monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test")
+    body = client.get("/healthz").json()
+    assert body["writer_tier"] == "anthropic"
+
+
+def test_healthz_writer_degraded_false_without_marker(client, monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    body = client.get("/healthz").json()
+    assert body["writer_degraded"] is False
+
+
+def test_healthz_writer_degraded_true_with_marker(client, monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    from pipeline import api as api_mod
+    marker = api_mod._llm_fallback_marker()
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text('{"last_fallback_at": "2026-08-07T00:00:00+00:00"}',
+                      encoding="utf-8")
+    body = client.get("/healthz").json()
+    assert body["writer_degraded"] is True
+
+
+def test_health_alias_also_carries_writer_tier(client, monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    body = client.get("/health").json()
+    assert body["writer_tier"] == "anthropic"
+    assert body["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# Tier-4D — env-configurable CORS origins (D1)
+# ---------------------------------------------------------------------------
+
+def test_cors_origins_defaults_to_wildcard(monkeypatch):
+    monkeypatch.delenv("FACELESS_CORS_ORIGINS", raising=False)
+    from pipeline import api as api_mod
+    assert api_mod._cors_origins() == ["*"]
+
+
+def test_cors_origins_splits_configured_list(monkeypatch):
+    monkeypatch.setenv("FACELESS_CORS_ORIGINS", "https://a.com,https://b.com")
+    from pipeline import api as api_mod
+    assert api_mod._cors_origins() == ["https://a.com", "https://b.com"]
+
+
+def test_cors_origins_strips_whitespace_and_blanks(monkeypatch):
+    monkeypatch.setenv("FACELESS_CORS_ORIGINS", " https://a.com , , https://b.com ")
+    from pipeline import api as api_mod
+    assert api_mod._cors_origins() == ["https://a.com", "https://b.com"]
 
 
 def test_protected_endpoint_requires_authorization_header(client):
