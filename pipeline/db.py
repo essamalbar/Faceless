@@ -203,6 +203,27 @@ def count_rate_events(user_id: str, action: str, within_seconds: int) -> int:
     return len(resp.data or [])
 
 
+def anonymize_user_profile(user_id: str) -> None:
+    """Scrub PII from a user's profile on GDPR account deletion while keeping
+    the row itself. Retained `credit_transactions` (tax/chargeback) still
+    reference this `user_id`, so the row must survive — we only null the
+    personal/billing fields and mark the plan as `deleted`. `payment_status`
+    is reset to `active` so any retained dunning state is neutralized."""
+    upsert_user_profile(
+        user_id,
+        stripe_customer_id=None,
+        current_plan="deleted",
+        tos_accepted_version=None,
+        payment_status="active",
+    )
+
+
+def delete_auth_user(user_id: str) -> None:
+    """Permanently delete the Supabase auth user via the service-role admin
+    API. Irreversible. The financial ledger is intentionally NOT touched."""
+    _client().auth.admin.delete_user(user_id)
+
+
 def list_transactions(user_id: str, limit: int = 50) -> list[Transaction]:
     resp = (
         _client()

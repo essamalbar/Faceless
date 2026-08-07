@@ -1428,6 +1428,82 @@ def accept_terms(user: User = Depends(require_user)):
     return AcceptTermsResponse(ok=True, version=CURRENT_LEGAL_VERSION)
 
 
+class DeleteAccountRequest(BaseModel):
+    # Typed confirmation guard. Defaulted (not required) so an absent field is
+    # a 400 from our own check — not a pydantic 422 — matching the wrong-value
+    # path. The caller must type exactly "DELETE".
+    confirm: str = ""
+
+
+@app.get("/account/export", dependencies=[Depends(require_user)])
+def export_account(user: User = Depends(require_user)):
+    """GDPR data-portability: return everything we hold for the caller —
+    profile, the full credit-transaction ledger, and metadata for their runs.
+
+    Read-only; NOT gated behind terms/email acceptance (a user must be able to
+    exercise their data rights regardless). Service tokens have no user data to
+    export → 400."""
+    if user.role == "service":
+        raise HTTPException(400, "service tokens have no account data to export")
+    from pipeline.db import get_user_profile, list_transactions
+
+    profile = get_user_profile(user.id)
+    transactions = list_transactions(user.id, limit=10_000)
+    runs_root = _user_runs_root(user)
+    runs: list[RunSummary] = []
+    if runs_root.exists():
+        for p in sorted(runs_root.iterdir()):
+            if p.is_dir():
+                runs.append(_summarize(p))
+    return {
+        "profile": profile,
+        "transactions": transactions,
+        "runs": runs,
+    }
+
+
+@app.post("/account/delete", dependencies=[Depends(require_user)])
+def delete_account(req: DeleteAccountRequest, user: User = Depends(require_user)):
+    """GDPR erasure. IRREVERSIBLE. Requires a typed `confirm == "DELETE"`.
+
+    Steps (best-effort, each logged): purge the user's on-disk artifacts,
+    scrub profile PII (`anonymize_user_profile`), then admin-delete the
+    Supabase auth user. The financial ledger (`credit_transactions`) is
+    RETAINED for tax/chargeback and is never touched here.
+
+    Guards run BEFORE any side effect: service/admin tokens cannot self-delete
+    (403), and a mistyped/absent confirmation is refused (400)."""
+    if user.role == "service":
+        raise HTTPException(403, "service tokens cannot self-delete")
+    if req.confirm != "DELETE":
+        raise HTTPException(400, 'confirm must be exactly "DELETE"')
+
+    import shutil
+    log = get_logger()
+
+    runs_root = _user_runs_root(user)
+    try:
+        shutil.rmtree(runs_root, ignore_errors=True)
+        log.info("[account_delete] purged artifacts user=%s", user.id)
+    except Exception:  # pragma: no cover - rmtree(ignore_errors) rarely raises
+        log.exception("[account_delete] artifact purge failed user=%s", user.id)
+
+    from pipeline.db import anonymize_user_profile, delete_auth_user
+    try:
+        anonymize_user_profile(user.id)
+        log.info("[account_delete] anonymized profile user=%s", user.id)
+    except Exception:
+        log.exception("[account_delete] profile anonymize failed user=%s", user.id)
+
+    try:
+        delete_auth_user(user.id)
+        log.info("[account_delete] deleted auth user=%s", user.id)
+    except Exception:
+        log.exception("[account_delete] auth-user delete failed user=%s", user.id)
+
+    return {"ok": True}
+
+
 @app.get(
     "/billing/transactions",
     response_model=list[TransactionRow],
