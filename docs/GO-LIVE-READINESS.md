@@ -57,6 +57,15 @@ Prior notes were stale. Confirmed against code:
 | 12 | **No DMCA/takedown process or abuse contact.** | Publish a takedown/abuse process + contact. | Legal |
 | 13 | **No GDPR deletion/export path** (EU users; ledger append-only, no `/account/delete`). | Add `/account/delete` (Supabase admin API) + data export; cookie consent for EU. | Code + Legal |
 
+> **Tier-3 status (2026-08-07):** the two hard-blocker CODE mechanisms (#10 acceptance gate, #11 ownership attestation) are done on branch `feat/tier3-legal` (spec `docs/superpowers/specs/2026-08-05-tier3-legal-blockers-design.md`): versioned ToS acceptance (`user_profiles.tos_accepted_version`, `POST /account/accept-terms`, `_require_terms_accepted` 403-soft-gate on the 7 paid/generation endpoints, `terms_current` on `/billing/plan`, Flutter signup checkbox + placeholder `legal_screen.dart` + in-app "I Accept" flow), and ownership attestation (`ownership_attested` required on `POST /songs`, `/songs/import`, `/songs/upload-cover` → 400 `ownership_not_attested`, recorded in run state; Flutter checkbox). Clean-env suite 852/0; `dart analyze` clean.
+>
+> **Operator actions to activate (Tier-3):**
+> 1. Apply migration `supabase/migrations/20260805000001_tos_acceptance.sql` to live Supabase **BEFORE** the code deploys (`get_user_profile` now SELECTs `tos_accepted_version`/`_at`; the SELECT 400s if the columns are absent — same ordering as the dunning/payment_status column).
+> 2. **Replace the placeholder legal copy** in `lib/screens/legal_screen.dart` with lawyer-reviewed ToS / Privacy / refund text before launch (it is clearly marked non-binding placeholder). The mechanism is legally inert until you do.
+> 3. Bump `CURRENT_LEGAL_VERSION` in `pipeline/api.py` whenever the terms change — it forces every user to re-accept via the same gate/flow.
+>
+> **Still deferred (decided, fast-follow — items #11 moderation, #12, #13):** content moderation = a **deny-list keyword filter** on themes/lyrics; DMCA/abuse contact + takedown process (legal content); GDPR `/account/delete` + export = **anonymize + keep financials** (delete auth user + purge artifacts + strip PII, retain anonymized `credit_transactions` for tax/chargeback).
+
 ## TIER 4 — IMPORTANT (right after launch / before scaling or marketing)
 
 - **Email confirmation not enforced server-side** — trusts a Supabase dashboard toggle, no code backstop (`auth.py:45-111`). Add a claim check; soft-gate spend if unconfirmed.

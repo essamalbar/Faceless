@@ -225,3 +225,21 @@ def test_deduct_credits_atomic_calls_rpc_and_returns_scalar(fake_client):
         "p_reference_id": "r1",
         "p_description": "x",
     }
+
+
+def test_get_user_profile_reads_tos_fields(fake_client):
+    fake_client.tables["user_profiles"] = _FakeQuery(data={
+        "id": "u1", "stripe_customer_id": None, "current_plan": "free",
+        "current_period_end": None, "cancel_at_period_end": False,
+        "payment_status": "active",
+        "tos_accepted_version": "2026-08-05", "tos_accepted_at": "2026-08-05T00:00:00Z",
+    })
+    p = get_user_profile("u1")
+    assert p.tos_accepted_version == "2026-08-05"
+    assert p.tos_accepted_at == "2026-08-05T00:00:00Z"
+
+
+def test_get_user_profile_defaults_tos_fields_to_none(fake_client):
+    fake_client.tables["user_profiles"] = _FakeQuery(data={"id": "u1", "current_plan": "free"})
+    p = get_user_profile("u1")
+    assert p.tos_accepted_version is None and p.tos_accepted_at is None

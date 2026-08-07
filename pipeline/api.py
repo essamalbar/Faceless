@@ -77,6 +77,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_ROOT = REPO_ROOT / "out"
 RUNPY = REPO_ROOT / "run.py"
 
+# Bump this to force every user to re-accept the ToS/Privacy policy before the
+# next paid/generation action. `_require_terms_accepted` compares a profile's
+# recorded `tos_accepted_version` against this exact string.
+CURRENT_LEGAL_VERSION = "2026-08-05"
+
 # Per-model Kie.ai pricing as of May 2026. Keep this in lockstep with the
 # config.yaml `kie.model` selection — the budget guard reads the model
 # field from script.json (or the loaded config) and looks up the rate
@@ -413,6 +418,10 @@ class CreateSongRequest(BaseModel):
     # A&R quality pipeline (2026-08-03 spec). "standard" = today's single-job
     # path. "premium" = best-of-N + Gemini A&R judge + master, surcharged.
     quality_tier: str = "standard"   # "standard" | "premium" (best-of-N + A&R)
+    # Tier-3 legal: the caller must attest they own / have the rights to the
+    # source material before we generate. Defaults False so an omitting client
+    # is rejected 400 (ownership_not_attested) rather than silently allowed.
+    ownership_attested: bool = False
 
     @field_validator("dialect")
     @classmethod
@@ -453,6 +462,8 @@ class CreateSongImportRequest(BaseModel):
     video_mode: str = "static"
     vocal_gender: str | None = "m"
     suno_model: str | None = None
+    # Tier-3 legal: attest ownership / rights to the imported source material.
+    ownership_attested: bool = False
 
     @field_validator("youtube_url")
     @classmethod
@@ -640,6 +651,7 @@ class PlanResponse(BaseModel):
     cancel_at_period_end: bool = False  # true if user scheduled a cancel
     payment_status: str = "active"    # 'active' | 'past_due' (dunning flag)
     balance: int
+    terms_current: bool = True        # false if the user must (re-)accept the ToS
 
 
 class TransactionRow(BaseModel):
@@ -1288,6 +1300,7 @@ def get_plan_endpoint(user: User = Depends(require_user)):
             cancel_at_period_end=False,
             payment_status="active",
             balance=0,
+            terms_current=True,
         )
     from pipeline.db import get_balance, get_user_profile
     profile = get_user_profile(user.id)
@@ -1297,7 +1310,51 @@ def get_plan_endpoint(user: User = Depends(require_user)):
         cancel_at_period_end=(profile.cancel_at_period_end if profile else False),
         payment_status=(profile.payment_status if profile else "active"),
         balance=get_balance(user.id),
+        terms_current=(
+            bool(profile)
+            and profile.tos_accepted_version == CURRENT_LEGAL_VERSION
+        ),
     )
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _require_terms_accepted(user: User) -> None:
+    """Soft-gate for paid/generation actions. Service tokens bypass. Raises 403
+    with a machine-readable code the app catches to prompt (re-)acceptance of
+    the current ToS/Privacy policy."""
+    if user.role == "service":
+        return
+    from pipeline.db import get_user_profile
+    profile = get_user_profile(user.id)
+    if profile is None or profile.tos_accepted_version != CURRENT_LEGAL_VERSION:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "terms_not_accepted",
+                    "version": CURRENT_LEGAL_VERSION},
+        )
+
+
+class AcceptTermsResponse(BaseModel):
+    ok: bool
+    version: str
+
+
+@app.post("/account/accept-terms", response_model=AcceptTermsResponse)
+def accept_terms(user: User = Depends(require_user)):
+    """Record that the caller accepted the current ToS/Privacy version.
+
+    Service tokens (CLI / cron) have no profile row and skip the write."""
+    if user.role != "service":
+        from pipeline.db import upsert_user_profile
+        upsert_user_profile(
+            user.id,
+            tos_accepted_version=CURRENT_LEGAL_VERSION,
+            tos_accepted_at=_now_iso(),
+        )
+    return AcceptTermsResponse(ok=True, version=CURRENT_LEGAL_VERSION)
 
 
 @app.get(
@@ -1589,6 +1646,7 @@ def create_run_from_script(req: CreateFromScriptRequest, user: User = Depends(re
 
     The run lands in `awaiting_approval` immediately; the same Edit / Approve
     flow applies, so you can still tweak before paying for Veo."""
+    _require_terms_accepted(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1657,6 +1715,7 @@ def create_run(req: CreateRunRequest, user: User = Depends(require_user)):
     Sunstoriz-style defaults. Kept for back-compat with old API clients;
     new clients should call POST /runs/freeform directly with their
     chosen controls."""
+    _require_terms_accepted(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1731,6 +1790,7 @@ def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(requ
     stages (Flux + Veo). Script regeneration / rerolls still flow through
     the worker.
     """
+    _require_terms_accepted(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1855,6 +1915,7 @@ class ApprovalAck(BaseModel):
     dependencies=[Depends(require_user)],
 )
 def approve_run(run_id: str, user: User = Depends(require_user)):
+    _require_terms_accepted(user)
     run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_approval":
@@ -1898,6 +1959,7 @@ def approve_veo_run(run_id: str, user: User = Depends(require_user)):
     and wants Veo to start spending. Only valid from awaiting_veo_approval.
     Spawns run.py --resume with NO pause flags so the pipeline runs Veo +
     captions + assemble end-to-end."""
+    _require_terms_accepted(user)
     run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_veo_approval":
@@ -2822,6 +2884,9 @@ def create_song(
 ):
     """Writer pass: generate lyrics + style + cover prompt inline.
     No spend; returns awaiting_approval immediately."""
+    _require_terms_accepted(user)
+    if user.role != "service" and not req.ownership_attested:
+        raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.song_lyrics import generate_song_script
     from pipeline.config import load_config
     from pipeline.db import get_balance
@@ -2871,6 +2936,13 @@ def create_song(
         video_mode=req.video_mode,
         artist_id=req.artist_id,
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Tier-3 legal audit: persist the ownership attestation from the first
+        # create-time write (survives a failed lyrics pass). Service callers
+        # bypass the gate, so record the actual flag value rather than assume.
+        ownership_attested=req.ownership_attested,
+        ownership_attested_version=(
+            CURRENT_LEGAL_VERSION if req.ownership_attested else None),
+        ownership_attested_at=(_now_iso() if req.ownership_attested else None),
     )
 
     try:
@@ -2932,6 +3004,9 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
     """Start a YouTube-import song run. Writes a draft run and spawns the
     worker for the `analyzing` pre-stage (download + analyse + write an
     original script). No spend until the user approves the result."""
+    _require_terms_accepted(user)
+    if user.role != "service" and not req.ownership_attested:
+        raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.config import load_config
     from pipeline.db import get_balance
 
@@ -2964,6 +3039,11 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
         vocal_gender=req.vocal_gender,
         suno_model=(req.suno_model if req.suno_model in _ALLOWED_SUNO_MODELS else None),
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Tier-3 legal audit: persist the ownership attestation at create time.
+        ownership_attested=req.ownership_attested,
+        ownership_attested_version=(
+            CURRENT_LEGAL_VERSION if req.ownership_attested else None),
+        ownership_attested_at=(_now_iso() if req.ownership_attested else None),
     )
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
@@ -2987,6 +3067,8 @@ def upload_cover_song(
     suno_model: str | None = Form(None),
     artist_id: str | None = Form(None),
     audio_weight: float | None = Form(None),
+    # Tier-3 legal: attest ownership / rights to the uploaded source audio.
+    ownership_attested: bool = Form(False),
     user: User = Depends(require_user),
 ):
     """Start a faithful-cover run from an UPLOADED audio file. Writes a draft
@@ -2994,6 +3076,9 @@ def upload_cover_song(
     transcribe, then build a cover script that keeps the words). The melody is
     retained by Suno's upload-cover endpoint at generate time. No spend until
     the user approves. See the song-upload-cover design spec."""
+    _require_terms_accepted(user)
+    if user.role != "service" and not ownership_attested:
+        raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.config import load_config
     from pipeline.db import get_balance
 
@@ -3071,6 +3156,11 @@ def upload_cover_song(
         vocal_gender=vocal_gender,
         suno_model=(suno_model if suno_model in _ALLOWED_SUNO_MODELS else None),
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Tier-3 legal audit: persist the ownership attestation at create time.
+        ownership_attested=ownership_attested,
+        ownership_attested_version=(
+            CURRENT_LEGAL_VERSION if ownership_attested else None),
+        ownership_attested_at=(_now_iso() if ownership_attested else None),
     )
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
@@ -3597,6 +3687,7 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
 
 @app.post("/songs/{run_id}/approve")
 def approve_song(run_id: str, user: User = Depends(require_user)):
+    _require_terms_accepted(user)
     import pipeline.credits as _credits
     from pipeline.config import load_config
 
@@ -4103,6 +4194,7 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
     Use when both Suno takes came back bad. Cheaper than canceling +
     starting over because the lyrics + cover are reused.
     """
+    _require_terms_accepted(user)
     import pipeline.credits as _credits
     from pipeline.config import load_config
 

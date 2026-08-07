@@ -2099,6 +2099,9 @@ def test_get_plan_returns_subscription_for_existing_user(client_factory, monkeyp
         "cancel_at_period_end": False,
         "payment_status": "active",
         "balance": 234,
+        # This profile left tos_accepted_version at its default (None), so the
+        # T3 legal gate reports the terms as not-yet-current.
+        "terms_current": False,
     }
 
 
@@ -2421,6 +2424,8 @@ def test_billing_get_endpoints_bypass_db_for_service_tokens(client_factory, monk
         "cancel_at_period_end": False,
         "payment_status": "active",
         "balance": 0,
+        # Service tokens are always treated as terms-current (they bypass the gate).
+        "terms_current": True,
     }
     assert c.get("/billing/transactions").json() == []
 
@@ -2510,6 +2515,7 @@ def test_import_song_user_with_credits_starts_run(client_factory, monkeypatch, t
     r = c.post("/songs/import", json={
         "youtube_url": "https://www.youtube.com/watch?v=abc123",
         "instruction": "Gulf dialect",
+        "ownership_attested": True,
     })
     assert r.status_code == 201, f"expected 201, got {r.status_code} {r.text}"
     body = r.json()
@@ -2525,6 +2531,7 @@ def test_import_song_user_without_credits_402(client_factory, monkeypatch, tmp_p
     r = c.post("/songs/import", json={
         "youtube_url": "https://www.youtube.com/watch?v=abc123",
         "video_mode": "cinematic",
+        "ownership_attested": True,
     })
     assert r.status_code == 402, f"expected 402, got {r.status_code} {r.text}"
     detail = r.json()["detail"]
@@ -2550,7 +2557,8 @@ def test_upload_cover_creates_analyzing_run(client_factory, monkeypatch, tmp_pat
         "/songs/upload-cover",
         files={"file": ("my song.mp3", b"\x00\x01\x02\x03", "audio/mpeg")},
         data={"language": "ar", "video_mode": "cinematic",
-              "vocal_gender": "f", "instruction": "make it warmer"},
+              "vocal_gender": "f", "instruction": "make it warmer",
+              "ownership_attested": "true"},
     )
     assert r.status_code == 201, r.text
     body = r.json()
@@ -2572,7 +2580,7 @@ def test_upload_cover_rejects_non_audio(client_factory, monkeypatch, tmp_path):
     r = c.post(
         "/songs/upload-cover",
         files={"file": ("notes.txt", b"hello", "text/plain")},
-        data={"language": "ar"},
+        data={"language": "ar", "ownership_attested": "true"},
     )
     assert r.status_code == 422
 
@@ -2584,7 +2592,8 @@ def test_upload_cover_paywalls_insufficient_credits(client_factory, monkeypatch,
     r = c.post(
         "/songs/upload-cover",
         files={"file": ("s.mp3", b"\x00\x00", "audio/mpeg")},
-        data={"language": "ar", "video_mode": "static"},
+        data={"language": "ar", "video_mode": "static",
+              "ownership_attested": "true"},
     )
     assert r.status_code == 402
 
@@ -2677,7 +2686,8 @@ def test_create_song_with_artist_inherits_voice_and_style(
     monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_gen)
     monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
 
-    r = c.post("/songs", json={"theme": "الليل", "artist_id": a["id"]})
+    r = c.post("/songs", json={"theme": "الليل", "artist_id": a["id"],
+                               "ownership_attested": True})
     assert r.status_code == 201, r.text
     run_id = r.json()["run_id"]
     state = json.loads((tmp_path / "alice" / run_id / "api_state.json").read_text())
@@ -2688,7 +2698,8 @@ def test_create_song_with_artist_inherits_voice_and_style(
 
     # explicit style wins over the artist default
     r2 = c.post("/songs", json={"theme": "x", "artist_id": a["id"],
-                                "style_hint": "my own style"})
+                                "style_hint": "my own style",
+                                "ownership_attested": True})
     assert r2.status_code == 201
     assert captured["style_hint"] == "my own style"
 
@@ -2703,7 +2714,8 @@ def test_create_song_unknown_artist_404(client_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
     monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
     c = client_factory(user_id="alice")
-    r = c.post("/songs", json={"theme": "x", "artist_id": "art_nope1234"})
+    r = c.post("/songs", json={"theme": "x", "artist_id": "art_nope1234",
+                               "ownership_attested": True})
     assert r.status_code == 404
 
 
@@ -2722,7 +2734,8 @@ def test_delete_artist_detaches_songs(client_factory, monkeypatch, tmp_path):
         return S()
     monkeypatch.setattr("pipeline.song_lyrics.generate_song_script", fake_gen)
     monkeypatch.setattr(api_mod, "_build_song_llm", lambda: object())
-    run_id = c.post("/songs", json={"theme": "x", "artist_id": a["id"]}).json()["run_id"]
+    run_id = c.post("/songs", json={"theme": "x", "artist_id": a["id"],
+                                    "ownership_attested": True}).json()["run_id"]
 
     assert c.delete(f"/artists/{a['id']}").status_code == 204
     state = json.loads((tmp_path / "alice" / run_id / "api_state.json").read_text())
@@ -3040,12 +3053,14 @@ def test_upload_cover_audio_weight_validated_and_persisted(client_factory, monke
     # invalid
     r = c.post("/songs/upload-cover",
                files={"file": ("s.mp3", b"\x00", "audio/mpeg")},
-               data={"language": "ar", "audio_weight": "1.5"})
+               data={"language": "ar", "audio_weight": "1.5",
+                     "ownership_attested": "true"})
     assert r.status_code == 422
     # valid → state
     r = c.post("/songs/upload-cover",
                files={"file": ("s.mp3", b"\x00", "audio/mpeg")},
-               data={"language": "ar", "audio_weight": "0.8"})
+               data={"language": "ar", "audio_weight": "0.8",
+                     "ownership_attested": "true"})
     assert r.status_code == 201, r.text
     state = json.loads((tmp_path / "alice" / r.json()["run_id"] /
                         "api_state.json").read_text())
@@ -3316,14 +3331,16 @@ def test_create_song_accepts_dialect_and_artist_default(
 
     c = client_factory(user_id="alice")
     # explicit dialect
-    r = c.post("/songs", json={"theme": "x", "dialect": "khaleeji"})
+    r = c.post("/songs", json={"theme": "x", "dialect": "khaleeji",
+                               "ownership_attested": True})
     assert r.status_code == 201 and seen["dialect"] == "khaleeji"
     # invalid dialect → 422
     assert c.post("/songs", json={"theme": "x", "dialect": "zz"}).status_code == 422
     # artist default fills when request omits it
     a = _mk_artist(c, name="Layl", handle="layl-dq")
     c.patch(f"/artists/{a['id']}", json={"default_dialect": "egyptian"})
-    c.post("/songs", json={"theme": "x", "artist_id": a["id"]})
+    c.post("/songs", json={"theme": "x", "artist_id": a["id"],
+                           "ownership_attested": True})
     assert seen["dialect"] == "egyptian"
 
 

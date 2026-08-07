@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/brand.dart';
+import 'legal_screen.dart';
 import 'song_approve_screen.dart';
 
 class NewSongScreen extends StatefulWidget {
@@ -116,6 +117,9 @@ class _NewSongScreenState extends State<NewSongScreen> {
   List<Artist> _artists = [];
   bool _artistsLoading = true;
   bool _submitting = false;
+  // Tier-3 legal gate: user must attest they own/have rights to the material
+  // before Create/Upload is enabled.
+  bool _ownershipAttested = false;
   String? _error;
 
   @override
@@ -229,6 +233,12 @@ class _NewSongScreenState extends State<NewSongScreen> {
   }
 
   Future<void> _submit() async {
+    // Legal gate — enforce here, not only via the disabled button.
+    if (!_ownershipAttested) {
+      setState(() => _error =
+          'Please confirm you own or have the rights to this material.');
+      return;
+    }
     if (_createMode == 'upload') {
       if (_pickedBytes == null) {
         setState(() => _error = context.l10n.newSongChooseAudioError);
@@ -256,6 +266,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
           videoMode: _videoMode,
           vocalGender: _vocalGender,
           artistId: _artist?.id,
+          ownershipAttested: _ownershipAttested,
         );
       } else {
         runId = await widget.client.createSong(
@@ -271,6 +282,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
           artistId: _artist?.id,
           dialect: _language == 'ar' ? _dialect : null,
           qualityTier: _qualityTier,
+          ownershipAttested: _ownershipAttested,
         );
       }
       if (!mounted) return;
@@ -278,6 +290,28 @@ class _NewSongScreenState extends State<NewSongScreen> {
         builder: (_) =>
             SongApproveScreen(client: widget.client, runId: runId),
       ));
+    } on TermsNotAcceptedException {
+      // Soft gate: route the user to the accept-capable Terms screen instead
+      // of dead-ending on the exception text. Re-enable the button first so
+      // it's usable when they return.
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      final accepted = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) =>
+              LegalScreen(client: widget.client, mustAccept: true),
+        ),
+      );
+      if (!mounted) return;
+      if (accepted == true) {
+        // Don't silently auto-resubmit — nudge the user to tap Generate again.
+        setState(() => _error = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Terms accepted — tap Generate again.'),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -666,6 +700,39 @@ class _NewSongScreenState extends State<NewSongScreen> {
                       color: Theme.of(context).colorScheme.error),
                 ),
               ),
+            // Ownership attestation — required before Create/Upload. Gates
+            // the generate button below and is enforced again in _submit().
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: FacelessTheme.surface2,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: FacelessTheme.border),
+              ),
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: _ownershipAttested,
+                    onChanged: _submitting
+                        ? null
+                        : (v) => setState(
+                            () => _ownershipAttested = v ?? false),
+                  ),
+                  const Expanded(
+                    child: Text(
+                      'I own or have the rights to this material.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: FacelessTheme.textPrimary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             GradientButton(
               label: _submitting
                   ? l10n.newSongGenerating
@@ -673,7 +740,9 @@ class _NewSongScreenState extends State<NewSongScreen> {
               icon: Icons.auto_awesome,
               loading: _submitting,
               expand: true,
-              onPressed: _submitting ? null : _submit,
+              onPressed: (_submitting || !_ownershipAttested)
+                  ? null
+                  : _submit,
             ),
             const SizedBox(height: 8),
             Text(

@@ -29,6 +29,20 @@ class InsufficientCreditsException extends FacelessApiException {
       : super('Insufficient credits: have $balance, need $required', status: 402);
 }
 
+/// Thrown when a paid/generation endpoint is soft-gated behind Terms
+/// acceptance — the server returns 403 with detail
+/// `{"code": "terms_not_accepted", "version": "..."}`. The message is
+/// user-facing (both screens surface `'$e'` directly).
+class TermsNotAcceptedException extends FacelessApiException {
+  final String version;
+  TermsNotAcceptedException({required this.version})
+      : super(
+          'Please accept the updated Terms of Service '
+          '(Settings → Terms & Privacy) to continue.',
+          status: 403,
+        );
+}
+
 class FacelessApiClient {
   final FacelessSettings _settings;
   final http.Client _http;
@@ -112,6 +126,27 @@ class FacelessApiClient {
     }
   }
 
+  /// Tier-3 legal gate: when a request is refused with 403 +
+  /// `detail.code == "terms_not_accepted"`, throw the typed exception so
+  /// callers can route the user to the Terms screen. No-op for any other
+  /// status/shape (the generic error path then handles it).
+  void _maybeThrowTermsNotAccepted(http.Response r) {
+    if (r.statusCode != 403) return;
+    try {
+      final body = jsonDecode(r.body);
+      final detail = body is Map ? body['detail'] : null;
+      if (detail is Map && detail['code'] == 'terms_not_accepted') {
+        throw TermsNotAcceptedException(
+          version: (detail['version'] as String?) ?? '',
+        );
+      }
+    } on TermsNotAcceptedException {
+      rethrow;
+    } catch (_) {
+      // Not the structured terms error — fall through to the generic path.
+    }
+  }
+
   /// Status guard for endpoints that return raw bodies (logs, video, etc).
   /// Use instead of an open-coded `if (r.statusCode >= 400) throw` so the
   /// 401 sign-out side-effect fires consistently.
@@ -121,6 +156,7 @@ class FacelessApiClient {
       throw FacelessApiException('Session expired — please sign in again',
           status: 401);
     }
+    _maybeThrowTermsNotAccepted(r);
     if (r.statusCode >= 400) {
       throw FacelessApiException(r.body, status: r.statusCode);
     }
@@ -150,6 +186,9 @@ class FacelessApiClient {
         // jsonDecode failed or shape wasn't what we expected — fall through to generic.
       }
     }
+
+    // 403 legal gate — surface as a typed exception before the generic path.
+    _maybeThrowTermsNotAccepted(r);
 
     if (r.statusCode >= 400) {
       String detail;
@@ -517,6 +556,16 @@ class FacelessApiClient {
     return _parse(r, (j) => (j as Map)['url'] as String);
   }
 
+  // ---------- account / legal ----------
+
+  /// Record the current user's acceptance of the current Terms of Service
+  /// version. Idempotent server-side; safe to call best-effort at signup.
+  Future<void> acceptTerms() async {
+    final r = await _http.post(await _uri('/account/accept-terms'),
+        headers: await _headers());
+    _checkOk(r);
+  }
+
   // ---------- youtube ----------
 
   /// Google OAuth consent URL — the app opens it via url_launcher and the
@@ -591,6 +640,7 @@ class FacelessApiClient {
     String? artistId,
     String? dialect,
     String qualityTier = 'standard',
+    bool ownershipAttested = false,
   }) async {
     final body = <String, dynamic>{
       'theme': theme,
@@ -604,6 +654,7 @@ class FacelessApiClient {
       'video_mode': videoMode,
       if (artistId != null) 'artist_id': artistId,
       'quality_tier': qualityTier,
+      'ownership_attested': ownershipAttested,
     };
     final r = await _http.post(
       await _uri('/songs'),
@@ -625,12 +676,14 @@ class FacelessApiClient {
     String vocalGender = 'm',
     String? artistId,
     double? audioWeight,
+    bool ownershipAttested = false,
   }) async {
     final req = http.MultipartRequest('POST', await _uri('/songs/upload-cover'));
     req.headers.addAll(await _headers()); // Authorization + Accept (no Content-Type)
     req.fields['language'] = language;
     req.fields['video_mode'] = videoMode;
     req.fields['vocal_gender'] = vocalGender;
+    req.fields['ownership_attested'] = ownershipAttested.toString();
     if (instruction != null && instruction.isNotEmpty) {
       req.fields['instruction'] = instruction;
     }

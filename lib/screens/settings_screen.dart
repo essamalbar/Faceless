@@ -9,6 +9,7 @@ import '../config.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
 import 'billing_screen.dart';
+import 'legal_screen.dart';
 
 /// Localized display name for a plan id. Unknown ids render title-cased.
 String _planDisplayName(AppLocalizations l10n, String plan) => switch (plan) {
@@ -379,6 +380,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 24),
                     _SectionLabel(text: l10n.settingsSectionAbout),
                     const SizedBox(height: 8),
+                    _SettingTile(
+                      icon: Icons.gavel_outlined,
+                      title: 'Terms & Privacy',
+                      subtitle:
+                          'Terms of Service, Privacy Policy & refunds',
+                      // Accept-capable so an existing/gated user can accept
+                      // the current Terms here at any time (idempotent). We
+                      // own this client, so close it when the screen pops.
+                      onTap: () async {
+                        final client = FacelessApiClient(FacelessSettings());
+                        try {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => LegalScreen(
+                                  client: client, mustAccept: true),
+                            ),
+                          );
+                        } finally {
+                          client.close();
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     const _AboutCard(),
                     const SizedBox(height: 32),
                     _DangerButton(

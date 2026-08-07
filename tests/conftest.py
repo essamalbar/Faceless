@@ -157,3 +157,35 @@ def _auto_mock_inline_script_gen(monkeypatch):
         )
 
     monkeypatch.setattr("pipeline.api._generate_script_inline", fake_inline)
+
+
+@pytest.fixture(autouse=True)
+def _auto_accept_terms(monkeypatch):
+    """T3 legal gate: the paid/generation endpoints call
+    `pipeline.db.get_user_profile` (via `pipeline.api._require_terms_accepted`)
+    and 403 unless the caller has accepted the current legal version. The
+    pre-existing endpoint tests predate the gate and never set up a profile,
+    so default every user to an ACCEPTED profile — the gate is then transparent
+    to them.
+
+    A test that needs an UNACCEPTED (or otherwise specific) profile
+    monkeypatches `pipeline.db.get_user_profile` itself; that override wins
+    because it runs after this fixture's setup. Service-token callers bypass
+    the gate entirely and never reach this function.
+
+    Why autouse (same rationale as `_auto_mock_inline_script_gen` above): a new
+    cross-cutting requirement that every endpoint test now depends on is far
+    cleaner as one default than as an edit to 12+ individual tests. Non-API
+    tests never call get_user_profile, so this is a no-op for them.
+    """
+    from pipeline import api as api_mod
+    from pipeline.db import UserProfile
+
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: UserProfile(
+            id=uid, stripe_customer_id=None, current_plan="free",
+            current_period_end=None,
+            tos_accepted_version=api_mod.CURRENT_LEGAL_VERSION,
+        ),
+    )

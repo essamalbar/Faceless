@@ -22,6 +22,8 @@ class UserProfile:
     current_period_end: str | None  # ISO timestamp as Supabase returns it
     cancel_at_period_end: bool = False
     payment_status: str = "active"  # 'active' | 'past_due' (dunning flag)
+    tos_accepted_version: str | None = None
+    tos_accepted_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,8 @@ def get_user_profile(user_id: str) -> UserProfile | None:
         .table("user_profiles")
         .select(
             "id,stripe_customer_id,current_plan,"
-            "current_period_end,cancel_at_period_end,payment_status",
+            "current_period_end,cancel_at_period_end,payment_status,"
+            "tos_accepted_version,tos_accepted_at",
         )
         .eq("id", user_id)
         .maybe_single()
@@ -72,6 +75,8 @@ def get_user_profile(user_id: str) -> UserProfile | None:
         current_period_end=d.get("current_period_end"),
         cancel_at_period_end=bool(d.get("cancel_at_period_end", False)),
         payment_status=d.get("payment_status", "active"),
+        tos_accepted_version=d.get("tos_accepted_version"),
+        tos_accepted_at=d.get("tos_accepted_at"),
     )
 
 
