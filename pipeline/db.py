@@ -141,6 +141,23 @@ def record_grant_once(*, user_id: str, amount: int, kind: str,
         raise
 
 
+def get_grant_by_reference(reference_id: str) -> tuple[str, int] | None:
+    """(user_id, total granted credits) for the grant(s) recorded under this
+    reference_id (subscription_renewal / topup), or None. Sizes a clawback."""
+    resp = (
+        _client()
+        .table("credit_transactions")
+        .select("user_id,amount,kind")
+        .eq("reference_id", reference_id)
+        .execute()
+    )
+    rows = [r for r in (resp.data or [])
+            if r.get("kind") in ("subscription_renewal", "topup")]
+    if not rows:
+        return None
+    return rows[0]["user_id"], sum(int(r["amount"]) for r in rows)
+
+
 def deduct_credits_atomic(*, user_id: str, amount: int, kind: str,
                           reference_id: str, description: str) -> int:
     """Atomic check-and-deduct via the deduct_credits Postgres function

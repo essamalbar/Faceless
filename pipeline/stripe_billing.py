@@ -16,6 +16,8 @@ from dataclasses import dataclass
 
 import stripe
 
+stripe.api_version = "2026-04-22.dahlia"  # pin: freeze the payload shape the webhook parses
+
 from pipeline.auth import User
 from pipeline.credits import PLAN_GRANTS, TOPUP_PACKS
 from pipeline.db import get_user_profile, record_grant_once, upsert_user_profile
@@ -154,6 +156,10 @@ def handle_webhook(raw_body: bytes, signature: str) -> WebhookOutcome:
         return _on_subscription_updated(data)
     if et == "customer.subscription.deleted":
         return _on_subscription_deleted(data)
+    if et == "charge.dispute.created":
+        return _on_charge_disputed(data)
+    if et == "charge.refunded":
+        return _on_charge_refunded(data)
     return WebhookOutcome(event_type=et, handled=False, note="ignored")
 
 
@@ -310,6 +316,44 @@ def _on_subscription_deleted(subscription) -> WebhookOutcome:
         payment_status="active",
     )
     return WebhookOutcome("customer.subscription.deleted", True, "plan reset to free")
+
+
+def _on_charge_disputed(dispute) -> WebhookOutcome:
+    charge_id = dispute.get("charge")
+    if not charge_id:
+        return WebhookOutcome("charge.dispute.created", False, "no charge id")
+    return _clawback_for_charge(charge_id, "chargeback (dispute) clawback")
+
+
+def _on_charge_refunded(charge) -> WebhookOutcome:
+    charge_id = charge.get("id")
+    if not charge_id:
+        return WebhookOutcome("charge.refunded", False, "no charge id")
+    return _clawback_for_charge(charge_id, "refund clawback")
+
+
+def _clawback_for_charge(charge_id: str, reason: str) -> WebhookOutcome:
+    """Resolve the charge to the grant it funded and record a negative,
+    idempotent clawback (unique on (charge_id, chargeback_clawback))."""
+    from pipeline.db import get_grant_by_reference, record_grant_once
+    raw = stripe.Charge.retrieve(charge_id)
+    charge = raw.to_dict() if hasattr(raw, "to_dict") else dict(raw)
+    reference_id = charge.get("invoice")
+    if not reference_id and charge.get("payment_intent"):
+        sessions = stripe.checkout.Session.list(payment_intent=charge["payment_intent"])
+        data = sessions.get("data") if isinstance(sessions, dict) else getattr(sessions, "data", [])
+        if data:
+            s0 = data[0]
+            reference_id = s0.get("id") if isinstance(s0, dict) else getattr(s0, "id", None)
+    if not reference_id:
+        return WebhookOutcome("charge.clawback", False, "no grant reference resolved")
+    grant = get_grant_by_reference(reference_id)
+    if grant is None:
+        return WebhookOutcome("charge.clawback", True, "no grant to claw back")
+    user_id, amount = grant
+    record_grant_once(user_id=user_id, amount=-amount, kind="chargeback_clawback",
+                      reference_id=charge_id, description=reason)
+    return WebhookOutcome("charge.clawback", True, f"clawed back {amount} from {user_id}")
 
 
 def _iso(unix_ts) -> str | None:

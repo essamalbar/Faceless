@@ -310,3 +310,56 @@ def test_handle_webhook_subscription_deleted_clears_cancel_flag(
     assert outcome.handled
     assert mock_db["profiles"]["u1"]["current_plan"] == "free"
     assert mock_db["profiles"]["u1"]["cancel_at_period_end"] is False
+
+
+def test_stripe_api_version_is_pinned():
+    import pipeline.stripe_billing  # noqa: F401
+    import stripe
+    assert stripe.api_version == "2026-04-22.dahlia"
+
+
+def test_charge_dispute_claws_back_grant(stripe_env, monkeypatch):
+    import pipeline.stripe_billing as sb
+    clawed = {}
+    monkeypatch.setattr("pipeline.db.get_grant_by_reference", lambda ref: ("u1", 60))
+    monkeypatch.setattr("pipeline.db.record_grant_once",
+                        lambda **kw: (clawed.update(kw), True)[1])
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Charge.retrieve",
+                        lambda cid: {"id": cid, "invoice": "inv_1"})
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                        lambda **kw: {"type": "charge.dispute.created",
+                                      "data": {"object": {"charge": "ch_1"}}})
+    out = sb.handle_webhook(b"{}", "sig")
+    assert out.handled
+    assert clawed["amount"] == -60 and clawed["kind"] == "chargeback_clawback"
+    assert clawed["user_id"] == "u1" and clawed["reference_id"] == "ch_1"
+
+
+def test_charge_refunded_claws_back_grant(stripe_env, monkeypatch):
+    import pipeline.stripe_billing as sb
+    clawed = {}
+    monkeypatch.setattr("pipeline.db.get_grant_by_reference", lambda ref: ("u1", 12))
+    monkeypatch.setattr("pipeline.db.record_grant_once",
+                        lambda **kw: (clawed.update(kw), True)[1])
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Charge.retrieve",
+                        lambda cid: {"id": cid, "invoice": "inv_2"})
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                        lambda **kw: {"type": "charge.refunded",
+                                      "data": {"object": {"id": "ch_2", "refunded": True}}})
+    out = sb.handle_webhook(b"{}", "sig")
+    assert out.handled and clawed["amount"] == -12 and clawed["reference_id"] == "ch_2"
+
+
+def test_charge_dispute_no_grant_is_safe_noop(stripe_env, monkeypatch):
+    import pipeline.stripe_billing as sb
+    called = {"n": 0}
+    monkeypatch.setattr("pipeline.db.get_grant_by_reference", lambda ref: None)
+    monkeypatch.setattr("pipeline.db.record_grant_once",
+                        lambda **kw: called.__setitem__("n", called["n"] + 1))
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Charge.retrieve",
+                        lambda cid: {"id": cid, "invoice": "inv_none"})
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Webhook.construct_event",
+                        lambda **kw: {"type": "charge.dispute.created",
+                                      "data": {"object": {"charge": "ch_3"}}})
+    out = sb.handle_webhook(b"{}", "sig")
+    assert out.handled and called["n"] == 0
