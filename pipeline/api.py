@@ -418,6 +418,10 @@ class CreateSongRequest(BaseModel):
     # A&R quality pipeline (2026-08-03 spec). "standard" = today's single-job
     # path. "premium" = best-of-N + Gemini A&R judge + master, surcharged.
     quality_tier: str = "standard"   # "standard" | "premium" (best-of-N + A&R)
+    # Tier-3 legal: the caller must attest they own / have the rights to the
+    # source material before we generate. Defaults False so an omitting client
+    # is rejected 400 (ownership_not_attested) rather than silently allowed.
+    ownership_attested: bool = False
 
     @field_validator("dialect")
     @classmethod
@@ -458,6 +462,8 @@ class CreateSongImportRequest(BaseModel):
     video_mode: str = "static"
     vocal_gender: str | None = "m"
     suno_model: str | None = None
+    # Tier-3 legal: attest ownership / rights to the imported source material.
+    ownership_attested: bool = False
 
     @field_validator("youtube_url")
     @classmethod
@@ -2877,6 +2883,8 @@ def create_song(
     """Writer pass: generate lyrics + style + cover prompt inline.
     No spend; returns awaiting_approval immediately."""
     _require_terms_accepted(user)
+    if user.role != "service" and not req.ownership_attested:
+        raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.song_lyrics import generate_song_script
     from pipeline.config import load_config
     from pipeline.db import get_balance
@@ -2926,6 +2934,13 @@ def create_song(
         video_mode=req.video_mode,
         artist_id=req.artist_id,
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Tier-3 legal audit: persist the ownership attestation from the first
+        # create-time write (survives a failed lyrics pass). Service callers
+        # bypass the gate, so record the actual flag value rather than assume.
+        ownership_attested=req.ownership_attested,
+        ownership_attested_version=(
+            CURRENT_LEGAL_VERSION if req.ownership_attested else None),
+        ownership_attested_at=(_now_iso() if req.ownership_attested else None),
     )
 
     try:
@@ -2988,6 +3003,8 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
     worker for the `analyzing` pre-stage (download + analyse + write an
     original script). No spend until the user approves the result."""
     _require_terms_accepted(user)
+    if user.role != "service" and not req.ownership_attested:
+        raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.config import load_config
     from pipeline.db import get_balance
 
@@ -3020,6 +3037,11 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
         vocal_gender=req.vocal_gender,
         suno_model=(req.suno_model if req.suno_model in _ALLOWED_SUNO_MODELS else None),
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Tier-3 legal audit: persist the ownership attestation at create time.
+        ownership_attested=req.ownership_attested,
+        ownership_attested_version=(
+            CURRENT_LEGAL_VERSION if req.ownership_attested else None),
+        ownership_attested_at=(_now_iso() if req.ownership_attested else None),
     )
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
@@ -3043,6 +3065,8 @@ def upload_cover_song(
     suno_model: str | None = Form(None),
     artist_id: str | None = Form(None),
     audio_weight: float | None = Form(None),
+    # Tier-3 legal: attest ownership / rights to the uploaded source audio.
+    ownership_attested: bool = Form(False),
     user: User = Depends(require_user),
 ):
     """Start a faithful-cover run from an UPLOADED audio file. Writes a draft
@@ -3051,6 +3075,8 @@ def upload_cover_song(
     retained by Suno's upload-cover endpoint at generate time. No spend until
     the user approves. See the song-upload-cover design spec."""
     _require_terms_accepted(user)
+    if user.role != "service" and not ownership_attested:
+        raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.config import load_config
     from pipeline.db import get_balance
 
@@ -3128,6 +3154,11 @@ def upload_cover_song(
         vocal_gender=vocal_gender,
         suno_model=(suno_model if suno_model in _ALLOWED_SUNO_MODELS else None),
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Tier-3 legal audit: persist the ownership attestation at create time.
+        ownership_attested=ownership_attested,
+        ownership_attested_version=(
+            CURRENT_LEGAL_VERSION if ownership_attested else None),
+        ownership_attested_at=(_now_iso() if ownership_attested else None),
     )
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)

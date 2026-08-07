@@ -1141,7 +1141,10 @@ def test_approve_429_when_another_run_active(app, monkeypatch):
     )
     try:
         # Run A → set to generating_song manually (simulates in-flight)
-        create_a = client.post("/songs", json={"theme": "a"},
+        # ownership_attested: this test forces role="user" (not the service
+        # bearer) so the T3 ownership gate applies — attest to clear it.
+        create_a = client.post("/songs",
+                               json={"theme": "a", "ownership_attested": True},
                                headers={"Authorization": f"Bearer {token}"})
         run_a = create_a.json()["run_id"]
         run_a_dir = _find_run_dir(run_a)
@@ -1150,7 +1153,8 @@ def test_approve_429_when_another_run_active(app, monkeypatch):
         (run_a_dir / "api_state.json").write_text(json.dumps(sa))
 
         # Run B is fresh awaiting_approval
-        create_b = client.post("/songs", json={"theme": "b"},
+        create_b = client.post("/songs",
+                               json={"theme": "b", "ownership_attested": True},
                                headers={"Authorization": f"Bearer {token}"})
         run_b = create_b.json()["run_id"]
 
