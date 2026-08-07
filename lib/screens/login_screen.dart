@@ -1,9 +1,13 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../api/client.dart';
+import '../api/settings.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../widgets/faceless_logo.dart';
+import 'legal_screen.dart';
 
 enum _Mode { signIn, signUp }
 
@@ -26,11 +30,28 @@ class _LoginScreenState extends State<LoginScreen> {
       widget.startInSignUpMode ? _Mode.signUp : _Mode.signIn;
   bool _busy = false;
   bool _showPassword = false;
+  // Tier-3 legal gate: sign-up requires ticking the Terms/Privacy box.
+  bool _agreedToTerms = false;
   String? _error;
   String? _info;
 
+  // Recognizers for the tappable "Terms of Service" / "Privacy Policy"
+  // spans in the agreement checkbox label. Owned here so they're disposed.
+  late final TapGestureRecognizer _tosRecognizer =
+      TapGestureRecognizer()..onTap = _openLegal;
+  late final TapGestureRecognizer _privacyRecognizer =
+      TapGestureRecognizer()..onTap = _openLegal;
+
+  void _openLegal() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const LegalScreen()),
+    );
+  }
+
   @override
   void dispose() {
+    _tosRecognizer.dispose();
+    _privacyRecognizer.dispose();
     _email.dispose();
     _password.dispose();
     super.dispose();
@@ -56,6 +77,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    // Enforce the legal gate here, not only via the disabled button — the
+    // password field's onFieldSubmitted (Enter key) bypasses button state.
+    if (_mode == _Mode.signUp && !_agreedToTerms) {
+      setState(() => _error =
+          'Please agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -79,6 +107,19 @@ class _LoginScreenState extends State<LoginScreen> {
           email: _email.text.trim(),
           password: _password.text,
         );
+        // Best-effort: record ToS acceptance server-side now, if signup
+        // returned a session. If there's no session yet (email confirmation
+        // required) or this call fails, the 403 terms gate will prompt the
+        // user on their first paid action instead.
+        if (Supabase.instance.client.auth.currentSession != null) {
+          try {
+            final client = FacelessApiClient(FacelessSettings());
+            await client.acceptTerms();
+            client.close();
+          } catch (_) {
+            // Non-fatal — acceptance is re-attemptable via the gate.
+          }
+        }
         // If Supabase auto-confirms email (project setting), sign-up
         // returns a session immediately and the auth-state stream will
         // route to home — same pop fix as sign-in. If confirmation is
@@ -262,12 +303,81 @@ class _LoginScreenState extends State<LoginScreen> {
                                   text: _info!,
                                 ),
                               ],
+                              // Terms/Privacy agreement — sign-up only.
+                              // Tapping the linked words opens LegalScreen;
+                              // the box gates the Sign-Up button below.
+                              if (!isSignIn) ...[
+                                const SizedBox(height: 18),
+                                Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: Checkbox(
+                                        value: _agreedToTerms,
+                                        onChanged: _busy
+                                            ? null
+                                            : (v) => setState(() =>
+                                                _agreedToTerms = v ?? false),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 3),
+                                        child: RichText(
+                                          text: TextSpan(
+                                            style: const TextStyle(
+                                              color: FacelessTheme
+                                                  .textSecondary,
+                                              fontSize: 13,
+                                              height: 1.4,
+                                            ),
+                                            children: [
+                                              const TextSpan(
+                                                  text: 'I agree to the '),
+                                              TextSpan(
+                                                text: 'Terms of Service',
+                                                style: const TextStyle(
+                                                  color:
+                                                      FacelessTheme.accent,
+                                                  fontWeight:
+                                                      FontWeight.w600,
+                                                ),
+                                                recognizer: _tosRecognizer,
+                                              ),
+                                              const TextSpan(text: ' and '),
+                                              TextSpan(
+                                                text: 'Privacy Policy',
+                                                style: const TextStyle(
+                                                  color:
+                                                      FacelessTheme.accent,
+                                                  fontWeight:
+                                                      FontWeight.w600,
+                                                ),
+                                                recognizer:
+                                                    _privacyRecognizer,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                               const SizedBox(height: 20),
                               // Submit
                               SizedBox(
                                 height: 48,
                                 child: FilledButton(
-                                  onPressed: _busy ? null : _submit,
+                                  onPressed: (_busy ||
+                                          (!isSignIn && !_agreedToTerms))
+                                      ? null
+                                      : _submit,
                                   child: _busy
                                       ? const SizedBox(
                                           width: 22,

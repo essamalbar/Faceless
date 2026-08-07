@@ -258,12 +258,17 @@ class PlanInfo {
   final bool cancelAtPeriodEnd;
   final String paymentStatus;   // 'active' | 'past_due' (dunning flag)
   final int balance;
+  // Tier-3 legal gate: false when the user hasn't accepted the CURRENT
+  // Terms of Service version. Defaults to true so older backends (which
+  // don't send the field) don't spuriously prompt for acceptance.
+  final bool termsCurrent;
   PlanInfo({
     required this.plan,
     required this.currentPeriodEnd,
     required this.balance,
     this.cancelAtPeriodEnd = false,
     this.paymentStatus = 'active',
+    this.termsCurrent = true,
   });
   bool get isPastDue => paymentStatus == 'past_due';
   factory PlanInfo.fromJson(Map<String, dynamic> j) => PlanInfo(
@@ -272,6 +277,7 @@ class PlanInfo {
         cancelAtPeriodEnd: (j['cancel_at_period_end'] as bool?) ?? false,
         paymentStatus: (j['payment_status'] as String?) ?? 'active',
         balance: j['balance'] as int,
+        termsCurrent: (j['terms_current'] as bool?) ?? true,
       );
 }
 
