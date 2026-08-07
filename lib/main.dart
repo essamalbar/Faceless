@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'l10n/l10n.dart';
 import 'screens/home_screen.dart';
 import 'screens/landing_screen.dart';
+import 'screens/reset_password_screen.dart';
 import 'theme.dart';
 import 'ui/brand.dart';
 
@@ -22,14 +25,56 @@ Future<void> main() async {
   runApp(const FacelessApp());
 }
 
-class FacelessApp extends StatelessWidget {
+class FacelessApp extends StatefulWidget {
   const FacelessApp({super.key});
+
+  @override
+  State<FacelessApp> createState() => _FacelessAppState();
+}
+
+class _FacelessAppState extends State<FacelessApp> {
+  // Root navigator key so the password-recovery listener can push a route
+  // from outside the widget tree (auth events arrive via a stream, not a
+  // build-context callback).
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<AuthState>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Password-reset return: Supabase emits `passwordRecovery` after the user
+    // follows the emailed reset link, establishing a temporary recovery
+    // session. Route to ResetPasswordScreen so they can set a new password.
+    // onAuthStateChange is a broadcast stream, so this coexists with the
+    // StreamBuilder in `home:`.
+    try {
+      _authSub = Supabase.instance.client.auth.onAuthStateChange.listen(
+        (data) {
+          if (data.event == AuthChangeEvent.passwordRecovery) {
+            _navigatorKey.currentState?.push(
+              MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+            );
+          }
+        },
+      );
+    } catch (_) {
+      // Supabase not initialized (missing --dart-define config) — the
+      // _MisconfiguredScreen handles that path; no auth events to listen for.
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Locale?>(
       valueListenable: LocaleController.instance,
       builder: (context, locale, _) => MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'Faceless',
       debugShowCheckedModeBanner: false,
       theme: FacelessTheme.build(locale: locale),

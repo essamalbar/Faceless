@@ -152,6 +152,63 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  /// Sign-in "Forgot password?" flow. Prompts for the account email
+  /// (prefilled from the email field) then asks Supabase to email a reset
+  /// link. The link returns to the app via `AuthChangeEvent.passwordRecovery`
+  /// (see main.dart), which routes to ResetPasswordScreen.
+  Future<void> _forgotPassword() async {
+    final controller = TextEditingController(text: _email.text.trim());
+    final email = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              "Enter your account email and we'll send you a reset link.",
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Email'),
+              onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('Send reset link'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (email == null || email.isEmpty) return;
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Check your email for a reset link.')),
+      );
+    } on AuthException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not send reset link: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSignIn = _mode == _Mode.signIn;
@@ -287,6 +344,30 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               ),
+                              // "Forgot password?" — sign-in only.
+                              if (isSignIn)
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed:
+                                        _busy ? null : _forgotPassword,
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize
+                                          .shrinkWrap,
+                                    ),
+                                    child: const Text(
+                                      'Forgot password?',
+                                      style: TextStyle(
+                                        color: FacelessTheme.accent,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               if (_error != null) ...[
                                 const SizedBox(height: 14),
                                 _Banner(
