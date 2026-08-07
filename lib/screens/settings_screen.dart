@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -32,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _urlCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _loading = false;
+  bool _dangerBusy = false;
   String? _testResult;
 
   // Account state — best-effort, never blocks the screen render.
@@ -259,6 +263,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) Navigator.of(context).maybePop();
   }
 
+  /// GDPR export — fetch everything the server holds and copy it to the
+  /// clipboard as pretty JSON. A deliberately simple sink that works on web
+  /// and mobile without a file-picker plugin; the user can paste it into a
+  /// file/note. English strings are hardcoded (like legal_screen) to avoid
+  /// churning the generated localizations.
+  Future<void> _exportData() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _dangerBusy = true);
+    final client = FacelessApiClient(_settings);
+    try {
+      final data = await client.exportAccount();
+      final pretty = const JsonEncoder.withIndent('  ').convert(data);
+      await Clipboard.setData(ClipboardData(text: pretty));
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Your account data was copied to the clipboard as JSON.'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      client.close();
+      if (mounted) setState(() => _dangerBusy = false);
+    }
+  }
+
+  /// GDPR erasure — irreversible. Requires the user to type DELETE in the
+  /// confirmation dialog before the server call fires; on success we sign out
+  /// so the auth-state stream in main.dart routes back to the landing screen.
+  Future<void> _deleteAccount() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _DeleteAccountDialog(),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _dangerBusy = true);
+    final client = FacelessApiClient(_settings);
+    try {
+      await client.deleteAccount();
+      try {
+        await Supabase.instance.client.auth.signOut();
+      } catch (_) {
+        // Legacy mode (Supabase not initialized) — nothing to sign out of.
+      }
+      if (mounted) Navigator.of(context).maybePop();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _dangerBusy = false);
+        messenger.showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+      }
+    } finally {
+      client.close();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -405,6 +463,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 12),
                     const _AboutCard(),
                     const SizedBox(height: 32),
+                    const _SectionLabel(text: 'Danger zone'),
+                    const SizedBox(height: 8),
+                    _SettingTile(
+                      icon: Icons.download_outlined,
+                      title: 'Export my data',
+                      subtitle:
+                          'Copy everything we hold about you (profile, '
+                          'billing history, runs) as JSON',
+                      onTap: _dangerBusy ? null : _exportData,
+                    ),
+                    const SizedBox(height: 12),
+                    _DangerButton(
+                      icon: Icons.delete_forever,
+                      label: 'Delete account',
+                      onPressed: _dangerBusy ? null : _deleteAccount,
+                    ),
+                    const SizedBox(height: 12),
                     _DangerButton(
                       icon: Icons.logout,
                       label: l10n.settingsSignOut,
@@ -975,6 +1050,74 @@ class _DangerButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Delete-account confirmation — the confirm button unlocks only once the user
+// has typed DELETE exactly (mirrors the server's typed-confirm guard).
+// ---------------------------------------------------------------------------
+
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog();
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  final _ctrl = TextEditingController();
+  bool get _canDelete => _ctrl.text.trim() == 'DELETE';
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Delete account'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This permanently deletes your account, your generated artifacts, '
+            'and your personal data. Billing/tax records are retained as '
+            'required by law. This cannot be undone.\n\n'
+            'Type DELETE to confirm.',
+            style: TextStyle(fontSize: 13, height: 1.45),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              hintText: 'DELETE',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: FacelessTheme.danger,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _canDelete ? () => Navigator.pop(context, true) : null,
+          child: const Text('Delete account'),
+        ),
+      ],
     );
   }
 }
