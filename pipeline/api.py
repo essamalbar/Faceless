@@ -1790,6 +1790,7 @@ def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(requ
     stages (Flux + Veo). Script regeneration / rerolls still flow through
     the worker.
     """
+    _require_terms_accepted(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1958,6 +1959,7 @@ def approve_veo_run(run_id: str, user: User = Depends(require_user)):
     and wants Veo to start spending. Only valid from awaiting_veo_approval.
     Spawns run.py --resume with NO pause flags so the pipeline runs Veo +
     captions + assemble end-to-end."""
+    _require_terms_accepted(user)
     run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_veo_approval":
@@ -4192,6 +4194,7 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
     Use when both Suno takes came back bad. Cheaper than canceling +
     starting over because the lyrics + cover are reused.
     """
+    _require_terms_accepted(user)
     import pipeline.credits as _credits
     from pipeline.config import load_config
 

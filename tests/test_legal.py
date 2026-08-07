@@ -315,3 +315,26 @@ def test_upload_cover_records_ownership_attestation(client_factory, monkeypatch,
     assert state["ownership_attested"] is True
     assert state["ownership_attested_version"] == api_mod.CURRENT_LEGAL_VERSION
     assert state["ownership_attested_at"]
+
+
+# ---------------------------------------------------------------------------
+# Follow-up-action paid endpoints are gated too (final-review finding): a
+# mid-life CURRENT_LEGAL_VERSION bump must not let a stale user re-spend via
+# reroll without re-accepting. The gate fires before any run/state work.
+# ---------------------------------------------------------------------------
+
+def test_reroll_takes_gated_when_terms_unaccepted(client_factory, monkeypatch):
+    from pipeline.db import UserProfile
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: UserProfile(
+            id=uid, stripe_customer_id=None,
+            current_plan="free", current_period_end=None,
+            tos_accepted_version=None,
+        ),
+    )
+    c = client_factory(user_id="alice", role="user")
+    # Gate fires first (before run-dir resolution), so a fake id still 403s.
+    r = c.post("/songs/nonexistent-run/reroll-takes")
+    assert r.status_code == 403
+    assert r.json()["detail"]["code"] == "terms_not_accepted"
