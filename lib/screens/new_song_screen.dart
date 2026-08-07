@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/brand.dart';
+import 'legal_screen.dart';
 import 'song_approve_screen.dart';
 
 class NewSongScreen extends StatefulWidget {
@@ -289,6 +290,28 @@ class _NewSongScreenState extends State<NewSongScreen> {
         builder: (_) =>
             SongApproveScreen(client: widget.client, runId: runId),
       ));
+    } on TermsNotAcceptedException {
+      // Soft gate: route the user to the accept-capable Terms screen instead
+      // of dead-ending on the exception text. Re-enable the button first so
+      // it's usable when they return.
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      final accepted = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) =>
+              LegalScreen(client: widget.client, mustAccept: true),
+        ),
+      );
+      if (!mounted) return;
+      if (accepted == true) {
+        // Don't silently auto-resubmit — nudge the user to tap Generate again.
+        setState(() => _error = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Terms accepted — tap Generate again.'),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {

@@ -11,16 +11,30 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../api/client.dart';
 import '../theme.dart';
 
 class LegalScreen extends StatelessWidget {
-  const LegalScreen({super.key});
+  /// When set (and [mustAccept] is true) a sticky bottom "I Accept" bar is
+  /// shown that calls [FacelessApiClient.acceptTerms]. LegalScreen NEVER
+  /// closes this client — the caller owns its lifecycle (new_song passes its
+  /// long-lived client; settings creates-and-closes its own).
+  final FacelessApiClient? client;
+
+  /// Accept-capable mode. When false (default) the screen is view-only.
+  final bool mustAccept;
+
+  const LegalScreen({super.key, this.client, this.mustAccept = false});
 
   @override
   Widget build(BuildContext context) {
+    final acceptClient = client;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Terms & Privacy')),
+      bottomNavigationBar: (mustAccept && acceptClient != null)
+          ? _AcceptBar(client: acceptClient)
+          : null,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -81,6 +95,81 @@ class LegalScreen extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Sticky bottom action that records the user's acceptance of the current
+/// Terms. On success it pops `true` so the caller can react (clear its error
+/// / let the user retry). Errors are shown inline and the button re-enables.
+class _AcceptBar extends StatefulWidget {
+  final FacelessApiClient client;
+  const _AcceptBar({required this.client});
+
+  @override
+  State<_AcceptBar> createState() => _AcceptBarState();
+}
+
+class _AcceptBarState extends State<_AcceptBar> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _accept() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.client.acceptTerms();
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        decoration: BoxDecoration(
+          color: FacelessTheme.surface,
+          border: Border(top: BorderSide(color: FacelessTheme.border)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_error != null) ...[
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: FacelessTheme.danger,
+                  fontSize: 12.5,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            FilledButton(
+              onPressed: _busy ? null : _accept,
+              child: _busy
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('I Accept the Terms & Privacy'),
+            ),
+          ],
         ),
       ),
     );
