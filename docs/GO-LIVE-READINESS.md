@@ -93,6 +93,13 @@ Prior notes were stale. Confirmed against code:
 >
 > Clean-env suite **875/0**; `dart analyze` clean.
 > **Operator to activate (Tier-4B):** no migration, no Stripe/webhook change. Keep the Supabase project "Confirm email" toggle ON (the backstop is defense-in-depth, not a replacement) and configure the Supabase Auth password-reset redirect URL to the app deep link so recovery links return to the app.
+>
+> **Tier-4C (abuse & cost controls) — DONE on branch `feat/tier4c-abuse`** (spec `2026-08-07-tier4c-abuse-cost-design.md`). One DB-backed rate primitive (`rate_events` table + `db.record_rate_event`/`count_rate_events`), two uses:
+> - **Daily song cap → DB** (`_enforce_daily_song_limit`): was a per-user JSON file on GCS-Fuse — **racy across the ≤4 Cloud Run instances**. Now `count_rate_events(user.id, "song_approve", 86400) >= _SONG_DAILY_LIMIT` (same 30/24h limit + message), recorded on approve and cover-regen. **Cross-instance-correct.** The old file helpers (`_load_rate_log`/`_record_song_approval`/`_rate_limit_path`) are deleted. The concurrent-runs cap stays a disk scan (not file-racy — left as-is).
+> - **LLM draft/regen throttle** (`_enforce_llm_rate_limit`): the writer-pass/regen endpoints (`create_song`, `regenerate-lyrics`, `regenerate-cover-prompt`) made Anthropic/Gemini calls with **no per-user throttle** → an account with the free script-gen could spam them into unbounded LLM spend. Now soft-capped at **`FACELESS_LLM_HOURLY_LIMIT`/hour (default 30)** per user via `count_rate_events(..., "llm_call", 3600)` (429 `{"code":"llm_rate_limited"}`). The image cover-regen (Flux, not LLM) and the internal morning-draft generator are exempt. Both caps: **service tokens bypass** (no count, no record).
+>
+> Clean-env suite **890/0**.
+> **Operator to activate (Tier-4C):** apply `supabase/migrations/20260807000002_rate_events.sql` to live Supabase **BEFORE** the code deploys (the enforcers SELECT/INSERT `rate_events` for every non-service caller; the query errors if the table is absent — same ordering as the ToS/payment_status/clawback migrations). No Stripe/webhook change. Optional: `FACELESS_LLM_HOURLY_LIMIT` env override (default 30). Retention/cleanup of old `rate_events` rows folds into Tier-4D's retention TTL.
 
 ## TIER 5 — NICE-TO-HAVE
 OAuth (Google/Apple) sign-in; `.env.example` template; finish or remove the disabled top-up packs; fix the secret-rotation doc (`latest` needs redeploy); cache headers on `main.dart.js`/canvaskit + delete the dead `inject-sw-skip-waiting.sh` reference; update stale design-doc numbers (plan credits, PLAN_GRANTS) to match code.
