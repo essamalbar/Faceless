@@ -80,6 +80,12 @@ Prior notes were stale. Confirmed against code:
 - **Service token can leak into a public web build** via `run-app.sh --dart-define` — keep that launcher strictly local/dev; add a guard that refuses a non-empty token in a public build.
 - **Deploy hygiene:** no CI/CD (laptop deploy silently ships without the web app if `flutter` off PATH); single region (`us-central1`); no documented rollback; `flutter analyze` failing on the UI; CORS `allow_origins=["*"]` (low risk given header auth, but stale justification).
 
+> **Tier-4 is being tackled as 4 decomposed sub-projects: A billing → B auth → C abuse/cost → D data/ops** (specs/plans under `docs/superpowers/`).
+>
+> **Tier-4A (billing hardening) — DONE on branch `feat/tier4a-billing`** (spec `2026-08-07-tier4a-billing-hardening-design.md`): chargeback/dispute + refund **credit clawback** (`charge.dispute.created`/`charge.refunded` → resolve the charge to its funded grant → negative `chargeback_clawback` txn, idempotent by charge id) and **Stripe API-version pin** (`stripe.api_version="2026-04-22.dahlia"`). Clean-env suite 860/0.
+> **Operator to activate:** (1) apply `supabase/migrations/20260807000001_clawback_idempotency.sql` before deploy; (2) subscribe `charge.dispute.created` + `charge.refunded` in the Stripe Dashboard webhook. Note: a clawback can drive a balance NEGATIVE if the credits were already spent — intended; the atomic deduct then blocks further spend until top-up.
+> **Still deferred/pending:** Stripe Tax (operator Dashboard config + `automatic_tax` hook); Tier-4 **B** (email-confirm enforce, password reset, service-token guard), **C** (rate-limit→DB, LLM metering), **D** (retention TTL, `writer_tier` in `/health`, deploy hygiene).
+
 ## TIER 5 — NICE-TO-HAVE
 OAuth (Google/Apple) sign-in; `.env.example` template; finish or remove the disabled top-up packs; fix the secret-rotation doc (`latest` needs redeploy); cache headers on `main.dart.js`/canvaskit + delete the dead `inject-sw-skip-waiting.sh` reference; update stale design-doc numbers (plan credits, PLAN_GRANTS) to match code.
 
