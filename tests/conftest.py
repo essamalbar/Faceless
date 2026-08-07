@@ -90,8 +90,10 @@ def client_factory():
 
     app.dependency_overrides[require_user] = _resolve_user
 
-    def _make(user_id: str = "admin", role: str = "user", email: str | None = None):
-        _users[user_id] = User(id=user_id, email=email, role=role)
+    def _make(user_id: str = "admin", role: str = "user", email: str | None = None,
+              email_confirmed: bool = True):
+        _users[user_id] = User(
+            id=user_id, email=email, role=role, email_confirmed=email_confirmed)
         client = TestClient(app)
         client.headers.update({"X-Test-User-Id": user_id})
         return client

@@ -338,3 +338,103 @@ def test_reroll_takes_gated_when_terms_unaccepted(client_factory, monkeypatch):
     r = c.post("/songs/nonexistent-run/reroll-takes")
     assert r.status_code == 403
     assert r.json()["detail"]["code"] == "terms_not_accepted"
+
+
+# ---------------------------------------------------------------------------
+# Tier-4B email-confirmation backstop: a soft-gate (service bypass) that 403s
+# `email_not_confirmed` on paid/generation endpoints when the caller's token
+# carries an EXPLICIT unconfirmed signal. Conservative default-allow — legit
+# users (absent claim → email_confirmed=True) are never blocked. Runs right
+# after the terms gate (which the autouse fixture keeps transparent).
+# ---------------------------------------------------------------------------
+
+def test_require_email_confirmed_passes_when_confirmed():
+    from pipeline import api as api_mod
+    from pipeline.auth import User
+    # No raise.
+    api_mod._require_email_confirmed(
+        User(id="u1", email=None, role="user", email_confirmed=True))
+
+
+def test_require_email_confirmed_raises_when_unconfirmed():
+    from fastapi import HTTPException
+    from pipeline import api as api_mod
+    from pipeline.auth import User
+    with pytest.raises(HTTPException) as ei:
+        api_mod._require_email_confirmed(
+            User(id="u1", email=None, role="user", email_confirmed=False))
+    assert ei.value.status_code == 403
+    assert ei.value.detail["code"] == "email_not_confirmed"
+
+
+def test_require_email_confirmed_service_bypass():
+    """Service tokens are never gated, even if email_confirmed is False."""
+    from pipeline import api as api_mod
+    from pipeline.auth import User
+    # No raise.
+    api_mod._require_email_confirmed(
+        User(id="admin", email=None, role="service", email_confirmed=False))
+
+
+def test_songs_endpoint_gated_when_email_not_confirmed(client_factory):
+    """Terms are auto-accepted (fixture); the email gate then fires before any
+    LLM/spend work. Fires before the ownership gate too, so a minimal body is
+    enough to reach it."""
+    c = client_factory(user_id="alice", role="user", email_confirmed=False)
+    r = c.post("/songs", json={"theme": "x", "ownership_attested": True})
+    assert r.status_code == 403
+    assert r.json()["detail"]["code"] == "email_not_confirmed"
+
+
+def test_songs_endpoint_passes_email_gate_when_confirmed(client_factory, monkeypatch, tmp_path):
+    """A confirmed user clears the email gate and reaches the writer pass."""
+    from pipeline import api as api_mod
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 100)
+    fake_llm = MagicMock()
+    fake_llm.complete = MagicMock(return_value=_CANNED_SONG_JSON)
+    monkeypatch.setattr(api_mod, "_build_song_llm", lambda: fake_llm)
+
+    c = client_factory(user_id="alice", role="user", email_confirmed=True)
+    r = c.post("/songs", json={"theme": "x", "ownership_attested": True})
+    assert r.status_code == 201, r.text
+
+
+def test_billing_plan_email_confirmed_true_when_confirmed(client_factory, monkeypatch):
+    from pipeline import api as api_mod
+    from pipeline.db import UserProfile
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: UserProfile(
+            id=uid, stripe_customer_id="cus_1",
+            current_plan="creator", current_period_end=None,
+            tos_accepted_version=api_mod.CURRENT_LEGAL_VERSION,
+        ),
+    )
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 10)
+    c = client_factory(user_id="alice", role="user", email_confirmed=True)
+    body = c.get("/billing/plan").json()
+    assert body["email_confirmed"] is True
+
+
+def test_billing_plan_email_confirmed_false_when_unconfirmed(client_factory, monkeypatch):
+    from pipeline import api as api_mod
+    from pipeline.db import UserProfile
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: UserProfile(
+            id=uid, stripe_customer_id="cus_1",
+            current_plan="creator", current_period_end=None,
+            tos_accepted_version=api_mod.CURRENT_LEGAL_VERSION,
+        ),
+    )
+    monkeypatch.setattr("pipeline.db.get_balance", lambda uid: 10)
+    c = client_factory(user_id="alice", role="user", email_confirmed=False)
+    body = c.get("/billing/plan").json()
+    assert body["email_confirmed"] is False
+
+
+def test_billing_plan_email_confirmed_true_for_service_token(client_factory):
+    c = client_factory(user_id="admin", role="service")
+    body = c.get("/billing/plan").json()
+    assert body["email_confirmed"] is True
