@@ -1386,6 +1386,28 @@ def _require_email_confirmed(user: User) -> None:
         )
 
 
+def _screen_content(*texts: str | None, user: User | None = None,
+                    run_id: str | None = None) -> None:
+    """Reject user-supplied free text that trips the moderation deny-list.
+
+    Inputs-only: called on create/regenerate endpoints for their user-text
+    fields, AFTER the terms/email/rate-limit gates and BEFORE any generation.
+    Applies to ALL callers — service tokens are NOT exempt (moderation is a
+    property of the content, not the caller). On a hit, logs a `[moderation]`
+    WARNING carrying only the MATCH COUNT (never the matched terms or the
+    text — the Tier-2 alert metric keys off the `[moderation]` token) and
+    raises 400 `content_rejected`."""
+    from pipeline import moderation
+    try:
+        moderation.assert_clean(*texts)
+    except moderation.ModerationError as exc:
+        get_logger().warning(
+            "[moderation] content_rejected user=%s run=%s terms=%d",
+            getattr(user, "id", None), run_id, len(exc.terms),
+        )
+        raise HTTPException(400, detail={"code": "content_rejected"})
+
+
 class AcceptTermsResponse(BaseModel):
     ok: bool
     version: str
@@ -1706,6 +1728,15 @@ def create_run_from_script(req: CreateFromScriptRequest, user: User = Depends(re
             raise HTTPException(400, f"beat {i}: speaker cannot be empty")
         if not b.english_motion.strip():
             raise HTTPException(400, f"beat {i}: english_motion is required")
+    # Pasted scripts carry the primary user free text in the beats — the
+    # arabic/english_motion/character_name go verbatim into script.json and
+    # on to Veo, so they are inputs and get screened alongside theme/title.
+    _screen_content(
+        req.theme, req.title, req.premise, req.music_mood, req.global_setting,
+        *(t for b in req.beats
+          for t in (b.arabic, b.english_motion, b.character_name)),
+        user=user,
+    )
 
     run_id = _make_run_id()
     run_dir = _user_runs_root(user) / run_id
@@ -1771,6 +1802,7 @@ def create_run(req: CreateRunRequest, user: User = Depends(require_user)):
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
+    _screen_content(req.theme, req.premise, user=user)
 
     run_id = _make_run_id()
     run_dir = _user_runs_root(user) / run_id
@@ -1847,6 +1879,7 @@ def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(requ
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
+    _screen_content(req.theme, req.premise, user=user)
 
     run_id = _make_run_id()
     run_dir = _user_runs_root(user) / run_id
@@ -2941,6 +2974,7 @@ def create_song(
     _require_terms_accepted(user)
     _require_email_confirmed(user)
     _enforce_llm_rate_limit(user)
+    _screen_content(req.theme, req.custom_lyrics, req.style_hint, user=user)
     if user.role != "service" and not req.ownership_attested:
         raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.song_lyrics import generate_song_script
@@ -3062,6 +3096,7 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
     original script). No spend until the user approves the result."""
     _require_terms_accepted(user)
     _require_email_confirmed(user)
+    _screen_content(req.instruction, user=user)
     if user.role != "service" and not req.ownership_attested:
         raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.config import load_config
@@ -3576,6 +3611,11 @@ def regenerate_song_lyrics(run_id: str, user: User = Depends(require_user)):
     _require_song_awaiting_approval(run_dir)
     script_path = run_dir / "song.json"
     current = json.loads(script_path.read_text())
+    # Re-screen the seed theme (user-supplied at create time) before feeding
+    # it back into generation. The generated style_prompt is NOT re-screened
+    # (inputs-only).
+    _screen_content(_read_state(run_dir).get("theme", ""),
+                    user=user, run_id=run_id)
     llm = _build_song_llm()
     new_script = generate_song_script(
         llm=llm,

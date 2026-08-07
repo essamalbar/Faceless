@@ -2582,6 +2582,57 @@ def test_invalid_video_mode_rejected(client, auth, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Content moderation (deny-list, inputs-only) — Task M
+# ---------------------------------------------------------------------------
+
+def _force_denylist(monkeypatch, *terms):
+    """Pin the moderation deny-list to a known token so the test does not
+    depend on the (deliberately conservative) real seed list."""
+    import pipeline.moderation as mod
+    monkeypatch.setattr(mod, "_load_denylist", lambda: frozenset(terms))
+
+
+def test_create_song_rejects_banned_content(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    _force_denylist(monkeypatch, "__banned__")
+    # The `client`/`auth` path is a service token — proving moderation is
+    # NOT service-bypassed (it applies to all callers).
+    r = client.post(
+        "/songs",
+        json={"theme": "a nice __banned__ tune", "ownership_attested": True},
+        headers=auth,
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "content_rejected"
+
+
+def test_create_song_banned_in_custom_lyrics_rejected(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    _force_denylist(monkeypatch, "__banned__")
+    r = client.post(
+        "/songs",
+        json={"theme": "wholesome", "custom_lyrics": "la la __banned__ la",
+              "ownership_attested": True},
+        headers=auth,
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "content_rejected"
+
+
+def test_create_song_clean_content_passes_moderation(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    _force_denylist(monkeypatch, "__banned__")
+    r = client.post(
+        "/songs",
+        json={"theme": "a wholesome lullaby", "ownership_attested": True},
+        headers=auth,
+    )
+    # Clean input sails past the moderation screen (and every other gate on
+    # the service path) to a normal 201 — it is NOT a content_rejected 400.
+    assert r.status_code == 201
+
+
+# ---------------------------------------------------------------------------
 # YouTube song import — Task 6
 # ---------------------------------------------------------------------------
 
