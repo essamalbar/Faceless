@@ -86,7 +86,31 @@ cat > "${tmp}" <<JSON
 JSON
 
 # ---------- apply ----------
-gcloud storage buckets update "gs://${GCS_BUCKET}" --lifecycle-file="${tmp}"
+# Prefer `gsutil lifecycle set` over `gcloud storage buckets update
+# --lifecycle-file`: the latter swallows real API errors (e.g. a disabled
+# billing account) into an opaque `GcsApiError('')`, while gsutil surfaces the
+# authoritative message. Both accept the same {"rule":[...]} JSON in ${tmp}.
+apply_lifecycle() {
+  if command -v gsutil >/dev/null 2>&1; then
+    gsutil lifecycle set "${tmp}" "gs://${GCS_BUCKET}"
+  else
+    gcloud storage buckets update "gs://${GCS_BUCKET}" --lifecycle-file="${tmp}"
+  fi
+}
+
+if ! output="$(apply_lifecycle 2>&1)"; then
+  [[ -n "${output}" ]] && echo "${output}" >&2
+  echo >&2
+  echo "ERROR: could not apply the lifecycle rule to gs://${GCS_BUCKET}." >&2
+  echo "Common causes (see the message above for which one applies):" >&2
+  echo "  * Billing account disabled/closed -> re-enable it in the GCP Console" >&2
+  echo "    (Billing), then retry. Note: 'gcloud storage' may report this only as" >&2
+  echo "    an opaque \"GcsApiError('')\"; the gsutil message above is authoritative." >&2
+  echo "  * Your account lacks 'storage.buckets.update' on the bucket." >&2
+  echo "  * Wrong bucket name: gs://${GCS_BUCKET}" >&2
+  exit 1
+fi
+[[ -n "${output}" ]] && echo "${output}"
 
 echo
 echo "Lifecycle rule applied to gs://${GCS_BUCKET}."
