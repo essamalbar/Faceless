@@ -305,3 +305,61 @@ def test_count_rate_events_falls_back_to_len_when_count_absent(fake_client):
 def test_count_rate_events_zero_when_no_rows_and_no_count(fake_client):
     fake_client.tables["rate_events"] = _FakeQuery(data=None, count=None)
     assert count_rate_events("u1", "song_approve", 86400) == 0
+
+
+# ── GDPR account delete/export (Task G) ────────────────────────────────────
+
+def test_anonymize_user_profile_upserts_nulled_pii(fake_client):
+    """PII fields are nulled/neutralized but the row is kept so retained
+    credit_transactions still reference a valid user_id."""
+    db.anonymize_user_profile("u1")
+    q = fake_client.tables["user_profiles"]
+    upsert_call = next(c for c in q.calls if c[0] == "upsert")
+    payload = upsert_call[1][0]
+    assert payload["id"] == "u1"
+    assert payload["stripe_customer_id"] is None
+    assert payload["current_plan"] == "deleted"
+    assert payload["tos_accepted_version"] is None
+
+
+def test_delete_auth_user_calls_admin_delete(monkeypatch):
+    """delete_auth_user routes through the service client's auth.admin path.
+
+    The shared _FakeClient has no `.auth`, so build a minimal inline fake
+    that records the admin.delete_user call (same pattern as
+    test_record_grant_once)."""
+    calls: list[str] = []
+
+    class _Admin:
+        def delete_user(self, uid):
+            calls.append(uid)
+
+    class _Auth:
+        admin = _Admin()
+
+    class _Client:
+        auth = _Auth()
+
+    monkeypatch.setattr(db, "_client", lambda: _Client())
+    db.delete_auth_user("u1")
+    assert calls == ["u1"]
+
+
+def test_delete_auth_user_does_not_touch_credit_transactions(monkeypatch):
+    """Deleting the auth user must never delete/insert against the financial
+    ledger — a `.table()` call would signal an unexpected DB write path."""
+    class _Admin:
+        def delete_user(self, uid):
+            pass
+
+    class _Auth:
+        admin = _Admin()
+
+    class _Client:
+        auth = _Auth()
+
+        def table(self, name):  # pragma: no cover - must never run
+            raise AssertionError(f"unexpected table access: {name}")
+
+    monkeypatch.setattr(db, "_client", lambda: _Client())
+    db.delete_auth_user("u1")  # no raise → no ledger touch

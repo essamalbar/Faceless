@@ -2582,6 +2582,183 @@ def test_invalid_video_mode_rejected(client, auth, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Content moderation (deny-list, inputs-only) — Task M
+# ---------------------------------------------------------------------------
+
+def _force_denylist(monkeypatch, *terms):
+    """Pin the moderation deny-list to a known token so the test does not
+    depend on the (deliberately conservative) real seed list."""
+    import pipeline.moderation as mod
+    monkeypatch.setattr(mod, "_load_denylist", lambda: frozenset(terms))
+
+
+def test_create_song_rejects_banned_content(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    _force_denylist(monkeypatch, "__banned__")
+    # The `client`/`auth` path is a service token — proving moderation is
+    # NOT service-bypassed (it applies to all callers).
+    r = client.post(
+        "/songs",
+        json={"theme": "a nice __banned__ tune", "ownership_attested": True},
+        headers=auth,
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "content_rejected"
+
+
+def test_create_song_banned_in_custom_lyrics_rejected(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    _force_denylist(monkeypatch, "__banned__")
+    r = client.post(
+        "/songs",
+        json={"theme": "wholesome", "custom_lyrics": "la la __banned__ la",
+              "ownership_attested": True},
+        headers=auth,
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "content_rejected"
+
+
+def test_create_song_clean_content_passes_moderation(client, auth, monkeypatch):
+    _stub_song_llm(monkeypatch)
+    _force_denylist(monkeypatch, "__banned__")
+    r = client.post(
+        "/songs",
+        json={"theme": "a wholesome lullaby", "ownership_attested": True},
+        headers=auth,
+    )
+    # Clean input sails past the moderation screen (and every other gate on
+    # the service path) to a normal 201 — it is NOT a content_rejected 400.
+    assert r.status_code == 201
+
+
+# ---------------------------------------------------------------------------
+# GDPR export + delete (Task G) — /account/export, /account/delete
+# ---------------------------------------------------------------------------
+
+def test_account_export_returns_profile_txns_and_runs(
+    client_factory, monkeypatch, tmp_path,
+):
+    from pipeline.db import Transaction, UserProfile
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        "pipeline.db.get_user_profile",
+        lambda uid: UserProfile(
+            id=uid, stripe_customer_id="cus_1", current_plan="creator",
+            current_period_end=None,
+            tos_accepted_version="2026-08-05",
+        ),
+    )
+    monkeypatch.setattr(
+        "pipeline.db.list_transactions",
+        lambda uid, limit: [
+            Transaction(id="t1", user_id=uid, amount=60, kind="signup_grant",
+                        reference_id=None, description=None,
+                        created_at="2026-05-11T00:00:00Z"),
+        ],
+    )
+    # Pre-create one on-disk run so the export enumerates it.
+    run_dir = tmp_path / "alice" / "2026-05-11-000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "script.json").write_text(
+        json.dumps({"title": "My Run", "theme": "folkloric"}),
+        encoding="utf-8",
+    )
+
+    c = client_factory(user_id="alice", role="user")
+    r = c.get("/account/export")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["profile"]["id"] == "alice"
+    assert body["profile"]["stripe_customer_id"] == "cus_1"
+    assert len(body["transactions"]) == 1
+    assert body["transactions"][0]["kind"] == "signup_grant"
+    assert [run["id"] for run in body["runs"]] == ["2026-05-11-000000"]
+    assert body["runs"][0]["title"] == "My Run"
+
+
+def test_account_export_rejects_service_token(client_factory):
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/account/export")
+    assert r.status_code == 400
+
+
+def test_account_delete_purges_anonymizes_and_admin_deletes(
+    client_factory, monkeypatch, tmp_path,
+):
+    """confirm=DELETE → rmtree the user's runs root, anonymize the profile,
+    admin-delete the auth user; the credit ledger is NEVER touched."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+
+    anonymized: list[str] = []
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        "pipeline.db.anonymize_user_profile", lambda uid: anonymized.append(uid))
+    monkeypatch.setattr(
+        "pipeline.db.delete_auth_user", lambda uid: deleted.append(uid))
+    # Poison the raw service client + the ledger writer: the delete flow must
+    # go exclusively through the two mocked helpers, never a direct DB path.
+    def _boom_client():  # pragma: no cover - must never run
+        raise AssertionError("delete must not open a raw supabase client")
+    def _boom_txn(*a, **k):  # pragma: no cover - must never run
+        raise AssertionError("delete must not write a credit transaction")
+    monkeypatch.setattr("pipeline.db._client", _boom_client)
+    monkeypatch.setattr("pipeline.db.record_transaction", _boom_txn)
+
+    # On-disk artifacts that must be purged.
+    run_dir = tmp_path / "alice" / "2026-05-11-000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "script.json").write_text("{}", encoding="utf-8")
+
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/account/delete", json={"confirm": "DELETE"})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ok": True}
+    assert anonymized == ["alice"]
+    assert deleted == ["alice"]
+    assert not (tmp_path / "alice").exists()
+
+
+def test_account_delete_wrong_confirm_is_400(client_factory, monkeypatch):
+    def _boom(*a, **k):  # pragma: no cover - must never run
+        raise AssertionError("guard must fire before any delete side effect")
+    monkeypatch.setattr("pipeline.db.anonymize_user_profile", _boom)
+    monkeypatch.setattr("pipeline.db.delete_auth_user", _boom)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/account/delete", json={"confirm": "delete"})
+    assert r.status_code == 400
+
+
+def test_account_delete_absent_confirm_is_400(client_factory, monkeypatch):
+    def _boom(*a, **k):  # pragma: no cover - must never run
+        raise AssertionError("guard must fire before any delete side effect")
+    monkeypatch.setattr("pipeline.db.anonymize_user_profile", _boom)
+    monkeypatch.setattr("pipeline.db.delete_auth_user", _boom)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/account/delete", json={})
+    assert r.status_code == 400
+
+
+def test_account_delete_rejects_service_token(client_factory, monkeypatch, tmp_path):
+    """A service/admin token cannot self-delete — the 403 must fire before any
+    purge so out/admin is never touched."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    def _boom(*a, **k):  # pragma: no cover - must never run
+        raise AssertionError("service token must not reach delete side effects")
+    monkeypatch.setattr("pipeline.db.anonymize_user_profile", _boom)
+    monkeypatch.setattr("pipeline.db.delete_auth_user", _boom)
+    admin_dir = tmp_path / "admin" / "run-1"
+    admin_dir.mkdir(parents=True)
+    (admin_dir / "script.json").write_text("{}", encoding="utf-8")
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.post("/account/delete", json={"confirm": "DELETE"})
+    assert r.status_code == 403
+    # Guard fired before the purge — admin artifacts survive.
+    assert admin_dir.exists()
+
+
+# ---------------------------------------------------------------------------
 # YouTube song import — Task 6
 # ---------------------------------------------------------------------------
 

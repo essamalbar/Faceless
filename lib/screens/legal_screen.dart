@@ -90,6 +90,25 @@ class LegalScreen extends StatelessWidget {
                         '• A completed render is non-refundable.',
                     isPlaceholder: false,
                   ),
+                  SizedBox(height: 16),
+                  _Section(
+                    title: 'Copyright / DMCA & Abuse',
+                    body:
+                        'We respect intellectual-property rights and prohibit '
+                        'abusive or unlawful use of the service. If you believe '
+                        'content generated or hosted here infringes your '
+                        'copyright, or you want to report abuse, contact us and '
+                        'we will review and act on valid reports.\n\n'
+                        'Takedown process: send a notice to '
+                        'abuse@your-domain.example that identifies (1) the '
+                        'copyrighted work or the abuse concern, (2) the specific '
+                        'content or URL at issue, (3) your contact details, and '
+                        '(4) a good-faith statement that the use is '
+                        'unauthorized. We remove or disable access to content '
+                        'that is the subject of a valid notice and may suspend '
+                        'repeat infringers.\n\n'
+                        'Abuse / DMCA contact: abuse@your-domain.example',
+                  ),
                   SizedBox(height: 24),
                 ],
               ),

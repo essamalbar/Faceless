@@ -1386,6 +1386,28 @@ def _require_email_confirmed(user: User) -> None:
         )
 
 
+def _screen_content(*texts: str | None, user: User | None = None,
+                    run_id: str | None = None) -> None:
+    """Reject user-supplied free text that trips the moderation deny-list.
+
+    Inputs-only: called on create/regenerate endpoints for their user-text
+    fields, AFTER the terms/email/rate-limit gates and BEFORE any generation.
+    Applies to ALL callers — service tokens are NOT exempt (moderation is a
+    property of the content, not the caller). On a hit, logs a `[moderation]`
+    WARNING carrying only the MATCH COUNT (never the matched terms or the
+    text — the Tier-2 alert metric keys off the `[moderation]` token) and
+    raises 400 `content_rejected`."""
+    from pipeline import moderation
+    try:
+        moderation.assert_clean(*texts)
+    except moderation.ModerationError as exc:
+        get_logger().warning(
+            "[moderation] content_rejected user=%s run=%s terms=%d",
+            getattr(user, "id", None), run_id, len(exc.terms),
+        )
+        raise HTTPException(400, detail={"code": "content_rejected"})
+
+
 class AcceptTermsResponse(BaseModel):
     ok: bool
     version: str
@@ -1404,6 +1426,82 @@ def accept_terms(user: User = Depends(require_user)):
             tos_accepted_at=_now_iso(),
         )
     return AcceptTermsResponse(ok=True, version=CURRENT_LEGAL_VERSION)
+
+
+class DeleteAccountRequest(BaseModel):
+    # Typed confirmation guard. Defaulted (not required) so an absent field is
+    # a 400 from our own check — not a pydantic 422 — matching the wrong-value
+    # path. The caller must type exactly "DELETE".
+    confirm: str = ""
+
+
+@app.get("/account/export", dependencies=[Depends(require_user)])
+def export_account(user: User = Depends(require_user)):
+    """GDPR data-portability: return everything we hold for the caller —
+    profile, the full credit-transaction ledger, and metadata for their runs.
+
+    Read-only; NOT gated behind terms/email acceptance (a user must be able to
+    exercise their data rights regardless). Service tokens have no user data to
+    export → 400."""
+    if user.role == "service":
+        raise HTTPException(400, "service tokens have no account data to export")
+    from pipeline.db import get_user_profile, list_transactions
+
+    profile = get_user_profile(user.id)
+    transactions = list_transactions(user.id, limit=10_000)
+    runs_root = _user_runs_root(user)
+    runs: list[RunSummary] = []
+    if runs_root.exists():
+        for p in sorted(runs_root.iterdir()):
+            if p.is_dir():
+                runs.append(_summarize(p))
+    return {
+        "profile": profile,
+        "transactions": transactions,
+        "runs": runs,
+    }
+
+
+@app.post("/account/delete", dependencies=[Depends(require_user)])
+def delete_account(req: DeleteAccountRequest, user: User = Depends(require_user)):
+    """GDPR erasure. IRREVERSIBLE. Requires a typed `confirm == "DELETE"`.
+
+    Steps (best-effort, each logged): purge the user's on-disk artifacts,
+    scrub profile PII (`anonymize_user_profile`), then admin-delete the
+    Supabase auth user. The financial ledger (`credit_transactions`) is
+    RETAINED for tax/chargeback and is never touched here.
+
+    Guards run BEFORE any side effect: service/admin tokens cannot self-delete
+    (403), and a mistyped/absent confirmation is refused (400)."""
+    if user.role == "service":
+        raise HTTPException(403, "service tokens cannot self-delete")
+    if req.confirm != "DELETE":
+        raise HTTPException(400, 'confirm must be exactly "DELETE"')
+
+    import shutil
+    log = get_logger()
+
+    runs_root = _user_runs_root(user)
+    try:
+        shutil.rmtree(runs_root, ignore_errors=True)
+        log.info("[account_delete] purged artifacts user=%s", user.id)
+    except Exception:  # pragma: no cover - rmtree(ignore_errors) rarely raises
+        log.exception("[account_delete] artifact purge failed user=%s", user.id)
+
+    from pipeline.db import anonymize_user_profile, delete_auth_user
+    try:
+        anonymize_user_profile(user.id)
+        log.info("[account_delete] anonymized profile user=%s", user.id)
+    except Exception:
+        log.exception("[account_delete] profile anonymize failed user=%s", user.id)
+
+    try:
+        delete_auth_user(user.id)
+        log.info("[account_delete] deleted auth user=%s", user.id)
+    except Exception:
+        log.exception("[account_delete] auth-user delete failed user=%s", user.id)
+
+    return {"ok": True}
 
 
 @app.get(
@@ -1706,6 +1804,15 @@ def create_run_from_script(req: CreateFromScriptRequest, user: User = Depends(re
             raise HTTPException(400, f"beat {i}: speaker cannot be empty")
         if not b.english_motion.strip():
             raise HTTPException(400, f"beat {i}: english_motion is required")
+    # Pasted scripts carry the primary user free text in the beats — the
+    # arabic/english_motion/character_name go verbatim into script.json and
+    # on to Veo, so they are inputs and get screened alongside theme/title.
+    _screen_content(
+        req.theme, req.title, req.premise, req.music_mood, req.global_setting,
+        *(t for b in req.beats
+          for t in (b.arabic, b.english_motion, b.character_name)),
+        user=user,
+    )
 
     run_id = _make_run_id()
     run_dir = _user_runs_root(user) / run_id
@@ -1771,6 +1878,7 @@ def create_run(req: CreateRunRequest, user: User = Depends(require_user)):
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
+    _screen_content(req.theme, req.premise, user=user)
 
     run_id = _make_run_id()
     run_dir = _user_runs_root(user) / run_id
@@ -1847,6 +1955,7 @@ def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(requ
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
         raise HTTPException(400, f"theme must be one of {sorted(VALID_THEMES)}")
+    _screen_content(req.theme, req.premise, user=user)
 
     run_id = _make_run_id()
     run_dir = _user_runs_root(user) / run_id
@@ -2941,6 +3050,7 @@ def create_song(
     _require_terms_accepted(user)
     _require_email_confirmed(user)
     _enforce_llm_rate_limit(user)
+    _screen_content(req.theme, req.custom_lyrics, req.style_hint, user=user)
     if user.role != "service" and not req.ownership_attested:
         raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.song_lyrics import generate_song_script
@@ -3062,6 +3172,7 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
     original script). No spend until the user approves the result."""
     _require_terms_accepted(user)
     _require_email_confirmed(user)
+    _screen_content(req.instruction, user=user)
     if user.role != "service" and not req.ownership_attested:
         raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.config import load_config
@@ -3576,6 +3687,11 @@ def regenerate_song_lyrics(run_id: str, user: User = Depends(require_user)):
     _require_song_awaiting_approval(run_dir)
     script_path = run_dir / "song.json"
     current = json.loads(script_path.read_text())
+    # Re-screen the seed theme (user-supplied at create time) before feeding
+    # it back into generation. The generated style_prompt is NOT re-screened
+    # (inputs-only).
+    _screen_content(_read_state(run_dir).get("theme", ""),
+                    user=user, run_id=run_id)
     llm = _build_song_llm()
     new_script = generate_song_script(
         llm=llm,

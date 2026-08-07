@@ -566,6 +566,28 @@ class FacelessApiClient {
     _checkOk(r);
   }
 
+  /// GDPR data export — everything the server holds for the current user
+  /// (profile, credit-transaction ledger, run metadata). Returned as a
+  /// decoded JSON map the caller can serialize/share.
+  Future<Map<String, dynamic>> exportAccount() async {
+    final r = await _http.get(await _uri('/account/export'),
+        headers: await _headers());
+    return _parse(r, (j) => j as Map<String, dynamic>);
+  }
+
+  /// GDPR account deletion — IRREVERSIBLE. Purges the user's artifacts,
+  /// scrubs profile PII, and admin-deletes the auth user server-side (the
+  /// financial ledger is retained). Sends the typed `confirm: "DELETE"`
+  /// the server requires.
+  Future<void> deleteAccount() async {
+    final r = await _http.post(
+      await _uri('/account/delete'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'confirm': 'DELETE'}),
+    );
+    _checkOk(r);
+  }
+
   // ---------- youtube ----------
 
   /// Google OAuth consent URL — the app opens it via url_launcher and the
