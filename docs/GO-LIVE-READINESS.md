@@ -100,6 +100,17 @@ Prior notes were stale. Confirmed against code:
 >
 > Clean-env suite **890/0**.
 > **Operator to activate (Tier-4C):** apply `supabase/migrations/20260807000002_rate_events.sql` to live Supabase **BEFORE** the code deploys (the enforcers SELECT/INSERT `rate_events` for every non-service caller; the query errors if the table is absent — same ordering as the ToS/payment_status/clawback migrations). No Stripe/webhook change. Optional: `FACELESS_LLM_HOURLY_LIMIT` env override (default 30). Retention/cleanup of old `rate_events` rows folds into Tier-4D's retention TTL.
+>
+> **Tier-4D (data & ops hygiene) — DONE on branch `feat/tier4d-ops`** (design+plan `docs/superpowers/plans/2026-08-07-tier4d-data-ops.md`). Three items, code the safe high-value bits + operator-script the pure infra:
+> - **`writer_tier` in `/healthz`** (and the `/health` alias): the public probe now returns `writer_tier` (top *configured* LLM provider — `anthropic`/`gemini`/`groq`/`none`, mirroring `_build_llm()`'s env-key order) and `writer_degraded` (True when a runtime `llm_fallback.json` marker exists under the out-root). Makes a silent Anthropic→lower fallback (e.g. exhausted credits) observable without a paid render. No auth change (healthz stays public).
+> - **CORS env-configurable** (`_cors_origins()`): the hardcoded `allow_origins=["*"]` is replaced by a helper reading `FACELESS_CORS_ORIGINS` (comma-separated; blanks/whitespace stripped). **Default stays `["*"]` — no behavior change**; an operator can lock it down to e.g. `https://faceless-lab.com,https://app.faceless-lab.com`.
+> - **GCS retention** (`scripts/setup-gcs-lifecycle.sh`): the durable retention mechanism — applies a lifecycle rule deleting bucket objects older than `RETENTION_DAYS` (default 90). Idempotent (rewrites the full lifecycle). **Only touches generated artifacts in the bucket — NEVER the Supabase ledger** (financial system of record). The in-app 30-day FAILED-run cleanup stays. Operator-run: `GCS_BUCKET=<bucket> ./scripts/setup-gcs-lifecycle.sh`.
+> - **`flutter analyze` / `main.dart` resolved:** `dart analyze lib/main.dart` → **No issues found**. The CLAUDE.md note about invalid Dart at `main.dart:31`/`:105` is **stale** — those lines are valid; use `dart analyze <files>` (`flutter analyze` hangs in this env).
+>
+> Clean-env suite **901/0**.
+> **Operator to activate (Tier-4D):** no migration, no Stripe/webhook change. Run `scripts/setup-gcs-lifecycle.sh` (needs the bucket name + gcloud auth) for retention; optionally set `FACELESS_CORS_ORIGINS` to restrict origins. **Still operator-owned (pure infra, out of code scope):** a CI/CD pipeline; single-region (`us-central1`) redundancy; and a documented rollback procedure — `gcloud run services update-traffic --to-revisions=<prev-revision>=100`.
+>
+> **Tier-4 is COMPLETE — A (billing) + B (auth) + C (abuse/cost) + D (data/ops) all DONE.**
 
 ## TIER 5 — NICE-TO-HAVE
 OAuth (Google/Apple) sign-in; `.env.example` template; finish or remove the disabled top-up packs; fix the secret-rotation doc (`latest` needs redeploy); cache headers on `main.dart.js`/canvaskit + delete the dead `inject-sw-skip-waiting.sh` reference; update stale design-doc numbers (plan credits, PLAN_GRANTS) to match code.
