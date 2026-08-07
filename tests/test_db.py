@@ -243,3 +243,22 @@ def test_get_user_profile_defaults_tos_fields_to_none(fake_client):
     fake_client.tables["user_profiles"] = _FakeQuery(data={"id": "u1", "current_plan": "free"})
     p = get_user_profile("u1")
     assert p.tos_accepted_version is None and p.tos_accepted_at is None
+
+
+def test_get_grant_by_reference_returns_user_and_amount(fake_client):
+    fake_client.tables["credit_transactions"] = _FakeQuery(data=[
+        {"user_id": "u1", "amount": 60, "kind": "subscription_renewal"},
+    ])
+    assert db.get_grant_by_reference("inv_1") == ("u1", 60)
+
+
+def test_get_grant_by_reference_none_when_no_grant(fake_client):
+    fake_client.tables["credit_transactions"] = _FakeQuery(data=[])
+    assert db.get_grant_by_reference("inv_x") is None
+
+
+def test_get_grant_by_reference_ignores_non_grant_rows(fake_client):
+    fake_client.tables["credit_transactions"] = _FakeQuery(data=[
+        {"user_id": "u1", "amount": -1, "kind": "run_charge"},
+    ])
+    assert db.get_grant_by_reference("r1") is None
