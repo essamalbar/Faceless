@@ -652,6 +652,7 @@ class PlanResponse(BaseModel):
     payment_status: str = "active"    # 'active' | 'past_due' (dunning flag)
     balance: int
     terms_current: bool = True        # false if the user must (re-)accept the ToS
+    email_confirmed: bool = True      # false if the user's email is unconfirmed
 
 
 class TransactionRow(BaseModel):
@@ -1301,6 +1302,7 @@ def get_plan_endpoint(user: User = Depends(require_user)):
             payment_status="active",
             balance=0,
             terms_current=True,
+            email_confirmed=True,
         )
     from pipeline.db import get_balance, get_user_profile
     profile = get_user_profile(user.id)
@@ -1314,6 +1316,7 @@ def get_plan_endpoint(user: User = Depends(require_user)):
             bool(profile)
             and profile.tos_accepted_version == CURRENT_LEGAL_VERSION
         ),
+        email_confirmed=user.email_confirmed,
     )
 
 
@@ -1334,6 +1337,23 @@ def _require_terms_accepted(user: User) -> None:
             status_code=403,
             detail={"code": "terms_not_accepted",
                     "version": CURRENT_LEGAL_VERSION},
+        )
+
+
+def _require_email_confirmed(user: User) -> None:
+    """Email-confirmation backstop for paid/generation actions. Service tokens
+    bypass. Raises 403 with a machine-readable code the app catches to prompt
+    the user to confirm their email. Conservative default-allow: only fires
+    when the token carried an EXPLICIT unconfirmed signal (see
+    `verify_supabase_jwt`), so a legit user with an absent claim is never
+    blocked. This is a code-layer backstop atop Supabase's project-level
+    "Confirm email" toggle (the primary control)."""
+    if user.role == "service":
+        return
+    if user.email_confirmed is False:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "email_not_confirmed"},
         )
 
 
@@ -1647,6 +1667,7 @@ def create_run_from_script(req: CreateFromScriptRequest, user: User = Depends(re
     The run lands in `awaiting_approval` immediately; the same Edit / Approve
     flow applies, so you can still tweak before paying for Veo."""
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1716,6 +1737,7 @@ def create_run(req: CreateRunRequest, user: User = Depends(require_user)):
     new clients should call POST /runs/freeform directly with their
     chosen controls."""
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1791,6 +1813,7 @@ def create_freeform_run(req: CreateFreeformRunRequest, user: User = Depends(requ
     the worker.
     """
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     # Script generation is free for all signed-in users. The paywall fires
     # in /runs/{id}/approve when they try to render the paid stages.
     if req.theme not in VALID_THEMES:
@@ -1916,6 +1939,7 @@ class ApprovalAck(BaseModel):
 )
 def approve_run(run_id: str, user: User = Depends(require_user)):
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_approval":
@@ -1960,6 +1984,7 @@ def approve_veo_run(run_id: str, user: User = Depends(require_user)):
     Spawns run.py --resume with NO pause flags so the pipeline runs Veo +
     captions + assemble end-to-end."""
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     run_dir = _run_dir(run_id, user)
     s = derive_status(run_dir)
     if s != "awaiting_veo_approval":
@@ -2885,6 +2910,7 @@ def create_song(
     """Writer pass: generate lyrics + style + cover prompt inline.
     No spend; returns awaiting_approval immediately."""
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     if user.role != "service" and not req.ownership_attested:
         raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.song_lyrics import generate_song_script
@@ -3005,6 +3031,7 @@ def import_song(req: CreateSongImportRequest, user: User = Depends(require_user)
     worker for the `analyzing` pre-stage (download + analyse + write an
     original script). No spend until the user approves the result."""
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     if user.role != "service" and not req.ownership_attested:
         raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.config import load_config
@@ -3077,6 +3104,7 @@ def upload_cover_song(
     retained by Suno's upload-cover endpoint at generate time. No spend until
     the user approves. See the song-upload-cover design spec."""
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     if user.role != "service" and not ownership_attested:
         raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.config import load_config
@@ -3688,6 +3716,7 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
 @app.post("/songs/{run_id}/approve")
 def approve_song(run_id: str, user: User = Depends(require_user)):
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     import pipeline.credits as _credits
     from pipeline.config import load_config
 
@@ -4195,6 +4224,7 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
     starting over because the lyrics + cover are reused.
     """
     _require_terms_accepted(user)
+    _require_email_confirmed(user)
     import pipeline.credits as _credits
     from pipeline.config import load_config
 

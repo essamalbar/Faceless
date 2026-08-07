@@ -40,6 +40,10 @@ class User:
     id: str            # "admin" for service-token, otherwise Supabase UUID
     email: str | None  # None for service-token
     role: str          # "service" | "user"
+    # Email-confirmation backstop (Tier-4B). Conservative default-allow: True
+    # unless the JWT carries an EXPLICIT unconfirmed signal. Service tokens
+    # are always True (never gated).
+    email_confirmed: bool = True
 
 
 def verify_supabase_jwt(
@@ -104,10 +108,26 @@ def verify_supabase_jwt(
     sub = payload.get("sub")
     if not sub:
         raise ValueError("token missing sub claim")
+
+    # Email-confirmation backstop: only an EXPLICIT unconfirmed signal flips
+    # this to False; an absent claim stays True so legit users are never
+    # blocked (Supabase's project-level "Confirm email" toggle is the primary
+    # control — this is a defense-in-depth layer for a misconfigured project).
+    confirmed = True
+    if payload.get("email_confirmed_at") is not None:
+        confirmed = True
+    elif "email_confirmed_at" in payload:  # present but null → unconfirmed
+        confirmed = False
+    else:
+        um = payload.get("user_metadata") or {}
+        if um.get("email_verified") is False or payload.get("email_verified") is False:
+            confirmed = False
+
     return User(
         id=str(sub),
         email=payload.get("email"),
         role="user",
+        email_confirmed=confirmed,
     )
 
 
@@ -138,7 +158,7 @@ def require_user(authorization: str | None = Header(None)) -> User:
     token = authorization.removeprefix("Bearer ").strip()
 
     if service_token and token == service_token:
-        return User(id="admin", email=None, role="service")
+        return User(id="admin", email=None, role="service", email_confirmed=True)
 
     if can_verify_jwt:
         try:

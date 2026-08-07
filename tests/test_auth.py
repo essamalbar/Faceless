@@ -59,6 +59,48 @@ def test_verify_rejects_token_without_sub():
         verify_supabase_jwt(token, SECRET)
 
 
+# --- email-confirmation backstop (B1) -------------------------------------
+# Conservative default-allow: only an EXPLICIT unconfirmed signal flips
+# email_confirmed to False; an absent claim stays True (never block a legit
+# user on a missing claim).
+
+def test_verify_email_confirmed_true_when_claim_absent():
+    # GOOD_PAYLOAD carries no confirmation claim → default-allow.
+    token = _encode(GOOD_PAYLOAD)
+    assert verify_supabase_jwt(token, SECRET).email_confirmed is True
+
+
+def test_verify_email_confirmed_true_when_confirmed_at_set():
+    payload = {**GOOD_PAYLOAD, "email_confirmed_at": "2026-01-01T00:00:00Z"}
+    token = _encode(payload)
+    assert verify_supabase_jwt(token, SECRET).email_confirmed is True
+
+
+def test_verify_email_confirmed_false_when_confirmed_at_null():
+    # Present-and-null → explicitly unconfirmed.
+    payload = {**GOOD_PAYLOAD, "email_confirmed_at": None}
+    token = _encode(payload)
+    assert verify_supabase_jwt(token, SECRET).email_confirmed is False
+
+
+def test_verify_email_confirmed_false_when_user_metadata_flag_false():
+    payload = {**GOOD_PAYLOAD, "user_metadata": {"email_verified": False}}
+    token = _encode(payload)
+    assert verify_supabase_jwt(token, SECRET).email_confirmed is False
+
+
+def test_verify_email_confirmed_false_when_top_level_flag_false():
+    payload = {**GOOD_PAYLOAD, "email_verified": False}
+    token = _encode(payload)
+    assert verify_supabase_jwt(token, SECRET).email_confirmed is False
+
+
+def test_verify_email_confirmed_true_when_user_metadata_flag_true():
+    payload = {**GOOD_PAYLOAD, "user_metadata": {"email_verified": True}}
+    token = _encode(payload)
+    assert verify_supabase_jwt(token, SECRET).email_confirmed is True
+
+
 from pipeline.auth import require_user
 
 
@@ -75,6 +117,13 @@ def test_require_user_accepts_service_token(monkeypatch):
             SUPABASE_JWT_SECRET=SECRET)
     user = require_user(authorization="Bearer svc-secret")
     assert user == User(id="admin", email=None, role="service")
+
+
+def test_require_user_service_token_email_confirmed(monkeypatch):
+    _setenv(monkeypatch, FACELESS_API_TOKEN="svc-secret",
+            SUPABASE_JWT_SECRET=SECRET)
+    user = require_user(authorization="Bearer svc-secret")
+    assert user.email_confirmed is True
 
 
 def test_require_user_accepts_supabase_jwt(monkeypatch):
