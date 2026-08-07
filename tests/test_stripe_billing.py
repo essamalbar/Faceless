@@ -363,3 +363,47 @@ def test_charge_dispute_no_grant_is_safe_noop(stripe_env, monkeypatch):
                                       "data": {"object": {"charge": "ch_3"}}})
     out = sb.handle_webhook(b"{}", "sig")
     assert out.handled and called["n"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Stripe Tax (Tier-4A deferred item) — env-gated, OFF by default so it ships
+# inert (automatic_tax on a session errors at checkout until the operator
+# activates Tax + registrations in the Dashboard, then flips FACELESS_STRIPE_TAX=1).
+# ---------------------------------------------------------------------------
+
+def test_tax_session_kwargs_off_by_default(monkeypatch):
+    import pipeline.stripe_billing as sb
+    monkeypatch.delenv("FACELESS_STRIPE_TAX", raising=False)
+    assert sb._tax_session_kwargs() == {}
+
+
+def test_tax_session_kwargs_on_when_enabled(monkeypatch):
+    import pipeline.stripe_billing as sb
+    monkeypatch.setenv("FACELESS_STRIPE_TAX", "1")
+    kw = sb._tax_session_kwargs()
+    assert kw["automatic_tax"] == {"enabled": True}
+    assert kw["billing_address_collection"] == "required"
+    assert kw["customer_update"] == {"address": "auto"}
+
+
+def test_subscription_checkout_includes_tax_when_enabled(stripe_env, mock_db, monkeypatch):
+    monkeypatch.setenv("FACELESS_STRIPE_TAX", "1")
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Customer.create",
+                        lambda **kw: SimpleNamespace(id="cus_x"))
+    captured = {}
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.checkout.Session.create",
+                        lambda **kw: (captured.update(kw), SimpleNamespace(url="u"))[1])
+    create_subscription_checkout(_user(), "starter", "s", "c")
+    assert captured["automatic_tax"] == {"enabled": True}
+    assert captured["billing_address_collection"] == "required"
+
+
+def test_subscription_checkout_no_tax_by_default(stripe_env, mock_db, monkeypatch):
+    monkeypatch.delenv("FACELESS_STRIPE_TAX", raising=False)
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.Customer.create",
+                        lambda **kw: SimpleNamespace(id="cus_x"))
+    captured = {}
+    monkeypatch.setattr("pipeline.stripe_billing.stripe.checkout.Session.create",
+                        lambda **kw: (captured.update(kw), SimpleNamespace(url="u"))[1])
+    create_subscription_checkout(_user(), "starter", "s", "c")
+    assert "automatic_tax" not in captured
