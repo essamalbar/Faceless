@@ -740,11 +740,20 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 # CORS — the Flutter web app loads from localhost:5xxxx (or a Cloudflare
 # Tunnel URL) and calls this API on a different origin. Browsers block
 # cross-origin requests unless the server explicitly opts in. The bearer
-# token is what actually gates access; the CORS allowlist is permissive
-# because this is solo-user software running on the operator's Mac.
+# token is what actually gates access; the CORS allowlist defaults to
+# permissive (`*`) because this is solo-user software, but an operator can
+# lock it down to specific origins via FACELESS_CORS_ORIGINS (comma list).
+def _cors_origins() -> list[str]:
+    """Allowed CORS origins. Default `["*"]`; override with a comma-separated
+    FACELESS_CORS_ORIGINS (e.g. `https://a.com,https://b.com`). Blanks and
+    surrounding whitespace are stripped."""
+    raw = os.environ.get("FACELESS_CORS_ORIGINS", "*")
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins(),
     allow_credentials=False,  # we don't use cookies — token is in Authorization header
     allow_methods=["*"],
     allow_headers=["*"],
@@ -842,6 +851,26 @@ def _build_llm():
 
 def _llm_fallback_marker() -> Path:
     return _out_root() / "llm_fallback.json"
+
+
+def _writer_tier_status() -> dict:
+    """Which LLM writer the API would use, plus whether a runtime degradation
+    was recorded — surfaced on /healthz so an operator can spot a silent
+    Anthropic→lower fallback (e.g. exhausted credits) without a paid render.
+
+    `writer_tier` mirrors `_build_llm()`'s env-key preference order
+    (ANTHROPIC → GEMINI → GROQ), reporting the top *configured* provider or
+    `"none"` when no LLM key is set. `writer_degraded` is True when a
+    runtime fallback marker exists under the out-root."""
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        tier = "anthropic"
+    elif os.environ.get("GEMINI_API_KEY"):
+        tier = "gemini"
+    elif os.environ.get("GROQ_API_KEY"):
+        tier = "groq"
+    else:
+        tier = "none"
+    return {"writer_tier": tier, "writer_degraded": _llm_fallback_marker().exists()}
 
 
 def _record_llm_fallback(exc: Exception) -> None:
@@ -1246,7 +1275,7 @@ def _preflight_approve_credits(run_dir: Path, user: "User") -> None:
 @app.get("/healthz")
 @app.get("/health")
 def healthz():
-    return {"ok": True}
+    return {"ok": True, **_writer_tier_status()}
 
 
 @app.get(
