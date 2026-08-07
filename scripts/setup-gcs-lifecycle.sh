@@ -54,6 +54,9 @@ if [[ -z "${GCS_BUCKET:-}" ]]; then
 fi
 
 # Strip a leading gs:// (and any trailing path) so we never build gs://gs://…
+# `:-` first so an unset var (discovery failed) reaches the friendly error
+# below instead of tripping `set -u` on the pattern-strip.
+GCS_BUCKET="${GCS_BUCKET:-}"
 GCS_BUCKET="${GCS_BUCKET#gs://}"
 GCS_BUCKET="${GCS_BUCKET%%/*}"
 
