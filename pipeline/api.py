@@ -2911,6 +2911,7 @@ def create_song(
     No spend; returns awaiting_approval immediately."""
     _require_terms_accepted(user)
     _require_email_confirmed(user)
+    _enforce_llm_rate_limit(user)
     if user.role != "service" and not req.ownership_attested:
         raise HTTPException(400, detail={"code": "ownership_not_attested"})
     from pipeline.song_lyrics import generate_song_script
@@ -3303,52 +3304,40 @@ _SONG_DAILY_LIMIT = int(
 )
 
 
-def _rate_limit_path(user: "User") -> Path:
-    return _user_runs_root(user) / "_rate_limit.json"
-
-
-def _load_rate_log(user: "User") -> list[float]:
-    """Load timestamps of recent song approvals (epoch seconds)."""
-    p = _rate_limit_path(user)
-    if not p.exists():
-        return []
-    try:
-        data = json.loads(p.read_text())
-        return data.get("approvals", []) if isinstance(data, dict) else []
-    except (OSError, json.JSONDecodeError):
-        return []
-
-
-def _record_song_approval(user: "User") -> None:
-    """Append now() to the user's approval log, dropping entries older
-    than 24h. Atomic write."""
-    import time
-    p = _rate_limit_path(user)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    now = time.time()
-    cutoff = now - 86400
-    log = [t for t in _load_rate_log(user) if t > cutoff]
-    log.append(now)
-    tmp = p.with_suffix(p.suffix + ".tmp")
-    tmp.write_text(json.dumps({"approvals": log}, ensure_ascii=False),
-                   encoding="utf-8")
-    tmp.replace(p)
-
-
 def _enforce_daily_song_limit(user: "User") -> None:
-    """Raise 429 if the user has approved >= _SONG_DAILY_LIMIT songs
-    in the last 24 hours. Service tokens bypass."""
+    """Raise 429 if the user has approved >= _SONG_DAILY_LIMIT songs in the
+    last 24 hours. DB-backed (rate_events) so the cap is correct across all
+    Cloud Run instances, not per-instance like the old JSON file it replaced.
+    Service tokens bypass."""
     if user.role == "service":
         return
-    import time
-    cutoff = time.time() - 86400
-    recent = sum(1 for t in _load_rate_log(user) if t > cutoff)
-    if recent >= _SONG_DAILY_LIMIT:
+    from pipeline.db import count_rate_events
+    if count_rate_events(user.id, "song_approve", 86400) >= _SONG_DAILY_LIMIT:
         raise HTTPException(
             429,
             f"daily song limit reached ({_SONG_DAILY_LIMIT} per 24h); "
             f"try again later",
         )
+
+
+# Per-user hourly throttle on the unmetered LLM draft/regen endpoints
+# (create_song's writer pass, regenerate-lyrics, regenerate-cover-prompt).
+# Those make Anthropic/Gemini calls with no credit cost, so an account with
+# the free script-gen could spam them into unbounded LLM spend. Soft cap via
+# the same rate_events primitive; service tokens bypass.
+_LLM_HOURLY_LIMIT = int(os.environ.get("FACELESS_LLM_HOURLY_LIMIT", "30"))
+
+
+def _enforce_llm_rate_limit(user: "User") -> None:
+    """Raise 429 {'code': 'llm_rate_limited'} if the user has made
+    >= _LLM_HOURLY_LIMIT LLM-text calls in the last hour; otherwise record
+    this call. Service tokens bypass (no count, no record)."""
+    if user.role == "service":
+        return
+    from pipeline.db import count_rate_events, record_rate_event
+    if count_rate_events(user.id, "llm_call", 3600) >= _LLM_HOURLY_LIMIT:
+        raise HTTPException(429, detail={"code": "llm_rate_limited"})
+    record_rate_event(user.id, "llm_call")
 
 
 @app.get("/songs/{run_id}", response_model=SongRunSummary)
@@ -3552,6 +3541,7 @@ def _atomic_write_json(path: Path, data: dict) -> None:
 
 @app.post("/songs/{run_id}/regenerate-lyrics")
 def regenerate_song_lyrics(run_id: str, user: User = Depends(require_user)):
+    _enforce_llm_rate_limit(user)
     from pipeline.song_lyrics import generate_song_script
     run_dir = _resolve_song_dir(run_id, user)
     _require_song_awaiting_approval(run_dir)
@@ -3580,6 +3570,7 @@ def regenerate_song_lyrics(run_id: str, user: User = Depends(require_user)):
 
 @app.post("/songs/{run_id}/regenerate-cover-prompt")
 def regenerate_song_cover_prompt(run_id: str, user: User = Depends(require_user)):
+    _enforce_llm_rate_limit(user)
     from pipeline.song_lyrics import generate_song_script
     run_dir = _resolve_song_dir(run_id, user)
     _require_song_awaiting_approval(run_dir)
@@ -3764,10 +3755,13 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     _write_state(run_dir, status="generating_song")
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
-    # Record this approval in the rate-limit log AFTER the spawn
+    # Record this approval in the DB-backed rate log AFTER the spawn
     # succeeds. If spawning fails, no credit gets spent in the wrong
     # state — we let the user retry without it counting against quota.
-    _record_song_approval(user)
+    # Service tokens bypass the cap, so there's nothing to record for them.
+    if user.role != "service":
+        from pipeline.db import record_rate_event
+        record_rate_event(user.id, "song_approve")
     # Re-read so we don't clobber a worker-side status update that ran
     # synchronously between _SPAWN_FN returning and us getting here
     # (only happens with the in-process spawn used in integration tests).
@@ -4272,7 +4266,11 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
     _write_state(run_dir, status="generating_song", last_error=None)
     args = ["--mode", "song", "--resume", str(run_dir)]
     pid = _SPAWN_FN(args, run_dir)
-    _record_song_approval(user)
+    # Count this cover regen toward the DB-backed daily cap (parity with the
+    # old file-based _record_song_approval). Service tokens bypass the cap.
+    if user.role != "service":
+        from pipeline.db import record_rate_event
+        record_rate_event(user.id, "song_approve")
     _write_state(run_dir, pid=pid)
     return {"ok": True, "balance_after": new_balance}
 
