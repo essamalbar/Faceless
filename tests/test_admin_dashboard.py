@@ -526,11 +526,164 @@ def test_admin_dashboard_page_served(client_factory):
     assert r.headers["content-type"].startswith("text/html")
     body = r.text
     for needle in (
-        "Super Admin",
+        # New email/password control-panel markers.
+        "Control Panel",
+        "Sign in",
+        "Sign out",
+        'type="password"',
+        "/admin/login",
         "sessionStorage",
+        # The page still drives the data endpoints.
         "/admin/overview",
         "/admin/users",
         "/admin/runs",
         "/admin/transactions",
     ):
         assert needle in body
+
+
+# ---------------------------------------------------------------------------
+# Email/password admin login + FACELESS_ADMIN_EMAILS allowlist gate.
+#
+# The control panel is now reachable by the service token (CLI/cron) OR by a
+# logged-in user whose email is in FACELESS_ADMIN_EMAILS. _is_admin/_require_admin
+# encode the gate; /admin/login exchanges email+password for a Supabase session
+# but only for allowlisted addresses.
+# ---------------------------------------------------------------------------
+
+
+def test_is_admin_service_user_always_allowed(monkeypatch):
+    from pipeline.api import _is_admin
+    from pipeline.auth import User
+
+    # Empty allowlist — a service token is admin regardless.
+    monkeypatch.delenv("FACELESS_ADMIN_EMAILS", raising=False)
+    svc = User(id="admin", email=None, role="service")
+    assert _is_admin(svc) is True
+
+
+def test_is_admin_allowlisted_email(monkeypatch):
+    from pipeline.api import _is_admin
+    from pipeline.auth import User
+
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    # Case-insensitive + whitespace tolerant.
+    u = User(id="u1", email="  BOSS@x.com ", role="user")
+    assert _is_admin(u) is True
+
+
+def test_is_admin_non_allowlisted_email(monkeypatch):
+    from pipeline.api import _is_admin
+    from pipeline.auth import User
+
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    u = User(id="u2", email="other@x.com", role="user")
+    assert _is_admin(u) is False
+
+
+def test_is_admin_none_email(monkeypatch):
+    from pipeline.api import _is_admin
+    from pipeline.auth import User
+
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    u = User(id="u3", email=None, role="user")
+    assert _is_admin(u) is False
+
+
+def test_require_admin_raises_403_for_non_admin(monkeypatch):
+    from pipeline.api import _require_admin
+    from pipeline.auth import User
+
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    with pytest.raises(HTTPException) as exc:
+        _require_admin(User(id="u", email="other@x.com", role="user"))
+    assert exc.value.status_code == 403
+
+
+def test_require_admin_allows_service_and_allowlisted(monkeypatch):
+    from pipeline.api import _require_admin
+    from pipeline.auth import User
+
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    # Neither call raises.
+    _require_admin(User(id="admin", email=None, role="service"))
+    _require_admin(User(id="u", email="boss@x.com", role="user"))
+
+
+# --- /admin/overview through the allowlist ---------------------------------
+
+def _overview_env(monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    (out / "user-a").mkdir(parents=True)
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+    monkeypatch.setattr(
+        "pipeline.db.probe_activation",
+        lambda: {"payment_status": True, "rate_events": True},
+    )
+
+
+def test_overview_allowlisted_jwt_user_ok(client_factory, monkeypatch, tmp_path):
+    _overview_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    c = client_factory(user_id="boss", role="user", email="boss@x.com")
+    assert c.get("/admin/overview").status_code == 200
+
+
+def test_overview_non_allowlisted_jwt_user_403(client_factory, monkeypatch, tmp_path):
+    _overview_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    c = client_factory(user_id="eve", role="user", email="eve@x.com")
+    assert c.get("/admin/overview").status_code == 403
+
+
+def test_overview_service_token_still_ok(client_factory, monkeypatch, tmp_path):
+    _overview_env(monkeypatch, tmp_path)
+    # Empty allowlist — service token still gets in (backward compat).
+    monkeypatch.delenv("FACELESS_ADMIN_EMAILS", raising=False)
+    c = client_factory(user_id="admin", role="service")
+    assert c.get("/admin/overview").status_code == 200
+
+
+# --- POST /admin/login -----------------------------------------------------
+
+def test_admin_login_success(client_factory, monkeypatch):
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    monkeypatch.setattr(
+        "pipeline.api._supabase_password_login",
+        lambda email, password: {
+            "access_token": "jwt123",
+            "expires_in": 3600,
+            "user": {"email": "boss@x.com"},
+        },
+    )
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/admin/login", json={"email": "boss@x.com", "password": "x"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["access_token"] == "jwt123"
+    assert body["email"] == "boss@x.com"
+    assert body["expires_in"] == 3600
+
+
+def test_admin_login_non_allowlisted_email_403_no_network(client_factory, monkeypatch):
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+
+    def _must_not_call(email, password):
+        raise AssertionError("password login must not run for a non-admin email")
+
+    monkeypatch.setattr("pipeline.api._supabase_password_login", _must_not_call)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/admin/login", json={"email": "nobody@x.com", "password": "x"})
+    assert r.status_code == 403
+
+
+def test_admin_login_bad_credentials_401(client_factory, monkeypatch):
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+
+    def _boom(email, password):
+        raise RuntimeError("login failed: 400")
+
+    monkeypatch.setattr("pipeline.api._supabase_password_login", _boom)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/admin/login", json={"email": "boss@x.com", "password": "wrong"})
+    assert r.status_code == 401
