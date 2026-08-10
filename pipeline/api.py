@@ -799,6 +799,15 @@ def _run_dir(run_id: str, user: "User") -> Path:
     return p
 
 
+def _admin_target_user(user_id: str) -> "User":
+    """Validate a cross-user path param against traversal and wrap it as a
+    role='user' target so refund logic credits the real user (a service user
+    would no-op). Same allowlist as _run_dir's run_id check."""
+    if not _RUN_ID_RE.fullmatch(user_id):
+        raise HTTPException(400, "invalid user_id")
+    return User(id=user_id, email=None, role="user")
+
+
 def _cost_estimate_usd(beats: list[dict]) -> float:
     """Per-beat × seconds × active-model rate + one Flux character sheet.
 
@@ -2544,6 +2553,10 @@ def admin_re_assemble_song(
         raise HTTPException(
             403, "admin endpoint — service token required",
         )
+    if not _RUN_ID_RE.fullmatch(user_id):
+        raise HTTPException(400, "invalid user_id")
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise HTTPException(400, "invalid run_id")
     from pipeline import song_assemble
     run_dir = _out_root() / user_id / run_id
     if not run_dir.exists():
@@ -2606,6 +2619,106 @@ def admin_re_assemble_song(
         share_token=share_token,
         duration_s=round(dur, 1),
     )
+
+
+# ---------------------------------------------------------------------------
+# Super-admin dashboard — service-token-gated cross-user READ endpoints.
+# All four require a service token (never a user JWT) and mutate nothing.
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/overview", dependencies=[Depends(require_user)])
+def admin_overview(user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    from pipeline import db
+    health = _writer_tier_status()
+    root = _out_root()
+    user_dirs = [p for p in root.iterdir() if p.is_dir()] if root.exists() else []
+    try:
+        activation = {**db.probe_activation(),
+                      "unprobed": ["deduct_credits_fn", "uq_credit_grant_ref",
+                                   "uq_credit_clawback_ref"]}
+    except Exception as e:
+        activation = {"error": str(e)}
+    return {"health": health,
+            "counts": {"user_dirs": len(user_dirs)},
+            "activation": activation}
+
+
+@app.get("/admin/users", dependencies=[Depends(require_user)])
+def admin_list_users(limit: int = 100, offset: int = 0,
+                     user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    from pipeline import db
+    profiles = db.list_user_profiles(limit, offset)
+    balances = db.list_balances()
+    emails = db.list_auth_users()
+    return [{"id": p.id, "email": emails.get(p.id), "balance": balances.get(p.id, 0),
+             "plan": p.current_plan, "payment_status": p.payment_status,
+             "tos_accepted_version": p.tos_accepted_version} for p in profiles]
+
+
+@app.get("/admin/runs", dependencies=[Depends(require_user)])
+def admin_list_runs(limit: int = 50, offset: int = 0,
+                    user_id: str | None = None,
+                    user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    root = _out_root()
+    if not root.exists():
+        return []
+    if user_id is not None:
+        if not _RUN_ID_RE.fullmatch(user_id):
+            raise HTTPException(400, "invalid user_id")
+        user_dirs = [root / user_id] if (root / user_id).is_dir() else []
+    else:
+        user_dirs = sorted([p for p in root.iterdir() if p.is_dir()])
+    # Cap the walk: prod out-root is GCS-Fuse — never summarize every run.
+    # Collect lightweight (mtime, uid, run_dir) tuples, sort, slice, THEN
+    # summarize only the requested page.
+    entries = []  # (mtime, uid, run_dir)
+    for ud in user_dirs:
+        for rd in ud.iterdir():
+            if rd.is_dir():
+                try:
+                    mtime = rd.stat().st_mtime
+                except OSError:
+                    mtime = 0.0
+                entries.append((mtime, ud.name, rd))
+    entries.sort(key=lambda e: e[0], reverse=True)
+    page = entries[offset:offset + limit]
+    out = []
+    for _mtime, uid, rd in page:
+        summary = _summarize(rd)
+        row = summary.model_dump() if hasattr(summary, "model_dump") else summary.dict()
+        try:
+            kind = _read_state(rd).get("kind")
+        except Exception:
+            kind = None
+        row["user_id"] = uid
+        row["kind"] = kind
+        out.append(row)
+    return out
+
+
+@app.get("/admin/transactions", dependencies=[Depends(require_user)])
+def admin_list_transactions(limit: int = 200, user_id: str | None = None,
+                            user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    limit = max(1, min(limit, 500))
+    from pipeline import db
+    if user_id is not None:
+        txns = db.list_transactions(user_id, limit)
+    else:
+        txns = db.list_transactions_all(limit)
+    import dataclasses
+    return [dataclasses.asdict(t) for t in txns]
 
 
 class SpendSummary(BaseModel):
