@@ -903,3 +903,153 @@ def test_plan_price_usd_fallback_when_stripe_absent(monkeypatch):
 
     prices = api._plan_price_usd()
     assert prices == {"starter": 9.0, "creator": 29.0, "pro": 79.0}
+
+
+# ---------------------------------------------------------------------------
+# Admin cross-user media streaming — GET /admin/songs/{uid}/{rid}/audio + cover
+#
+# The control panel plays any user's song by fetching WITH the bearer header
+# (fetch → blob → <audio>). Header auth via require_user is correct; NO
+# ?token= query auth (keeps the admin token out of URLs). Both endpoints gate
+# on _require_admin first, then validate BOTH path params against _RUN_ID_RE.
+#
+# Traversal is exercised by calling the handler directly (httpx normalizes
+# `../` out of URL paths before the request is sent, so an HTTP traversal test
+# would silently hit a normalized 404 path instead of the intended 400 branch).
+# The tmp out-root is keyed by the TARGET user_id from the URL path, not the
+# caller's id — that's the whole point of a cross-user endpoint.
+# ---------------------------------------------------------------------------
+
+
+# --- GET /admin/songs/{uid}/{rid}/audio ------------------------------------
+
+def test_admin_song_audio_requires_admin(client_factory):
+    # Non-allowlisted, role="user", email=None → 403 regardless of env.
+    c = client_factory(user_id="alice", role="user")
+    assert c.get("/admin/songs/target/run-x/audio").status_code == 403
+
+
+def test_admin_song_audio_email_admin_ok(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = out / "target-user" / "run-x"
+    rd.mkdir(parents=True)
+    data = b"ID3fake-mp3-bytes\x00\x01\x02"
+    (rd / "song.mp3").write_bytes(data)
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+
+    c = client_factory(user_id="boss", role="user", email="boss@x.com")
+    r = c.get("/admin/songs/target-user/run-x/audio")
+    assert r.status_code == 200
+    assert r.content == data
+    assert r.headers["content-type"].startswith("audio/mpeg")
+
+
+def test_admin_song_audio_service_token_ok(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = out / "target-user" / "run-x"
+    rd.mkdir(parents=True)
+    data = b"service-token-can-fetch"
+    (rd / "song.mp3").write_bytes(data)
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/songs/target-user/run-x/audio")
+    assert r.status_code == 200
+    assert r.content == data
+
+
+def test_admin_song_audio_missing_file_404(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    (out / "target-user" / "run-x").mkdir(parents=True)  # dir exists, no mp3
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    assert c.get("/admin/songs/target-user/run-x/audio").status_code == 404
+
+
+def test_admin_song_audio_traversal_user_id():
+    from pipeline.api import admin_song_audio
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_song_audio(user_id="../evil", run_id="run-x", user=svc)
+    assert exc.value.status_code == 400
+
+
+def test_admin_song_audio_traversal_run_id():
+    from pipeline.api import admin_song_audio
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    # Valid user_id so the run_id check is the one that fires (#3).
+    with pytest.raises(HTTPException) as exc:
+        admin_song_audio(user_id="target-user", run_id="../evil", user=svc)
+    assert exc.value.status_code == 400
+
+
+# --- GET /admin/songs/{uid}/{rid}/cover ------------------------------------
+
+def test_admin_song_cover_requires_admin(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.get("/admin/songs/target/run-x/cover").status_code == 403
+
+
+def test_admin_song_cover_png_ok(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = out / "target-user" / "run-x"
+    rd.mkdir(parents=True)
+    png = b"\x89PNG\r\n\x1a\nfake"
+    (rd / "cover.png").write_bytes(png)
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/songs/target-user/run-x/cover")
+    assert r.status_code == 200
+    assert r.content == png
+    assert r.headers["content-type"].startswith("image/png")
+
+
+def test_admin_song_cover_thumb_fallback(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = out / "target-user" / "run-x"
+    rd.mkdir(parents=True)
+    jpg = b"\xff\xd8\xff\xe0fake-jpeg"
+    (rd / "cover_thumb.jpg").write_bytes(jpg)  # only the thumb exists
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/songs/target-user/run-x/cover")
+    assert r.status_code == 200
+    assert r.content == jpg
+    assert r.headers["content-type"].startswith("image/jpeg")
+
+
+def test_admin_song_cover_missing_404(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    (out / "target-user" / "run-x").mkdir(parents=True)  # dir but no cover
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    assert c.get("/admin/songs/target-user/run-x/cover").status_code == 404
+
+
+def test_admin_song_cover_traversal_user_id():
+    from pipeline.api import admin_song_cover
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_song_cover(user_id="../evil", run_id="run-x", user=svc)
+    assert exc.value.status_code == 400
+
+
+def test_admin_song_cover_traversal_run_id():
+    from pipeline.api import admin_song_cover
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_song_cover(user_id="target-user", run_id="../evil", user=svc)
+    assert exc.value.status_code == 400

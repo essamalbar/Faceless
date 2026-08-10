@@ -2729,6 +2729,43 @@ def admin_re_assemble_song(
 
 
 # ---------------------------------------------------------------------------
+# Admin cross-user media streaming — lets the control panel play any user's
+# generated song. The panel fetches WITH the Authorization: Bearer header
+# (fetch → blob → <audio>), so header auth via require_user is correct — no
+# ?token= query auth, which would leak the admin token into URLs. Both gate on
+# _require_admin first, then validate BOTH path params against _RUN_ID_RE.
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/songs/{user_id}/{run_id}/audio", dependencies=[Depends(require_user)])
+def admin_song_audio(user_id: str, run_id: str, user: User = Depends(require_user)):
+    _require_admin(user)
+    if not _RUN_ID_RE.fullmatch(user_id):
+        raise HTTPException(400, "invalid user_id")
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise HTTPException(400, "invalid run_id")
+    p = _out_root() / user_id / run_id / "song.mp3"
+    if not p.exists():
+        raise HTTPException(404, "song.mp3 not found")
+    return FileResponse(str(p), media_type="audio/mpeg",
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/admin/songs/{user_id}/{run_id}/cover", dependencies=[Depends(require_user)])
+def admin_song_cover(user_id: str, run_id: str, user: User = Depends(require_user)):
+    _require_admin(user)
+    if not _RUN_ID_RE.fullmatch(user_id):
+        raise HTTPException(400, "invalid user_id")
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise HTTPException(400, "invalid run_id")
+    d = _out_root() / user_id / run_id
+    for name, mt in (("cover.png", "image/png"), ("cover_thumb.jpg", "image/jpeg")):
+        p = d / name
+        if p.exists():
+            return FileResponse(str(p), media_type=mt)
+    raise HTTPException(404, "cover not found")
+
+
+# ---------------------------------------------------------------------------
 # Super-admin dashboard — service-token-gated cross-user READ endpoints.
 # All four require a service token (never a user JWT) and mutate nothing.
 # ---------------------------------------------------------------------------
