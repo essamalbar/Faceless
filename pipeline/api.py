@@ -2653,7 +2653,23 @@ def admin_list_users(limit: int = 100, offset: int = 0,
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     from pipeline import db
-    profiles = db.list_user_profiles(limit, offset)
+    try:
+        profiles = db.list_user_profiles(limit, offset)
+    except Exception as e:
+        # user_profiles is SELECTed with the payment_status / tos_accepted_version
+        # columns that only exist after the pending migrations run. Before that,
+        # PostgREST returns a "column does not exist" error — surface it as an
+        # actionable 503 instead of an opaque 500, since this is the exact state
+        # an operator is in until they apply docs/operator/APPLY-MIGRATIONS.sql.
+        s = str(e).lower()
+        if ("does not exist" in s or "could not find" in s
+                or "pgrst204" in s or "42703" in s):
+            raise HTTPException(
+                503,
+                "Users unavailable: apply the pending Supabase migrations "
+                "(docs/operator/APPLY-MIGRATIONS.sql), then retry.",
+            ) from None
+        raise
     balances = db.list_balances()
     emails = db.list_auth_users()
     return [{"id": p.id, "email": emails.get(p.id), "balance": balances.get(p.id, 0),
