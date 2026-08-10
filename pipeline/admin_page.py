@@ -71,6 +71,7 @@ ADMIN_HTML: str = r"""<!doctype html>
 
   .notice{border-radius:10px;padding:10px 12px;font-size:13px;margin:0 0 14px}
   .notice.err{background:var(--red-bg);color:var(--red);border:1px solid #eecaca}
+  .notice.ok{background:#e7f6ec;color:var(--green);border:1px solid #bfe6cb}
   .notice.hide{display:none}
 
   .scroll{overflow-x:auto}
@@ -188,7 +189,7 @@ function q(id){ return document.getElementById(id); }
 function showMsg(id, text, isErr){
   var el = q(id);
   el.textContent = text;
-  el.className = "notice " + (isErr ? "err" : "err") + (text ? "" : " hide");
+  el.className = "notice " + (isErr ? "err" : "ok") + (text ? "" : " hide");
   if(!text) el.classList.add("hide");
 }
 
