@@ -526,8 +526,14 @@ def test_admin_dashboard_page_served(client_factory):
     assert r.headers["content-type"].startswith("text/html")
     body = r.text
     for needle in (
-        "Super Admin",
+        # New email/password control-panel markers.
+        "Control Panel",
+        "Sign in",
+        "Sign out",
+        'type="password"',
+        "/admin/login",
         "sessionStorage",
+        # The page still drives the data endpoints.
         "/admin/overview",
         "/admin/users",
         "/admin/runs",
