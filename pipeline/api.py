@@ -2667,18 +2667,7 @@ def get_spend_summary(user: User = Depends(require_user)):
     )
 
 
-@app.delete(
-    "/runs/{run_id}",
-    response_model=DeleteAck,
-    dependencies=[Depends(require_user)],
-)
-def delete_run(run_id: str, user: User = Depends(require_user)):
-    """Discard a run entirely.
-
-    If a pipeline subprocess is still running, this stops it (SIGTERM,
-    wait up to 5s, SIGKILL fallback) BEFORE removing the directory — the
-    user just wants the run gone, they shouldn't have to call /cancel
-    first and then race the OS to clean it up."""
+def _delete_run_impl(user: "User", run_id: str) -> DeleteAck:
     run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     pid = state.get("pid")
@@ -2692,6 +2681,21 @@ def delete_run(run_id: str, user: User = Depends(require_user)):
     import shutil
     shutil.rmtree(run_dir)
     return DeleteAck(run_id=run_id, deleted=True)
+
+
+@app.delete(
+    "/runs/{run_id}",
+    response_model=DeleteAck,
+    dependencies=[Depends(require_user)],
+)
+def delete_run(run_id: str, user: User = Depends(require_user)):
+    """Discard a run entirely.
+
+    If a pipeline subprocess is still running, this stops it (SIGTERM,
+    wait up to 5s, SIGKILL fallback) BEFORE removing the directory — the
+    user just wants the run gone, they shouldn't have to call /cancel
+    first and then race the OS to clean it up."""
+    return _delete_run_impl(user, run_id)
 
 
 class RerollRequest(BaseModel):
@@ -2762,20 +2766,7 @@ def reroll_clips(run_id: str, req: RerollRequest, user: User = Depends(require_u
                       started_paid_stages=True)
 
 
-@app.post(
-    "/runs/{run_id}/cancel",
-    response_model=CancelAck,
-    dependencies=[Depends(require_user)],
-)
-def cancel_run(run_id: str, user: User = Depends(require_user)):
-    """Stop a running pipeline subprocess. Waits for the process to actually
-    exit (SIGTERM → wait → SIGKILL fallback) before returning, so a
-    follow-up resume/reroll never races with a half-dead process.
-
-    Refunds any net credits the user has been charged for this run.
-    Cancelling mid-render previously left the user with the bill for
-    any clips that completed before SIGTERM but no finished video.
-    """
+def _cancel_run_impl(user: "User", run_id: str) -> CancelAck:
     from pipeline.credits import refund_run_charges
 
     run_dir = _run_dir(run_id, user)
@@ -2833,6 +2824,23 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
         last_action="cancel",
     )
     return CancelAck(run_id=run_id, killed_pid=killed_pid)
+
+
+@app.post(
+    "/runs/{run_id}/cancel",
+    response_model=CancelAck,
+    dependencies=[Depends(require_user)],
+)
+def cancel_run(run_id: str, user: User = Depends(require_user)):
+    """Stop a running pipeline subprocess. Waits for the process to actually
+    exit (SIGTERM → wait → SIGKILL fallback) before returning, so a
+    follow-up resume/reroll never races with a half-dead process.
+
+    Refunds any net credits the user has been charged for this run.
+    Cancelling mid-render previously left the user with the bill for
+    any clips that completed before SIGTERM but no finished video.
+    """
+    return _cancel_run_impl(user, run_id)
 
 
 @app.get("/runs/{run_id}/video",
@@ -3807,8 +3815,7 @@ def diacritize_song(run_id: str, user: User = Depends(require_user)):
     return {"lyrics": result}
 
 
-@app.post("/songs/{run_id}/cancel")
-def cancel_song(run_id: str, user: User = Depends(require_user)):
+def _cancel_song_impl(user: "User", run_id: str) -> dict:
     from pipeline.credits import refund_run_charges
 
     run_dir = _resolve_song_dir(run_id, user)
@@ -3847,6 +3854,11 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
         get_logger().error("[billing] refund failed during cancel",
                             exc_info=_e, extra={"where": "cancel", "run_id": run_id})
     return {"ok": True, "refunded": refunded}
+
+
+@app.post("/songs/{run_id}/cancel")
+def cancel_song(run_id: str, user: User = Depends(require_user)):
+    return _cancel_song_impl(user, run_id)
 
 
 @app.post("/songs/{run_id}/approve")
@@ -4420,15 +4432,7 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
     return {"ok": True, "balance_after": new_balance}
 
 
-@app.delete("/songs/{run_id}", status_code=204)
-def delete_song(run_id: str, user: User = Depends(require_user)):
-    """Delete a song run entirely — removes the run dir and all
-    artifacts (song.json, lyrics.txt, cover.png, take_*.mp3, song.mp3,
-    final.mp4, api_state.json, etc.).
-
-    Refuses with 409 if a worker is actively processing the run. The
-    user must wait for it to complete (or fail), then delete.
-    """
+def _delete_song_impl(user: "User", run_id: str) -> None:
     import shutil
     run_dir = _resolve_song_dir(run_id, user)
     state = _read_state(run_dir)
@@ -4460,6 +4464,18 @@ def delete_song(run_id: str, user: User = Depends(require_user)):
             # primary delete on this.
             pass
     return None
+
+
+@app.delete("/songs/{run_id}", status_code=204)
+def delete_song(run_id: str, user: User = Depends(require_user)):
+    """Delete a song run entirely — removes the run dir and all
+    artifacts (song.json, lyrics.txt, cover.png, take_*.mp3, song.mp3,
+    final.mp4, api_state.json, etc.).
+
+    Refuses with 409 if a worker is actively processing the run. The
+    user must wait for it to complete (or fail), then delete.
+    """
+    return _delete_song_impl(user, run_id)
 
 
 # ---------------------------------------------------------------------------
