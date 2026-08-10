@@ -156,6 +156,43 @@ def test_users_limit_clamped(client_factory, monkeypatch):
     assert seen["offset"] == 0       # clamped to >= 0
 
 
+def test_users_missing_columns_returns_503_hint(client_factory, monkeypatch):
+    """Before the pending migrations, user_profiles lacks payment_status /
+    tos_accepted_version, so the SELECT errors. The endpoint must surface an
+    actionable 503 pointing to the migration bundle, not an opaque 500."""
+    def _boom(limit, offset):
+        raise Exception('column user_profiles.payment_status does not exist')
+
+    monkeypatch.setattr("pipeline.db.list_user_profiles", _boom)
+    monkeypatch.setattr("pipeline.db.list_balances", lambda: {})
+    monkeypatch.setattr("pipeline.db.list_auth_users", lambda: {})
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/users")
+    assert r.status_code == 503
+    assert "APPLY-MIGRATIONS.sql" in r.json()["detail"]
+
+
+def test_users_unrelated_error_still_raises(client_factory, monkeypatch):
+    """A non-schema error must NOT be masked as a migration hint — it
+    propagates (the global handler turns it into a 500 in prod), rather than
+    being mislabeled as 'apply migrations'."""
+    import pytest
+
+    def _boom(limit, offset):
+        raise Exception('connection reset by peer')
+
+    monkeypatch.setattr("pipeline.db.list_user_profiles", _boom)
+    monkeypatch.setattr("pipeline.db.list_balances", lambda: {})
+    monkeypatch.setattr("pipeline.db.list_auth_users", lambda: {})
+
+    c = client_factory(user_id="admin", role="service")
+    # TestClient re-raises server exceptions; the point is it is NOT converted
+    # to the 503 migration hint.
+    with pytest.raises(Exception, match="connection reset by peer"):
+        c.get("/admin/users")
+
+
 # --- /admin/runs -----------------------------------------------------------
 
 def test_runs_requires_service(client_factory, monkeypatch, tmp_path):
