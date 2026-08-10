@@ -799,6 +799,15 @@ def _run_dir(run_id: str, user: "User") -> Path:
     return p
 
 
+def _admin_target_user(user_id: str) -> "User":
+    """Validate a cross-user path param against traversal and wrap it as a
+    role='user' target so refund logic credits the real user (a service user
+    would no-op). Same allowlist as _run_dir's run_id check."""
+    if not _RUN_ID_RE.fullmatch(user_id):
+        raise HTTPException(400, "invalid user_id")
+    return User(id=user_id, email=None, role="user")
+
+
 def _cost_estimate_usd(beats: list[dict]) -> float:
     """Per-beat × seconds × active-model rate + one Flux character sheet.
 
@@ -2544,6 +2553,10 @@ def admin_re_assemble_song(
         raise HTTPException(
             403, "admin endpoint — service token required",
         )
+    if not _RUN_ID_RE.fullmatch(user_id):
+        raise HTTPException(400, "invalid user_id")
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise HTTPException(400, "invalid run_id")
     from pipeline import song_assemble
     run_dir = _out_root() / user_id / run_id
     if not run_dir.exists():
@@ -2608,6 +2621,145 @@ def admin_re_assemble_song(
     )
 
 
+# ---------------------------------------------------------------------------
+# Super-admin dashboard — service-token-gated cross-user READ endpoints.
+# All four require a service token (never a user JWT) and mutate nothing.
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/overview", dependencies=[Depends(require_user)])
+def admin_overview(user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    from pipeline import db
+    health = _writer_tier_status()
+    root = _out_root()
+    user_dirs = [p for p in root.iterdir() if p.is_dir()] if root.exists() else []
+    try:
+        activation = {**db.probe_activation(),
+                      "unprobed": ["deduct_credits_fn", "uq_credit_grant_ref",
+                                   "uq_credit_clawback_ref"]}
+    except Exception as e:
+        activation = {"error": str(e)}
+    return {"health": health,
+            "counts": {"user_dirs": len(user_dirs)},
+            "activation": activation}
+
+
+@app.get("/admin/users", dependencies=[Depends(require_user)])
+def admin_list_users(limit: int = 100, offset: int = 0,
+                     user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    from pipeline import db
+    profiles = db.list_user_profiles(limit, offset)
+    balances = db.list_balances()
+    emails = db.list_auth_users()
+    return [{"id": p.id, "email": emails.get(p.id), "balance": balances.get(p.id, 0),
+             "plan": p.current_plan, "payment_status": p.payment_status,
+             "tos_accepted_version": p.tos_accepted_version} for p in profiles]
+
+
+@app.get("/admin/runs", dependencies=[Depends(require_user)])
+def admin_list_runs(limit: int = 50, offset: int = 0,
+                    user_id: str | None = None,
+                    user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    root = _out_root()
+    if not root.exists():
+        return []
+    if user_id is not None:
+        if not _RUN_ID_RE.fullmatch(user_id):
+            raise HTTPException(400, "invalid user_id")
+        user_dirs = [root / user_id] if (root / user_id).is_dir() else []
+    else:
+        user_dirs = sorted([p for p in root.iterdir() if p.is_dir()])
+    # Cap the walk: prod out-root is GCS-Fuse — never summarize every run.
+    # Collect lightweight (mtime, uid, run_dir) tuples, sort, slice, THEN
+    # summarize only the requested page.
+    entries = []  # (mtime, uid, run_dir)
+    for ud in user_dirs:
+        for rd in ud.iterdir():
+            if rd.is_dir():
+                try:
+                    mtime = rd.stat().st_mtime
+                except OSError:
+                    mtime = 0.0
+                entries.append((mtime, ud.name, rd))
+    entries.sort(key=lambda e: e[0], reverse=True)
+    page = entries[offset:offset + limit]
+    out = []
+    for _mtime, uid, rd in page:
+        summary = _summarize(rd)
+        row = summary.model_dump() if hasattr(summary, "model_dump") else summary.dict()
+        try:
+            kind = _read_state(rd).get("kind")
+        except Exception:
+            kind = None
+        row["user_id"] = uid
+        row["kind"] = kind
+        out.append(row)
+    return out
+
+
+@app.get("/admin/transactions", dependencies=[Depends(require_user)])
+def admin_list_transactions(limit: int = 200, user_id: str | None = None,
+                            user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    limit = max(1, min(limit, 500))
+    from pipeline import db
+    if user_id is not None:
+        txns = db.list_transactions(user_id, limit)
+    else:
+        txns = db.list_transactions_all(limit)
+    import dataclasses
+    return [dataclasses.asdict(t) for t in txns]
+
+
+# ---------------------------------------------------------------------------
+# Super-admin dashboard — service-token-gated cross-user WRITE endpoints.
+# Each reuses the same *_impl the user-facing route uses, but resolves the
+# target via _admin_target_user(user_id) so refunds credit the TARGET user's
+# ledger (a role="user" wrapper), never the service caller (which no-ops).
+# ---------------------------------------------------------------------------
+
+@app.post("/admin/runs/{user_id}/{run_id}/cancel", response_model=CancelAck,
+          dependencies=[Depends(require_user)])
+def admin_cancel_run(user_id: str, run_id: str, user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    return _cancel_run_impl(_admin_target_user(user_id), run_id)
+
+
+@app.post("/admin/songs/{user_id}/{run_id}/cancel",
+          dependencies=[Depends(require_user)])
+def admin_cancel_song(user_id: str, run_id: str, user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    return _cancel_song_impl(_admin_target_user(user_id), run_id)
+
+
+@app.delete("/admin/runs/{user_id}/{run_id}", response_model=DeleteAck,
+            dependencies=[Depends(require_user)])
+def admin_delete_run(user_id: str, run_id: str, user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    return _delete_run_impl(_admin_target_user(user_id), run_id)
+
+
+@app.delete("/admin/songs/{user_id}/{run_id}", status_code=204,
+            dependencies=[Depends(require_user)])
+def admin_delete_song(user_id: str, run_id: str, user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    return _delete_song_impl(_admin_target_user(user_id), run_id)
+
+
 class SpendSummary(BaseModel):
     total_usd: float
     by_run: list[dict]  # [{"run_id": "...", "title": "...", "usd": 8.05}, ...]
@@ -2667,18 +2819,7 @@ def get_spend_summary(user: User = Depends(require_user)):
     )
 
 
-@app.delete(
-    "/runs/{run_id}",
-    response_model=DeleteAck,
-    dependencies=[Depends(require_user)],
-)
-def delete_run(run_id: str, user: User = Depends(require_user)):
-    """Discard a run entirely.
-
-    If a pipeline subprocess is still running, this stops it (SIGTERM,
-    wait up to 5s, SIGKILL fallback) BEFORE removing the directory — the
-    user just wants the run gone, they shouldn't have to call /cancel
-    first and then race the OS to clean it up."""
+def _delete_run_impl(user: "User", run_id: str) -> DeleteAck:
     run_dir = _run_dir(run_id, user)
     state = _read_state(run_dir)
     pid = state.get("pid")
@@ -2692,6 +2833,21 @@ def delete_run(run_id: str, user: User = Depends(require_user)):
     import shutil
     shutil.rmtree(run_dir)
     return DeleteAck(run_id=run_id, deleted=True)
+
+
+@app.delete(
+    "/runs/{run_id}",
+    response_model=DeleteAck,
+    dependencies=[Depends(require_user)],
+)
+def delete_run(run_id: str, user: User = Depends(require_user)):
+    """Discard a run entirely.
+
+    If a pipeline subprocess is still running, this stops it (SIGTERM,
+    wait up to 5s, SIGKILL fallback) BEFORE removing the directory — the
+    user just wants the run gone, they shouldn't have to call /cancel
+    first and then race the OS to clean it up."""
+    return _delete_run_impl(user, run_id)
 
 
 class RerollRequest(BaseModel):
@@ -2762,20 +2918,7 @@ def reroll_clips(run_id: str, req: RerollRequest, user: User = Depends(require_u
                       started_paid_stages=True)
 
 
-@app.post(
-    "/runs/{run_id}/cancel",
-    response_model=CancelAck,
-    dependencies=[Depends(require_user)],
-)
-def cancel_run(run_id: str, user: User = Depends(require_user)):
-    """Stop a running pipeline subprocess. Waits for the process to actually
-    exit (SIGTERM → wait → SIGKILL fallback) before returning, so a
-    follow-up resume/reroll never races with a half-dead process.
-
-    Refunds any net credits the user has been charged for this run.
-    Cancelling mid-render previously left the user with the bill for
-    any clips that completed before SIGTERM but no finished video.
-    """
+def _cancel_run_impl(user: "User", run_id: str) -> CancelAck:
     from pipeline.credits import refund_run_charges
 
     run_dir = _run_dir(run_id, user)
@@ -2833,6 +2976,23 @@ def cancel_run(run_id: str, user: User = Depends(require_user)):
         last_action="cancel",
     )
     return CancelAck(run_id=run_id, killed_pid=killed_pid)
+
+
+@app.post(
+    "/runs/{run_id}/cancel",
+    response_model=CancelAck,
+    dependencies=[Depends(require_user)],
+)
+def cancel_run(run_id: str, user: User = Depends(require_user)):
+    """Stop a running pipeline subprocess. Waits for the process to actually
+    exit (SIGTERM → wait → SIGKILL fallback) before returning, so a
+    follow-up resume/reroll never races with a half-dead process.
+
+    Refunds any net credits the user has been charged for this run.
+    Cancelling mid-render previously left the user with the bill for
+    any clips that completed before SIGTERM but no finished video.
+    """
+    return _cancel_run_impl(user, run_id)
 
 
 @app.get("/runs/{run_id}/video",
@@ -3807,8 +3967,7 @@ def diacritize_song(run_id: str, user: User = Depends(require_user)):
     return {"lyrics": result}
 
 
-@app.post("/songs/{run_id}/cancel")
-def cancel_song(run_id: str, user: User = Depends(require_user)):
+def _cancel_song_impl(user: "User", run_id: str) -> dict:
     from pipeline.credits import refund_run_charges
 
     run_dir = _resolve_song_dir(run_id, user)
@@ -3847,6 +4006,11 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
         get_logger().error("[billing] refund failed during cancel",
                             exc_info=_e, extra={"where": "cancel", "run_id": run_id})
     return {"ok": True, "refunded": refunded}
+
+
+@app.post("/songs/{run_id}/cancel")
+def cancel_song(run_id: str, user: User = Depends(require_user)):
+    return _cancel_song_impl(user, run_id)
 
 
 @app.post("/songs/{run_id}/approve")
@@ -4420,15 +4584,7 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
     return {"ok": True, "balance_after": new_balance}
 
 
-@app.delete("/songs/{run_id}", status_code=204)
-def delete_song(run_id: str, user: User = Depends(require_user)):
-    """Delete a song run entirely — removes the run dir and all
-    artifacts (song.json, lyrics.txt, cover.png, take_*.mp3, song.mp3,
-    final.mp4, api_state.json, etc.).
-
-    Refuses with 409 if a worker is actively processing the run. The
-    user must wait for it to complete (or fail), then delete.
-    """
+def _delete_song_impl(user: "User", run_id: str) -> None:
     import shutil
     run_dir = _resolve_song_dir(run_id, user)
     state = _read_state(run_dir)
@@ -4460,6 +4616,18 @@ def delete_song(run_id: str, user: User = Depends(require_user)):
             # primary delete on this.
             pass
     return None
+
+
+@app.delete("/songs/{run_id}", status_code=204)
+def delete_song(run_id: str, user: User = Depends(require_user)):
+    """Delete a song run entirely — removes the run dir and all
+    artifacts (song.json, lyrics.txt, cover.png, take_*.mp3, song.mp3,
+    final.mp4, api_state.json, etc.).
+
+    Refuses with 409 if a worker is actively processing the run. The
+    user must wait for it to complete (or fail), then delete.
+    """
+    return _delete_song_impl(user, run_id)
 
 
 # ---------------------------------------------------------------------------
@@ -5055,6 +5223,16 @@ def _find_artist_public(handle: str) -> tuple[dict, Path] | None:
         if artist:
             return artist, user_dir
     return None
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_dashboard():
+    """Self-contained super-admin operator console. The shell needs no auth
+    (the service token is entered in-browser and attached to every /admin/*
+    fetch as a bearer header); the endpoints it drives are service-gated."""
+    from fastapi.responses import HTMLResponse
+    from pipeline.admin_page import ADMIN_HTML
+    return HTMLResponse(ADMIN_HTML)
 
 
 @app.get("/a/{handle}", include_in_schema=False)

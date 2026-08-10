@@ -196,3 +196,16 @@ Developers → Webhooks → (existing endpoint) → **Add event** → `invoice.p
 
 ### What is NOT in Phase 0 (still required before charging real users — Tiers 2–3 above)
 Monitoring/alerting, infra spend ceiling (`maxScale` + GCP budget + Kie cap), Supabase backups, ToS/Privacy/refund policy, DMCA/abuse contact, ownership-attestation gate, GDPR delete/export. Phase 0 closes only the **money-integrity code** blockers (Tier 1). ~~Also deferred: the video pipeline shares the same free-resume leak fixed for songs in Task 2~~ — **FIXED 2026-08-05 (commit `c27c6c0`)**: the shorts/video assembly-failure auto-refund was removed (failure keeps the charge; `/resume` = free retry; `cancel_run` = refund path, re-ordered to refund after reaping the worker). So both the song and video pipelines now follow the same cancel-refunds/failure-keeps-charge policy.
+
+---
+
+## Super-admin dashboard + operator migration bundle (2026-08-10)
+
+**Shipped (branch `feat/super-admin-dashboard`; spec `docs/superpowers/specs/2026-08-10-super-admin-dashboard-design.md`):**
+- A self-contained operator cockpit at **`GET /admin`** (served by the API — inline HTML/CSS/JS, no external deps, renders behind the tunnel/CSP). Open the URL, paste `FACELESS_API_TOKEN` (held in the browser tab's `sessionStorage`, sent as a bearer header — never in a URL). Four cards: **Activation & health** (writer tier/degraded, user-dir count, migration-activation probe), **Users** (id/email/balance/plan/payment_status/ToS + per-row **Grant credits**), **Runs** (all users, capped walk; per-row **Cancel**, **Delete**, and song **Re-assemble**), **Ledger** (cross-user credit transactions).
+- New service-token-gated cross-user endpoints in `pipeline/api.py`: `GET /admin/overview|users|runs|transactions`, `POST /admin/runs|songs/{user_id}/{run_id}/cancel`, `DELETE /admin/runs|songs/{user_id}/{run_id}`. Cancel refunds the **target** user (synthetic `role="user"` so `refund_run_charges` isn't a service no-op); deletes retain `credit_transactions`. New `db.py` aggregation helpers + a best-effort activation probe. Fixed a latent path-traversal gap in the pre-existing `admin_re_assemble_song` (`user_id` was unvalidated).
+- Operator convenience: **`docs/operator/APPLY-MIGRATIONS.sql`** — the 6 pending migrations concatenated in order for one paste into the Supabase SQL Editor (all additive/idempotent) — plus **`docs/operator/APPLY-MIGRATIONS.md`** with the click-path. This removes the friction from operator step ① (no CLI/psql needed).
+
+Clean-env suite: **973 passed, 0 failed** (baseline 929 + 44 new tests). `list_auth_users` currently reads the first Supabase auth page (~50 users) — fine for the current scale; add pagination before a large user base.
+
+**NOT a go-live gate.** This is the cockpit for running the service once live. The standing launch blockers are unchanged: **GCP billing account closed → prod down** (reopen it), the **6 migrations** unapplied (now one paste — see above), Stripe webhook events (`invoice.payment_failed`, `charge.dispute.created`, `charge.refunded`), the Kie spend cap, and the placeholder legal copy. See the operator checklist above.
