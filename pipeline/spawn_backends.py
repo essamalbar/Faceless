@@ -228,7 +228,21 @@ class CloudRunJobsBackend(SpawnBackend):
 
 def select_backend() -> SpawnBackend:
     """Pick the spawn backend based on env vars. Called at API startup."""
-    backend_name = os.environ.get("FACELESS_SPAWN_BACKEND", "local").strip().lower()
+    raw = os.environ.get("FACELESS_SPAWN_BACKEND")
+    if raw is None:
+        # Unset. On Cloud Run (K_SERVICE is set) the in-container `local`
+        # backend would spawn every user's render inside the single API
+        # container — one OOM/crash takes everyone down. Fail closed and force
+        # an explicit choice rather than silently defaulting to `local`.
+        if os.environ.get("K_SERVICE"):
+            raise RuntimeError(
+                "FACELESS_SPAWN_BACKEND is unset on Cloud Run "
+                "(K_SERVICE detected). Refusing to run renders inside the API "
+                "container. Set FACELESS_SPAWN_BACKEND=cloudrun_jobs."
+            )
+        return LocalSubprocessBackend()
+
+    backend_name = raw.strip().lower()
 
     if backend_name == "local":
         return LocalSubprocessBackend()

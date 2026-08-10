@@ -341,6 +341,93 @@ def test_approve_song_deducts_credits_and_spawns(app, monkeypatch):
     assert "--resume" in args
 
 
+def test_approve_song_refunds_and_fails_when_spawn_errors(
+    app, client_factory, monkeypatch
+):
+    """MONEY BUG guard: credits are deducted BEFORE the render worker is
+    spawned. If the spawn raises (Cloud Run Job dispatch / quota error) the
+    user must be refunded, the run marked ``failed`` (not wedged in an active
+    status), and the API returns 503 — not left charged for a render that
+    never started."""
+    from pipeline import api as api_mod, credits
+
+    def boom(args, run_dir):
+        raise RuntimeError("cloud run job dispatch quota exceeded")
+
+    api_mod.set_spawn_fn(boom)
+
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+    # create_song / approve_song read balance straight from pipeline.db.
+    from pipeline import db as _db
+    monkeypatch.setattr(_db, "get_balance", lambda uid: 100)
+    monkeypatch.setattr(
+        credits, "check_or_deduct",
+        lambda user, amount, run_id, reason: 100 - amount,
+    )
+    refunds: list[dict] = []
+
+    def spy_refund(user, *, run_id, reason):
+        refunds.append({"user_id": user.id, "run_id": run_id, "reason": reason})
+        return 1
+
+    monkeypatch.setattr(credits, "refund_run_charges", spy_refund)
+
+    # A paying (role="user") user, not the service token.
+    client = client_factory(user_id="payer", role="user")
+    create = client.post(
+        "/songs", json={"theme": "x", "ownership_attested": True}
+    )
+    assert create.status_code == 201, create.text
+    run_id = create.json()["run_id"]
+
+    r = client.post(f"/songs/{run_id}/approve")
+    assert r.status_code == 503, r.text
+
+    # Refund attempted exactly once, for this run + user.
+    assert len(refunds) == 1
+    assert refunds[0]["run_id"] == run_id
+    assert refunds[0]["user_id"] == "payer"
+
+    # Run marked failed, not left wedged in generating_song.
+    run_dir = _find_run_dir(run_id)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "failed"
+    assert "spawn failed" in (state.get("last_error") or "")
+
+
+def test_reroll_takes_refunds_and_fails_when_spawn_errors(app, monkeypatch):
+    """Same charge-then-spawn money guard as approve, for the reroll-takes
+    path (also deducts via check_or_deduct before spawning)."""
+    from pipeline import api as api_mod, credits
+
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+    monkeypatch.setattr(
+        credits, "check_or_deduct",
+        lambda user, amount, run_id, reason: 100 - amount,
+    )
+    refunds: list[str] = []
+    monkeypatch.setattr(
+        credits, "refund_run_charges",
+        lambda user, *, run_id, reason: refunds.append(run_id) or 1,
+    )
+
+    run_id, run_dir, client, token = _setup_complete_song(app, monkeypatch)
+
+    def boom(args, run_dir):
+        raise RuntimeError("cloud run job dispatch quota exceeded")
+
+    api_mod.set_spawn_fn(boom)
+
+    r = client.post(
+        f"/songs/{run_id}/reroll-takes",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 503, r.text
+    assert refunds == [run_id]
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "failed"
+
+
 def test_approve_cinematic_song_deducts_three_credits(app, monkeypatch):
     """Approving a song whose song.json has video_mode='cinematic' must
     charge 3 credits, not the default 1."""

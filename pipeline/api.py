@@ -4302,6 +4302,71 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
     return _cancel_song_impl(user, run_id)
 
 
+# Fixed sentinel UUID for the cross-user global approval rate cap. The
+# rate_events.user_id column is a uuid, so "__global__" would violate the
+# type — this all-zero uuid is a valid-shaped value reserved for the global
+# bucket (no real user is ever assigned it).
+_GLOBAL_RATE_UID = "00000000-0000-0000-0000-000000000000"
+
+
+def _enforce_global_approval_rate() -> None:
+    """Global burst cap across all users (DB-backed, cross-instance). Off when
+    FACELESS_GLOBAL_APPROVALS_PER_MIN is unset/<=0.
+
+    Per-user caps still let N different users approve simultaneously; this is
+    the only thing bounding total concurrent paid spend across the fleet."""
+    from pipeline import db
+    try:
+        limit = int(os.environ.get("FACELESS_GLOBAL_APPROVALS_PER_MIN", "0"))
+    except ValueError:
+        limit = 0
+    if limit <= 0:
+        return
+    try:
+        recent = db.count_rate_events(_GLOBAL_RATE_UID, "song_approve", 60)
+    except Exception:
+        return  # never block the paid flow on a telemetry read failure
+    if recent >= limit:
+        raise HTTPException(429, "system is busy — please try again in a minute")
+    try:
+        db.record_rate_event(_GLOBAL_RATE_UID, "song_approve")
+    except Exception:
+        pass
+
+
+def _spawn_paid_or_refund(
+    user: "User", run_id: str, run_dir: Path, args: list[str]
+) -> int:
+    """Spawn the render worker after credits were ALREADY deducted.
+
+    If the spawn raises (Cloud Run Job dispatch / quota error) the user has
+    been charged for a render that never started AND would be wedged in an
+    active status. Refund, mark the run ``failed`` so a retry is clean, and
+    surface 503. Returns the pid on success."""
+    try:
+        return _SPAWN_FN(args, run_dir)
+    except Exception as e:
+        try:
+            from pipeline.credits import refund_run_charges
+            refund_run_charges(
+                user, run_id=run_id,
+                reason="render failed to start (spawn error)",
+            )
+        except Exception:
+            get_logger().error(
+                "[billing] refund after spawn failure failed",
+                exc_info=True, extra={"run_id": run_id},
+            )
+        _write_state(
+            run_dir, status="failed",
+            last_error=f"spawn failed: {type(e).__name__}: {e}",
+        )
+        raise HTTPException(
+            503,
+            "could not start the render — you were not charged; please retry",
+        )
+
+
 @app.post("/songs/{run_id}/approve")
 def approve_song(run_id: str, user: User = Depends(require_user)):
     _require_terms_accepted(user)
@@ -4326,6 +4391,9 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     # Per-user daily-rate cap. Stops a runaway script or compromised
     # account from draining credits + maxing out Kie usage.
     _enforce_daily_song_limit(user)
+    # Global burst cap across ALL users — per-user caps don't bound N
+    # different users approving at once. Off unless the env is set.
+    _enforce_global_approval_rate()
 
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
@@ -4352,7 +4420,7 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     # already written.
     _write_state(run_dir, status="generating_song")
     args = ["--mode", "song", "--resume", str(run_dir)]
-    pid = _SPAWN_FN(args, run_dir)
+    pid = _spawn_paid_or_refund(user, run_id, run_dir, args)
     # Record this approval in the DB-backed rate log AFTER the spawn
     # succeeds. If spawning fails, no credit gets spent in the wrong
     # state — we let the user retry without it counting against quota.
@@ -4863,7 +4931,7 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
 
     _write_state(run_dir, status="generating_song", last_error=None)
     args = ["--mode", "song", "--resume", str(run_dir)]
-    pid = _SPAWN_FN(args, run_dir)
+    pid = _spawn_paid_or_refund(user, run_id, run_dir, args)
     # Count this cover regen toward the DB-backed daily cap (parity with the
     # old file-based _record_song_approval). Service tokens bypass the cap.
     if user.role != "service":

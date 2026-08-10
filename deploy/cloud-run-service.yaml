@@ -107,5 +107,7 @@ spec:
             volumeAttributes:
               bucketName: ${BUCKET_NAME}
               mountOptions: "implicit-dirs"
-      timeoutSeconds: 60
+      # Must exceed the worst-case inline create_song LLM writer pass (~70s,
+      # and up to ~504s under the Gemini fallback); 60s would 504 mid-write.
+      timeoutSeconds: 300
       containerConcurrency: 80
