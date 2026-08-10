@@ -271,6 +271,23 @@ def list_user_profiles(limit: int = 100, offset: int = 0) -> list[UserProfile]:
     return out
 
 
+def list_all_user_profiles_min() -> list[dict]:
+    """All profiles, minimal columns, for aggregate counts (small user base)."""
+    resp = (_client().table("user_profiles")
+            .select("id,current_plan,payment_status,cancel_at_period_end")
+            .execute())
+    return list(resp.data or [])
+
+
+def list_transactions_by_kinds(kinds: list[str], limit: int = 5000) -> list["Transaction"]:
+    """Cross-user ledger rows whose kind is in `kinds`, newest first."""
+    resp = (_client().table("credit_transactions").select("*")
+            .in_("kind", kinds).order("created_at", desc=True).limit(limit).execute())
+    return [Transaction(id=r["id"], user_id=r["user_id"], amount=r["amount"], kind=r["kind"],
+                        reference_id=r.get("reference_id"), description=r.get("description"),
+                        created_at=r["created_at"]) for r in (resp.data or [])]
+
+
 def list_balances() -> dict[str, int]:
     resp = _client().table("user_balance").select("user_id,balance").execute()
     return {r["user_id"]: int(r.get("balance", 0)) for r in (resp.data or [])}

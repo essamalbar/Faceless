@@ -28,7 +28,7 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -826,6 +826,98 @@ def _require_admin(user: "User") -> None:
     user whose email is in the FACELESS_ADMIN_EMAILS allowlist. Everyone else 403."""
     if not _is_admin(user):
         raise HTTPException(403, "admin access required")
+
+
+# ---------------------------------------------------------------------------
+# Admin analytics — plan → USD pricing + shared revenue aggregation.
+# ---------------------------------------------------------------------------
+
+_PLAN_PRICE_CACHE: dict[str, float] = {}
+_PLAN_BY_GRANT = {12: "starter", 60: "creator", 200: "pro"}  # grant credits → plan
+
+
+def _plan_price_usd() -> dict[str, float]:
+    """{plan: monthly_usd} from Stripe Prices (env STRIPE_PRICE_*), cached.
+    Falls back to the published $9/$29/$79 if Stripe is unavailable so the
+    dashboard still renders. Never raises."""
+    global _PLAN_PRICE_CACHE
+    if _PLAN_PRICE_CACHE:
+        return _PLAN_PRICE_CACHE
+    fallback = {"starter": 9.0, "creator": 29.0, "pro": 79.0}
+    out = dict(fallback)
+    try:
+        import stripe
+        stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+        for plan, env in (("starter", "STRIPE_PRICE_STARTER"),
+                          ("creator", "STRIPE_PRICE_CREATOR"), ("pro", "STRIPE_PRICE_PRO")):
+            pid = os.environ.get(env)
+            if pid and stripe.api_key:
+                p = stripe.Price.retrieve(pid)
+                amt = getattr(p, "unit_amount", None)
+                if amt:
+                    out[plan] = round(amt / 100.0, 2)
+    except Exception:
+        pass
+    _PLAN_PRICE_CACHE = out
+    return out
+
+
+def _revenue_dict() -> dict:
+    """Full /admin/revenue payload. Derives dollar revenue from
+    subscription_renewal rows (plan inferred from grant amount via
+    _PLAN_BY_GRANT × _plan_price_usd), and credits_granted from all positive
+    grant-side ledger rows. Shared by /admin/revenue and /admin/kpis."""
+    from pipeline import db
+    prices = _plan_price_usd()
+    # One combined fetch of the grant-side kinds: subscription_renewal drives
+    # $revenue + renewal counts; topup/admin_credit add to credits_granted.
+    rows = db.list_transactions_by_kinds(
+        ["subscription_renewal", "topup", "admin_credit"])
+    now = datetime.now(timezone.utc)
+    current_month = now.strftime("%Y-%m")
+    cutoff_day = (now - timedelta(days=29)).strftime("%Y-%m-%d")
+
+    renewals_by_plan = {"starter": 0, "creator": 0, "pro": 0}
+    revenue_usd_total = 0.0
+    revenue_usd_mtd = 0.0
+    credits_granted = 0
+    day_rev: dict[str, float] = {}
+    day_cnt: dict[str, int] = {}
+
+    for r in rows:
+        amt = r.amount or 0
+        if amt > 0:
+            credits_granted += amt
+        if r.kind != "subscription_renewal":
+            continue
+        created = r.created_at or ""
+        day, month = created[:10], created[:7]
+        plan = _PLAN_BY_GRANT.get(int(amt)) if amt else None
+        if plan:
+            renewals_by_plan[plan] += 1
+            price = prices.get(plan, 0.0)
+            revenue_usd_total += price
+            if month == current_month:
+                revenue_usd_mtd += price
+            if day:
+                day_rev[day] = day_rev.get(day, 0.0) + price
+        if day:
+            day_cnt[day] = day_cnt.get(day, 0) + 1
+
+    by_day = [
+        {"date": d, "revenue_usd": round(day_rev.get(d, 0.0), 2),
+         "renewals": day_cnt[d]}
+        for d in sorted(day_cnt) if d >= cutoff_day
+    ]
+    return {
+        "prices": prices,
+        "renewals_by_plan": renewals_by_plan,
+        "revenue_usd_total": round(revenue_usd_total, 2),
+        "revenue_usd_mtd": round(revenue_usd_mtd, 2),
+        "credits_granted": credits_granted,
+        "credits_outstanding": sum(db.list_balances().values()),
+        "by_day": by_day,
+    }
 
 
 def _cost_estimate_usd(beats: list[dict]) -> float:
@@ -2746,6 +2838,76 @@ def admin_list_transactions(limit: int = 200, user_id: str | None = None,
         txns = db.list_transactions_all(limit)
     import dataclasses
     return [dataclasses.asdict(t) for t in txns]
+
+
+# ---------------------------------------------------------------------------
+# Super-admin dashboard — subscription / revenue / KPI analytics cards.
+# All read-only; gated by _require_admin (service token OR allowlisted email).
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/subscriptions", dependencies=[Depends(require_user)])
+def admin_subscriptions(user: User = Depends(require_user)):
+    _require_admin(user)
+    from pipeline import db
+    profiles = db.list_all_user_profiles_min()
+    by_plan = {"starter": 0, "creator": 0, "pro": 0, "free": 0, "other": 0}
+    active = past_due = cancel_at_period_end = 0
+    for p in profiles:
+        plan = p.get("current_plan")
+        if plan in ("starter", "creator", "pro"):
+            by_plan[plan] += 1
+        elif plan in ("free", "deleted", None):
+            by_plan["free"] += 1
+        else:
+            by_plan["other"] += 1
+        status = p.get("payment_status")
+        if status == "active":
+            active += 1
+        elif status == "past_due":
+            past_due += 1
+        if p.get("cancel_at_period_end"):
+            cancel_at_period_end += 1
+    return {"by_plan": by_plan, "active": active, "past_due": past_due,
+            "cancel_at_period_end": cancel_at_period_end,
+            "total_profiles": len(profiles)}
+
+
+@app.get("/admin/revenue", dependencies=[Depends(require_user)])
+def admin_revenue(user: User = Depends(require_user)):
+    _require_admin(user)
+    return _revenue_dict()
+
+
+@app.get("/admin/kpis", dependencies=[Depends(require_user)])
+def admin_kpis(user: User = Depends(require_user)):
+    _require_admin(user)
+    from pipeline import db
+    # Each headline number is computed independently so one failing source
+    # (e.g. the auth admin list) nulls only its own field instead of 500ing
+    # the whole card.
+    try:
+        total_users = len(db.list_auth_users())
+    except Exception:
+        total_users = None
+    try:
+        profiles = db.list_all_user_profiles_min()
+        active_subscribers = sum(
+            1 for p in profiles
+            if p.get("payment_status") == "active"
+            and p.get("current_plan") in ("starter", "creator", "pro"))
+    except Exception:
+        active_subscribers = None
+    try:
+        credits_outstanding = sum(db.list_balances().values())
+    except Exception:
+        credits_outstanding = None
+    try:
+        revenue_usd_mtd = _revenue_dict()["revenue_usd_mtd"]
+    except Exception:
+        revenue_usd_mtd = None
+    return {"total_users": total_users, "active_subscribers": active_subscribers,
+            "credits_outstanding": credits_outstanding,
+            "revenue_usd_mtd": revenue_usd_mtd}
 
 
 # ---------------------------------------------------------------------------
