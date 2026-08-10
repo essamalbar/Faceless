@@ -24,9 +24,11 @@ from pipeline.db import (
 
 class _FakeQuery:
     """Mimics the supabase-py builder; records the calls."""
-    def __init__(self, data: list[dict] | dict | None = None, count: Any = None):
+    def __init__(self, data: list[dict] | dict | None = None, count: Any = None,
+                 error: Exception | None = None):
         self._data = data
         self._count = count
+        self._error = error
         self.calls: list[tuple[str, tuple, dict]] = []
 
     def _record(self, name, *args, **kwargs):
@@ -37,6 +39,7 @@ class _FakeQuery:
     def eq(self, *a, **kw):     return self._record("eq", *a, **kw)
     def gte(self, *a, **kw):    return self._record("gte", *a, **kw)
     def order(self, *a, **kw):  return self._record("order", *a, **kw)
+    def range(self, *a, **kw):  return self._record("range", *a, **kw)
     def limit(self, *a, **kw):  return self._record("limit", *a, **kw)
     def insert(self, *a, **kw): return self._record("insert", *a, **kw)
     def upsert(self, *a, **kw): return self._record("upsert", *a, **kw)
@@ -44,6 +47,8 @@ class _FakeQuery:
     def maybe_single(self, *a, **kw): return self._record("maybe_single", *a, **kw)
 
     def execute(self):
+        if self._error is not None:
+            raise self._error
         return _Resp(self._data, self._count)
 
 
@@ -363,3 +368,182 @@ def test_delete_auth_user_does_not_touch_credit_transactions(monkeypatch):
 
     monkeypatch.setattr(db, "_client", lambda: _Client())
     db.delete_auth_user("u1")  # no raise → no ledger touch
+
+
+# ── super-admin cross-user aggregation helpers ─────────────────────────────
+
+def test_list_user_profiles_returns_dataclasses(fake_client):
+    fake_client.tables["user_profiles"] = _FakeQuery(data=[
+        {"id": "u1", "stripe_customer_id": "cus_1", "current_plan": "creator",
+         "current_period_end": "2026-09-01T00:00:00Z", "cancel_at_period_end": False,
+         "payment_status": "active", "tos_accepted_version": "2026-08-05",
+         "tos_accepted_at": "2026-08-05T00:00:00Z"},
+        {"id": "u2", "stripe_customer_id": None, "current_plan": "free",
+         "current_period_end": None, "cancel_at_period_end": True,
+         "payment_status": "past_due", "tos_accepted_version": None,
+         "tos_accepted_at": None},
+    ])
+    profiles = db.list_user_profiles(limit=2, offset=0)
+    assert len(profiles) == 2
+    assert all(isinstance(p, UserProfile) for p in profiles)
+    assert profiles[0].id == "u1"
+    assert profiles[0].payment_status == "active"
+    assert profiles[0].tos_accepted_version == "2026-08-05"
+    assert profiles[1].id == "u2"
+    assert profiles[1].cancel_at_period_end is True
+    assert profiles[1].payment_status == "past_due"
+    assert profiles[1].current_plan == "free"
+    # range() is used for pagination: offset..offset+limit-1
+    q = fake_client.tables["user_profiles"]
+    range_call = next(c for c in q.calls if c[0] == "range")
+    assert range_call[1] == (0, 1)
+
+
+def test_list_user_profiles_defaults_missing_fields(fake_client):
+    fake_client.tables["user_profiles"] = _FakeQuery(data=[{"id": "u3"}])
+    profiles = db.list_user_profiles()
+    assert len(profiles) == 1
+    p = profiles[0]
+    assert p.id == "u3"
+    assert p.current_plan == "free"
+    assert p.payment_status == "active"
+    assert p.cancel_at_period_end is False
+    assert p.stripe_customer_id is None
+
+
+def test_list_user_profiles_empty_when_no_rows(fake_client):
+    fake_client.tables["user_profiles"] = _FakeQuery(data=None)
+    assert db.list_user_profiles() == []
+
+
+def test_list_balances_returns_int_map(fake_client):
+    fake_client.tables["user_balance"] = _FakeQuery(data=[
+        {"user_id": "u1", "balance": 137},
+        {"user_id": "u2", "balance": 0},
+        {"user_id": "u3"},  # missing balance → 0
+    ])
+    balances = db.list_balances()
+    assert balances == {"u1": 137, "u2": 0, "u3": 0}
+    assert all(isinstance(v, int) for v in balances.values())
+
+
+def test_list_balances_empty_when_no_rows(fake_client):
+    fake_client.tables["user_balance"] = _FakeQuery(data=None)
+    assert db.list_balances() == {}
+
+
+def test_list_transactions_all_returns_dataclasses_newest_first(fake_client):
+    fake_client.tables["credit_transactions"] = _FakeQuery(data=[
+        {"id": "t3", "user_id": "u2", "amount": -10, "kind": "run_charge",
+         "reference_id": "r3", "description": "1 clip", "created_at": "2026-05-11T00:03:00Z"},
+        {"id": "t2", "user_id": "u1", "amount": 60, "kind": "subscription_renewal",
+         "reference_id": "inv_1", "description": None, "created_at": "2026-05-11T00:02:00Z"},
+        {"id": "t1", "user_id": "u1", "amount": 12, "kind": "signup_grant",
+         "reference_id": None, "description": None, "created_at": "2026-05-11T00:01:00Z"},
+    ])
+    txs = db.list_transactions_all(limit=3)
+    assert len(txs) == 3
+    assert all(isinstance(t, Transaction) for t in txs)
+    assert txs[0].id == "t3"
+    assert txs[0].user_id == "u2"
+    assert txs[-1].kind == "signup_grant"
+    # ordered created_at desc, limited
+    q = fake_client.tables["credit_transactions"]
+    order_call = next(c for c in q.calls if c[0] == "order")
+    assert order_call[1][0] == "created_at"
+    assert order_call[2].get("desc") is True
+    limit_call = next(c for c in q.calls if c[0] == "limit")
+    assert limit_call[1][0] == 3
+
+
+def test_list_transactions_all_empty_when_no_rows(fake_client):
+    fake_client.tables["credit_transactions"] = _FakeQuery(data=None)
+    assert db.list_transactions_all() == []
+
+
+def test_list_auth_users_from_objects(monkeypatch):
+    class _U:
+        def __init__(self, uid, email):
+            self.id = uid
+            self.email = email
+
+    class _Res:
+        users = [_U("u1", "a@example.com"), _U("u2", "b@example.com")]
+
+    class _Admin:
+        def list_users(self):
+            return _Res()
+
+    class _Auth:
+        admin = _Admin()
+
+    class _Client:
+        auth = _Auth()
+
+    monkeypatch.setattr(db, "_client", lambda: _Client())
+    assert db.list_auth_users() == {"u1": "a@example.com", "u2": "b@example.com"}
+
+
+def test_list_auth_users_from_dicts(monkeypatch):
+    """Dict-shaped fallback: `.users` is a list of plain dicts."""
+    class _Res:
+        users = [
+            {"id": "u1", "email": "a@example.com"},
+            {"id": "u2", "email": "b@example.com"},
+            {"id": "u3"},  # no email → skipped
+        ]
+
+    class _Admin:
+        def list_users(self):
+            return _Res()
+
+    class _Auth:
+        admin = _Admin()
+
+    class _Client:
+        auth = _Auth()
+
+    monkeypatch.setattr(db, "_client", lambda: _Client())
+    assert db.list_auth_users() == {"u1": "a@example.com", "u2": "b@example.com"}
+
+
+def test_list_auth_users_returns_empty_on_error(monkeypatch):
+    class _Admin:
+        def list_users(self):
+            raise Exception("auth admin unavailable")
+
+    class _Auth:
+        admin = _Admin()
+
+    class _Client:
+        auth = _Auth()
+
+    monkeypatch.setattr(db, "_client", lambda: _Client())
+    assert db.list_auth_users() == {}
+
+
+def test_probe_activation_all_true_when_selects_succeed(fake_client):
+    # default _FakeQuery() for both tables → both selects succeed
+    probe = db.probe_activation()
+    assert probe == {
+        "payment_status": True,
+        "tos_accepted_version": True,
+        "rate_events": True,
+    }
+
+
+def test_probe_activation_false_when_relation_missing(fake_client):
+    fake_client.tables["rate_events"] = _FakeQuery(
+        error=Exception('relation "rate_events" does not exist'))
+    probe = db.probe_activation()
+    assert probe["rate_events"] is False
+    assert probe["payment_status"] is True
+    assert probe["tos_accepted_version"] is True
+
+
+def test_probe_activation_none_on_unrelated_error(fake_client):
+    fake_client.tables["user_profiles"] = _FakeQuery(
+        error=Exception("network timeout"))
+    probe = db.probe_activation()
+    assert probe["payment_status"] is None
+    assert probe["tos_accepted_version"] is None

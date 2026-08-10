@@ -242,3 +242,104 @@ def list_transactions(user_id: str, limit: int = 50) -> list[Transaction]:
         )
         for r in (resp.data or [])
     ]
+
+
+def list_user_profiles(limit: int = 100, offset: int = 0) -> list[UserProfile]:
+    resp = (
+        _client()
+        .table("user_profiles")
+        .select(
+            "id,stripe_customer_id,current_plan,current_period_end,"
+            "cancel_at_period_end,payment_status,tos_accepted_version,tos_accepted_at",
+        )
+        .order("id")
+        .range(offset, offset + max(limit, 1) - 1)
+        .execute()
+    )
+    out: list[UserProfile] = []
+    for d in (resp.data or []):
+        out.append(UserProfile(
+            id=d["id"],
+            stripe_customer_id=d.get("stripe_customer_id"),
+            current_plan=d.get("current_plan", "free"),
+            current_period_end=d.get("current_period_end"),
+            cancel_at_period_end=bool(d.get("cancel_at_period_end", False)),
+            payment_status=d.get("payment_status", "active"),
+            tos_accepted_version=d.get("tos_accepted_version"),
+            tos_accepted_at=d.get("tos_accepted_at"),
+        ))
+    return out
+
+
+def list_balances() -> dict[str, int]:
+    resp = _client().table("user_balance").select("user_id,balance").execute()
+    return {r["user_id"]: int(r.get("balance", 0)) for r in (resp.data or [])}
+
+
+def list_auth_users() -> dict[str, str]:
+    """{user_id: email} from the Supabase auth admin API. Best-effort — returns
+    {} on any failure so the dashboard degrades to 'no email' rather than 500."""
+    try:
+        res = _client().auth.admin.list_users()
+    except Exception:
+        return {}
+    users = getattr(res, "users", None)
+    if users is None:
+        users = res if isinstance(res, list) else []
+    out: dict[str, str] = {}
+    for u in users:
+        uid = getattr(u, "id", None) or (u.get("id") if isinstance(u, dict) else None)
+        email = getattr(u, "email", None) or (u.get("email") if isinstance(u, dict) else None)
+        if uid and email:
+            out[str(uid)] = str(email)
+    return out
+
+
+def list_transactions_all(limit: int = 200) -> list[Transaction]:
+    resp = (
+        _client()
+        .table("credit_transactions")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return [
+        Transaction(
+            id=r["id"], user_id=r["user_id"], amount=r["amount"], kind=r["kind"],
+            reference_id=r.get("reference_id"), description=r.get("description"),
+            created_at=r["created_at"],
+        )
+        for r in (resp.data or [])
+    ]
+
+
+def _probe_ok(fn) -> bool | None:
+    """True if the probe select succeeds; False if it fails with a missing
+    column/relation signal; None for any other error (indeterminate)."""
+    try:
+        fn()
+        return True
+    except Exception as e:
+        s = str(e).lower()
+        missing = ("does not exist" in s or "could not find" in s
+                   or "pgrst204" in s or "pgrst205" in s or "42703" in s or "42p01" in s)
+        return False if missing else None
+
+
+def probe_activation() -> dict[str, bool | None]:
+    """Best-effort check of the API-observable migration objects. The
+    deduct_credits fn + the two partial-unique indexes are NOT probed here
+    (not observable via PostgREST; calling the rpc could mutate the ledger) —
+    the endpoint reports those as 'verify_in_sql_editor'."""
+    def _cols():
+        _client().table("user_profiles").select(
+            "payment_status,tos_accepted_version").limit(1).execute()
+    def _rate():
+        _client().table("rate_events").select("id").limit(1).execute()
+    cols = _probe_ok(_cols)
+    return {
+        "payment_status": cols,
+        "tos_accepted_version": cols,
+        "rate_events": _probe_ok(_rate),
+    }
