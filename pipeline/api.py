@@ -2721,6 +2721,45 @@ def admin_list_transactions(limit: int = 200, user_id: str | None = None,
     return [dataclasses.asdict(t) for t in txns]
 
 
+# ---------------------------------------------------------------------------
+# Super-admin dashboard — service-token-gated cross-user WRITE endpoints.
+# Each reuses the same *_impl the user-facing route uses, but resolves the
+# target via _admin_target_user(user_id) so refunds credit the TARGET user's
+# ledger (a role="user" wrapper), never the service caller (which no-ops).
+# ---------------------------------------------------------------------------
+
+@app.post("/admin/runs/{user_id}/{run_id}/cancel", response_model=CancelAck,
+          dependencies=[Depends(require_user)])
+def admin_cancel_run(user_id: str, run_id: str, user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    return _cancel_run_impl(_admin_target_user(user_id), run_id)
+
+
+@app.post("/admin/songs/{user_id}/{run_id}/cancel",
+          dependencies=[Depends(require_user)])
+def admin_cancel_song(user_id: str, run_id: str, user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    return _cancel_song_impl(_admin_target_user(user_id), run_id)
+
+
+@app.delete("/admin/runs/{user_id}/{run_id}", response_model=DeleteAck,
+            dependencies=[Depends(require_user)])
+def admin_delete_run(user_id: str, run_id: str, user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    return _delete_run_impl(_admin_target_user(user_id), run_id)
+
+
+@app.delete("/admin/songs/{user_id}/{run_id}", status_code=204,
+            dependencies=[Depends(require_user)])
+def admin_delete_song(user_id: str, run_id: str, user: User = Depends(require_user)):
+    if user.role != "service":
+        raise HTTPException(403, "admin endpoint — service token required")
+    return _delete_song_impl(_admin_target_user(user_id), run_id)
+
+
 class SpendSummary(BaseModel):
     total_usd: float
     by_run: list[dict]  # [{"run_id": "...", "title": "...", "usd": 8.05}, ...]

@@ -305,3 +305,170 @@ def test_re_assemble_song_traversal_user_id():
     with pytest.raises(HTTPException) as exc:
         admin_re_assemble_song(user_id="../x", run_id="r", user=svc)
     assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Super-admin dashboard — service-token-gated cross-user WRITE endpoints.
+#
+# The load-bearing property: an admin cancel must refund the TARGET user's
+# ledger, never the service caller's. _admin_target_user wraps the path
+# user_id as a role="user" User, and the *_impl functions pass that user
+# straight into refund_run_charges — so the spy must observe a User whose
+# .id == the path user_id and .role == "user" (NOT "service"/"admin").
+#
+# refund_run_charges is imported INSIDE the impls (`from pipeline.credits
+# import refund_run_charges`), which re-binds from the module at call time,
+# so monkeypatching "pipeline.credits.refund_run_charges" reaches it.
+# ---------------------------------------------------------------------------
+
+
+def _refund_spy():
+    """Returns (spy, calls) — spy matches refund_run_charges' real signature
+    (user positional, run_id/reason keyword-only, returns an int the impls
+    interpolate) and records the User it was handed."""
+    calls: list = []
+
+    def spy(user, *, run_id, reason):
+        calls.append(user)
+        return 0
+
+    return spy, calls
+
+
+# --- POST /admin/runs/{uid}/{rid}/cancel -----------------------------------
+
+def test_admin_cancel_run_requires_service(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.post("/admin/runs/target/run-x/cancel").status_code == 403
+
+
+def test_admin_cancel_run_refunds_target_user(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    # Target user's run dir — no final.mp4 (not complete), no pid (not alive).
+    _write_run(out / "target-user", "run-x")
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    spy, calls = _refund_spy()
+    monkeypatch.setattr("pipeline.credits.refund_run_charges", spy)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.post("/admin/runs/target-user/run-x/cancel")
+    assert r.status_code == 200
+    assert r.json()["run_id"] == "run-x"
+    # THE critical assertion: refund landed on the TARGET user, role="user".
+    assert len(calls) == 1
+    assert calls[0].id == "target-user"
+    assert calls[0].role == "user"
+
+
+def test_admin_cancel_run_traversal_user_id():
+    from pipeline.api import admin_cancel_run
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_cancel_run(user_id="../evil", run_id="r", user=svc)
+    assert exc.value.status_code == 400
+
+
+# --- POST /admin/songs/{uid}/{rid}/cancel ----------------------------------
+
+def test_admin_cancel_song_requires_service(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.post("/admin/songs/target/run-x/cancel").status_code == 403
+
+
+def test_admin_cancel_song_refunds_target_user(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    # A song run that isn't complete and has no live worker.
+    _write_run(out / "target-user", "run-s", kind="song", status="awaiting_approval")
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    spy, calls = _refund_spy()
+    monkeypatch.setattr("pipeline.credits.refund_run_charges", spy)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.post("/admin/songs/target-user/run-s/cancel")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    # Same load-bearing property for songs.
+    assert len(calls) == 1
+    assert calls[0].id == "target-user"
+    assert calls[0].role == "user"
+
+
+def test_admin_cancel_song_traversal_user_id():
+    from pipeline.api import admin_cancel_song
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_cancel_song(user_id="../evil", run_id="r", user=svc)
+    assert exc.value.status_code == 400
+
+
+# --- DELETE /admin/runs/{uid}/{rid} ----------------------------------------
+
+def test_admin_delete_run_requires_service(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.delete("/admin/runs/target/run-x").status_code == 403
+
+
+def test_admin_delete_run_removes_target_dir(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = _write_run(out / "target-user", "run-x")  # no pid → not alive
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    # Light ledger check: delete must NEVER touch the credit ledger. Patch
+    # refund with a spy that must stay untouched.
+    spy, calls = _refund_spy()
+    monkeypatch.setattr("pipeline.credits.refund_run_charges", spy)
+
+    assert rd.exists()
+    c = client_factory(user_id="admin", role="service")
+    r = c.delete("/admin/runs/target-user/run-x")
+    assert r.status_code == 200
+    assert r.json()["deleted"] is True
+    assert not rd.exists()
+    # Delete does no refund / ledger mutation.
+    assert calls == []
+
+
+def test_admin_delete_run_traversal_user_id():
+    from pipeline.api import admin_delete_run
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_delete_run(user_id="../evil", run_id="r", user=svc)
+    assert exc.value.status_code == 400
+
+
+# --- DELETE /admin/songs/{uid}/{rid} ---------------------------------------
+
+def test_admin_delete_song_requires_service(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.delete("/admin/songs/target/run-s").status_code == 403
+
+
+def test_admin_delete_song_removes_target_dir(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    # Song run in a terminal (non-active) status so delete is allowed.
+    rd = _write_run(out / "target-user", "run-s", kind="song", status="failed")
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    assert rd.exists()
+    c = client_factory(user_id="admin", role="service")
+    r = c.delete("/admin/songs/target-user/run-s")
+    assert r.status_code == 204
+    assert not rd.exists()
+
+
+def test_admin_delete_song_traversal_user_id():
+    from pipeline.api import admin_delete_song
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_delete_song(user_id="../evil", run_id="r", user=svc)
+    assert exc.value.status_code == 400
