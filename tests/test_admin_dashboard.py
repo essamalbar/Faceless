@@ -763,6 +763,22 @@ def test_subscriptions_other_and_deleted_bucketing(client_factory, monkeypatch):
     assert body["by_plan"]["other"] == 1
 
 
+def test_subscriptions_missing_columns_returns_503_hint(client_factory, monkeypatch):
+    """Before the pending migrations, user_profiles lacks payment_status, so the
+    aggregate SELECT errors. Surface a 503 pointing at the migration bundle, not
+    an opaque 500 (mirrors /admin/users)."""
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+
+    def _boom():
+        raise Exception('column user_profiles.payment_status does not exist')
+
+    monkeypatch.setattr("pipeline.db.list_all_user_profiles_min", _boom)
+    c = client_factory(user_id="boss", role="user", email="boss@x.com")
+    r = c.get("/admin/subscriptions")
+    assert r.status_code == 503
+    assert "APPLY-MIGRATIONS.sql" in r.json()["detail"]
+
+
 # --- GET /admin/revenue ----------------------------------------------------
 
 def test_revenue_requires_admin(client_factory):

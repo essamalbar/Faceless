@@ -2886,7 +2886,21 @@ def admin_list_transactions(limit: int = 200, user_id: str | None = None,
 def admin_subscriptions(user: User = Depends(require_user)):
     _require_admin(user)
     from pipeline import db
-    profiles = db.list_all_user_profiles_min()
+    try:
+        profiles = db.list_all_user_profiles_min()
+    except Exception as e:
+        # Selects payment_status / cancel_at_period_end, which only exist after
+        # the pending migrations. Surface the actionable 503 (same as /admin/users)
+        # instead of an opaque 500 while the operator hasn't applied them yet.
+        s = str(e).lower()
+        if ("does not exist" in s or "could not find" in s
+                or "pgrst204" in s or "42703" in s):
+            raise HTTPException(
+                503,
+                "Subscriptions unavailable: apply the pending Supabase migrations "
+                "(docs/operator/APPLY-MIGRATIONS.sql), then retry.",
+            ) from None
+        raise
     by_plan = {"starter": 0, "creator": 0, "pro": 0, "free": 0, "other": 0}
     active = past_due = cancel_at_period_end = 0
     for p in profiles:
