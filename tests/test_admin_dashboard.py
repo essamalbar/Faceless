@@ -472,3 +472,28 @@ def test_admin_delete_song_traversal_user_id():
     with pytest.raises(HTTPException) as exc:
         admin_delete_song(user_id="../evil", run_id="r", user=svc)
     assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# GET /admin — the self-contained dashboard shell.
+#
+# The HTML page is a static, service-token-driven operator console. The shell
+# itself needs no auth (the token is entered in-browser and attached to every
+# /admin/* fetch), so a plain unauthenticated GET must return the document.
+# ---------------------------------------------------------------------------
+
+def test_admin_dashboard_page_served(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    r = c.get("/admin")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    body = r.text
+    for needle in (
+        "Super Admin",
+        "sessionStorage",
+        "/admin/overview",
+        "/admin/users",
+        "/admin/runs",
+        "/admin/transactions",
+    ):
+        assert needle in body

@@ -5225,6 +5225,16 @@ def _find_artist_public(handle: str) -> tuple[dict, Path] | None:
     return None
 
 
+@app.get("/admin", include_in_schema=False)
+def admin_dashboard():
+    """Self-contained super-admin operator console. The shell needs no auth
+    (the service token is entered in-browser and attached to every /admin/*
+    fetch as a bearer header); the endpoints it drives are service-gated."""
+    from fastapi.responses import HTMLResponse
+    from pipeline.admin_page import ADMIN_HTML
+    return HTMLResponse(ADMIN_HTML)
+
+
 @app.get("/a/{handle}", include_in_schema=False)
 def public_artist_page(handle: str):
     """PUBLIC artist page (no auth): header + the artist's SHARED songs only
