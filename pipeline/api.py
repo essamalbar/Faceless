@@ -808,6 +808,26 @@ def _admin_target_user(user_id: str) -> "User":
     return User(id=user_id, email=None, role="user")
 
 
+def _admin_emails() -> set[str]:
+    """Lowercased set of super-admin emails from FACELESS_ADMIN_EMAILS
+    (comma-separated). Read fresh each call so config/tests take effect."""
+    raw = os.environ.get("FACELESS_ADMIN_EMAILS", "")
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def _is_admin(user: "User") -> bool:
+    if user.role == "service":
+        return True
+    return bool(user.email and user.email.strip().lower() in _admin_emails())
+
+
+def _require_admin(user: "User") -> None:
+    """Gate for the control panel: the service token (CLI/cron) OR a logged-in
+    user whose email is in the FACELESS_ADMIN_EMAILS allowlist. Everyone else 403."""
+    if not _is_admin(user):
+        raise HTTPException(403, "admin access required")
+
+
 def _cost_estimate_usd(beats: list[dict]) -> float:
     """Per-beat × seconds × active-model rate + one Flux character sheet.
 
@@ -1064,8 +1084,7 @@ def run_morning_drafts(user: User = Depends(require_user)):
     from pipeline import artists as artists_mod
     from pipeline import trends as trends_mod
 
-    if user.role != "service":
-        raise HTTPException(403, "service token required")
+    _require_admin(user)
 
     created = skipped = failed = 0
     details: list[dict] = []
@@ -2487,8 +2506,7 @@ def admin_credit_back(
     """Insert a positive credit transaction for a user. Service token
     only — fails 403 for normal users so a malicious caller with a
     Supabase JWT can't credit their own account."""
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     if req.amount <= 0:
         raise HTTPException(400, "amount must be positive")
     if not req.reason.strip():
@@ -2549,10 +2567,7 @@ def admin_re_assemble_song(
     watermark + MP4 metadata that newer assemblies bake in. Service
     token required — normal users can't trigger ffmpeg jobs against
     other users' runs."""
-    if user.role != "service":
-        raise HTTPException(
-            403, "admin endpoint — service token required",
-        )
+    _require_admin(user)
     if not _RUN_ID_RE.fullmatch(user_id):
         raise HTTPException(400, "invalid user_id")
     if not _RUN_ID_RE.fullmatch(run_id):
@@ -2628,8 +2643,7 @@ def admin_re_assemble_song(
 
 @app.get("/admin/overview", dependencies=[Depends(require_user)])
 def admin_overview(user: User = Depends(require_user)):
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     from pipeline import db
     health = _writer_tier_status()
     root = _out_root()
@@ -2648,8 +2662,7 @@ def admin_overview(user: User = Depends(require_user)):
 @app.get("/admin/users", dependencies=[Depends(require_user)])
 def admin_list_users(limit: int = 100, offset: int = 0,
                      user: User = Depends(require_user)):
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     from pipeline import db
@@ -2681,8 +2694,7 @@ def admin_list_users(limit: int = 100, offset: int = 0,
 def admin_list_runs(limit: int = 50, offset: int = 0,
                     user_id: str | None = None,
                     user: User = Depends(require_user)):
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     root = _out_root()
@@ -2725,8 +2737,7 @@ def admin_list_runs(limit: int = 50, offset: int = 0,
 @app.get("/admin/transactions", dependencies=[Depends(require_user)])
 def admin_list_transactions(limit: int = 200, user_id: str | None = None,
                             user: User = Depends(require_user)):
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     limit = max(1, min(limit, 500))
     from pipeline import db
     if user_id is not None:
@@ -2747,33 +2758,82 @@ def admin_list_transactions(limit: int = 200, user_id: str | None = None,
 @app.post("/admin/runs/{user_id}/{run_id}/cancel", response_model=CancelAck,
           dependencies=[Depends(require_user)])
 def admin_cancel_run(user_id: str, run_id: str, user: User = Depends(require_user)):
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     return _cancel_run_impl(_admin_target_user(user_id), run_id)
 
 
 @app.post("/admin/songs/{user_id}/{run_id}/cancel",
           dependencies=[Depends(require_user)])
 def admin_cancel_song(user_id: str, run_id: str, user: User = Depends(require_user)):
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     return _cancel_song_impl(_admin_target_user(user_id), run_id)
 
 
 @app.delete("/admin/runs/{user_id}/{run_id}", response_model=DeleteAck,
             dependencies=[Depends(require_user)])
 def admin_delete_run(user_id: str, run_id: str, user: User = Depends(require_user)):
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     return _delete_run_impl(_admin_target_user(user_id), run_id)
 
 
 @app.delete("/admin/songs/{user_id}/{run_id}", status_code=204,
             dependencies=[Depends(require_user)])
 def admin_delete_song(user_id: str, run_id: str, user: User = Depends(require_user)):
-    if user.role != "service":
-        raise HTTPException(403, "admin endpoint — service token required")
+    _require_admin(user)
     return _delete_song_impl(_admin_target_user(user_id), run_id)
+
+
+# ---------------------------------------------------------------------------
+# Email/password admin login — how an allowlisted operator authenticates for
+# the control panel (NOT admin-gated itself). Exchanges email+password for a
+# Supabase session, but only for addresses in FACELESS_ADMIN_EMAILS.
+# ---------------------------------------------------------------------------
+
+class AdminLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _supabase_password_login(email: str, password: str) -> dict:
+    """Exchange email+password for a Supabase session via gotrue. Returns the
+    JSON (contains access_token, expires_in, user). Raises RuntimeError on a
+    non-2xx (bad credentials / unconfirmed email). Separated so tests mock it."""
+    import httpx
+    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    anon = os.environ.get("SUPABASE_ANON_KEY", "")
+    if not url or not anon:
+        raise RuntimeError("supabase auth not configured")
+    resp = httpx.post(
+        f"{url}/auth/v1/token?grant_type=password",
+        headers={"apikey": anon, "Content-Type": "application/json"},
+        json={"email": email, "password": password},
+        timeout=15,
+    )
+    if resp.status_code // 100 != 2:
+        raise RuntimeError(f"login failed: {resp.status_code}")
+    return resp.json()
+
+
+@app.post("/admin/login")
+def admin_login(req: AdminLoginRequest):
+    email = (req.email or "").strip().lower()
+    if email not in _admin_emails():
+        # Don't reveal whether the password was right for a non-admin.
+        raise HTTPException(403, "not authorized as an administrator")
+    try:
+        data = _supabase_password_login(req.email, req.password)
+    except Exception:
+        raise HTTPException(401, "invalid email or password") from None
+    token = data.get("access_token")
+    if not token:
+        raise HTTPException(401, "invalid email or password")
+    # Confirm the returned identity matches the requested admin email.
+    tok_email = ((data.get("user") or {}).get("email") or "").strip().lower()
+    if tok_email and tok_email not in _admin_emails():
+        raise HTTPException(403, "not authorized as an administrator")
+    return {"access_token": token,
+            "email": tok_email or email,
+            "expires_in": data.get("expires_in")}
 
 
 class SpendSummary(BaseModel):
