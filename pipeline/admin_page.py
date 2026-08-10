@@ -207,7 +207,42 @@ ADMIN_HTML: str = r"""<!doctype html>
   .state .big{font-size:14px;color:var(--ink);font-weight:600;margin-bottom:3px}
   .stamp{color:var(--muted);font-size:12px;white-space:nowrap}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite;vertical-align:-2px;margin-right:6px}
+  .spin.dark{border-color:rgba(31,157,99,.25);border-top-color:var(--green)}
   @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---- KPI header ---- */
+  .kpi-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:2px 2px 12px}
+  .kpi-head .t{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:22px}
+  .kpi{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+    box-shadow:var(--shadow-sm);padding:16px 18px;position:relative;overflow:hidden;
+  }
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green);opacity:.85}
+  .kpi .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+  .kpi .v{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+  .kpi .v.muted{color:var(--faint);font-weight:700}
+
+  /* ---- plan tiles + inline metrics ---- */
+  .plan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:14px}
+  .plan{border:1px solid var(--line2);border-radius:var(--r);padding:12px 14px;background:#fcfdff}
+  .plan .pn{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+  .plan .pv{font-size:20px;font-weight:800}
+  .badge-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+  /* ---- revenue per-day bar list ---- */
+  .bars{display:flex;flex-direction:column;gap:7px;margin-top:6px}
+  .bar-row{display:grid;grid-template-columns:88px 1fr 118px;gap:12px;align-items:center;font-size:12px}
+  .bar-row .bd{color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .bar-track{background:var(--line2);border-radius:6px;height:16px;overflow:hidden}
+  .bar-fill{height:100%;min-width:2px;background:linear-gradient(90deg,var(--green-line),var(--green));border-radius:6px}
+  .bar-row .bv{text-align:right;color:var(--ink)}
+  .bar-row .bv .rn{color:var(--faint)}
+
+  /* ---- inline song player ---- */
+  .player{margin-top:8px}
+  .player:empty{display:none}
+  .player audio{width:100%;max-width:340px;height:34px;display:block}
 
   @media (max-width:640px){
     .who .em{max-width:150px}
@@ -272,6 +307,52 @@ ADMIN_HTML: str = r"""<!doctype html>
       <h2>Operations</h2>
       <p>Cross-user health, users, runs and the credit ledger.</p>
     </div>
+
+    <!-- KPI header -->
+    <div class="kpi-head">
+      <span class="t">Key metrics</span>
+      <button class="ghost sm" data-load="kpis" type="button">Refresh</button>
+    </div>
+    <div id="kpiRow" class="kpi-grid">
+      <div class="kpi"><div class="k">Total users</div><div class="v muted">…</div></div>
+      <div class="kpi"><div class="k">Active subscribers</div><div class="v muted">…</div></div>
+      <div class="kpi"><div class="k">Revenue (this month)</div><div class="v muted">…</div></div>
+      <div class="kpi"><div class="k">Credits outstanding</div><div class="v muted">…</div></div>
+    </div>
+
+    <!-- Subscriptions -->
+    <section class="card" id="cardSubs">
+      <div class="card-head">
+        <div class="ct">
+          <div>
+            <h3>Subscriptions</h3>
+            <p class="desc">Plan mix & billing state</p>
+          </div>
+        </div>
+        <div class="controls"><button class="ghost sm" data-load="subs" type="button">Refresh</button></div>
+      </div>
+      <div class="card-body">
+        <div id="subsMsg" class="notice err hide"></div>
+        <div id="subsBody"><div class="state">Loading…</div></div>
+      </div>
+    </section>
+
+    <!-- Revenue -->
+    <section class="card" id="cardRevenue">
+      <div class="card-head">
+        <div class="ct">
+          <div>
+            <h3>Revenue</h3>
+            <p class="desc">Subscription renewals & credit grants</p>
+          </div>
+        </div>
+        <div class="controls"><button class="ghost sm" data-load="revenue" type="button">Refresh</button></div>
+      </div>
+      <div class="card-body">
+        <div id="revenueMsg" class="notice err hide"></div>
+        <div id="revenueBody"><div class="state">Loading…</div></div>
+      </div>
+    </section>
 
     <!-- Overview -->
     <section class="card" id="cardOverview">
@@ -410,6 +491,41 @@ async function apiRequest(method, path, body){
   return data === null ? {} : data;
 }
 function apiGet(path){ return apiRequest("GET", path); }
+
+// Fetch raw bytes (e.g. an mp3) WITH the bearer header — never a ?token= URL.
+// On 401/403 bounces to login (handleExpired) and throws an expired error so
+// callers can early-return; on any other non-2xx throws an Error the caller
+// renders inline; otherwise resolves to the Blob.
+async function apiBlob(path){
+  var res = await fetch(path, { headers: authHeaders() });
+  if(res.status === 401 || res.status === 403){
+    handleExpired();
+    var ae = new Error("Session expired — please sign in again.");
+    ae.expired = true; ae.status = res.status;
+    throw ae;
+  }
+  if(!res.ok){
+    var e2 = new Error("Could not load audio (" + res.status + ").");
+    e2.status = res.status;
+    throw e2;
+  }
+  return await res.blob();
+}
+
+// Money / number formatting for the KPI + revenue cards. A null/undefined
+// value (a failed server-side source) renders as an em dash.
+function usd(v){
+  if(v === null || v === undefined) return "—";
+  var n = Number(v);
+  if(!isFinite(n)) return "—";
+  return "$" + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function numOrDash(v){
+  if(v === null || v === undefined) return "—";
+  var n = Number(v);
+  if(!isFinite(n)) return "—";
+  return String(n);
+}
 
 // ---- view switching --------------------------------------------------------
 function showLogin(){
@@ -559,6 +675,114 @@ function checkItem(name, val, caption){
     + '<span class="s">' + esc(caption) + '</span></div></div>';
 }
 
+// ---- section: KPI header ---------------------------------------------------
+function kpiTile(k, valHtml, muted){
+  return '<div class="kpi"><div class="k">' + esc(k) + '</div>'
+    + '<div class="v' + (muted ? " muted" : "") + '">' + valHtml + '</div></div>';
+}
+async function loadKpis(){
+  if(!hasToken()) return;
+  var row = q("kpiRow");
+  try{
+    var d = await apiGet("/admin/kpis");
+    // Any field may be null when its source failed server-side → render "—".
+    row.innerHTML =
+        kpiTile("Total users", esc(numOrDash(d.total_users)), d.total_users == null)
+      + kpiTile("Active subscribers", esc(numOrDash(d.active_subscribers)), d.active_subscribers == null)
+      + kpiTile("Revenue (this month)", esc(usd(d.revenue_usd_mtd)), d.revenue_usd_mtd == null)
+      + kpiTile("Credits outstanding", esc(numOrDash(d.credits_outstanding)), d.credits_outstanding == null);
+  } catch(e){
+    if(bounceIfExpired(e)) return;
+    row.innerHTML =
+        kpiTile("Total users", "—", true)
+      + kpiTile("Active subscribers", "—", true)
+      + kpiTile("Revenue (this month)", "—", true)
+      + kpiTile("Credits outstanding", "—", true);
+  }
+}
+
+// ---- section: subscriptions ------------------------------------------------
+async function loadSubscriptions(){
+  if(!hasToken()) return;
+  var body = q("subsBody");
+  showMsg("subsMsg", "");
+  body.innerHTML = '<div class="state">Loading…</div>';
+  try{
+    var d = await apiGet("/admin/subscriptions");
+    var bp = d.by_plan || {};
+    var html = '<div class="plan-grid">'
+      + planTile("Starter", bp.starter)
+      + planTile("Creator", bp.creator)
+      + planTile("Pro", bp.pro)
+      + planTile("Free", bp.free)
+      + '</div>';
+    html += '<div class="badge-row">'
+      + badge("green", "Active " + numOrDash(d.active))
+      + badge("amber", "Past due " + numOrDash(d.past_due))
+      + badge("grey", "Cancelling " + numOrDash(d.cancel_at_period_end))
+      + badge("grey", "Total profiles " + numOrDash(d.total_profiles));
+    if(bp.other){ html += badge("grey", "Other plans " + numOrDash(bp.other)); }
+    html += '</div>';
+    body.innerHTML = html;
+  } catch(e){
+    if(bounceIfExpired(e)) return;
+    body.innerHTML = '<div class="state">Could not load subscriptions.</div>';
+    showMsg("subsMsg", e.message);
+  }
+}
+function planTile(name, count){
+  return '<div class="plan"><div class="pn">' + esc(name) + '</div>'
+    + '<div class="pv">' + esc(numOrDash(count)) + '</div></div>';
+}
+
+// ---- section: revenue ------------------------------------------------------
+async function loadRevenue(){
+  if(!hasToken()) return;
+  var body = q("revenueBody");
+  showMsg("revenueMsg", "");
+  body.innerHTML = '<div class="state">Loading…</div>';
+  try{
+    var d = await apiGet("/admin/revenue");
+    var rp = d.renewals_by_plan || {};
+    var html = '<div class="stat-grid">'
+      + '<div class="stat"><div class="k">Total revenue</div><div class="v">' + esc(usd(d.revenue_usd_total)) + '</div></div>'
+      + '<div class="stat"><div class="k">This month</div><div class="v">' + esc(usd(d.revenue_usd_mtd)) + '</div></div>'
+      + '<div class="stat"><div class="k">Credits granted</div><div class="v">' + esc(numOrDash(d.credits_granted)) + '</div></div>'
+      + '<div class="stat"><div class="k">Credits outstanding</div><div class="v">' + esc(numOrDash(d.credits_outstanding)) + '</div></div>'
+      + '</div>';
+    html += '<div class="badge-row" style="margin-bottom:14px">'
+      + badge("grey", "Starter renewals " + numOrDash(rp.starter))
+      + badge("grey", "Creator renewals " + numOrDash(rp.creator))
+      + badge("grey", "Pro renewals " + numOrDash(rp.pro))
+      + '</div>';
+
+    var days = Array.isArray(d.by_day) ? d.by_day.slice(-14) : [];
+    if(days.length){
+      var max = 0;
+      days.forEach(function(x){ var r = Number(x.revenue_usd) || 0; if(r > max) max = r; });
+      html += '<div class="sp-h" style="font-size:12px;font-weight:700;color:var(--muted);'
+        + 'text-transform:uppercase;letter-spacing:.04em;margin:2px 0 4px">Recent days</div>';
+      html += '<div class="bars">' + days.map(function(x){
+        var rev = Number(x.revenue_usd) || 0;
+        var pct = max > 0 ? Math.max(2, Math.round(rev / max * 100)) : 0;
+        return '<div class="bar-row">'
+          + '<span class="bd">' + esc(x.date) + '</span>'
+          + '<span class="bar-track"><span class="bar-fill" style="width:' + pct + '%"></span></span>'
+          + '<span class="bv">' + esc(usd(x.revenue_usd))
+          +   ' <span class="rn">· ' + esc(numOrDash(x.renewals)) + ' rnw</span></span>'
+          + '</div>';
+      }).join("") + '</div>';
+    } else {
+      html += '<div class="state">No renewals recorded yet.</div>';
+    }
+    body.innerHTML = html;
+  } catch(e){
+    if(bounceIfExpired(e)) return;
+    body.innerHTML = '<div class="state">Could not load revenue.</div>';
+    showMsg("revenueMsg", e.message);
+  }
+}
+
 // ---- section: users --------------------------------------------------------
 async function loadUsers(){
   if(!hasToken()) return;
@@ -653,7 +877,10 @@ async function loadRuns(){
       var isSong = (r.kind === "song");
       var actions = '<button class="ghost sm act-cancel" type="button">Cancel</button>'
         + '<button class="danger sm act-delete" type="button">Delete</button>';
-      if(isSong) actions += '<button class="primary sm act-reassemble" type="button">Re-assemble</button>';
+      if(isSong){
+        actions += '<button class="ghost sm act-listen" type="button">&#9654; Listen</button>'
+          + '<button class="primary sm act-reassemble" type="button">Re-assemble</button>';
+      }
       return '<tr data-uid="' + uid + '" data-rid="' + rid + '" data-song="' + (isSong ? "1" : "0") + '">'
         + '<td>' + esc(r.user_id) + '</td>'
         + '<td class="mono">' + rid + '</td>'
@@ -661,16 +888,20 @@ async function loadRuns(){
         + '<td>' + statusBadge(r.status) + '</td>'
         + '<td>' + (r.title ? esc(r.title) : '<span class="stamp">—</span>') + '</td>'
         + '<td class="stamp">' + esc(r.created_at) + '</td>'
-        + '<td><div class="actions">' + actions + '</div><div class="rowmsg"></div></td>'
+        + '<td><div class="actions">' + actions + '</div>'
+        +   (isSong ? '<div class="player"></div>' : '')
+        +   '<div class="rowmsg"></div></td>'
         + '</tr>';
     }).join("");
     Array.prototype.forEach.call(tbody.querySelectorAll("tr[data-rid]"), function(tr){
       var c = tr.querySelector(".act-cancel");
       var d = tr.querySelector(".act-delete");
       var a = tr.querySelector(".act-reassemble");
+      var l = tr.querySelector(".act-listen");
       if(c) c.addEventListener("click", function(){ runAction(tr, "cancel"); });
       if(d) d.addEventListener("click", function(){ runAction(tr, "delete"); });
       if(a) a.addEventListener("click", function(){ runAction(tr, "reassemble"); });
+      if(l) l.addEventListener("click", function(){ playSong(tr, l); });
     });
   } catch(e){
     if(bounceIfExpired(e)) return;
@@ -713,6 +944,48 @@ async function runAction(tr, action){
     if(bounceIfExpired(e)) return;
     rowMsg(msg, e.message, true);
   } finally { toggleBtns(btns, false); }
+}
+
+// Only ONE song plays at a time. We keep the single live object URL so we can
+// revoke it before creating the next one (no leaks, no two players blaring).
+var currentSongUrl = null;
+function stopSongPlayback(){
+  Array.prototype.forEach.call(document.querySelectorAll("#runsTable .player"),
+    function(p){ p.innerHTML = ""; });
+  if(currentSongUrl){ URL.revokeObjectURL(currentSongUrl); currentSongUrl = null; }
+}
+async function playSong(tr, btn){
+  var uid = tr.getAttribute("data-uid");
+  var rid = tr.getAttribute("data-rid");
+  var player = tr.querySelector(".player");
+  var msg = tr.querySelector(".rowmsg");
+  // Replace any player already on the page + free its URL before fetching.
+  stopSongPlayback();
+  msg.className = "rowmsg";
+  rowMsg(msg, "Loading audio…", false);
+  if(btn) btn.disabled = true;
+  // Token stays in the Authorization header (apiBlob) — NEVER in the URL.
+  // encodeURIComponent (same as runAction) is the correct URL-escaping here;
+  // uid/rid are already the decoded attribute values (esc() is HTML-escaping,
+  // which would corrupt a "&" before it reached encodeURIComponent).
+  var path = "/admin/songs/" + encodeURIComponent(uid)
+    + "/" + encodeURIComponent(rid) + "/audio";
+  try{
+    var blob = await apiBlob(path);
+    currentSongUrl = URL.createObjectURL(blob);
+    var audio = document.createElement("audio");
+    audio.controls = true;
+    audio.autoplay = true;
+    audio.src = currentSongUrl;
+    player.innerHTML = "";
+    player.appendChild(audio);
+    rowMsg(msg, "", false);
+  } catch(e){
+    if(e && e.expired) return;   // handleExpired already switched to login
+    rowMsg(msg, e.message || "Could not play song.", true);
+  } finally {
+    if(btn) btn.disabled = false;
+  }
 }
 
 // ---- section: ledger -------------------------------------------------------
@@ -772,12 +1045,14 @@ function toggleBtns(btns, disabled){
 }
 function loadAll(){
   if(!hasToken()) return;
+  loadKpis(); loadSubscriptions(); loadRevenue();
   loadOverview(); loadUsers(); loadRuns(); loadLedger();
 }
 
 // ---- wiring ----------------------------------------------------------------
 q("loginForm").addEventListener("submit", function(ev){ ev.preventDefault(); doLogin(); });
 q("signOut").addEventListener("click", function(){
+  stopSongPlayback();
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(EMAIL_KEY);
   q("email").value = "";
@@ -789,7 +1064,10 @@ Array.prototype.forEach.call(document.querySelectorAll("[data-load]"), function(
   btn.addEventListener("click", function(){
     if(!hasToken()){ handleExpired(); return; }
     var which = btn.getAttribute("data-load");
-    if(which === "overview") loadOverview();
+    if(which === "kpis") loadKpis();
+    else if(which === "subs") loadSubscriptions();
+    else if(which === "revenue") loadRevenue();
+    else if(which === "overview") loadOverview();
     else if(which === "users") loadUsers();
     else if(which === "runs") loadRuns();
     else if(which === "ledger") loadLedger();

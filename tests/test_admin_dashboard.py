@@ -538,6 +538,13 @@ def test_admin_dashboard_page_served(client_factory):
         "/admin/users",
         "/admin/runs",
         "/admin/transactions",
+        # New analytics cards + song audio player.
+        "/admin/kpis",
+        "/admin/subscriptions",
+        "/admin/revenue",
+        "/admin/songs/",
+        "Listen",
+        "createObjectURL",
     ):
         assert needle in body
 
