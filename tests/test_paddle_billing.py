@@ -135,3 +135,84 @@ def test_create_portal_session_returns_url(paddle_env, mock_db, monkeypatch):
     monkeypatch.setattr(pb, "_request",
         lambda *a, **k: {"data": {"urls": {"general": {"overview": "https://portal/x"}}}})
     assert pb.create_portal_session(_user(), "https://app/back") == "https://portal/x"
+
+
+import json as _json
+
+
+def _wrap(event_type: str, data: dict, secret="pdl_ntfset_secret"):
+    raw = _json.dumps({"event_type": event_type, "data": data}).encode()
+    ts = str(int(time.time()))
+    return raw, _sign(secret, raw, ts)
+
+
+def test_webhook_transaction_completed_grants(paddle_env, mock_db, monkeypatch):
+    raw, sig = _wrap("transaction.completed", {
+        "id": "txn_1",
+        "custom_data": {"user_id": "u1", "plan": "creator"},
+        "billing_period": {"ends_at": "2026-09-11T00:00:00Z"},
+    })
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled
+    g = mock_db["grants"][-1]
+    assert g["amount"] == 60 and g["kind"] == "subscription_renewal"
+    assert g["reference_id"] == "txn_1"
+    prof = mock_db["profiles"]["u1"]
+    assert prof["current_plan"] == "creator"
+    assert prof["current_period_end"] == "2026-09-11T00:00:00Z"
+    assert prof["payment_status"] == "active"
+
+
+def test_webhook_transaction_completed_dedupes(paddle_env, mock_db, monkeypatch):
+    calls = {"n": 0}
+    def grant(**kw):
+        calls["n"] += 1
+        return calls["n"] == 1
+    monkeypatch.setattr(pb, "record_grant_once", grant)
+    raw, sig = _wrap("transaction.completed", {
+        "id": "txn_dup", "custom_data": {"user_id": "u1", "plan": "starter"},
+        "billing_period": {"ends_at": "2026-09-11T00:00:00Z"}})
+    first = pb.handle_webhook(raw, sig)
+    second = pb.handle_webhook(raw, sig)
+    assert first.handled and "+12" in first.note
+    assert second.handled and "no-op" in second.note
+    assert calls["n"] == 2
+
+
+def test_webhook_subscription_updated_persists_cancel(paddle_env, mock_db):
+    raw, sig = _wrap("subscription.updated", {
+        "id": "sub_1", "custom_data": {"user_id": "u1", "plan": "starter"},
+        "current_billing_period": {"ends_at": "2026-09-11T00:00:00Z"},
+        "scheduled_change": {"action": "cancel", "effective_at": "2026-09-11T00:00:00Z"},
+    })
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled
+    prof = mock_db["profiles"]["u1"]
+    assert prof["current_plan"] == "starter"
+    assert prof["cancel_at_period_end"] is True
+    assert prof["current_period_end"] == "2026-09-11T00:00:00Z"
+
+
+def test_webhook_subscription_canceled_resets_free(paddle_env, mock_db):
+    mock_db["profiles"]["u1"] = {"current_plan": "pro"}
+    raw, sig = _wrap("subscription.canceled",
+                     {"id": "sub_1", "custom_data": {"user_id": "u1"}})
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled
+    assert mock_db["profiles"]["u1"]["current_plan"] == "free"
+    assert mock_db["profiles"]["u1"]["cancel_at_period_end"] is False
+
+
+def test_webhook_subscription_past_due_marks_dunning(paddle_env, mock_db):
+    mock_db["profiles"]["u1"] = {"current_plan": "creator"}
+    raw, sig = _wrap("subscription.past_due",
+                     {"id": "sub_1", "custom_data": {"user_id": "u1"}})
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled
+    assert mock_db["profiles"]["u1"]["payment_status"] == "past_due"
+
+
+def test_webhook_bad_signature_raises(paddle_env):
+    raw = _json.dumps({"event_type": "transaction.completed", "data": {}}).encode()
+    with pytest.raises(pb.PaddleSignatureError):
+        pb.handle_webhook(raw, "ts=123;h1=deadbeef")

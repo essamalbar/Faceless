@@ -151,3 +151,85 @@ def create_portal_session(user: User, return_url: str) -> str:
     customer_id = ensure_customer(user)
     resp = _request("POST", f"/customers/{customer_id}/portal-sessions", json={})
     return resp["data"]["urls"]["general"]["overview"]
+
+
+import json
+
+
+def handle_webhook(raw_body: bytes, signature: str) -> WebhookOutcome:
+    """Verify the Paddle-Signature header, decode, and dispatch.
+
+    Raises PaddleSignatureError on a bad signature (caller returns 400).
+    Returns handled=False (still HTTP 200) for events we intentionally ignore.
+    """
+    _verify_signature(raw_body, signature)
+    event = json.loads(raw_body)
+    et = event.get("event_type", "")
+    data = event.get("data") or {}
+
+    if et == "transaction.completed":
+        return _on_transaction_completed(data)
+    if et == "subscription.updated":
+        return _on_subscription_updated(data)
+    if et == "subscription.canceled":
+        return _on_subscription_canceled(data)
+    if et == "subscription.past_due":
+        return _on_subscription_past_due(data)
+    if et == "adjustment.created":
+        return _on_adjustment_created(data)
+    return WebhookOutcome(event_type=et, handled=False, note="ignored")
+
+
+def _cd(data: dict) -> dict:
+    return data.get("custom_data") or {}
+
+
+def _on_transaction_completed(data: dict) -> WebhookOutcome:
+    cd = _cd(data)
+    user_id, plan = cd.get("user_id"), cd.get("plan")
+    if not user_id or plan not in PLAN_GRANTS:
+        return WebhookOutcome("transaction.completed", False,
+                              f"missing user_id or plan (plan={plan!r})")
+    granted = record_grant_once(
+        user_id=user_id, amount=PLAN_GRANTS[plan], kind="subscription_renewal",
+        reference_id=data.get("id"), description=f"{plan.capitalize()} plan renewal")
+    period_end = (data.get("billing_period") or {}).get("ends_at")
+    upsert_user_profile(
+        user_id, current_plan=plan, current_period_end=period_end,
+        payment_status="active")
+    note = f"+{PLAN_GRANTS[plan]} for {plan}" if granted else "duplicate transaction, no-op"
+    return WebhookOutcome("transaction.completed", True, note)
+
+
+def _on_subscription_updated(data: dict) -> WebhookOutcome:
+    cd = _cd(data)
+    user_id, plan = cd.get("user_id"), cd.get("plan")
+    if not user_id:
+        return WebhookOutcome("subscription.updated", False, "no user_id")
+    scheduled = data.get("scheduled_change") or {}
+    period_end = ((data.get("current_billing_period") or {}).get("ends_at")
+                  or data.get("next_billed_at"))
+    upsert_user_profile(
+        user_id,
+        current_plan=(plan if plan in PLAN_GRANTS else "free"),
+        current_period_end=period_end,
+        cancel_at_period_end=(scheduled.get("action") == "cancel"))
+    return WebhookOutcome("subscription.updated", True, f"plan={plan}")
+
+
+def _on_subscription_canceled(data: dict) -> WebhookOutcome:
+    user_id = _cd(data).get("user_id")
+    if not user_id:
+        return WebhookOutcome("subscription.canceled", False, "no user_id")
+    upsert_user_profile(
+        user_id, current_plan="free", current_period_end=None,
+        cancel_at_period_end=False, payment_status="active")
+    return WebhookOutcome("subscription.canceled", True, "plan reset to free")
+
+
+def _on_subscription_past_due(data: dict) -> WebhookOutcome:
+    user_id = _cd(data).get("user_id")
+    if not user_id:
+        return WebhookOutcome("subscription.past_due", False, "no user_id")
+    upsert_user_profile(user_id, payment_status="past_due")
+    return WebhookOutcome("subscription.past_due", True, "marked past_due")
