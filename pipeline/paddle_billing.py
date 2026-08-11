@@ -104,3 +104,50 @@ class WebhookOutcome:
     event_type: str
     handled: bool
     note: str
+
+
+def ensure_customer(user: User) -> str:
+    """Return the Paddle customer id for this user, creating one on first call.
+
+    Paddle rejects a duplicate email on create, so look one up by email first;
+    otherwise create with user_id in custom_data."""
+    profile = get_user_profile(user.id)
+    if profile and getattr(profile, "paddle_customer_id", None):
+        return profile.paddle_customer_id
+    if user.email:
+        found = _request("GET", "/customers", params={"email": user.email})
+        rows = found.get("data") or []
+        if rows:
+            cid = rows[0]["id"]
+            upsert_user_profile(user.id, paddle_customer_id=cid)
+            return cid
+    created = _request("POST", "/customers",
+                       json={"email": user.email, "custom_data": {"user_id": user.id}})
+    cid = created["data"]["id"]
+    upsert_user_profile(user.id, paddle_customer_id=cid)
+    return cid
+
+
+def create_subscription_checkout(user: User, plan: str,
+                                 success_url: str, cancel_url: str) -> str:
+    """Create a Paddle transaction for a subscription and return its
+    hosted checkout URL (the app opens it in a new tab)."""
+    if plan not in PLAN_GRANTS:
+        raise ValueError(f"unknown plan: {plan!r}")
+    customer_id = ensure_customer(user)
+    resp = _request("POST", "/transactions", json={
+        "items": [{"price_id": _plan_price_id(plan), "quantity": 1}],
+        "customer_id": customer_id,
+        # custom_data set here is copied by Paddle onto the subscription this
+        # transaction creates, so renewal transactions inherit it.
+        "custom_data": {"user_id": user.id, "plan": plan},
+        "checkout": {"url": success_url},
+    })
+    return resp["data"]["checkout"]["url"]
+
+
+def create_portal_session(user: User, return_url: str) -> str:
+    """Return a Paddle customer-portal URL for self-serve manage/cancel."""
+    customer_id = ensure_customer(user)
+    resp = _request("POST", f"/customers/{customer_id}/portal-sessions", json={})
+    return resp["data"]["urls"]["general"]["overview"]
