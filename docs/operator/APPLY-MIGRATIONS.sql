@@ -19,6 +19,7 @@
 --   20260805000001_tos_acceptance
 --   20260807000001_clawback_idempotency
 --   20260807000002_rate_events
+--   20260811000001_paddle_customer_id
 -- =============================================================================
 
 
@@ -84,6 +85,13 @@ create table if not exists public.rate_events (
 
 create index if not exists rate_events_lookup
   on public.rate_events (user_id, action, created_at desc);
+
+
+-- ===== 20260811000001_paddle_customer_id.sql =====
+-- Paddle (Merchant of Record) customer id, analogous to stripe_customer_id.
+-- Additive + idempotent so re-running the bundle is safe.
+alter table user_profiles
+  add column if not exists paddle_customer_id text;
 
 -- =============================================================================
 -- End of bundle. Confirm via the super-admin dashboard's Activation card
