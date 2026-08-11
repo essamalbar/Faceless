@@ -216,3 +216,33 @@ def test_webhook_bad_signature_raises(paddle_env):
     raw = _json.dumps({"event_type": "transaction.completed", "data": {}}).encode()
     with pytest.raises(pb.PaddleSignatureError):
         pb.handle_webhook(raw, "ts=123;h1=deadbeef")
+
+
+def test_webhook_adjustment_claws_back(paddle_env, monkeypatch):
+    clawed = {}
+    monkeypatch.setattr(pb, "get_grant_by_reference", lambda ref: ("u1", 60))
+    monkeypatch.setattr(pb, "record_grant_once",
+                        lambda **kw: (clawed.update(kw), True)[1])
+    raw, sig = _wrap("adjustment.created", {
+        "id": "adj_1", "action": "refund", "transaction_id": "txn_1", "status": "approved"})
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled
+    assert clawed["amount"] == -60 and clawed["kind"] == "chargeback_clawback"
+    assert clawed["user_id"] == "u1" and clawed["reference_id"] == "adj_1"
+
+
+def test_webhook_adjustment_no_grant_is_safe_noop(paddle_env, monkeypatch):
+    called = {"n": 0}
+    monkeypatch.setattr(pb, "get_grant_by_reference", lambda ref: None)
+    monkeypatch.setattr(pb, "record_grant_once",
+                        lambda **kw: called.__setitem__("n", called["n"] + 1))
+    raw, sig = _wrap("adjustment.created",
+                     {"id": "adj_2", "action": "refund", "transaction_id": "txn_none"})
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled and called["n"] == 0
+
+
+def test_webhook_unknown_event_ignored(paddle_env):
+    raw, sig = _wrap("report.created", {"id": "rep_1"})
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled is False

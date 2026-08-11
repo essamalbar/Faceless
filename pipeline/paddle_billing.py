@@ -233,3 +233,21 @@ def _on_subscription_past_due(data: dict) -> WebhookOutcome:
         return WebhookOutcome("subscription.past_due", False, "no user_id")
     upsert_user_profile(user_id, payment_status="past_due")
     return WebhookOutcome("subscription.past_due", True, "marked past_due")
+
+
+def _on_adjustment_created(data: dict) -> WebhookOutcome:
+    """A refund or chargeback. Resolve the funded transaction back to the grant
+    and record an idempotent negative clawback keyed on the adjustment id."""
+    action = data.get("action")
+    if action not in ("refund", "chargeback", "chargeback_reverse"):
+        return WebhookOutcome("adjustment.created", False, f"ignored action {action!r}")
+    txn_id = data.get("transaction_id")
+    if not txn_id:
+        return WebhookOutcome("adjustment.created", False, "no transaction_id")
+    grant = get_grant_by_reference(txn_id)
+    if grant is None:
+        return WebhookOutcome("adjustment.created", True, "no grant to claw back")
+    user_id, amount = grant
+    record_grant_once(user_id=user_id, amount=-amount, kind="chargeback_clawback",
+                      reference_id=data.get("id"), description=f"{action} clawback")
+    return WebhookOutcome("adjustment.created", True, f"clawed back {amount} from {user_id}")
