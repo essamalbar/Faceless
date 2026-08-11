@@ -242,6 +242,17 @@ def test_webhook_adjustment_no_grant_is_safe_noop(paddle_env, monkeypatch):
     assert out.handled and called["n"] == 0
 
 
+def test_webhook_adjustment_ignored_action_not_clawed_back(paddle_env, monkeypatch):
+    called = {"n": 0}
+    monkeypatch.setattr(pb, "record_grant_once",
+                        lambda **kw: called.__setitem__("n", called["n"] + 1))
+    raw, sig = _wrap("adjustment.created", {
+        "id": "adj_3", "action": "credit", "transaction_id": "txn_1"})
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled is False
+    assert called["n"] == 0
+
+
 def test_webhook_unknown_event_ignored(paddle_env):
     raw, sig = _wrap("report.created", {"id": "rep_1"})
     out = pb.handle_webhook(raw, sig)
