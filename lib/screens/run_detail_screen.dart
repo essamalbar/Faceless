@@ -11,6 +11,7 @@ import '../api/settings.dart';
 import '../config.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../widgets/paywall_dialog.dart';
 import 'edit_script_screen.dart';
 import 'log_viewer_screen.dart';
 import 'video_player_screen.dart';
@@ -87,6 +88,13 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     try {
       await widget.client.approveRun(widget.runId);
       await _refresh();
+    } on InsufficientCreditsException catch (e) {
+      if (mounted) {
+        messenger.hideCurrentSnackBar();
+        setState(() => _busy = false);
+        await PaywallDialog.show(context, balance: e.balance, required: e.required);
+      }
+      return;
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(SnackBar(
@@ -112,6 +120,13 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     try {
       await widget.client.approveVeoRun(widget.runId);
       await _refresh();
+    } on InsufficientCreditsException catch (e) {
+      if (mounted) {
+        messenger.hideCurrentSnackBar();
+        setState(() => _busy = false);
+        await PaywallDialog.show(context, balance: e.balance, required: e.required);
+      }
+      return;
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(SnackBar(
