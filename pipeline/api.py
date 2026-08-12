@@ -32,6 +32,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
+import httpx
+
 from fastapi import (
     Depends,
     FastAPI,
@@ -1663,6 +1665,11 @@ def billing_checkout_subscription(
         url = create_subscription_checkout(user, req.plan, req.success_url, req.cancel_url)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
+    except httpx.HTTPError:
+        # Paddle API is down / erroring — a transient upstream failure, not the
+        # caller's fault. 502 tells the app to retry rather than surfacing a
+        # generic 500.
+        raise HTTPException(502, "couldn't start checkout, please try again") from None
     return CheckoutResponse(url=url)
 
 
@@ -1694,7 +1701,11 @@ def billing_portal(req: PortalRequest, user: User = Depends(require_user)):
     if user.role == "service":
         raise HTTPException(400, "service tokens have no portal")
     from pipeline.paddle_billing import create_portal_session
-    url = create_portal_session(user, req.return_url)
+    try:
+        url = create_portal_session(user, req.return_url)
+    except httpx.HTTPError:
+        # Same as checkout: a Paddle-side failure is a transient upstream error.
+        raise HTTPException(502, "couldn't open billing portal, please try again") from None
     return CheckoutResponse(url=url)
 
 

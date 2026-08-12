@@ -240,8 +240,9 @@ printf '%s' 'pdl_ntfset_xxx'    | gcloud secrets versions add paddle-webhook-sec
 ```
 
 Required deploy-substitution vars (passed the same way as the existing
-`${STRIPE_PRICE_*}` substitutions): `PADDLE_ENV`, `PADDLE_PRICE_STARTER`,
-`PADDLE_PRICE_CREATOR`, `PADDLE_PRICE_PRO`.
+`${STRIPE_PRICE_*}` substitutions): `PADDLE_PRICE_STARTER`,
+`PADDLE_PRICE_CREATOR`, `PADDLE_PRICE_PRO`. (`PADDLE_ENV` is a literal
+`value: production` in the YAML — not a `${...}` substitution.)
 
 ## Key invariants
 

@@ -2338,6 +2338,40 @@ def test_portal_returns_url(client_factory, monkeypatch):
     assert "portal" in r.json()["url"]
 
 
+def test_checkout_subscription_paddle_error_returns_502(client_factory, monkeypatch):
+    """A Paddle-side (httpx) failure is a transient upstream error, so the
+    endpoint should return 502 with a retry message, not a generic 500."""
+    import httpx
+
+    def boom(user, plan, s, c):
+        raise httpx.HTTPError("paddle down")
+
+    monkeypatch.setattr(
+        "pipeline.paddle_billing.create_subscription_checkout", boom)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/billing/checkout-subscription", json={
+        "plan": "starter",
+        "success_url": "https://app/success",
+        "cancel_url": "https://app/cancel",
+    })
+    assert r.status_code == 502, r.text
+    assert "try again" in r.json()["detail"]
+
+
+def test_portal_paddle_error_returns_502(client_factory, monkeypatch):
+    """Same 502 contract for the customer-portal endpoint."""
+    import httpx
+
+    def boom(user, return_url):
+        raise httpx.HTTPError("paddle down")
+
+    monkeypatch.setattr("pipeline.paddle_billing.create_portal_session", boom)
+    c = client_factory(user_id="alice", role="user")
+    r = c.post("/billing/portal", json={"return_url": "https://app/home"})
+    assert r.status_code == 502, r.text
+    assert "try again" in r.json()["detail"]
+
+
 def test_admin_credit_back_rejects_normal_user(client_factory, monkeypatch):
     """A regular signed-in user must not be able to hit /admin/credit-back
     — otherwise anyone could top up their own account."""

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -153,9 +154,6 @@ def create_portal_session(user: User, return_url: str) -> str:
     return resp["data"]["urls"]["general"]["overview"]
 
 
-import json
-
-
 def handle_webhook(raw_body: bytes, signature: str) -> WebhookOutcome:
     """Verify the Paddle-Signature header, decode, and dispatch.
 
@@ -175,8 +173,8 @@ def handle_webhook(raw_body: bytes, signature: str) -> WebhookOutcome:
         return _on_subscription_canceled(data)
     if et == "subscription.past_due":
         return _on_subscription_past_due(data)
-    if et == "adjustment.created":
-        return _on_adjustment_created(data)
+    if et in ("adjustment.created", "adjustment.updated"):
+        return _on_adjustment_created(data, event_type=et)
     return WebhookOutcome(event_type=et, handled=False, note="ignored")
 
 
@@ -190,6 +188,20 @@ def _on_transaction_completed(data: dict) -> WebhookOutcome:
     if not user_id or plan not in PLAN_GRANTS:
         return WebhookOutcome("transaction.completed", False,
                               f"missing user_id or plan (plan={plan!r})")
+    # A zero-total transaction.completed (e.g. a card update on an existing
+    # subscription) still carries the subscription's custom_data, so it would
+    # otherwise mint a full plan grant. Skip it. Minor units come as a string
+    # ("0", "2900"); an absent/None/malformed field falls through to grant so
+    # real payments that omit it aren't broken.
+    grand_total = ((data.get("details") or {}).get("totals") or {}).get("grand_total")
+    if grand_total is not None:
+        try:
+            if int(grand_total) == 0:
+                return WebhookOutcome(
+                    "transaction.completed", True,
+                    "zero-amount transaction (e.g. card update), no grant")
+        except (TypeError, ValueError):
+            pass  # unparseable → treat as a real payment, grant below
     granted = record_grant_once(
         user_id=user_id, amount=PLAN_GRANTS[plan], kind="subscription_renewal",
         reference_id=data.get("id"), description=f"{plan.capitalize()} plan renewal")
@@ -235,19 +247,33 @@ def _on_subscription_past_due(data: dict) -> WebhookOutcome:
     return WebhookOutcome("subscription.past_due", True, "marked past_due")
 
 
-def _on_adjustment_created(data: dict) -> WebhookOutcome:
+def _on_adjustment_created(data: dict,
+                           event_type: str = "adjustment.created") -> WebhookOutcome:
     """A refund or chargeback. Resolve the funded transaction back to the grant
-    and record an idempotent negative clawback keyed on the adjustment id."""
+    and record an idempotent negative clawback keyed on the TRANSACTION id.
+
+    Live refunds are created as ``status="pending_approval"`` and only later
+    transition to ``approved`` (or ``rejected``) via ``adjustment.updated`` —
+    so we only claw back once the adjustment is approved. Keying the clawback
+    on the transaction id (not the adjustment id) lets the DB's unique index
+    dedupe multiple adjustments against the same transaction into exactly one
+    full-grant clawback (mirrors the proven Stripe behavior)."""
     action = data.get("action")
     if action not in ("refund", "chargeback"):
-        return WebhookOutcome("adjustment.created", False, f"ignored action {action!r}")
+        return WebhookOutcome(event_type, False, f"ignored action {action!r}")
+    status = data.get("status")
+    if status != "approved":
+        return WebhookOutcome(event_type, True, f"refund status {status!r}, no clawback")
     txn_id = data.get("transaction_id")
     if not txn_id:
-        return WebhookOutcome("adjustment.created", False, "no transaction_id")
+        return WebhookOutcome(event_type, False, "no transaction_id")
     grant = get_grant_by_reference(txn_id)
     if grant is None:
-        return WebhookOutcome("adjustment.created", True, "no grant to claw back")
+        return WebhookOutcome(event_type, True, "no grant to claw back")
     user_id, amount = grant
-    record_grant_once(user_id=user_id, amount=-amount, kind="chargeback_clawback",
-                      reference_id=data.get("id"), description=f"{action} clawback")
-    return WebhookOutcome("adjustment.created", True, f"clawed back {amount} from {user_id}")
+    clawed = record_grant_once(
+        user_id=user_id, amount=-amount, kind="chargeback_clawback",
+        reference_id=txn_id, description=f"{action} clawback")
+    if not clawed:
+        return WebhookOutcome(event_type, True, "duplicate adjustment, no-op")
+    return WebhookOutcome(event_type, True, f"clawed back {amount} from {user_id}")

@@ -179,6 +179,24 @@ def test_webhook_transaction_completed_dedupes(paddle_env, mock_db, monkeypatch)
     assert calls["n"] == 2
 
 
+def test_webhook_transaction_zero_amount_no_grant(paddle_env, mock_db):
+    # Paddle fires transaction.completed with a ZERO grand_total when a
+    # subscriber only updates their card — it carries the subscription's
+    # custom_data, so without the guard it would mint a full plan grant.
+    raw, sig = _wrap("transaction.completed", {
+        "id": "txn_cardupdate",
+        "custom_data": {"user_id": "u1", "plan": "creator"},
+        "details": {"totals": {"grand_total": "0"}},
+        "billing_period": {"ends_at": "2026-09-11T00:00:00Z"},
+    })
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled is True
+    assert "zero-amount" in out.note
+    # No grant minted and the profile is untouched.
+    assert mock_db["grants"] == []
+    assert "u1" not in mock_db["profiles"]
+
+
 def test_webhook_subscription_updated_persists_cancel(paddle_env, mock_db):
     raw, sig = _wrap("subscription.updated", {
         "id": "sub_1", "custom_data": {"user_id": "u1", "plan": "starter"},
@@ -228,7 +246,9 @@ def test_webhook_adjustment_claws_back(paddle_env, monkeypatch):
     out = pb.handle_webhook(raw, sig)
     assert out.handled
     assert clawed["amount"] == -60 and clawed["kind"] == "chargeback_clawback"
-    assert clawed["user_id"] == "u1" and clawed["reference_id"] == "adj_1"
+    # Clawback is keyed on the TRANSACTION id (not the adjustment id) so the
+    # DB unique index dedupes multiple adjustments against one transaction.
+    assert clawed["user_id"] == "u1" and clawed["reference_id"] == "txn_1"
 
 
 def test_webhook_adjustment_no_grant_is_safe_noop(paddle_env, monkeypatch):
@@ -237,7 +257,8 @@ def test_webhook_adjustment_no_grant_is_safe_noop(paddle_env, monkeypatch):
     monkeypatch.setattr(pb, "record_grant_once",
                         lambda **kw: called.__setitem__("n", called["n"] + 1))
     raw, sig = _wrap("adjustment.created",
-                     {"id": "adj_2", "action": "refund", "transaction_id": "txn_none"})
+                     {"id": "adj_2", "action": "refund", "transaction_id": "txn_none",
+                      "status": "approved"})
     out = pb.handle_webhook(raw, sig)
     assert out.handled and called["n"] == 0
 
@@ -251,6 +272,67 @@ def test_webhook_adjustment_ignored_action_not_clawed_back(paddle_env, monkeypat
     out = pb.handle_webhook(raw, sig)
     assert out.handled is False
     assert called["n"] == 0
+
+
+def test_webhook_adjustment_pending_approval_no_clawback(paddle_env, monkeypatch):
+    # Live refunds are created as status="pending_approval" and may still be
+    # rejected — we must NOT claw back until they're approved.
+    called = {"n": 0}
+    monkeypatch.setattr(pb, "get_grant_by_reference",
+                        lambda ref: pytest.fail("must not look up grant while pending"))
+    monkeypatch.setattr(pb, "record_grant_once",
+                        lambda **kw: called.__setitem__("n", called["n"] + 1))
+    raw, sig = _wrap("adjustment.created", {
+        "id": "adj_p", "action": "refund", "transaction_id": "txn_1",
+        "status": "pending_approval"})
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled is True
+    assert "pending_approval" in out.note
+    assert called["n"] == 0
+
+
+def test_webhook_adjustment_updated_approved_claws_back(paddle_env, monkeypatch):
+    # adjustment.updated (previously unmapped) with status="approved" is the
+    # event that actually authorizes the clawback.
+    clawed = {}
+    monkeypatch.setattr(pb, "get_grant_by_reference", lambda ref: ("u1", 60))
+    monkeypatch.setattr(pb, "record_grant_once",
+                        lambda **kw: (clawed.update(kw), True)[1])
+    raw, sig = _wrap("adjustment.updated", {
+        "id": "adj_u", "action": "refund", "transaction_id": "txn_1",
+        "status": "approved"})
+    out = pb.handle_webhook(raw, sig)
+    assert out.handled is True
+    assert clawed["amount"] == -60 and clawed["kind"] == "chargeback_clawback"
+    assert clawed["user_id"] == "u1" and clawed["reference_id"] == "txn_1"
+
+
+def test_webhook_adjustment_double_refund_dedupes(paddle_env, monkeypatch):
+    # Two approved adjustments against the SAME transaction (different adjustment
+    # ids) must claw back the full grant only ONCE. Because the clawback is
+    # keyed on the transaction id, the DB unique index dedupes the second —
+    # simulated here by record_grant_once returning True then False.
+    calls = {"n": 0}
+    refs = []
+    monkeypatch.setattr(pb, "get_grant_by_reference", lambda ref: ("u1", 60))
+
+    def grant(**kw):
+        calls["n"] += 1
+        refs.append(kw["reference_id"])
+        return calls["n"] == 1
+
+    monkeypatch.setattr(pb, "record_grant_once", grant)
+    raw1, sig1 = _wrap("adjustment.updated", {
+        "id": "adj_a", "action": "refund", "transaction_id": "txn_1", "status": "approved"})
+    raw2, sig2 = _wrap("adjustment.updated", {
+        "id": "adj_b", "action": "refund", "transaction_id": "txn_1", "status": "approved"})
+    first = pb.handle_webhook(raw1, sig1)
+    second = pb.handle_webhook(raw2, sig2)
+    assert calls["n"] == 2
+    # Both attempts key on the transaction id → the unique index dedupes them.
+    assert refs == ["txn_1", "txn_1"]
+    assert first.handled and "clawed back" in first.note
+    assert second.handled and "no-op" in second.note
 
 
 def test_webhook_unknown_event_ignored(paddle_env):
