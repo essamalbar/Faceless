@@ -93,6 +93,25 @@ spec:
               value: ${STRIPE_PRICE_TOPUP_100}
             - name: STRIPE_PRICE_TOPUP_300
               value: ${STRIPE_PRICE_TOPUP_300}
+            # Paddle (MoR) — replaces Stripe for new subscriptions
+            - name: PADDLE_ENV
+              value: production
+            - name: PADDLE_PRICE_STARTER
+              value: ${PADDLE_PRICE_STARTER}
+            - name: PADDLE_PRICE_CREATOR
+              value: ${PADDLE_PRICE_CREATOR}
+            - name: PADDLE_PRICE_PRO
+              value: ${PADDLE_PRICE_PRO}
+            - name: PADDLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: paddle-api-key
+                  key: latest
+            - name: PADDLE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: paddle-webhook-secret
+                  key: latest
           resources:
             limits:
               cpu: "1"

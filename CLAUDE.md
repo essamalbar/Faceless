@@ -219,6 +219,30 @@ Daily redeploys after code changes:
 Full guide: `docs/DEPLOY-CLOUDRUN.md`. Free-tier capacity: ~300 video
 renders/month before any cost.
 
+### Paddle billing (MoR)
+
+Paddle is the merchant-of-record billing provider (`pipeline/paddle_billing.py`),
+replacing Stripe for subscriptions. `deploy/cloud-run-service.yaml` wires it in
+next to the Stripe env block.
+
+Create the Paddle secrets in Secret Manager (operator runs these — never
+paste real keys into chat):
+
+```bash
+printf '%s' 'pdl_live_xxx'      | gcloud secrets create paddle-api-key --data-file=- || \
+printf '%s' 'pdl_live_xxx'      | gcloud secrets versions add paddle-api-key --data-file=-
+printf '%s' 'pdl_ntfset_xxx'    | gcloud secrets create paddle-webhook-secret --data-file=- || \
+printf '%s' 'pdl_ntfset_xxx'    | gcloud secrets versions add paddle-webhook-secret --data-file=-
+# Grant the runtime service account access to both (once):
+#   gcloud secrets add-iam-policy-binding paddle-api-key \
+#     --member=serviceAccount:faceless-runtime@$PROJECT.iam.gserviceaccount.com \
+#     --role=roles/secretmanager.secretAccessor
+```
+
+Required deploy-substitution vars (passed the same way as the existing
+`${STRIPE_PRICE_*}` substitutions): `PADDLE_ENV`, `PADDLE_PRICE_STARTER`,
+`PADDLE_PRICE_CREATOR`, `PADDLE_PRICE_PRO`.
+
 ## Key invariants
 
 - **External services are mocked in tests.** Every external API (Gemini, Edge TTS, mflux, FFmpeg) is wrapped behind a small interface; tests replace the function via `monkeypatch`. Never hit real APIs in tests.
