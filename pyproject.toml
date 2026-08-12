@@ -1,7 +1,7 @@
 [project]
 name = "faceless-pipeline"
 version = "0.1.0"
-description = "Arabic horror faceless YouTube CLI"
+description = "AI song & short-video generator"
 requires-python = ">=3.11"
 dependencies = [
     "google-genai>=0.3.0",

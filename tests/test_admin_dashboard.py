@@ -538,6 +538,13 @@ def test_admin_dashboard_page_served(client_factory):
         "/admin/users",
         "/admin/runs",
         "/admin/transactions",
+        # New analytics cards + song audio player.
+        "/admin/kpis",
+        "/admin/subscriptions",
+        "/admin/revenue",
+        "/admin/songs/",
+        "Listen",
+        "createObjectURL",
     ):
         assert needle in body
 
@@ -687,3 +694,385 @@ def test_admin_login_bad_credentials_401(client_factory, monkeypatch):
     c = client_factory(user_id="alice", role="user")
     r = c.post("/admin/login", json={"email": "boss@x.com", "password": "wrong"})
     assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Admin analytics — subscriptions / revenue / kpis (control-panel cards).
+#
+# All three are gated by _require_admin (service token OR FACELESS_ADMIN_EMAILS
+# allowlisted JWT). The positive paths below exercise the allowlisted-JWT
+# flavor the task specifies; non-admin (role="user", no email) → 403. The
+# pipeline.db aggregation calls are monkeypatched (handlers do a request-time
+# `from pipeline import db`), and _plan_price_usd is monkeypatched so no
+# Stripe / real DB is ever hit.
+# ---------------------------------------------------------------------------
+
+
+# --- GET /admin/subscriptions ----------------------------------------------
+
+def test_subscriptions_requires_admin(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.get("/admin/subscriptions").status_code == 403
+
+
+def test_subscriptions_counts(client_factory, monkeypatch):
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    # 2 pro active, 1 creator active, 1 pro past_due, 1 free active; one pro
+    # flagged cancel_at_period_end.
+    profiles = [
+        {"id": "u1", "current_plan": "pro", "payment_status": "active",
+         "cancel_at_period_end": False},
+        {"id": "u2", "current_plan": "pro", "payment_status": "active",
+         "cancel_at_period_end": True},
+        {"id": "u3", "current_plan": "creator", "payment_status": "active",
+         "cancel_at_period_end": False},
+        {"id": "u4", "current_plan": "pro", "payment_status": "past_due",
+         "cancel_at_period_end": False},
+        {"id": "u5", "current_plan": "free", "payment_status": "active",
+         "cancel_at_period_end": False},
+    ]
+    monkeypatch.setattr("pipeline.db.list_all_user_profiles_min", lambda: profiles)
+
+    c = client_factory(user_id="boss", role="user", email="boss@x.com")
+    r = c.get("/admin/subscriptions")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["by_plan"] == {"starter": 0, "creator": 1, "pro": 3,
+                               "free": 1, "other": 0}
+    assert body["active"] == 4
+    assert body["past_due"] == 1
+    assert body["cancel_at_period_end"] == 1
+    assert body["total_profiles"] == 5
+
+
+def test_subscriptions_other_and_deleted_bucketing(client_factory, monkeypatch):
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+    profiles = [
+        {"id": "u1", "current_plan": "deleted", "payment_status": "active",
+         "cancel_at_period_end": False},        # deleted → free bucket
+        {"id": "u2", "current_plan": None, "payment_status": "active",
+         "cancel_at_period_end": False},        # None → free bucket
+        {"id": "u3", "current_plan": "legacy_gold", "payment_status": "active",
+         "cancel_at_period_end": False},        # unknown → other bucket
+    ]
+    monkeypatch.setattr("pipeline.db.list_all_user_profiles_min", lambda: profiles)
+
+    c = client_factory(user_id="boss", role="user", email="boss@x.com")
+    body = c.get("/admin/subscriptions").json()
+    assert body["by_plan"]["free"] == 2
+    assert body["by_plan"]["other"] == 1
+
+
+def test_subscriptions_missing_columns_returns_503_hint(client_factory, monkeypatch):
+    """Before the pending migrations, user_profiles lacks payment_status, so the
+    aggregate SELECT errors. Surface a 503 pointing at the migration bundle, not
+    an opaque 500 (mirrors /admin/users)."""
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+
+    def _boom():
+        raise Exception('column user_profiles.payment_status does not exist')
+
+    monkeypatch.setattr("pipeline.db.list_all_user_profiles_min", _boom)
+    c = client_factory(user_id="boss", role="user", email="boss@x.com")
+    r = c.get("/admin/subscriptions")
+    assert r.status_code == 503
+    assert "APPLY-MIGRATIONS.sql" in r.json()["detail"]
+
+
+# --- GET /admin/revenue ----------------------------------------------------
+
+def test_revenue_requires_admin(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.get("/admin/revenue").status_code == 403
+
+
+def test_revenue_aggregates(client_factory, monkeypatch):
+    from datetime import datetime, timezone
+
+    from pipeline.db import Transaction
+
+    # All renewals dated TODAY (UTC) so revenue_usd_mtd == revenue_usd_total
+    # and by_day collapses to one deterministic bucket — independent of the
+    # machine clock.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows = [
+        Transaction(id="t1", user_id="u1", amount=200, kind="subscription_renewal",
+                    reference_id="inv1", description=None, created_at=now_iso),
+        Transaction(id="t2", user_id="u2", amount=60, kind="subscription_renewal",
+                    reference_id="inv2", description=None, created_at=now_iso),
+        Transaction(id="t3", user_id="u3", amount=12, kind="subscription_renewal",
+                    reference_id="inv3", description=None, created_at=now_iso),
+    ]
+    monkeypatch.setattr("pipeline.db.list_transactions_by_kinds",
+                        lambda kinds, limit=5000: list(rows))
+    monkeypatch.setattr("pipeline.db.list_balances", lambda: {"u1": 100, "u2": 50})
+    monkeypatch.setattr("pipeline.api._plan_price_usd",
+                        lambda: {"starter": 9.0, "creator": 29.0, "pro": 79.0})
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/revenue")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["prices"] == {"starter": 9.0, "creator": 29.0, "pro": 79.0}
+    assert body["renewals_by_plan"] == {"starter": 1, "creator": 1, "pro": 1}
+    assert body["revenue_usd_total"] == pytest.approx(117.0)   # 79 + 29 + 9
+    assert body["revenue_usd_mtd"] == pytest.approx(117.0)     # all dated today
+    assert body["credits_granted"] == 272                      # 200 + 60 + 12
+    assert body["credits_outstanding"] == 150                  # 100 + 50
+    # by_day: exactly one bucket (today), 3 renewals, full revenue.
+    assert len(body["by_day"]) == 1
+    day = body["by_day"][0]
+    assert day["date"] == now_iso[:10]
+    assert day["renewals"] == 3
+    assert day["revenue_usd"] == pytest.approx(117.0)
+
+
+def test_revenue_unknown_grant_amount_counts_generic_only(client_factory, monkeypatch):
+    from datetime import datetime, timezone
+
+    from pipeline.db import Transaction
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows = [
+        Transaction(id="t1", user_id="u1", amount=60, kind="subscription_renewal",
+                    reference_id="inv1", description=None, created_at=now_iso),
+        # Unknown grant amount (e.g. legacy promo): counts in by_day.renewals
+        # but not in renewals_by_plan or dollars.
+        Transaction(id="t2", user_id="u2", amount=999, kind="subscription_renewal",
+                    reference_id="inv2", description=None, created_at=now_iso),
+    ]
+    monkeypatch.setattr("pipeline.db.list_transactions_by_kinds",
+                        lambda kinds, limit=5000: list(rows))
+    monkeypatch.setattr("pipeline.db.list_balances", lambda: {})
+    monkeypatch.setattr("pipeline.api._plan_price_usd",
+                        lambda: {"starter": 9.0, "creator": 29.0, "pro": 79.0})
+
+    c = client_factory(user_id="admin", role="service")
+    body = c.get("/admin/revenue").json()
+    assert body["renewals_by_plan"] == {"starter": 0, "creator": 1, "pro": 0}
+    assert body["revenue_usd_total"] == pytest.approx(29.0)
+    assert body["by_day"][0]["renewals"] == 2   # both counted generically
+    assert body["credits_outstanding"] == 0
+
+
+# --- GET /admin/kpis -------------------------------------------------------
+
+def test_kpis_requires_admin(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.get("/admin/kpis").status_code == 403
+
+
+def test_kpis_ok(client_factory, monkeypatch):
+    monkeypatch.setattr("pipeline.db.list_auth_users",
+                        lambda: {"u1": "a@x.com", "u2": "b@x.com"})
+    profiles = [
+        {"id": "u1", "current_plan": "pro", "payment_status": "active",
+         "cancel_at_period_end": False},
+        {"id": "u2", "current_plan": "free", "payment_status": "active",
+         "cancel_at_period_end": False},
+    ]
+    monkeypatch.setattr("pipeline.db.list_all_user_profiles_min", lambda: profiles)
+    monkeypatch.setattr("pipeline.db.list_balances", lambda: {"u1": 10, "u2": 5})
+    monkeypatch.setattr("pipeline.db.list_transactions_by_kinds",
+                        lambda kinds, limit=5000: [])
+    monkeypatch.setattr("pipeline.api._plan_price_usd",
+                        lambda: {"starter": 9.0, "creator": 29.0, "pro": 79.0})
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/kpis")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {"total_users", "active_subscribers",
+                         "credits_outstanding", "revenue_usd_mtd"}
+    assert body["total_users"] == 2
+    assert body["active_subscribers"] == 1     # only u1 (paid + active)
+    assert body["credits_outstanding"] == 15
+    assert body["revenue_usd_mtd"] == pytest.approx(0.0)  # no renewals
+
+
+def test_kpis_nulls_failed_field(client_factory, monkeypatch):
+    """One failing source must not 500 the whole card — the failed field is
+    null and the others still populate."""
+    def _boom():
+        raise RuntimeError("auth admin unavailable")
+
+    monkeypatch.setattr("pipeline.db.list_auth_users", _boom)
+    monkeypatch.setattr("pipeline.db.list_all_user_profiles_min", lambda: [])
+    monkeypatch.setattr("pipeline.db.list_balances", lambda: {"u1": 7})
+    monkeypatch.setattr("pipeline.db.list_transactions_by_kinds",
+                        lambda kinds, limit=5000: [])
+    monkeypatch.setattr("pipeline.api._plan_price_usd",
+                        lambda: {"starter": 9.0, "creator": 29.0, "pro": 79.0})
+
+    c = client_factory(user_id="admin", role="service")
+    body = c.get("/admin/kpis").json()
+    assert body["total_users"] is None            # failed source → null
+    assert body["active_subscribers"] == 0
+    assert body["credits_outstanding"] == 7
+
+
+# --- _plan_price_usd fallback ----------------------------------------------
+
+def test_plan_price_usd_fallback_when_stripe_absent(monkeypatch):
+    import pipeline.api as api
+
+    # Reset the module cache and strip every Stripe env var so the retrieve
+    # loop short-circuits (empty api_key) — no network, pure fallback.
+    monkeypatch.setattr(api, "_PLAN_PRICE_CACHE", {})
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("STRIPE_PRICE_STARTER", raising=False)
+    monkeypatch.delenv("STRIPE_PRICE_CREATOR", raising=False)
+    monkeypatch.delenv("STRIPE_PRICE_PRO", raising=False)
+
+    prices = api._plan_price_usd()
+    assert prices == {"starter": 9.0, "creator": 29.0, "pro": 79.0}
+
+
+# ---------------------------------------------------------------------------
+# Admin cross-user media streaming — GET /admin/songs/{uid}/{rid}/audio + cover
+#
+# The control panel plays any user's song by fetching WITH the bearer header
+# (fetch → blob → <audio>). Header auth via require_user is correct; NO
+# ?token= query auth (keeps the admin token out of URLs). Both endpoints gate
+# on _require_admin first, then validate BOTH path params against _RUN_ID_RE.
+#
+# Traversal is exercised by calling the handler directly (httpx normalizes
+# `../` out of URL paths before the request is sent, so an HTTP traversal test
+# would silently hit a normalized 404 path instead of the intended 400 branch).
+# The tmp out-root is keyed by the TARGET user_id from the URL path, not the
+# caller's id — that's the whole point of a cross-user endpoint.
+# ---------------------------------------------------------------------------
+
+
+# --- GET /admin/songs/{uid}/{rid}/audio ------------------------------------
+
+def test_admin_song_audio_requires_admin(client_factory):
+    # Non-allowlisted, role="user", email=None → 403 regardless of env.
+    c = client_factory(user_id="alice", role="user")
+    assert c.get("/admin/songs/target/run-x/audio").status_code == 403
+
+
+def test_admin_song_audio_email_admin_ok(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = out / "target-user" / "run-x"
+    rd.mkdir(parents=True)
+    data = b"ID3fake-mp3-bytes\x00\x01\x02"
+    (rd / "song.mp3").write_bytes(data)
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+    monkeypatch.setenv("FACELESS_ADMIN_EMAILS", "boss@x.com")
+
+    c = client_factory(user_id="boss", role="user", email="boss@x.com")
+    r = c.get("/admin/songs/target-user/run-x/audio")
+    assert r.status_code == 200
+    assert r.content == data
+    assert r.headers["content-type"].startswith("audio/mpeg")
+
+
+def test_admin_song_audio_service_token_ok(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = out / "target-user" / "run-x"
+    rd.mkdir(parents=True)
+    data = b"service-token-can-fetch"
+    (rd / "song.mp3").write_bytes(data)
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/songs/target-user/run-x/audio")
+    assert r.status_code == 200
+    assert r.content == data
+
+
+def test_admin_song_audio_missing_file_404(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    (out / "target-user" / "run-x").mkdir(parents=True)  # dir exists, no mp3
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    assert c.get("/admin/songs/target-user/run-x/audio").status_code == 404
+
+
+def test_admin_song_audio_traversal_user_id():
+    from pipeline.api import admin_song_audio
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_song_audio(user_id="../evil", run_id="run-x", user=svc)
+    assert exc.value.status_code == 400
+
+
+def test_admin_song_audio_traversal_run_id():
+    from pipeline.api import admin_song_audio
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    # Valid user_id so the run_id check is the one that fires (#3).
+    with pytest.raises(HTTPException) as exc:
+        admin_song_audio(user_id="target-user", run_id="../evil", user=svc)
+    assert exc.value.status_code == 400
+
+
+# --- GET /admin/songs/{uid}/{rid}/cover ------------------------------------
+
+def test_admin_song_cover_requires_admin(client_factory):
+    c = client_factory(user_id="alice", role="user")
+    assert c.get("/admin/songs/target/run-x/cover").status_code == 403
+
+
+def test_admin_song_cover_png_ok(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = out / "target-user" / "run-x"
+    rd.mkdir(parents=True)
+    png = b"\x89PNG\r\n\x1a\nfake"
+    (rd / "cover.png").write_bytes(png)
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/songs/target-user/run-x/cover")
+    assert r.status_code == 200
+    assert r.content == png
+    assert r.headers["content-type"].startswith("image/png")
+
+
+def test_admin_song_cover_thumb_fallback(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    rd = out / "target-user" / "run-x"
+    rd.mkdir(parents=True)
+    jpg = b"\xff\xd8\xff\xe0fake-jpeg"
+    (rd / "cover_thumb.jpg").write_bytes(jpg)  # only the thumb exists
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.get("/admin/songs/target-user/run-x/cover")
+    assert r.status_code == 200
+    assert r.content == jpg
+    assert r.headers["content-type"].startswith("image/jpeg")
+
+
+def test_admin_song_cover_missing_404(client_factory, monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    (out / "target-user" / "run-x").mkdir(parents=True)  # dir but no cover
+    monkeypatch.setattr("pipeline.api._out_root", lambda: out)
+
+    c = client_factory(user_id="admin", role="service")
+    assert c.get("/admin/songs/target-user/run-x/cover").status_code == 404
+
+
+def test_admin_song_cover_traversal_user_id():
+    from pipeline.api import admin_song_cover
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_song_cover(user_id="../evil", run_id="run-x", user=svc)
+    assert exc.value.status_code == 400
+
+
+def test_admin_song_cover_traversal_run_id():
+    from pipeline.api import admin_song_cover
+    from pipeline.auth import User
+
+    svc = User(id="admin", email=None, role="service")
+    with pytest.raises(HTTPException) as exc:
+        admin_song_cover(user_id="target-user", run_id="../evil", user=svc)
+    assert exc.value.status_code == 400

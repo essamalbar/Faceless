@@ -25,6 +25,7 @@ class UserProfile:
     payment_status: str = "active"  # 'active' | 'past_due' (dunning flag)
     tos_accepted_version: str | None = None
     tos_accepted_at: str | None = None
+    paddle_customer_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -58,7 +59,7 @@ def get_user_profile(user_id: str) -> UserProfile | None:
         _client()
         .table("user_profiles")
         .select(
-            "id,stripe_customer_id,current_plan,"
+            "id,stripe_customer_id,paddle_customer_id,current_plan,"
             "current_period_end,cancel_at_period_end,payment_status,"
             "tos_accepted_version,tos_accepted_at",
         )
@@ -78,6 +79,7 @@ def get_user_profile(user_id: str) -> UserProfile | None:
         payment_status=d.get("payment_status", "active"),
         tos_accepted_version=d.get("tos_accepted_version"),
         tos_accepted_at=d.get("tos_accepted_at"),
+        paddle_customer_id=d.get("paddle_customer_id"),
     )
 
 
@@ -212,6 +214,7 @@ def anonymize_user_profile(user_id: str) -> None:
     upsert_user_profile(
         user_id,
         stripe_customer_id=None,
+        paddle_customer_id=None,
         current_plan="deleted",
         tos_accepted_version=None,
         payment_status="active",
@@ -249,7 +252,7 @@ def list_user_profiles(limit: int = 100, offset: int = 0) -> list[UserProfile]:
         _client()
         .table("user_profiles")
         .select(
-            "id,stripe_customer_id,current_plan,current_period_end,"
+            "id,stripe_customer_id,paddle_customer_id,current_plan,current_period_end,"
             "cancel_at_period_end,payment_status,tos_accepted_version,tos_accepted_at",
         )
         .order("id")
@@ -267,8 +270,26 @@ def list_user_profiles(limit: int = 100, offset: int = 0) -> list[UserProfile]:
             payment_status=d.get("payment_status", "active"),
             tos_accepted_version=d.get("tos_accepted_version"),
             tos_accepted_at=d.get("tos_accepted_at"),
+            paddle_customer_id=d.get("paddle_customer_id"),
         ))
     return out
+
+
+def list_all_user_profiles_min() -> list[dict]:
+    """All profiles, minimal columns, for aggregate counts (small user base)."""
+    resp = (_client().table("user_profiles")
+            .select("id,current_plan,payment_status,cancel_at_period_end")
+            .execute())
+    return list(resp.data or [])
+
+
+def list_transactions_by_kinds(kinds: list[str], limit: int = 5000) -> list["Transaction"]:
+    """Cross-user ledger rows whose kind is in `kinds`, newest first."""
+    resp = (_client().table("credit_transactions").select("*")
+            .in_("kind", kinds).order("created_at", desc=True).limit(limit).execute())
+    return [Transaction(id=r["id"], user_id=r["user_id"], amount=r["amount"], kind=r["kind"],
+                        reference_id=r.get("reference_id"), description=r.get("description"),
+                        created_at=r["created_at"]) for r in (resp.data or [])]
 
 
 def list_balances() -> dict[str, int]:

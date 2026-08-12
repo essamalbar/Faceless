@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo holds two unrelated codebases coexisting:
 
-1. **Python pipeline** at the repo root (`pipeline/`, `tests/`, `run.py`, `pyproject.toml`) — the active MVP. Generates Arabic horror videos end-to-end (script → narration → images → assembly). See `docs/superpowers/specs/2026-05-01-arabic-horror-faceless-system-design.md` for design and `docs/superpowers/plans/2026-05-01-arabic-horror-faceless-system.md` for the build plan.
+1. **Python pipeline** at the repo root (`pipeline/`, `tests/`, `run.py`, `pyproject.toml`) — the active MVP. Generates AI songs and short videos end-to-end (script → narration → images → assembly). See `docs/superpowers/specs/2026-05-01-arabic-horror-faceless-system-design.md` for design and `docs/superpowers/plans/2026-05-01-arabic-horror-faceless-system.md` for the build plan.
 2. **Flutter app scaffold** (`lib/`, `pubspec.yaml`, `android/`, `ios/`, etc.) — untouched in MVP. Will become the dashboard in Phase 2+.
 
 **Phase 1 (MVP):** isolation rule applied — Python pipeline and Flutter scaffold lived as separate codebases. **Phase 2 (active now):** they're integrated through `pipeline/api.py`. Cross-stack work is expected when adding mobile-app features. The Flutter `lib/` will consume the FastAPI endpoints documented below.
@@ -18,7 +18,7 @@ uv sync                                 # install Python deps
 uv run pytest                           # run all tests
 uv run pytest tests/test_seed.py -v     # single test file
 uv run pytest -k test_chunk             # tests matching pattern
-uv run python run.py --theme folkloric --seed "بئر قديم"   # run pipeline manually
+uv run python run.py --theme folkloric --seed "رحلة عبر الصحراء"   # run pipeline manually
 uv run python run.py --skip-images      # dry-run with placeholder PNGs (fast)
 ```
 
@@ -62,7 +62,7 @@ Run a tier-3 video:
 
 ```bash
 source .env
-uv run python run.py --shorts --theme folkloric --seed "أم فقيرة..."
+uv run python run.py --shorts --theme folkloric --seed "رحلة عبر الصحراء..."
 ```
 
 ## Backend API (Phase 2 — controls the pipeline from a mobile app)
@@ -218,6 +218,31 @@ Daily redeploys after code changes:
 
 Full guide: `docs/DEPLOY-CLOUDRUN.md`. Free-tier capacity: ~300 video
 renders/month before any cost.
+
+### Paddle billing (MoR)
+
+Paddle is the merchant-of-record billing provider (`pipeline/paddle_billing.py`),
+replacing Stripe for subscriptions. `deploy/cloud-run-service.yaml` wires it in
+next to the Stripe env block.
+
+Create the Paddle secrets in Secret Manager (operator runs these — never
+paste real keys into chat):
+
+```bash
+printf '%s' 'pdl_live_xxx'      | gcloud secrets create paddle-api-key --data-file=- || \
+printf '%s' 'pdl_live_xxx'      | gcloud secrets versions add paddle-api-key --data-file=-
+printf '%s' 'pdl_ntfset_xxx'    | gcloud secrets create paddle-webhook-secret --data-file=- || \
+printf '%s' 'pdl_ntfset_xxx'    | gcloud secrets versions add paddle-webhook-secret --data-file=-
+# Grant the runtime service account access to both (once):
+#   gcloud secrets add-iam-policy-binding paddle-api-key \
+#     --member=serviceAccount:faceless-runtime@$PROJECT.iam.gserviceaccount.com \
+#     --role=roles/secretmanager.secretAccessor
+```
+
+Required deploy-substitution vars (passed the same way as the existing
+`${STRIPE_PRICE_*}` substitutions): `PADDLE_PRICE_STARTER`,
+`PADDLE_PRICE_CREATOR`, `PADDLE_PRICE_PRO`. (`PADDLE_ENV` is a literal
+`value: production` in the YAML — not a `${...}` substitution.)
 
 ## Key invariants
 

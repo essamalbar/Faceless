@@ -62,10 +62,11 @@ def test_generate_shots_writes_shots_json(fake_gemini, tmp_run_dir: Path):
         _wt("الفقرة3", 2000), _wt(".", 2500),
     ]
     # New batched API: one Gemini call returns a JSON array of N prompts.
-    # The fake responds to any prompt mentioning "atmospheric" with a JSON array
-    # large enough to cover any plausible chunk count for this short timing input.
+    # The fake responds to the batch-translate image prompt (identified by the
+    # stable phrase "image prompt") with a JSON array large enough to cover any
+    # plausible chunk count for this short timing input.
     fake_gemini.when(
-        lambda p: "atmospheric" in p.lower(),
+        lambda p: "image prompt" in p.lower(),
         json.dumps(["lone figure on a moonlit dune"] * 10),
     )
     out = tmp_run_dir / "shots.json"

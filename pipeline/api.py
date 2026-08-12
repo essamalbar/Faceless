@@ -28,9 +28,11 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
+
+import httpx
 
 from fastapi import (
     Depends,
@@ -828,6 +830,98 @@ def _require_admin(user: "User") -> None:
         raise HTTPException(403, "admin access required")
 
 
+# ---------------------------------------------------------------------------
+# Admin analytics — plan → USD pricing + shared revenue aggregation.
+# ---------------------------------------------------------------------------
+
+_PLAN_PRICE_CACHE: dict[str, float] = {}
+_PLAN_BY_GRANT = {12: "starter", 60: "creator", 200: "pro"}  # grant credits → plan
+
+
+def _plan_price_usd() -> dict[str, float]:
+    """{plan: monthly_usd} from Stripe Prices (env STRIPE_PRICE_*), cached.
+    Falls back to the published $9/$29/$79 if Stripe is unavailable so the
+    dashboard still renders. Never raises."""
+    global _PLAN_PRICE_CACHE
+    if _PLAN_PRICE_CACHE:
+        return _PLAN_PRICE_CACHE
+    fallback = {"starter": 9.0, "creator": 29.0, "pro": 79.0}
+    out = dict(fallback)
+    try:
+        import stripe
+        stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+        for plan, env in (("starter", "STRIPE_PRICE_STARTER"),
+                          ("creator", "STRIPE_PRICE_CREATOR"), ("pro", "STRIPE_PRICE_PRO")):
+            pid = os.environ.get(env)
+            if pid and stripe.api_key:
+                p = stripe.Price.retrieve(pid)
+                amt = getattr(p, "unit_amount", None)
+                if amt:
+                    out[plan] = round(amt / 100.0, 2)
+    except Exception:
+        pass
+    _PLAN_PRICE_CACHE = out
+    return out
+
+
+def _revenue_dict() -> dict:
+    """Full /admin/revenue payload. Derives dollar revenue from
+    subscription_renewal rows (plan inferred from grant amount via
+    _PLAN_BY_GRANT × _plan_price_usd), and credits_granted from all positive
+    grant-side ledger rows. Shared by /admin/revenue and /admin/kpis."""
+    from pipeline import db
+    prices = _plan_price_usd()
+    # One combined fetch of the grant-side kinds: subscription_renewal drives
+    # $revenue + renewal counts; topup/admin_credit add to credits_granted.
+    rows = db.list_transactions_by_kinds(
+        ["subscription_renewal", "topup", "admin_credit"])
+    now = datetime.now(timezone.utc)
+    current_month = now.strftime("%Y-%m")
+    cutoff_day = (now - timedelta(days=29)).strftime("%Y-%m-%d")
+
+    renewals_by_plan = {"starter": 0, "creator": 0, "pro": 0}
+    revenue_usd_total = 0.0
+    revenue_usd_mtd = 0.0
+    credits_granted = 0
+    day_rev: dict[str, float] = {}
+    day_cnt: dict[str, int] = {}
+
+    for r in rows:
+        amt = r.amount or 0
+        if amt > 0:
+            credits_granted += amt
+        if r.kind != "subscription_renewal":
+            continue
+        created = r.created_at or ""
+        day, month = created[:10], created[:7]
+        plan = _PLAN_BY_GRANT.get(int(amt)) if amt else None
+        if plan:
+            renewals_by_plan[plan] += 1
+            price = prices.get(plan, 0.0)
+            revenue_usd_total += price
+            if month == current_month:
+                revenue_usd_mtd += price
+            if day:
+                day_rev[day] = day_rev.get(day, 0.0) + price
+        if day:
+            day_cnt[day] = day_cnt.get(day, 0) + 1
+
+    by_day = [
+        {"date": d, "revenue_usd": round(day_rev.get(d, 0.0), 2),
+         "renewals": day_cnt[d]}
+        for d in sorted(day_cnt) if d >= cutoff_day
+    ]
+    return {
+        "prices": prices,
+        "renewals_by_plan": renewals_by_plan,
+        "revenue_usd_total": round(revenue_usd_total, 2),
+        "revenue_usd_mtd": round(revenue_usd_mtd, 2),
+        "credits_granted": credits_granted,
+        "credits_outstanding": sum(db.list_balances().values()),
+        "by_day": by_day,
+    }
+
+
 def _cost_estimate_usd(beats: list[dict]) -> float:
     """Per-beat × seconds × active-model rate + one Flux character sheet.
 
@@ -1566,11 +1660,16 @@ def billing_checkout_subscription(
 ):
     if user.role == "service":
         raise HTTPException(400, "service tokens have no subscription")
-    from pipeline.stripe_billing import create_subscription_checkout
+    from pipeline.paddle_billing import create_subscription_checkout
     try:
         url = create_subscription_checkout(user, req.plan, req.success_url, req.cancel_url)
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
+    except httpx.HTTPError:
+        # Paddle API is down / erroring — a transient upstream failure, not the
+        # caller's fault. 502 tells the app to retry rather than surfacing a
+        # generic 500.
+        raise HTTPException(502, "couldn't start checkout, please try again") from None
     return CheckoutResponse(url=url)
 
 
@@ -1601,8 +1700,12 @@ def billing_checkout_topup(
 def billing_portal(req: PortalRequest, user: User = Depends(require_user)):
     if user.role == "service":
         raise HTTPException(400, "service tokens have no portal")
-    from pipeline.stripe_billing import create_portal_session
-    url = create_portal_session(user, req.return_url)
+    from pipeline.paddle_billing import create_portal_session
+    try:
+        url = create_portal_session(user, req.return_url)
+    except httpx.HTTPError:
+        # Same as checkout: a Paddle-side failure is a transient upstream error.
+        raise HTTPException(502, "couldn't open billing portal, please try again") from None
     return CheckoutResponse(url=url)
 
 
@@ -1620,6 +1723,23 @@ async def stripe_webhook(request: Request):
     try:
         outcome = handle_webhook(raw, signature)
     except _stripe.SignatureVerificationError:
+        raise HTTPException(400, "invalid signature")
+    return {"received": True, "handled": outcome.handled, "note": outcome.note}
+
+
+@app.post("/paddle/webhook")
+async def paddle_webhook(request: Request):
+    """Paddle → us. No bearer auth; the Paddle-Signature HMAC is the proof.
+
+    200 (even for ignored events) so Paddle stops retrying; 400 only for a
+    bad signature.
+    """
+    raw = await request.body()
+    signature = request.headers.get("paddle-signature", "")
+    from pipeline.paddle_billing import PaddleSignatureError, handle_webhook
+    try:
+        outcome = handle_webhook(raw, signature)
+    except PaddleSignatureError:
         raise HTTPException(400, "invalid signature")
     return {"received": True, "handled": outcome.handled, "note": outcome.note}
 
@@ -2637,6 +2757,43 @@ def admin_re_assemble_song(
 
 
 # ---------------------------------------------------------------------------
+# Admin cross-user media streaming — lets the control panel play any user's
+# generated song. The panel fetches WITH the Authorization: Bearer header
+# (fetch → blob → <audio>), so header auth via require_user is correct — no
+# ?token= query auth, which would leak the admin token into URLs. Both gate on
+# _require_admin first, then validate BOTH path params against _RUN_ID_RE.
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/songs/{user_id}/{run_id}/audio", dependencies=[Depends(require_user)])
+def admin_song_audio(user_id: str, run_id: str, user: User = Depends(require_user)):
+    _require_admin(user)
+    if not _RUN_ID_RE.fullmatch(user_id):
+        raise HTTPException(400, "invalid user_id")
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise HTTPException(400, "invalid run_id")
+    p = _out_root() / user_id / run_id / "song.mp3"
+    if not p.exists():
+        raise HTTPException(404, "song.mp3 not found")
+    return FileResponse(str(p), media_type="audio/mpeg",
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/admin/songs/{user_id}/{run_id}/cover", dependencies=[Depends(require_user)])
+def admin_song_cover(user_id: str, run_id: str, user: User = Depends(require_user)):
+    _require_admin(user)
+    if not _RUN_ID_RE.fullmatch(user_id):
+        raise HTTPException(400, "invalid user_id")
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise HTTPException(400, "invalid run_id")
+    d = _out_root() / user_id / run_id
+    for name, mt in (("cover.png", "image/png"), ("cover_thumb.jpg", "image/jpeg")):
+        p = d / name
+        if p.exists():
+            return FileResponse(str(p), media_type=mt)
+    raise HTTPException(404, "cover not found")
+
+
+# ---------------------------------------------------------------------------
 # Super-admin dashboard — service-token-gated cross-user READ endpoints.
 # All four require a service token (never a user JWT) and mutate nothing.
 # ---------------------------------------------------------------------------
@@ -2746,6 +2903,90 @@ def admin_list_transactions(limit: int = 200, user_id: str | None = None,
         txns = db.list_transactions_all(limit)
     import dataclasses
     return [dataclasses.asdict(t) for t in txns]
+
+
+# ---------------------------------------------------------------------------
+# Super-admin dashboard — subscription / revenue / KPI analytics cards.
+# All read-only; gated by _require_admin (service token OR allowlisted email).
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/subscriptions", dependencies=[Depends(require_user)])
+def admin_subscriptions(user: User = Depends(require_user)):
+    _require_admin(user)
+    from pipeline import db
+    try:
+        profiles = db.list_all_user_profiles_min()
+    except Exception as e:
+        # Selects payment_status / cancel_at_period_end, which only exist after
+        # the pending migrations. Surface the actionable 503 (same as /admin/users)
+        # instead of an opaque 500 while the operator hasn't applied them yet.
+        s = str(e).lower()
+        if ("does not exist" in s or "could not find" in s
+                or "pgrst204" in s or "42703" in s):
+            raise HTTPException(
+                503,
+                "Subscriptions unavailable: apply the pending Supabase migrations "
+                "(docs/operator/APPLY-MIGRATIONS.sql), then retry.",
+            ) from None
+        raise
+    by_plan = {"starter": 0, "creator": 0, "pro": 0, "free": 0, "other": 0}
+    active = past_due = cancel_at_period_end = 0
+    for p in profiles:
+        plan = p.get("current_plan")
+        if plan in ("starter", "creator", "pro"):
+            by_plan[plan] += 1
+        elif plan in ("free", "deleted", None):
+            by_plan["free"] += 1
+        else:
+            by_plan["other"] += 1
+        status = p.get("payment_status")
+        if status == "active":
+            active += 1
+        elif status == "past_due":
+            past_due += 1
+        if p.get("cancel_at_period_end"):
+            cancel_at_period_end += 1
+    return {"by_plan": by_plan, "active": active, "past_due": past_due,
+            "cancel_at_period_end": cancel_at_period_end,
+            "total_profiles": len(profiles)}
+
+
+@app.get("/admin/revenue", dependencies=[Depends(require_user)])
+def admin_revenue(user: User = Depends(require_user)):
+    _require_admin(user)
+    return _revenue_dict()
+
+
+@app.get("/admin/kpis", dependencies=[Depends(require_user)])
+def admin_kpis(user: User = Depends(require_user)):
+    _require_admin(user)
+    from pipeline import db
+    # Each headline number is computed independently so one failing source
+    # (e.g. the auth admin list) nulls only its own field instead of 500ing
+    # the whole card.
+    try:
+        total_users = len(db.list_auth_users())
+    except Exception:
+        total_users = None
+    try:
+        profiles = db.list_all_user_profiles_min()
+        active_subscribers = sum(
+            1 for p in profiles
+            if p.get("payment_status") == "active"
+            and p.get("current_plan") in ("starter", "creator", "pro"))
+    except Exception:
+        active_subscribers = None
+    try:
+        credits_outstanding = sum(db.list_balances().values())
+    except Exception:
+        credits_outstanding = None
+    try:
+        revenue_usd_mtd = _revenue_dict()["revenue_usd_mtd"]
+    except Exception:
+        revenue_usd_mtd = None
+    return {"total_users": total_users, "active_subscribers": active_subscribers,
+            "credits_outstanding": credits_outstanding,
+            "revenue_usd_mtd": revenue_usd_mtd}
 
 
 # ---------------------------------------------------------------------------
@@ -4089,6 +4330,71 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
     return _cancel_song_impl(user, run_id)
 
 
+# Fixed sentinel UUID for the cross-user global approval rate cap. The
+# rate_events.user_id column is a uuid, so "__global__" would violate the
+# type — this all-zero uuid is a valid-shaped value reserved for the global
+# bucket (no real user is ever assigned it).
+_GLOBAL_RATE_UID = "00000000-0000-0000-0000-000000000000"
+
+
+def _enforce_global_approval_rate() -> None:
+    """Global burst cap across all users (DB-backed, cross-instance). Off when
+    FACELESS_GLOBAL_APPROVALS_PER_MIN is unset/<=0.
+
+    Per-user caps still let N different users approve simultaneously; this is
+    the only thing bounding total concurrent paid spend across the fleet."""
+    from pipeline import db
+    try:
+        limit = int(os.environ.get("FACELESS_GLOBAL_APPROVALS_PER_MIN", "0"))
+    except ValueError:
+        limit = 0
+    if limit <= 0:
+        return
+    try:
+        recent = db.count_rate_events(_GLOBAL_RATE_UID, "song_approve", 60)
+    except Exception:
+        return  # never block the paid flow on a telemetry read failure
+    if recent >= limit:
+        raise HTTPException(429, "system is busy — please try again in a minute")
+    try:
+        db.record_rate_event(_GLOBAL_RATE_UID, "song_approve")
+    except Exception:
+        pass
+
+
+def _spawn_paid_or_refund(
+    user: "User", run_id: str, run_dir: Path, args: list[str]
+) -> int:
+    """Spawn the render worker after credits were ALREADY deducted.
+
+    If the spawn raises (Cloud Run Job dispatch / quota error) the user has
+    been charged for a render that never started AND would be wedged in an
+    active status. Refund, mark the run ``failed`` so a retry is clean, and
+    surface 503. Returns the pid on success."""
+    try:
+        return _SPAWN_FN(args, run_dir)
+    except Exception as e:
+        try:
+            from pipeline.credits import refund_run_charges
+            refund_run_charges(
+                user, run_id=run_id,
+                reason="render failed to start (spawn error)",
+            )
+        except Exception:
+            get_logger().error(
+                "[billing] refund after spawn failure failed",
+                exc_info=True, extra={"run_id": run_id},
+            )
+        _write_state(
+            run_dir, status="failed",
+            last_error=f"spawn failed: {type(e).__name__}: {e}",
+        )
+        raise HTTPException(
+            503,
+            "could not start the render — you were not charged; please retry",
+        )
+
+
 @app.post("/songs/{run_id}/approve")
 def approve_song(run_id: str, user: User = Depends(require_user)):
     _require_terms_accepted(user)
@@ -4113,6 +4419,9 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     # Per-user daily-rate cap. Stops a runaway script or compromised
     # account from draining credits + maxing out Kie usage.
     _enforce_daily_song_limit(user)
+    # Global burst cap across ALL users — per-user caps don't bound N
+    # different users approving at once. Off unless the env is set.
+    _enforce_global_approval_rate()
 
     cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
     cfg = load_config(cfg_path)
@@ -4139,7 +4448,7 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
     # already written.
     _write_state(run_dir, status="generating_song")
     args = ["--mode", "song", "--resume", str(run_dir)]
-    pid = _SPAWN_FN(args, run_dir)
+    pid = _spawn_paid_or_refund(user, run_id, run_dir, args)
     # Record this approval in the DB-backed rate log AFTER the spawn
     # succeeds. If spawning fails, no credit gets spent in the wrong
     # state — we let the user retry without it counting against quota.
@@ -4231,7 +4540,7 @@ def swap_take(
 # Binary streaming endpoints accept the token via ?token=... query
 # string in addition to the Authorization header, because browsers
 # cannot set Authorization on <video>, <audio>, or <img> requests.
-# Same pattern as the horror /runs/{id}/video endpoint.
+# Same pattern as the /runs/{id}/video endpoint.
 @app.get("/songs/{run_id}/audio")
 def get_song_audio(
     run_id: str,
@@ -4650,7 +4959,7 @@ def reroll_song_takes(run_id: str, user: User = Depends(require_user)):
 
     _write_state(run_dir, status="generating_song", last_error=None)
     args = ["--mode", "song", "--resume", str(run_dir)]
-    pid = _SPAWN_FN(args, run_dir)
+    pid = _spawn_paid_or_refund(user, run_id, run_dir, args)
     # Count this cover regen toward the DB-backed daily cap (parity with the
     # old file-based _record_song_approval). Service tokens bypass the cap.
     if user.role != "service":
@@ -5783,7 +6092,7 @@ def _render_removed_share_page() -> "HTMLResponse":
   <h1>This song has been removed</h1>
   <p>The creator deleted the share link. The song is no longer available — but you can create your own AI-generated Arabic song in a few minutes.</p>
   <a class="cta" href="{cta_url}">Try Faceless Lab →</a>
-  <div class="footer">Faceless Lab · AI music & horror shorts</div>
+  <div class="footer">Faceless Lab · AI music & video</div>
 </div>
 </body>
 </html>"""

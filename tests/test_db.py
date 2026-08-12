@@ -37,6 +37,7 @@ class _FakeQuery:
 
     def select(self, *a, **kw): return self._record("select", *a, **kw)
     def eq(self, *a, **kw):     return self._record("eq", *a, **kw)
+    def in_(self, *a, **kw):    return self._record("in_", *a, **kw)
     def gte(self, *a, **kw):    return self._record("gte", *a, **kw)
     def order(self, *a, **kw):  return self._record("order", *a, **kw)
     def range(self, *a, **kw):  return self._record("range", *a, **kw)
@@ -547,3 +548,53 @@ def test_probe_activation_none_on_unrelated_error(fake_client):
     probe = db.probe_activation()
     assert probe["payment_status"] is None
     assert probe["tos_accepted_version"] is None
+
+
+# ── admin analytics aggregation helpers ────────────────────────────────────
+
+def test_list_all_user_profiles_min_returns_minimal_rows(fake_client):
+    rows_in = [
+        {"id": "u1", "current_plan": "pro", "payment_status": "active",
+         "cancel_at_period_end": False},
+        {"id": "u2", "current_plan": "free", "payment_status": "past_due",
+         "cancel_at_period_end": True},
+    ]
+    fake_client.tables["user_profiles"] = _FakeQuery(data=rows_in)
+    rows = db.list_all_user_profiles_min()
+    assert rows == rows_in
+    # SELECTs only the minimal aggregate columns.
+    q = fake_client.tables["user_profiles"]
+    select_call = next(c for c in q.calls if c[0] == "select")
+    assert select_call[1][0] == "id,current_plan,payment_status,cancel_at_period_end"
+
+
+def test_list_all_user_profiles_min_empty_when_no_rows(fake_client):
+    fake_client.tables["user_profiles"] = _FakeQuery(data=None)
+    assert db.list_all_user_profiles_min() == []
+
+
+def test_list_transactions_by_kinds_filters_and_returns_transactions(fake_client):
+    fake_client.tables["credit_transactions"] = _FakeQuery(data=[
+        {"id": "t1", "user_id": "u1", "amount": 200, "kind": "subscription_renewal",
+         "reference_id": "inv_1", "description": None, "created_at": "2026-08-07T00:00:00Z"},
+        {"id": "t2", "user_id": "u2", "amount": 60, "kind": "subscription_renewal",
+         "reference_id": "inv_2", "description": None, "created_at": "2026-08-06T00:00:00Z"},
+    ])
+    txs = db.list_transactions_by_kinds(["subscription_renewal", "topup"])
+    assert len(txs) == 2
+    assert all(isinstance(t, Transaction) for t in txs)
+    assert txs[0].kind == "subscription_renewal"
+    assert txs[0].amount == 200
+    # .in_("kind", [...]) is the load-bearing filter; newest-first ordering.
+    q = fake_client.tables["credit_transactions"]
+    in_call = next(c for c in q.calls if c[0] == "in_")
+    assert in_call[1][0] == "kind"
+    assert in_call[1][1] == ["subscription_renewal", "topup"]
+    order_call = next(c for c in q.calls if c[0] == "order")
+    assert order_call[1][0] == "created_at"
+    assert order_call[2].get("desc") is True
+
+
+def test_list_transactions_by_kinds_empty_when_no_rows(fake_client):
+    fake_client.tables["credit_transactions"] = _FakeQuery(data=None)
+    assert db.list_transactions_by_kinds(["topup"]) == []

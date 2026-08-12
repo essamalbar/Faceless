@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
+import '../widgets/paywall_dialog.dart';
 import 'song_detail_screen.dart';
 
 class SongApproveScreen extends StatefulWidget {
@@ -255,6 +256,13 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
         builder: (_) =>
             SongDetailScreen(client: widget.client, runId: widget.runId),
       ));
+    } on InsufficientCreditsException catch (e) {
+      // Out of credits — route to the paywall so the user gets a clear
+      // "Subscribe / Top up" action instead of a silent dead button. The
+      // draft is saved, so they can approve again after topping up.
+      if (!mounted) return;
+      setState(() => _approving = false);
+      await PaywallDialog.show(context, balance: e.balance, required: e.required);
     } catch (e) {
       if (!mounted) return;
       setState(() {

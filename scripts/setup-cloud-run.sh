@@ -195,6 +195,9 @@ sed -e "s|\\\${PROJECT_ID}|${PROJECT_ID}|g" \
     -e "s|\\\${STRIPE_PRICE_TOPUP_30}|${STRIPE_PRICE_TOPUP_30:-}|g" \
     -e "s|\\\${STRIPE_PRICE_TOPUP_100}|${STRIPE_PRICE_TOPUP_100:-}|g" \
     -e "s|\\\${STRIPE_PRICE_TOPUP_300}|${STRIPE_PRICE_TOPUP_300:-}|g" \
+    -e "s|\\\${PADDLE_PRICE_STARTER}|${PADDLE_PRICE_STARTER:-}|g" \
+    -e "s|\\\${PADDLE_PRICE_CREATOR}|${PADDLE_PRICE_CREATOR:-}|g" \
+    -e "s|\\\${PADDLE_PRICE_PRO}|${PADDLE_PRICE_PRO:-}|g" \
     deploy/cloud-run-service.yaml > "$tmpdir/service.yaml"
 sed -e "s|\\\${PROJECT_ID}|${PROJECT_ID}|g" \
     -e "s|\\\${BUCKET_NAME}|${BUCKET_NAME}|g" \
