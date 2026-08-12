@@ -2,7 +2,7 @@
 
 Usage (long-form slideshow, free, local Flux):
   python run.py                                  # auto theme, full pipeline
-  python run.py --theme folkloric --seed "بئر"   # manual seed
+  python run.py --theme folkloric --seed "رحلة عبر الصحراء"   # manual seed
   python run.py --resume out/2026-05-01-1430     # resume crashed run
   python run.py --reroll-images 23,27 --run-dir out/2026-05-01-1430
   python run.py --skip-images
@@ -11,7 +11,7 @@ Usage (long-form slideshow, free, local Flux):
 
 Usage (Shorts mode, paid via Kie.ai):
   python run.py --shorts                         # ~30 sec vertical TikTok video
-  python run.py --shorts --theme folkloric --seed "بئر"
+  python run.py --shorts --theme folkloric --seed "رحلة عبر الصحراء"
   python run.py --shorts --reroll-clips 3 --run-dir out/2026-05-02-1430
   python run.py --shorts --skip-video            # placeholder mp4s, dev only
   python run.py --shorts --max-spend 5.00        # raise per-run budget cap
@@ -626,7 +626,7 @@ def _stage_shorts_assemble(cfg: Config, script: Script, paths: RunPaths,
 
 def main_with_args(argv: list[str]) -> int:
     setup_logging()
-    p = argparse.ArgumentParser(description="Arabic horror faceless pipeline")
+    p = argparse.ArgumentParser(description="AI song & short-video pipeline")
     p.add_argument("--theme", help="Theme tag (manual mode)")
     p.add_argument("--seed", help="Arabic premise (manual mode)")
     p.add_argument("--resume", help="Resume an existing run dir")

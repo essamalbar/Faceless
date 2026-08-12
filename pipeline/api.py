@@ -4540,7 +4540,7 @@ def swap_take(
 # Binary streaming endpoints accept the token via ?token=... query
 # string in addition to the Authorization header, because browsers
 # cannot set Authorization on <video>, <audio>, or <img> requests.
-# Same pattern as the horror /runs/{id}/video endpoint.
+# Same pattern as the /runs/{id}/video endpoint.
 @app.get("/songs/{run_id}/audio")
 def get_song_audio(
     run_id: str,
@@ -6092,7 +6092,7 @@ def _render_removed_share_page() -> "HTMLResponse":
   <h1>This song has been removed</h1>
   <p>The creator deleted the share link. The song is no longer available — but you can create your own AI-generated Arabic song in a few minutes.</p>
   <a class="cta" href="{cta_url}">Try Faceless Lab →</a>
-  <div class="footer">Faceless Lab · AI music & horror shorts</div>
+  <div class="footer">Faceless Lab · AI music & video</div>
 </div>
 </body>
 </html>"""

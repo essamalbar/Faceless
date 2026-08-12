@@ -9,9 +9,9 @@ from pathlib import Path
 from pipeline.types import Script, Shot, WordTiming, is_complete_artifact
 
 STYLE_SUFFIX = (
-    "dark atmospheric horror photography, dim moonlight, slight film grain, "
-    "35mm aesthetic, low light, cinematic composition, eerie mood, "
-    "muted desaturated colors, ultra-realistic, 16:9"
+    "cinematic photography, natural light, slight film grain, "
+    "35mm aesthetic, filmic lighting, cinematic composition, evocative mood, "
+    "natural color grade, ultra-realistic, 16:9"
 )
 NEGATIVE_PROMPT = (
     "text, watermark, logo, blurry, low quality, deformed faces, "
@@ -22,15 +22,15 @@ NEGATIVE_PROMPT = (
 SENTENCE_END_CHARS = {".", "؟", "!", "…"}
 
 BATCH_PROMPT_TEMPLATE = """\
-You are translating an Arabic horror story into a sequence of English atmospheric image prompts.
+You are translating an Arabic short story into a sequence of English cinematic image prompts.
 
 Global story setting: {global_setting}
 
 Below are {n} Arabic paragraphs from the story (one per shot, in order).
-For each, write one English image prompt for an atmospheric horror image
+For each, write one English image prompt for a cinematic image
 illustrating that moment. Rules per prompt:
 - NO text in the image (no signs, no captions).
-- Photographic, dark, eerie aesthetic.
+- Photographic, cinematic aesthetic with natural color.
 - Describe environment, lighting, time of day, one key visual element.
 - ~25 words each.
 - Do NOT include quotes around the prompt.
@@ -111,18 +111,18 @@ def _strip_code_fence(text: str) -> str:
 
 # Rotating motif used by the no-LLM fallback so consecutive shots vary visually.
 _FALLBACK_MOTIFS: tuple[str, ...] = (
-    "lone distant figure barely visible",
-    "empty doorway with darkness behind",
+    "lone distant figure on the horizon",
+    "open doorway with soft light beyond",
     "ancient well in the foreground",
-    "crumbling stone wall, dust and shadow",
-    "faint candle flame, surrounding gloom",
-    "narrow corridor receding into black",
-    "barren ground with footprints leading away",
-    "ruined window letting in pale moonlight",
-    "abandoned room with overturned objects",
-    "twisted tree silhouette against night sky",
-    "fog rolling across empty terrain",
-    "dark stairwell descending downward",
+    "weathered stone wall, dust and sunlight",
+    "warm lantern flame, gentle glow",
+    "long corridor receding into soft focus",
+    "open ground with footprints leading away",
+    "tall window letting in pale daylight",
+    "quiet room with scattered objects",
+    "lone tree silhouette against the sky",
+    "mist rolling across open terrain",
+    "wide stairwell curving upward",
 )
 
 
@@ -136,7 +136,7 @@ def _fallback_prompts(script: Script, n: int) -> list[str]:
     out: list[str] = []
     for i in range(n):
         motif = _FALLBACK_MOTIFS[i % len(_FALLBACK_MOTIFS)]
-        out.append(f"{setting}, {motif}, dim moonlight, eerie mood, photographic")
+        out.append(f"{setting}, {motif}, soft natural light, cinematic mood, photographic")
     return out
 
 
