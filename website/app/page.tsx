@@ -29,18 +29,18 @@ const APP_URL =
 
 // ----------------------------------------------------------------------------
 // All atmospheric clips come from Mixkit's free-stock library (CC0,
-// commercial use OK). IDs scraped from their horror / mystery / dark /
-// alone / walking / silhouette / shadow / cinematic categories so the
+// commercial use OK). IDs scraped from their cinematic / mystery / dark /
+// alone / walking / silhouette / shadow / atmospheric categories so the
 // content matches the brand. URL pattern:
 //   https://assets.mixkit.co/videos/<id>/<id>-720.mp4
 // ----------------------------------------------------------------------------
 const mp4 = (id: number) =>
   `https://assets.mixkit.co/videos/${id}/${id}-720.mp4`;
 
-const HERO_VIDEO = mp4(30605); // night / horror — atmospheric hero loop
+const HERO_VIDEO = mp4(30605); // night / atmospheric hero loop
 
 const THEMES = [
-  { id: "folkloric",  en: "Folkloric",  ar: "فلكلوري", vid: 5565,  blurb: "Ancestral tales, jinn, old wells" },
+  { id: "folkloric",  en: "Folkloric",  ar: "فلكلوري", vid: 5565,  blurb: "Ancestral tales, myths, old traditions" },
   { id: "memory",     en: "Memory",     ar: "الذاكرة", vid: 46147, blurb: "Psychological, half-remembered" },
   { id: "wilderness", en: "Wilderness", ar: "البرية",  vid: 46138, blurb: "Forests, deserts, the unknown" },
   { id: "urban",      en: "Urban",      ar: "مدني",   vid: 30563, blurb: "City legends, late-night streets" },
@@ -214,7 +214,7 @@ function Hero() {
           className="inline-flex items-center gap-2 mb-6 px-3 py-1 rounded-full border border-white/15 bg-black/40 backdrop-blur-sm text-[11px] tracking-wide"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-          AI Arabic horror shorts + AI songs
+          AI Arabic songs + short videos
         </motion.div>
 
         <motion.h1
@@ -236,7 +236,7 @@ function Hero() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="text-lg sm:text-xl text-ink/85 max-w-2xl mb-3 leading-relaxed"
         >
-          <strong className="text-ink">Horror shorts:</strong> Faceless Lab
+          <strong className="text-ink">Short videos:</strong> Faceless Lab
           writes the Arabic script, casts the characters, voices them in your
           dialect, and renders the video.{" "}
           <strong className="text-ink">AI songs:</strong> a theme becomes a
@@ -254,7 +254,7 @@ function Hero() {
           dir="rtl"
           lang="ar"
         >
-          استوديو عربي بوضعَين: قصص رعب قصيرة وأغانٍ كاملة — راجع الناتج قبل أن تدفع
+          استوديو عربي بوضعَين: فيديوهات قصيرة وأغانٍ كاملة — راجع الناتج قبل أن تدفع
         </motion.p>
 
         <motion.div
@@ -776,7 +776,7 @@ function FinalCTA() {
           Your first draft is free.
         </h2>
         <p className="text-base sm:text-lg text-muted max-w-md mx-auto mb-9">
-          A horror short or an Arabic song — write one line, we do the rest.
+          A short video or an Arabic song — write one line, we do the rest.
           Pay only when you generate.
         </p>
         <a

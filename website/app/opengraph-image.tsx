@@ -16,7 +16,7 @@ import { ImageResponse } from "next/og";
 // Fonts download, no special platform requirements. Edge runtime works
 // for ImageResponse on Vercel but fails when next start runs locally
 // without an edge function host, so keep this on Node.js.
-export const alt = "Faceless — AI Arabic horror video generator";
+export const alt = "Faceless — AI Arabic song & short-video generator";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

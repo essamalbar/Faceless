@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     type: "website",
     title: "Press Kit — Faceless Lab",
     description:
-      "Brand assets, key facts, and press contact for Faceless Lab, the Arabic AI studio for horror shorts and AI songs.",
+      "Brand assets, key facts, and press contact for Faceless Lab, the Arabic AI studio for short videos and AI songs.",
     url: "/press",
   },
   twitter: {
@@ -129,7 +129,7 @@ function Boilerplate() {
             Faceless Lab is an Arabic-first AI studio for short-form video and
             music. From a single Arabic sentence, the platform writes a full
             cinematic script in one of six dialects, casts and locks the
-            characters, and renders a 9:16 horror short — or, in song mode,
+            characters, and renders a 9:16 short video — or, in song mode,
             generates a full Arabic ballad with Suno V5 vocals and matching
             cover art. Drafts are free; users pay only when they approve a
             render, and any failed render is refunded automatically. Founded

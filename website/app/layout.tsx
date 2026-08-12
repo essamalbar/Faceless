@@ -54,28 +54,28 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Faceless Lab — AI Arabic horror shorts + AI songs | فيديوهات رعب وأغاني بالذكاء الاصطناعي",
+    default: "Faceless Lab — AI Arabic songs + short videos | أغاني وفيديوهات قصيرة بالذكاء الاصطناعي",
     template: "%s · Faceless Lab",
   },
   description:
-    "Generate cinematic Arabic horror Shorts AND original Arabic songs with AI. Horror: 6 dialects, free script preview, per-clip reroll, refund on failure. Songs: Suno V5 vocals, lyric-aware cover art, shareable music videos. أنشئ فيديوهات رعب وأغاني عربية احترافية.",
+    "Generate cinematic Arabic short videos in any genre AND original Arabic songs with AI. Video: 6 dialects, free script preview, per-clip reroll, refund on failure. Songs: Suno V5 vocals, lyric-aware cover art, shareable music videos. أنشئ فيديوهات قصيرة وأغاني عربية احترافية.",
   keywords: [
-    // Horror — existing
+    // Video — existing
     "Arabic AI video",
-    "Arabic horror shorts",
+    "Arabic short videos",
     "AI video generator",
     "Veo Arabic",
     "Arabic Shorts maker",
     "TikTok Arabic AI",
     "YouTube Shorts Arabic",
-    "فيديو رعب بالذكاء الاصطناعي",
+    "فيديو قصير بالذكاء الاصطناعي",
     "إنشاء فيديو عربي",
-    "مولد فيديو رعب",
+    "مولد فيديو قصير",
     "فيديوهات تيك توك بالعربي",
     "ذكاء اصطناعي فيديو عربي",
     "صانع فيديوهات قصيرة",
     "Veo3 Arabic",
-    "Kling Arabic horror",
+    "Kling Arabic video",
     // Songs — new
     "AI Arabic song generator",
     "Suno Arabic",
@@ -102,17 +102,17 @@ export const metadata: Metadata = {
     type: "website",
     url: SITE_URL,
     siteName: "Faceless Lab",
-    title: "Faceless Lab — AI Arabic horror shorts + AI songs",
+    title: "Faceless Lab — AI Arabic songs + short videos",
     description:
-      "Two modes, one studio. Generate full Arabic horror shorts from one sentence, or an AI-sung Arabic song with cover art from a theme. اكتب جملة، احصل على فيلم قصير. اكتب فكرة، احصل على أغنية كاملة.",
+      "Two modes, one studio. Generate a full Arabic short video from one sentence, or an AI-sung Arabic song with cover art from a theme. اكتب جملة، احصل على فيلم قصير. اكتب فكرة، احصل على أغنية كاملة.",
     locale: "ar_SA",
   },
   twitter: {
     // Same — twitter card pulls from app/opengraph-image.tsx automatically.
     card: "summary_large_image",
-    title: "Faceless Lab — AI Arabic horror shorts + AI songs",
+    title: "Faceless Lab — AI Arabic songs + short videos",
     description:
-      "Two modes, one studio. Arabic horror shorts AND AI-sung Arabic songs. Free draft, pay only when you generate.",
+      "Two modes, one studio. Arabic short videos AND AI-sung Arabic songs. Free draft, pay only when you generate.",
   },
   robots: {
     index: true,
@@ -155,7 +155,7 @@ const softwareApplicationLd = {
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Web, iOS, Android",
   "description":
-    "AI Arabic content studio with two modes: (1) Horror Shorts — turn a one-line premise into a full cinematic Arabic short with native dialect dialogue, locked character identity across clips, and per-clip refund on failure. (2) AI Songs — generate full Arabic songs with Suno V5 vocals and lyric-aware AI cover art, with sharable music-video output.",
+    "AI Arabic content studio with two modes: (1) Short Videos — turn a one-line premise into a full cinematic Arabic short in any genre with native dialect dialogue, locked character identity across clips, and per-clip refund on failure. (2) AI Songs — generate full Arabic songs with Suno V5 vocals and lyric-aware AI cover art, with sharable music-video output.",
   "offers": [
     {
       "@type": "Offer",
@@ -180,7 +180,7 @@ const softwareApplicationLd = {
     },
   ],
   "featureList": [
-    // Horror mode
+    // Video mode
     "AI Arabic script writer (6 dialects: MSA, Syrian, Egyptian, Khaliji, Maghrebi, Iraqi)",
     "Free script preview before any paid render",
     "Per-clip reroll — regenerate one bad clip without paying for the whole video",
@@ -253,7 +253,7 @@ const faqLd = {
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "Those are general-purpose tools. Faceless Lab is Arabic-first: the script writer is tuned for Arabic horror, character identity persists across clips, and the audio is genuine Arabic dialect — not English translated. Pricing is also clip-by-clip refundable, not all-or-nothing.",
+          "Those are general-purpose tools. Faceless Lab is Arabic-first: the script writer is tuned for Arabic storytelling, character identity persists across clips, and the audio is genuine Arabic dialect — not English translated. Pricing is also clip-by-clip refundable, not all-or-nothing.",
       },
     },
     {
@@ -271,7 +271,7 @@ const faqLd = {
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "About 1 credit per song. The cost is approximately equal to one horror video clip, so the same monthly subscription covers both modes. Drafts (lyrics + cover prompt) are free; you only pay when you approve the full generation.",
+          "About 1 credit per song. The cost is approximately equal to one video clip, so the same monthly subscription covers both modes. Drafts (lyrics + cover prompt) are free; you only pay when you approve the full generation.",
       },
     },
   ],

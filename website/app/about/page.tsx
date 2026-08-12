@@ -19,7 +19,7 @@ const APP_URL =
 export const metadata: Metadata = {
   title: "About — An Arabic AI studio, built by an Arab",
   description:
-    "Faceless Lab is an Arabic-first AI studio for horror shorts and AI songs, built because general tools (Veo, Sora, Runway) treat Arabic as a translation afterthought. Founded by Essam in Dubai.",
+    "Faceless Lab is an Arabic-first AI studio for short videos and AI songs, built because general tools (Veo, Sora, Runway) treat Arabic as a translation afterthought. Founded by Essam in Dubai.",
   openGraph: {
     type: "article",
     title: "About Faceless Lab — An Arabic AI studio, built by an Arab",
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "About Faceless Lab — An Arabic AI studio, built by an Arab",
     description:
-      "An Arabic-first AI studio for horror shorts and AI songs. Built by Essam.",
+      "An Arabic-first AI studio for short videos and AI songs. Built by Essam.",
   },
   alternates: { canonical: "/about" },
 };
@@ -106,7 +106,7 @@ function Hero() {
           </span>
         </h1>
         <p className="text-lg sm:text-xl text-ink/85 leading-relaxed max-w-2xl">
-          Faceless Lab turns one line of Arabic into a cinematic horror short or
+          Faceless Lab turns one line of Arabic into a cinematic short video or
           a full AI-sung Arabic song. It exists because the big AI tools weren&apos;t
           built with Arabic in mind — and that gap was big enough to be a
           company.
@@ -132,7 +132,7 @@ function WhyExist() {
             Arabic as an afterthought. The dialogue arrives English-shaped and
             translated. Dialects don&apos;t exist; everything sounds like a
             news anchor. Character identity drifts between clips. The writing
-            tradition that gave the Arab world its horror folktales is nowhere
+            tradition that gave the Arab world its rich storytelling is nowhere
             in the model.
           </p>
           <p>
@@ -160,10 +160,10 @@ function TwoModes() {
   const modes = [
     {
       eyebrow: "MODE 1",
-      title: "Horror Shorts",
-      ar: "قصص رعب قصيرة",
+      title: "Short Videos",
+      ar: "فيديوهات قصيرة",
       body:
-        "One Arabic sentence becomes a full cinematic short. The AI writes the script in your dialect (MSA + 5 regional dialects), casts the characters, locks their faces and voices, and renders the video clip by clip. Preview the script free. Pay only when you press generate. Reroll one clip without paying for the whole video. Refund if a render fails.",
+        "One Arabic sentence becomes a full cinematic short in any genre. The AI writes the script in your dialect (MSA + 5 regional dialects), casts the characters, locks their faces and voices, and renders the video clip by clip. Preview the script free. Pay only when you press generate. Reroll one clip without paying for the whole video. Refund if a render fails.",
     },
     {
       eyebrow: "MODE 2",
@@ -280,7 +280,7 @@ function FounderNote() {
           <p className="text-[17px] sm:text-lg text-ink/90 leading-relaxed mb-5">
             Faceless Lab is what I wished existed: an Arabic-first studio that
             writes the script in your dialect, locks the cast across clips,
-            and refunds you when something fails. Two modes — horror shorts
+            and refunds you when something fails. Two modes — short videos
             and AI songs — because the same Arab audience wants both, and the
             same problems were waiting in each.
           </p>

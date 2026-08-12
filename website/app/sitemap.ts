@@ -20,7 +20,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   };
 
   // Anchor URLs let search engines understand the section structure
-  // (and give us featured snippets for "AI Arabic horror templates" etc).
+  // (and give us featured snippets for "AI Arabic video templates" etc).
   const sections: MetadataRoute.Sitemap = [
     "#templates", "#showreel", "#features", "#pricing",
   ].map((hash) => ({
@@ -31,7 +31,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }));
 
   // Each theme + dialect combo is a long-tail keyword we can rank for
-  // (e.g. "AI Arabic horror folkloric Egyptian"). We don't have dedicated
+  // (e.g. "AI Arabic folkloric Egyptian"). We don't have dedicated
   // pages yet — these are anchored to the templates section, but the
   // query string lets us prefill the app for that specific combo.
   const longtail: MetadataRoute.Sitemap = [];
