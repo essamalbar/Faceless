@@ -2299,7 +2299,7 @@ def test_freeform_run_bypasses_credit_check_for_service_token(client_factory, mo
 
 def test_checkout_subscription_returns_url(client_factory, monkeypatch):
     monkeypatch.setattr(
-        "pipeline.stripe_billing.create_subscription_checkout",
+        "pipeline.paddle_billing.create_subscription_checkout",
         lambda user, plan, s, c: f"https://checkout/{plan}",
     )
     c = client_factory(user_id="alice", role="user")
@@ -2329,7 +2329,7 @@ def test_checkout_topup_returns_url(client_factory, monkeypatch):
 
 def test_portal_returns_url(client_factory, monkeypatch):
     monkeypatch.setattr(
-        "pipeline.stripe_billing.create_portal_session",
+        "pipeline.paddle_billing.create_portal_session",
         lambda user, return_url: f"https://portal?return={return_url}",
     )
     c = client_factory(user_id="alice", role="user")

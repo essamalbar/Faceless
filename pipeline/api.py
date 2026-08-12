@@ -1658,7 +1658,7 @@ def billing_checkout_subscription(
 ):
     if user.role == "service":
         raise HTTPException(400, "service tokens have no subscription")
-    from pipeline.stripe_billing import create_subscription_checkout
+    from pipeline.paddle_billing import create_subscription_checkout
     try:
         url = create_subscription_checkout(user, req.plan, req.success_url, req.cancel_url)
     except ValueError as e:
@@ -1693,7 +1693,7 @@ def billing_checkout_topup(
 def billing_portal(req: PortalRequest, user: User = Depends(require_user)):
     if user.role == "service":
         raise HTTPException(400, "service tokens have no portal")
-    from pipeline.stripe_billing import create_portal_session
+    from pipeline.paddle_billing import create_portal_session
     url = create_portal_session(user, req.return_url)
     return CheckoutResponse(url=url)
 
@@ -1712,6 +1712,23 @@ async def stripe_webhook(request: Request):
     try:
         outcome = handle_webhook(raw, signature)
     except _stripe.SignatureVerificationError:
+        raise HTTPException(400, "invalid signature")
+    return {"received": True, "handled": outcome.handled, "note": outcome.note}
+
+
+@app.post("/paddle/webhook")
+async def paddle_webhook(request: Request):
+    """Paddle → us. No bearer auth; the Paddle-Signature HMAC is the proof.
+
+    200 (even for ignored events) so Paddle stops retrying; 400 only for a
+    bad signature.
+    """
+    raw = await request.body()
+    signature = request.headers.get("paddle-signature", "")
+    from pipeline.paddle_billing import PaddleSignatureError, handle_webhook
+    try:
+        outcome = handle_webhook(raw, signature)
+    except PaddleSignatureError:
         raise HTTPException(400, "invalid signature")
     return {"received": True, "handled": outcome.handled, "note": outcome.note}
 
