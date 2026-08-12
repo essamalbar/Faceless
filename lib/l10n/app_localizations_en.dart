@@ -113,7 +113,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeSettings => 'Settings';
 
   @override
-  String get homeTabHorror => 'Horror';
+  String get homeTabHorror => 'Video';
 
   @override
   String get homeTabSong => 'Song';
@@ -186,7 +186,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeServerUnreachable => 'Could not reach the server.';
 
   @override
-  String get homeHeroTagline => 'AI-powered Arabic horror shorts';
+  String get homeHeroTagline => 'AI-powered Arabic songs & short videos';
 
   @override
   String get homeHeroSubtitle => 'Create your short stories with AI';
@@ -317,31 +317,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeThemeFolkloric => 'Folkloric';
 
   @override
-  String get homeThemeFolkloricDesc => 'Ancestral tales, jinn, old wells';
+  String get homeThemeFolkloricDesc =>
+      'Heritage, folk melodies, timeless tales';
 
   @override
   String get homeThemeUrban => 'Urban';
 
   @override
-  String get homeThemeUrbanDesc => 'City legends, late-night streets';
+  String get homeThemeUrbanDesc => 'City nights, street energy';
 
   @override
   String get homeThemeWilderness => 'Wilderness';
 
   @override
-  String get homeThemeWildernessDesc => 'Forests, deserts, the unknown';
+  String get homeThemeWildernessDesc => 'Forests, deserts, wide horizons';
 
   @override
   String get homeThemeMemory => 'Memory';
 
   @override
-  String get homeThemeMemoryDesc => 'Psychological, half-remembered';
+  String get homeThemeMemoryDesc => 'Nostalgia, longing, memories';
 
   @override
   String get homeThemeDomestic => 'Domestic';
 
   @override
-  String get homeThemeDomesticDesc => 'Home, family, the everyday turned';
+  String get homeThemeDomesticDesc => 'Home, family, everyday moments';
 
   @override
   String get homeThemeTravel => 'Travel';
@@ -878,7 +879,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get landingStep1Body =>
-      'Horror shorts: one-sentence premise becomes a cinematic Arabic story with characters and shots. Songs: a theme + style becomes a full Arabic ballad with cover art.';
+      'Songs: a theme + style becomes a full Arabic track with cover art. Short videos: a one-sentence premise becomes a cinematic Arabic story with characters and shots.';
 
   @override
   String get landingStep2Title => 'Review before you spend';
@@ -895,17 +896,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'Square MP4 with music + visuals, ready for WhatsApp and Instagram. Save the lyrics or script as a PDF. Share a public link with OG preview baked in.';
 
   @override
-  String get landingShowcaseTagline1 => 'Horror · Folkloric · 2 min';
+  String get landingShowcaseTagline1 => 'Pop · Arabic · 2 min';
 
   @override
-  String get landingShowcaseTagline2 => 'Horror · Urban · 90 sec';
+  String get landingShowcaseTagline2 => 'Cinematic · Story · 90 sec';
 
   @override
   String get landingShowcaseTagline3 => 'Song · Romantic ballad · 3 min';
 
   @override
   String get landingPricingSubtitle =>
-      'Credits power both modes. 1 song ≈ 1 credit. 1 horror clip = 1 credit (avg short = 8–12).';
+      'Credits power both modes. 1 song ≈ 1 credit. 1 clip = 1 credit (avg short = 8–12).';
 
   @override
   String get landingTierStarter => 'Starter';
@@ -991,7 +992,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginSubtitle => 'Sign in to manage your runs';
 
   @override
-  String get loginFooterTagline => 'Faceless · Arabic horror, scripted by AI';
+  String get loginFooterTagline =>
+      'Faceless · Arabic songs & short videos, made with AI';
 
   @override
   String get onboardingSkip => 'Skip';
@@ -1011,17 +1013,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingSlide1Body =>
-      'Faceless Lab generates cinematic Arabic horror shorts and original Arabic songs from a single sentence. You\'ll write the premise; we\'ll handle the rest.';
+      'Faceless Lab generates original Arabic songs and cinematic Arabic short videos from a single sentence. You\'ll write the premise; we\'ll handle the rest.';
 
   @override
   String get onboardingSlide2Eyebrow => 'TWO MODES';
 
   @override
-  String get onboardingSlide2Title => 'Horror shorts. AI songs. One studio.';
+  String get onboardingSlide2Title => 'AI songs. Short videos. One studio.';
 
   @override
   String get onboardingSlide2Body =>
-      'Switch between Horror (cinematic Arabic shorts in 6 dialects) and Songs (full Suno-vocal tracks with AI cover art). Each render lives in your library and stays sharable forever.';
+      'Switch between Songs (full Suno-vocal tracks with AI cover art) and Video (cinematic Arabic shorts in 6 dialects). Each render lives in your library and stays sharable forever.';
 
   @override
   String get onboardingSlide3Eyebrow => 'FAIR PRICING';

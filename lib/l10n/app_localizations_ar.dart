@@ -113,7 +113,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get homeSettings => 'الإعدادات';
 
   @override
-  String get homeTabHorror => 'رعب';
+  String get homeTabHorror => 'فيديو';
 
   @override
   String get homeTabSong => 'أغنية';
@@ -185,7 +185,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get homeServerUnreachable => 'تعذّر الوصول إلى الخادم.';
 
   @override
-  String get homeHeroTagline => 'قصص رعب عربية قصيرة بالذكاء الاصطناعي';
+  String get homeHeroTagline =>
+      'أغانٍ ومقاطع فيديو عربية قصيرة بالذكاء الاصطناعي';
 
   @override
   String get homeHeroSubtitle => 'اصنع قصصك القصيرة بالذكاء الاصطناعي';
@@ -315,31 +316,31 @@ class AppLocalizationsAr extends AppLocalizations {
   String get homeThemeFolkloric => 'فلكلوري';
 
   @override
-  String get homeThemeFolkloricDesc => 'حكايات الأجداد والجن والآبار القديمة';
+  String get homeThemeFolkloricDesc => 'تراث وألحان أصيلة وحكايات خالدة';
 
   @override
   String get homeThemeUrban => 'مدني';
 
   @override
-  String get homeThemeUrbanDesc => 'أساطير المدينة وشوارع آخر الليل';
+  String get homeThemeUrbanDesc => 'أجواء المدينة ونبض الشوارع';
 
   @override
   String get homeThemeWilderness => 'البرية';
 
   @override
-  String get homeThemeWildernessDesc => 'غابات وصحارى والمجهول';
+  String get homeThemeWildernessDesc => 'غابات وصحارى وآفاق واسعة';
 
   @override
   String get homeThemeMemory => 'الذاكرة';
 
   @override
-  String get homeThemeMemoryDesc => 'نفسي، وذكريات نصف منسية';
+  String get homeThemeMemoryDesc => 'حنين وشوق وذكريات';
 
   @override
   String get homeThemeDomestic => 'منزلي';
 
   @override
-  String get homeThemeDomesticDesc => 'البيت والعائلة حين ينقلب المألوف';
+  String get homeThemeDomesticDesc => 'البيت والعائلة ولحظات يومية';
 
   @override
   String get homeThemeTravel => 'سفر';
@@ -882,7 +883,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get landingStep1Body =>
-      'قصص الرعب القصيرة: جملة واحدة تتحول إلى قصة عربية سينمائية بشخصيات ولقطات. الأغاني: فكرة وأسلوب يتحولان إلى أغنية عربية كاملة مع غلاف فني.';
+      'الأغاني: فكرة وأسلوب يتحولان إلى أغنية عربية كاملة مع غلاف فني. الفيديو القصير: جملة واحدة تتحول إلى قصة عربية سينمائية بشخصيات ولقطات.';
 
   @override
   String get landingStep2Title => 'راجِع قبل أن تنفق';
@@ -899,17 +900,17 @@ class AppLocalizationsAr extends AppLocalizations {
       'فيديو MP4 مربّع بالموسيقى والمرئيات، جاهز لواتساب وإنستغرام. احفظ الكلمات أو النص بصيغة PDF. شارك رابطًا عامًا بمعاينة جاهزة للمشاركة.';
 
   @override
-  String get landingShowcaseTagline1 => 'رعب · فلكلوري · دقيقتان';
+  String get landingShowcaseTagline1 => 'بوب · عربي · دقيقتان';
 
   @override
-  String get landingShowcaseTagline2 => 'رعب · مدني · 90 ثانية';
+  String get landingShowcaseTagline2 => 'سينمائي · قصة · 90 ثانية';
 
   @override
   String get landingShowcaseTagline3 => 'أغنية · بالاد رومانسي · 3 دقائق';
 
   @override
   String get landingPricingSubtitle =>
-      'الرصيد يشغّل الوضعين معًا. أغنية واحدة ≈ رصيد واحد. مقطع رعب واحد = رصيد واحد (متوسط الفيديو القصير = 8–12).';
+      'الرصيد يشغّل الوضعين معًا. أغنية واحدة ≈ رصيد واحد. مقطع واحد = رصيد واحد (متوسط الفيديو القصير = 8–12).';
 
   @override
   String get landingTierStarter => 'المبتدئ';
@@ -1004,7 +1005,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get loginSubtitle => 'سجّل الدخول لإدارة أعمالك';
 
   @override
-  String get loginFooterTagline => 'Faceless · رعب عربي بقلم الذكاء الاصطناعي';
+  String get loginFooterTagline =>
+      'Faceless · أغانٍ ومقاطع عربية بالذكاء الاصطناعي';
 
   @override
   String get onboardingSkip => 'تخطّي';
@@ -1024,18 +1026,18 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get onboardingSlide1Body =>
-      'ينشئ Faceless Lab قصص رعب عربية سينمائية قصيرة وأغاني عربية أصلية من جملة واحدة. أنت تكتب الفكرة، ونحن نتولى الباقي.';
+      'ينشئ Faceless Lab أغاني عربية أصلية ومقاطع فيديو عربية سينمائية قصيرة من جملة واحدة. أنت تكتب الفكرة، ونحن نتولى الباقي.';
 
   @override
   String get onboardingSlide2Eyebrow => 'وضعان';
 
   @override
   String get onboardingSlide2Title =>
-      'قصص رعب قصيرة. أغانٍ بالذكاء الاصطناعي. استوديو واحد.';
+      'أغانٍ بالذكاء الاصطناعي. مقاطع فيديو قصيرة. استوديو واحد.';
 
   @override
   String get onboardingSlide2Body =>
-      'بدّل بين الرعب (قصص عربية سينمائية قصيرة بست لهجات) والأغاني (مقطوعات كاملة بأصوات Suno مع غلاف فني بالذكاء الاصطناعي). كل عمل يبقى في مكتبتك وقابلًا للمشاركة إلى الأبد.';
+      'بدّل بين الأغاني (مقطوعات كاملة بأصوات Suno مع غلاف فني بالذكاء الاصطناعي) والفيديو (قصص عربية سينمائية قصيرة بست لهجات). كل عمل يبقى في مكتبتك وقابلًا للمشاركة إلى الأبد.';
 
   @override
   String get onboardingSlide3Eyebrow => 'تسعير عادل';

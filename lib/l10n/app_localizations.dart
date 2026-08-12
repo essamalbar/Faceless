@@ -287,7 +287,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeTabHorror.
   ///
   /// In en, this message translates to:
-  /// **'Horror'**
+  /// **'Video'**
   String get homeTabHorror;
 
   /// No description provided for @homeTabSong.
@@ -419,7 +419,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeHeroTagline.
   ///
   /// In en, this message translates to:
-  /// **'AI-powered Arabic horror shorts'**
+  /// **'AI-powered Arabic songs & short videos'**
   String get homeHeroTagline;
 
   /// No description provided for @homeHeroSubtitle.
@@ -665,7 +665,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeThemeFolkloricDesc.
   ///
   /// In en, this message translates to:
-  /// **'Ancestral tales, jinn, old wells'**
+  /// **'Heritage, folk melodies, timeless tales'**
   String get homeThemeFolkloricDesc;
 
   /// No description provided for @homeThemeUrban.
@@ -677,7 +677,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeThemeUrbanDesc.
   ///
   /// In en, this message translates to:
-  /// **'City legends, late-night streets'**
+  /// **'City nights, street energy'**
   String get homeThemeUrbanDesc;
 
   /// No description provided for @homeThemeWilderness.
@@ -689,7 +689,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeThemeWildernessDesc.
   ///
   /// In en, this message translates to:
-  /// **'Forests, deserts, the unknown'**
+  /// **'Forests, deserts, wide horizons'**
   String get homeThemeWildernessDesc;
 
   /// No description provided for @homeThemeMemory.
@@ -701,7 +701,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeThemeMemoryDesc.
   ///
   /// In en, this message translates to:
-  /// **'Psychological, half-remembered'**
+  /// **'Nostalgia, longing, memories'**
   String get homeThemeMemoryDesc;
 
   /// No description provided for @homeThemeDomestic.
@@ -713,7 +713,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeThemeDomesticDesc.
   ///
   /// In en, this message translates to:
-  /// **'Home, family, the everyday turned'**
+  /// **'Home, family, everyday moments'**
   String get homeThemeDomesticDesc;
 
   /// No description provided for @homeThemeTravel.
@@ -1649,7 +1649,7 @@ abstract class AppLocalizations {
   /// No description provided for @landingStep1Body.
   ///
   /// In en, this message translates to:
-  /// **'Horror shorts: one-sentence premise becomes a cinematic Arabic story with characters and shots. Songs: a theme + style becomes a full Arabic ballad with cover art.'**
+  /// **'Songs: a theme + style becomes a full Arabic track with cover art. Short videos: a one-sentence premise becomes a cinematic Arabic story with characters and shots.'**
   String get landingStep1Body;
 
   /// No description provided for @landingStep2Title.
@@ -1679,13 +1679,13 @@ abstract class AppLocalizations {
   /// No description provided for @landingShowcaseTagline1.
   ///
   /// In en, this message translates to:
-  /// **'Horror · Folkloric · 2 min'**
+  /// **'Pop · Arabic · 2 min'**
   String get landingShowcaseTagline1;
 
   /// No description provided for @landingShowcaseTagline2.
   ///
   /// In en, this message translates to:
-  /// **'Horror · Urban · 90 sec'**
+  /// **'Cinematic · Story · 90 sec'**
   String get landingShowcaseTagline2;
 
   /// No description provided for @landingShowcaseTagline3.
@@ -1697,7 +1697,7 @@ abstract class AppLocalizations {
   /// No description provided for @landingPricingSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Credits power both modes. 1 song ≈ 1 credit. 1 horror clip = 1 credit (avg short = 8–12).'**
+  /// **'Credits power both modes. 1 song ≈ 1 credit. 1 clip = 1 credit (avg short = 8–12).'**
   String get landingPricingSubtitle;
 
   /// No description provided for @landingTierStarter.
@@ -1859,7 +1859,7 @@ abstract class AppLocalizations {
   /// No description provided for @loginFooterTagline.
   ///
   /// In en, this message translates to:
-  /// **'Faceless · Arabic horror, scripted by AI'**
+  /// **'Faceless · Arabic songs & short videos, made with AI'**
   String get loginFooterTagline;
 
   /// No description provided for @onboardingSkip.
@@ -1895,7 +1895,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingSlide1Body.
   ///
   /// In en, this message translates to:
-  /// **'Faceless Lab generates cinematic Arabic horror shorts and original Arabic songs from a single sentence. You\'ll write the premise; we\'ll handle the rest.'**
+  /// **'Faceless Lab generates original Arabic songs and cinematic Arabic short videos from a single sentence. You\'ll write the premise; we\'ll handle the rest.'**
   String get onboardingSlide1Body;
 
   /// No description provided for @onboardingSlide2Eyebrow.
@@ -1907,13 +1907,13 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingSlide2Title.
   ///
   /// In en, this message translates to:
-  /// **'Horror shorts. AI songs. One studio.'**
+  /// **'AI songs. Short videos. One studio.'**
   String get onboardingSlide2Title;
 
   /// No description provided for @onboardingSlide2Body.
   ///
   /// In en, this message translates to:
-  /// **'Switch between Horror (cinematic Arabic shorts in 6 dialects) and Songs (full Suno-vocal tracks with AI cover art). Each render lives in your library and stays sharable forever.'**
+  /// **'Switch between Songs (full Suno-vocal tracks with AI cover art) and Video (cinematic Arabic shorts in 6 dialects). Each render lives in your library and stays sharable forever.'**
   String get onboardingSlide2Body;
 
   /// No description provided for @onboardingSlide3Eyebrow.

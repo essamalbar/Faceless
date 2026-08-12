@@ -42,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _filter = 'all';   // all | complete | awaiting | running | failed
   SpendSummary? _spend;
   PlanInfo? _plan;
-  String _mode = 'horror';  // horror | song
+  String _mode = 'song';  // 'horror' (video) | 'song' — song-first default
   Future<List<SongSummary>>? _songsFuture;
   Future<List<Artist>>? _artistsFuture; // Artist Core: home artists row
   Future<List<TrendBrief>>? _trendsFuture; // Trend Engine: timely briefs
@@ -336,7 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _refresh,
           ),
           // Only show the saved-voices entry when on the Song tab —
-          // it's a song-mode concept, irrelevant to horror runs.
+          // it's a song-mode concept, irrelevant to video runs.
           if (_mode == 'song')
             IconButton(
               icon: const Icon(Icons.record_voice_over),
@@ -358,14 +358,16 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: SegmentedButton<String>(
               // No selection checkmark — it steals width and wraps the
-              // label ("Horror" → "Horro/r"). The segment's own icon +
-              // the ink/white theme already show which is selected.
+              // label. The segment's own icon + the ink/white theme
+              // already show which is selected.
               showSelectedIcon: false,
               segments: [
                 ButtonSegment(
+                    // Internal value stays 'horror' — it's the run kind /
+                    // routing key shared with the backend. Label is neutral.
                     value: 'horror',
                     label: Text(context.l10n.homeTabHorror, maxLines: 1),
-                    icon: const Icon(Icons.movie_outlined, size: 18)),
+                    icon: const Icon(Icons.videocam_outlined, size: 18)),
                 ButtonSegment(
                     value: 'song',
                     label: Text(context.l10n.homeTabSong, maxLines: 1),

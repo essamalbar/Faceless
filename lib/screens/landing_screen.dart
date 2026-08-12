@@ -437,22 +437,21 @@ class _ShowcaseItem {
 //   - videoUrl: a public mp4 / YouTube / Vimeo link to open on tap
 //     (null → card is non-interactive, just visual)
 //
-// Mix horror + songs so visitors see both modes work. First two are
-// horror, third is a song so the gallery doesn't read as a one-genre
-// product.
+// Mix songs + short videos so visitors see both modes work — the
+// gallery shouldn't read as a one-genre product.
 List<_ShowcaseItem> _showcase(AppLocalizations l10n) => [
       _ShowcaseItem(
-        title: 'البئر المهجور',
+        title: 'نبض المدينة',
         tagline: l10n.landingShowcaseTagline1,
         gradient: const [Color(0xFFB07F1F), Color(0xFFE7B53C)],
       ),
       _ShowcaseItem(
-        title: 'صوت من الجدار',
+        title: 'رحلة العودة',
         tagline: l10n.landingShowcaseTagline2,
         gradient: const [Color(0xFF8B5CF6), Color(0xFF5B21B6)],
       ),
       _ShowcaseItem(
-        title: 'تحت حراسة القمر',
+        title: 'همس القمر',
         tagline: l10n.landingShowcaseTagline3,
         gradient: const [Color(0xFF1E3A8A), Color(0xFF312E81)],
       ),
