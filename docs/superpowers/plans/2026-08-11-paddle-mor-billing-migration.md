@@ -750,7 +750,7 @@ def _on_adjustment_created(data: dict) -> WebhookOutcome:
     """A refund or chargeback. Resolve the funded transaction back to the grant
     and record an idempotent negative clawback keyed on the adjustment id."""
     action = data.get("action")
-    if action not in ("refund", "chargeback", "chargeback_reverse"):
+    if action not in ("refund", "chargeback"):
         return WebhookOutcome("adjustment.created", False, f"ignored action {action!r}")
     txn_id = data.get("transaction_id")
     if not txn_id:

@@ -90,11 +90,11 @@ at checkout, so handlers never need an extra lookup to identify the user.
 
 | Paddle event | Handler action (existing ledger calls) |
 |---|---|
-| `transaction.completed` | grant plan credits — `record_grant_once(user_id, PLAN_GRANTS[plan], kind="subscription_renewal", reference_id=transaction_id)`; set profile `current_plan`, `current_period_end` (from subscription `next_billed_at`), `payment_status="active"`. Idempotent on `transaction_id`. |
+| `transaction.completed` | grant plan credits — `record_grant_once(user_id, PLAN_GRANTS[plan], kind="subscription_renewal", reference_id=transaction_id)`; set profile `current_plan`, `current_period_end`, `payment_status="active"`. Idempotent on `transaction_id`. **Skip the grant when `details.totals.grand_total == 0`** — Paddle emits a zero-amount `transaction.completed` for card/payment-method updates, which must not mint credits. |
 | `subscription.updated` | `upsert_user_profile(current_plan, current_period_end=next_billed_at, cancel_at_period_end = (scheduled_change.action == "cancel"))`. |
 | `subscription.canceled` | `upsert_user_profile(current_plan="free", current_period_end=None, cancel_at_period_end=False, payment_status="active")`. |
 | `subscription.past_due` | `upsert_user_profile(payment_status="past_due")`. |
-| `adjustment.created` (refund or chargeback) | clawback: resolve the adjustment's `transaction_id` → the grant it funded via `get_grant_by_reference`, then `record_grant_once(-amount, kind="chargeback_clawback", reference_id=adjustment_id)`. Idempotent on `adjustment_id`. |
+| `adjustment.created` / `adjustment.updated` (refund or chargeback) | clawback, but **only when `status == "approved"`** (live refunds start `pending_approval` and become approved/rejected via `adjustment.updated`; pending/rejected → no clawback). Resolve the adjustment's `transaction_id` → the grant it funded via `get_grant_by_reference`, then `record_grant_once(-amount, kind="chargeback_clawback", reference_id=transaction_id)`. **Keyed on `transaction_id`** (not the adjustment id) so multiple partial refunds of one transaction claw back the grant exactly once — matches the prior Stripe behavior. |
 | anything else | ignored (`handled=False`). |
 
 Idempotency is unchanged: the `uq_credit_grant_ref` / `uq_credit_clawback_ref`
