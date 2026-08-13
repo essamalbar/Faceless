@@ -420,6 +420,10 @@ class CreateSongRequest(BaseModel):
     # A&R quality pipeline (2026-08-03 spec). "standard" = today's single-job
     # path. "premium" = best-of-N + Gemini A&R judge + master, surcharged.
     quality_tier: str = "standard"   # "standard" | "premium" (best-of-N + A&R)
+    # Explicit genre from the create-screen grid. Must be a GENRE_RECIPES key;
+    # an unknown value is treated as None (Auto) by compose_style, not an error.
+    # None → keyword inference (unchanged behavior).
+    genre: str | None = None
     # Tier-3 legal: the caller must attest they own / have the rights to the
     # source material before we generate. Defaults False so an omitting client
     # is rejected 400 (ownership_not_attested) rather than silently allowed.
@@ -3598,6 +3602,7 @@ def create_song(
             language=req.language,
             dialect=dialect,
             vocal_gender=req.vocal_gender,
+            genre_key=req.genre,
         )
     except Exception as e:
         _write_state(run_dir, status="failed", last_error=f"lyrics LLM failed: {e}")

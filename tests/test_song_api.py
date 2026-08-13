@@ -1451,3 +1451,38 @@ def test_approve_records_song_approve_rate_event(app, monkeypatch):
         assert recorded == [("admin", "song_approve")]
     finally:
         fastapi_app.dependency_overrides.pop(require_user, None)
+
+
+# ─────────────── Explicit genre (create-screen grid) ─────────────────────────
+
+def test_post_songs_forces_genre(app):
+    # The canned writer LLM style is "weak" (no spine tokens) → compose_style
+    # falls back to the forced recipe. genre=rock → rock recipe instrumentation
+    # ("distorted electric guitars") must appear even for an Arabic theme.
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    r = client.post(
+        "/songs",
+        json={"theme": "أغنية حزينة عن الفراق", "language": "ar",
+              "genre": "rock", "ownership_attested": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 201, r.text
+    run_dir = _find_run_dir(r.json()["run_id"])
+    song_json = json.loads((run_dir / "song.json").read_text())
+    assert "distorted electric guitars" in song_json["style_prompt"]
+
+
+def test_post_songs_without_genre_infers_arabic(app):
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    r = client.post(
+        "/songs",
+        json={"theme": "أغنية حزينة عن الفراق", "language": "ar",
+              "ownership_attested": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 201, r.text
+    run_dir = _find_run_dir(r.json()["run_id"])
+    song_json = json.loads((run_dir / "song.json").read_text())
+    assert "distorted electric guitars" not in song_json["style_prompt"]
