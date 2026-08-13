@@ -354,36 +354,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: SegmentedButton<String>(
-              // No selection checkmark — it steals width and wraps the
-              // label. The segment's own icon + the ink/white theme
-              // already show which is selected.
-              showSelectedIcon: false,
-              segments: [
-                ButtonSegment(
-                    // Internal value stays 'horror' — it's the run kind /
-                    // routing key shared with the backend. Label is neutral.
-                    value: 'horror',
-                    label: Text(context.l10n.homeTabHorror, maxLines: 1),
-                    icon: const Icon(Icons.videocam_outlined, size: 18)),
-                ButtonSegment(
-                    value: 'song',
-                    label: Text(context.l10n.homeTabSong, maxLines: 1),
-                    icon: const Icon(Icons.music_note, size: 18)),
-              ],
-              selected: {_mode},
-              onSelectionChanged: (s) => setState(() {
-                _mode = s.first;
-                if (_mode == 'song' && _songsFuture == null) {
-                  _songsFuture = _client.listSongs();
-                  _artistsFuture ??= _client.listArtists();
-                  _trendsFuture ??= _client.trendBriefs();
-                }
-              }),
-            ),
-          ),
+          // Song-only app: the Song/Video mode toggle was removed so the app
+          // shows only the song experience. `_mode` stays fixed to 'song'
+          // (its default) and the song data is loaded in initState; the video
+          // branch below is now unreachable. The video pipeline stays dormant
+          // in the backend rather than being deleted.
           if (_llmDegraded && !_llmBannerDismissed)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
