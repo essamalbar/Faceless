@@ -660,7 +660,7 @@ function Templates() {
 function Pricing() {
   const tiers = [
     {
-      name: "Starter", price: "$9", credits: 12, blurb: "For trying ideas",
+      name: "Silver", price: "$9", credits: 12, blurb: "For trying ideas",
       perks: [
         "12 video clips / month",
         "Free unlimited script previews",
@@ -670,7 +670,7 @@ function Pricing() {
       ],
     },
     {
-      name: "Creator", price: "$29", credits: 60, blurb: "For weekly drops",
+      name: "Gold", price: "$29", credits: 60, blurb: "For weekly drops",
       recommended: true,
       perks: [
         "60 video clips / month",
@@ -682,7 +682,7 @@ function Pricing() {
       ],
     },
     {
-      name: "Pro", price: "$79", credits: 200, blurb: "For daily output",
+      name: "Platinum", price: "$79", credits: 200, blurb: "For daily output",
       perks: [
         "200 video clips / month",
         "Priority rendering queue",
@@ -806,10 +806,13 @@ function Footer() {
           </span>
         </div>
         <div className="sm:ml-auto flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[13px] text-muted">
+          <a href="/pricing" className="hover:text-ink transition-colors">Pricing</a>
           <a href="/about" className="hover:text-ink transition-colors">About</a>
-          <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
-          <a href="#showreel" className="hover:text-ink transition-colors">Showreel</a>
           <a href="/press" className="hover:text-ink transition-colors">Press</a>
+          <a href="/terms" className="hover:text-ink transition-colors">Terms</a>
+          <a href="/privacy" className="hover:text-ink transition-colors">Privacy</a>
+          <a href="/refund" className="hover:text-ink transition-colors">Refunds</a>
+          <a href="/contact" className="hover:text-ink transition-colors">Contact</a>
           <a href={`${APP_URL}/`} className="hover:text-ink transition-colors">Sign in</a>
         </div>
       </div>

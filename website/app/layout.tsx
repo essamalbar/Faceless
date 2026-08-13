@@ -159,21 +159,21 @@ const softwareApplicationLd = {
   "offers": [
     {
       "@type": "Offer",
-      "name": "Starter",
+      "name": "Silver",
       "price": "9",
       "priceCurrency": "USD",
       "description": "12 video clips / month",
     },
     {
       "@type": "Offer",
-      "name": "Creator",
+      "name": "Gold",
       "price": "29",
       "priceCurrency": "USD",
       "description": "60 video clips / month — recommended",
     },
     {
       "@type": "Offer",
-      "name": "Pro",
+      "name": "Platinum",
       "price": "79",
       "priceCurrency": "USD",
       "description": "200 video clips / month",

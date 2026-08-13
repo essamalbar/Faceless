@@ -19,6 +19,17 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 1.0,
   };
 
+  // Real content + legal routes (also required so Paddle can find the
+  // Terms / Privacy / Refund / Contact / Pricing pages during verification).
+  const pages: MetadataRoute.Sitemap = [
+    "/pricing", "/about", "/press", "/terms", "/privacy", "/refund", "/contact",
+  ].map((path) => ({
+    url: `${SITE}${path}`,
+    lastModified: now,
+    changeFrequency: "monthly",
+    priority: 0.7,
+  }));
+
   // Anchor URLs let search engines understand the section structure
   // (and give us featured snippets for "AI Arabic video templates" etc).
   const sections: MetadataRoute.Sitemap = [
@@ -46,5 +57,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     }
   }
 
-  return [home, ...sections, ...longtail];
+  return [home, ...pages, ...sections, ...longtail];
 }
