@@ -17,21 +17,21 @@ const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL || "https://app.faceless-lab.com";
 
 export const metadata: Metadata = {
-  title: "About — An Arabic AI studio, built by an Arab",
+  title: "About — An Arabic AI song studio, built by an Arab",
   description:
-    "Faceless Lab is an Arabic-first AI studio for short videos and AI songs, built because general tools (Veo, Sora, Runway) treat Arabic as a translation afterthought. Founded by Essam in Dubai.",
+    "Faceless Lab is an Arabic-first AI song studio, built because the big general-purpose AI tools treat Arabic as a translation afterthought. Turn one line of Arabic into a full original song. Founded by Essam in Dubai.",
   openGraph: {
     type: "article",
-    title: "About Faceless Lab — An Arabic AI studio, built by an Arab",
+    title: "About Faceless Lab — An Arabic AI song studio, built by an Arab",
     description:
-      "Why Faceless Lab exists, the two modes in plain language, and a founder note from Essam.",
+      "Why Faceless Lab exists, what the song studio does in plain language, and a founder note from Essam.",
     url: "/about",
   },
   twitter: {
     card: "summary_large_image",
-    title: "About Faceless Lab — An Arabic AI studio, built by an Arab",
+    title: "About Faceless Lab — An Arabic AI song studio, built by an Arab",
     description:
-      "An Arabic-first AI studio for short videos and AI songs. Built by Essam.",
+      "An Arabic-first AI song studio. Built by Essam.",
   },
   alternates: { canonical: "/about" },
 };
@@ -42,7 +42,7 @@ export default function AboutPage() {
       <SimpleNav />
       <Hero />
       <WhyExist />
-      <TwoModes />
+      <Product />
       <Principles />
       <FounderNote />
       <FooterCTA />
@@ -91,8 +91,8 @@ function SimpleNav() {
 }
 
 // ----------------------------------------------------------------------------
-// HERO — short eyebrow + big headline + 2-3 sentence sub. No background
-// video here on purpose — About should read calm, not theatrical.
+// HERO — short eyebrow + big headline + 2-3 sentence sub. Reads calm, not
+// theatrical — About is read, not scrolled-through.
 // ----------------------------------------------------------------------------
 function Hero() {
   return (
@@ -100,16 +100,16 @@ function Hero() {
       <div className="max-w-4xl mx-auto">
         <SectionEyebrow text="ABOUT FACELESS LAB" />
         <h1 className="text-[44px] sm:text-6xl lg:text-7xl font-semibold tracking-[-0.04em] leading-[1.02] mb-8">
-          An Arabic AI studio,{" "}
+          An Arabic AI song studio,{" "}
           <span className="bg-gradient-to-br from-accent via-amber-200 to-accent2 bg-clip-text text-transparent">
             built by an Arab.
           </span>
         </h1>
         <p className="text-lg sm:text-xl text-ink/85 leading-relaxed max-w-2xl">
-          Faceless Lab turns one line of Arabic into a cinematic short video or
-          a full AI-sung Arabic song. It exists because the big AI tools weren&apos;t
-          built with Arabic in mind — and that gap was big enough to be a
-          company.
+          Faceless Lab turns one line of Arabic into a full original song —
+          real sung vocals, written lyrics, and matching cover art. It exists
+          because the big general-purpose AI tools weren&apos;t built with
+          Arabic in mind — and that gap was big enough to be a company.
         </p>
       </div>
     </section>
@@ -117,8 +117,8 @@ function Hero() {
 }
 
 // ----------------------------------------------------------------------------
-// WHY WE EXIST — the gap. Keep it specific (name the tools, name the
-// failure modes) so the argument doesn't sound generic.
+// WHY WE EXIST — the gap. Keep it specific (name the failure modes, not the
+// vendors) so the argument doesn't sound generic.
 // ----------------------------------------------------------------------------
 function WhyExist() {
   return (
@@ -128,23 +128,23 @@ function WhyExist() {
         <SectionTitle en="The gap nobody was filling." ar="الفجوة التي لم يملأها أحد" />
         <div className="mt-10 space-y-5 text-[15px] sm:text-base text-ink/85 leading-relaxed max-w-2xl">
           <p>
-            General AI video and music tools — Veo, Sora, Runway, Suno — treat
-            Arabic as an afterthought. The dialogue arrives English-shaped and
-            translated. Dialects don&apos;t exist; everything sounds like a
-            news anchor. Character identity drifts between clips. The writing
-            tradition that gave the Arab world its rich storytelling is nowhere
-            in the model.
+            The big general-purpose AI music tools treat Arabic as an
+            afterthought. Lyrics arrive translation-shaped — written in an
+            English rhythm and bent into Arabic words. Dialects get flattened;
+            everything ends up in the same stiff, formal register. The writing
+            tradition that gave the Arab world its songs is nowhere in the
+            model.
           </p>
           <p>
             That isn&apos;t a small bug — it&apos;s a missing layer. The result
-            is content that looks like Arabic but reads like a costume on top
-            of an American skeleton.
+            is music that looks Arabic but reads like a costume on top of an
+            American skeleton.
           </p>
           <p>
-            Faceless Lab is the layer. We write the Arabic script first, in
-            the dialect you ask for. We cast and lock the characters. We voice
-            them with native delivery. We render the video around the
-            language — not the language around the video.
+            Faceless Lab is that layer. We write the Arabic lyrics first, in
+            the dialect and register you ask for. We shape the vocal delivery
+            to fit the feeling. We build the song around the language — not the
+            language around the song.
           </p>
         </div>
       </div>
@@ -153,33 +153,33 @@ function WhyExist() {
 }
 
 // ----------------------------------------------------------------------------
-// THE TWO MODES — one short paragraph each. Mirrors the dual-mode framing
-// from the landing-page hero so the brand stays consistent.
+// THE PRODUCT — two facets of one song, in plain language: the lyrics and
+// the voice. Two cards keep visual parity with the rest of the site.
 // ----------------------------------------------------------------------------
-function TwoModes() {
-  const modes = [
+function Product() {
+  const facets = [
     {
-      eyebrow: "MODE 1",
-      title: "Short Videos",
-      ar: "فيديوهات قصيرة",
+      eyebrow: "THE LYRICS",
+      title: "Written, not translated",
+      ar: "كلمات مكتوبة لا مترجمة",
       body:
-        "One Arabic sentence becomes a full cinematic short in any genre. The AI writes the script in your dialect (MSA + 5 regional dialects), casts the characters, locks their faces and voices, and renders the video clip by clip. Preview the script free. Pay only when you press generate. Reroll one clip without paying for the whole video. Refund if a render fails.",
+        "Write one line — a theme, a feeling, a memory — and we draft full Arabic lyrics for free, in the dialect and register you choose. Read them, refine them, and only keep going when the words feel right. Nothing is routed through English on the way.",
     },
     {
-      eyebrow: "MODE 2",
-      title: "AI Songs",
-      ar: "أغاني بالذكاء الاصطناعي",
+      eyebrow: "THE VOICE",
+      title: "Sung into a full song",
+      ar: "أداء غنائي كامل",
       body:
-        "A theme becomes a full Arabic song. Lyrics are drafted free, then Suno V5 produces the vocals and Flux Kontext Max produces matching cover art. Save a voice persona to keep the same singer across future tracks. Get a square 1:1 music video with karaoke-style lyric reveal — ready to share to WhatsApp and Instagram.",
+        "Approved lyrics become a complete original song — real sung vocals with matching cover art and a shareable song page. Save a voice so the same singer carries across your tracks. You spend a single credit only when you approve the finished song.",
     },
   ];
   return (
     <section className="relative py-24 px-5 sm:px-8 border-b border-white/[0.05]">
       <div className="max-w-5xl mx-auto">
-        <SectionEyebrow text="THE TWO MODES" />
+        <SectionEyebrow text="THE PRODUCT" />
         <SectionTitle en="In plain language." ar="بكلام بسيط" />
         <div className="mt-14 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {modes.map((m) => (
+          {facets.map((m) => (
             <div
               key={m.title}
               className="bg-gradient-to-br from-accent/[0.05] to-transparent border border-accent/20 rounded-2xl p-7"
@@ -214,24 +214,24 @@ function TwoModes() {
 function Principles() {
   const principles = [
     {
-      title: "Pay only for what works.",
+      title: "Pay only for what you love.",
       body:
-        "Drafts are free. Failed renders are refunded automatically. You only spend on output that delivers.",
+        "Drafting lyrics is always free. You spend a single credit only when you approve the finished song — never on a draft you didn't keep.",
     },
     {
       title: "Arabic-first, not Arabic-translated.",
       body:
-        "Scripts are written in Arabic from the prompt, in the dialect you choose. Nothing is translated through English on the way.",
+        "Lyrics are written in Arabic from your prompt, in the dialect you choose. Nothing is translated through English on the way.",
     },
     {
-      title: "The script is yours, the brand is ours.",
+      title: "The song is yours.",
       body:
-        "You keep the words, the cast, and the export — even the PDF. We just hold the rails that get you there.",
+        "You keep the words, the vocals, the cover art, and the shareable song page. We just hold the rails that get you there.",
     },
     {
       title: "Refund if we fail.",
       body:
-        "Every credit is recoverable. If a render breaks partway, the platform refunds it without you having to ask.",
+        "Every credit is recoverable. If a song fails to generate, the credit returns automatically — you never have to ask.",
     },
   ];
   return (
@@ -271,18 +271,17 @@ function FounderNote() {
         <SectionTitle en="From Essam." ar="من عصام" />
         <blockquote className="mt-12 relative pl-6 sm:pl-8 border-l-2 border-accent/40">
           <p className="text-[17px] sm:text-lg text-ink/90 leading-relaxed mb-5">
-            I built this because every time I tried to use Sora, Runway, or Veo
-            for Arabic content, the result was a translated American skeleton
-            wearing an Arabic costume. The dialogue was wrong. Dialects were
-            missing. Character identity broke between shots. And every failed
-            render cost me money I couldn&apos;t get back.
+            I built this because every time I tried to make Arabic music with
+            the big general-purpose AI tools, the result was a translated
+            American skeleton wearing an Arabic costume. The lyrics were wrong.
+            The dialects were flattened. The feeling never survived the
+            translation.
           </p>
           <p className="text-[17px] sm:text-lg text-ink/90 leading-relaxed mb-5">
             Faceless Lab is what I wished existed: an Arabic-first studio that
-            writes the script in your dialect, locks the cast across clips,
-            and refunds you when something fails. Two modes — short videos
-            and AI songs — because the same Arab audience wants both, and the
-            same problems were waiting in each.
+            writes the lyrics in your dialect, sings them into a full song, and
+            lets you read the words before you ever pay. One line in — a
+            complete Arabic song out.
           </p>
           <footer className="text-sm text-muted">
             — Essam, founder. Dubai, UAE.
@@ -307,8 +306,8 @@ function FooterCTA() {
           Try it free.
         </h2>
         <p className="text-base text-muted max-w-md mx-auto mb-9">
-          Write one line. Get a full Arabic script back. Pay only if you
-          decide to render the video.
+          Write one line. Get full Arabic lyrics back. Pay only when you love
+          the finished song.
         </p>
         <a
           href={`${APP_URL}/`}

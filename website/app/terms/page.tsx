@@ -4,7 +4,7 @@ import { LegalShell, H2, P, UL } from "@/components/site-chrome";
 export const metadata: Metadata = {
   title: "Terms of Service",
   description:
-    "The terms governing your use of Faceless Lab — an AI studio for Arabic songs and short videos. Covers accounts, subscriptions billed via Paddle, credits, acceptable use, content ownership, and liability.",
+    "The terms governing your use of Faceless Lab — an AI studio for Arabic songs. Covers accounts, subscriptions billed via Paddle, credits, acceptable use, content ownership, and liability.",
   alternates: { canonical: "/terms" },
 };
 
@@ -22,7 +22,7 @@ export default function TermsPage() {
         <H2>1. Who we are &amp; acceptance</H2>
         <P>
           Faceless Lab (&quot;Faceless Lab&quot;, &quot;we&quot;, &quot;us&quot;) is an AI content studio that generates
-          Arabic songs and short videos. It is operated as a sole proprietorship based in Dubai, United Arab Emirates.
+          original Arabic songs. It is operated as a sole proprietorship based in Dubai, United Arab Emirates.
           By creating an account or using the service (the &quot;Service&quot;), you agree to these Terms. If you do not
           agree, do not use the Service.
         </P>
@@ -56,7 +56,7 @@ export default function TermsPage() {
         <H2>4. Credits</H2>
         <P>
           Each plan grants a monthly allowance of credits. One credit is consumed when you approve a full generation
-          (for example, a song or a video clip). Generating drafts (lyrics, cover prompts, scripts) is free and does not
+          (for example, a complete song). Generating drafts (lyrics and cover prompts) is free and does not
           consume credits. Credits are for use within the Service, have no cash value, and are not transferable. Unless
           stated otherwise, unused credits do not roll over between billing periods.
         </P>

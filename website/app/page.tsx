@@ -1,148 +1,76 @@
 "use client";
 
-import { motion, useScroll, useTransform } from "framer-motion";
-import { useRef } from "react";
 import {
-  Sparkles,
-  Wand2,
-  Film,
-  Languages,
-  FileText,
-  ArrowRight,
-  CheckCircle2,
-  Play,
-  ShieldCheck,
-  Eye,
-  RotateCcw,
-  Users,
+  motion,
+  useScroll,
+  useTransform,
+  AnimatePresence,
+  useReducedMotion,
+} from "framer-motion";
+import { useRef, useState, useEffect, useMemo } from "react";
+import {
+  Sparkles, ArrowRight, PenLine, Music4, Share2, Mic2,
+  Disc3, Heart, Check, ScrollText, AudioLines,
 } from "lucide-react";
 import { SparkleLogo } from "@/components/sparkle-logo";
-import { LazyVideo } from "@/components/lazy-video";
-import { PromptInput } from "@/components/prompt-input";
-import { Aurora } from "@/components/aurora";
-import { ScrollPipeline } from "@/components/scroll-pipeline";
-import { useEffect, useState } from "react";
+import { SiteFooter } from "@/components/site-chrome";
 
-const APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL ||
-  "https://app.faceless-lab.com";
-
-// ----------------------------------------------------------------------------
-// All atmospheric clips come from Mixkit's free-stock library (CC0,
-// commercial use OK). IDs scraped from their cinematic / mystery / dark /
-// alone / walking / silhouette / shadow / atmospheric categories so the
-// content matches the brand. URL pattern:
-//   https://assets.mixkit.co/videos/<id>/<id>-720.mp4
-// ----------------------------------------------------------------------------
-const mp4 = (id: number) =>
-  `https://assets.mixkit.co/videos/${id}/${id}-720.mp4`;
-
-const HERO_VIDEO = mp4(30605); // night / atmospheric hero loop
-
-const THEMES = [
-  { id: "folkloric",  en: "Folkloric",  ar: "فلكلوري", vid: 5565,  blurb: "Ancestral tales, myths, old traditions" },
-  { id: "memory",     en: "Memory",     ar: "الذاكرة", vid: 46147, blurb: "Psychological, half-remembered" },
-  { id: "wilderness", en: "Wilderness", ar: "البرية",  vid: 46138, blurb: "Forests, deserts, the unknown" },
-  { id: "urban",      en: "Urban",      ar: "مدني",   vid: 30563, blurb: "City legends, late-night streets" },
-  { id: "domestic",   en: "Domestic",   ar: "منزلي",  vid: 35889, blurb: "Home, family, the everyday turned" },
-  { id: "travel",     en: "Travel",     ar: "سفر",    vid: 23410, blurb: "On the road, far from home" },
-];
-
-// Showreel — six hand-picked clips, one per category. Was 9; the
-// section read cluttered. Six gives the masonry enough visual variety
-// without overwhelming. Final "View full library →" link offers the
-// rest for visitors who want to keep browsing.
-const SHOWREEL = [
-  { vid: 47442, caption: "البئر المهجور",      tag: "2m",   category: "folkloric",  ratio: "tall"   as const },
-  { vid: 46702, caption: "وحيدًا في الليل",    tag: "90s",  category: "memory",     ratio: "tall"   as const },
-  { vid: 9582,  caption: "ضوء بعيد",            tag: "75s",  category: "wilderness", ratio: "medium" as const },
-  { vid: 35426, caption: "ظل في الزقاق",       tag: "90s",  category: "urban",      ratio: "medium" as const },
-  { vid: 23818, caption: "صوت من الجدار",      tag: "60s",  category: "domestic",   ratio: "tall"   as const },
-  { vid: 25896, caption: "الطريق الفارغ",      tag: "2m",   category: "travel",     ratio: "tall"   as const },
-];
-
-const FILTERS = [
-  { id: "all",        label: "All" },
-  { id: "folkloric",  label: "Folkloric" },
-  { id: "memory",     label: "Memory" },
-  { id: "wilderness", label: "Wilderness" },
-  { id: "urban",      label: "Urban" },
-  { id: "domestic",   label: "Domestic" },
-  { id: "travel",     label: "Travel" },
-];
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://app.faceless-lab.com";
 
 // ============================================================================
-// PAGE
+// PAGE — an AI Arabic SONG studio. No video anywhere; no third-party names.
+// Signature: a living audio waveform (sound made visible). Editorial serif
+// (Fraunces) for lyric-like headlines; warm gold→rose→violet stage-light glow.
 // ============================================================================
 export default function Page() {
-  // Use `overflow-x-clip` (not `overflow-x-hidden`) on <main>: `hidden`
-  // makes the element a scroll container which silently breaks
-  // `position: sticky` on any descendant — the ScrollPipeline section
-  // relies on sticky. `clip` crops the same way without establishing
-  // a scroll context.
   return (
-    <main className="min-h-screen bg-bg text-ink overflow-x-clip">
+    <main className="min-h-screen bg-bg text-ink overflow-x-clip antialiased">
       <Nav />
       <Hero />
-      <ScrollPipeline />
-      <Showreel />
-      <WhyFaceless />
-      <Features />
-      <Templates />
-      <Pricing />
+      <HowItWorks />
+      <WhatYouGet />
+      <Showcase />
+      <Why />
+      <PricingTeaser />
       <FinalCTA />
-      <Footer />
+      <SiteFooter />
     </main>
   );
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // NAV
-// ============================================================================
+// ----------------------------------------------------------------------------
 function Nav() {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 16);
-    window.addEventListener("scroll", onScroll);
+    const onScroll = () => setScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-colors duration-200 ${
-        scrolled
-          ? "backdrop-blur-xl bg-bg/85 border-b border-white/[0.06]"
-          : ""
+      className={`fixed top-0 inset-x-0 z-50 transition-colors duration-300 ${
+        scrolled ? "backdrop-blur-xl bg-bg/80 border-b border-white/[0.06]" : "bg-transparent"
       }`}
     >
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center">
-        <a
-          href="#"
-          aria-label="Faceless Lab — home"
-          className="flex items-center gap-2.5"
-        >
+      <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center">
+        <a href="#top" className="flex items-center gap-2.5">
           <SparkleLogo size={28} />
-          <span className="font-semibold text-[15px] tracking-tight">
-            Faceless Lab
-          </span>
+          <span className="font-semibold text-[15px] tracking-tight">Faceless Lab</span>
         </a>
-        <nav
-          aria-label="Primary"
-          className="hidden md:flex items-center gap-7 ml-12 text-[13px] text-muted"
-        >
-          <a href="#why" className="hover:text-ink transition-colors">Why us</a>
-          <a href="#showreel" className="hover:text-ink transition-colors">Showreel</a>
-          <a href="#templates" className="hover:text-ink transition-colors">Templates</a>
-          <a href="#pricing" className="hover:text-ink transition-colors">Pricing</a>
+        <nav aria-label="Primary" className="hidden md:flex items-center gap-8 ml-12 text-[13px] text-muted">
+          <a href="#how" className="hover:text-ink transition-colors">How it works</a>
+          <a href="#songs" className="hover:text-ink transition-colors">Songs</a>
+          <a href="/pricing" className="hover:text-ink transition-colors">Pricing</a>
           <a href="/about" className="hover:text-ink transition-colors">About</a>
         </nav>
-        <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <a href={`${APP_URL}/`} className="text-[13px] text-muted hover:text-ink px-3 py-2">
-            Sign in
-          </a>
+        <div className="ml-auto flex items-center gap-1.5">
+          <a href={`${APP_URL}/`} className="text-[13px] text-muted hover:text-ink px-3 py-2">Sign in</a>
           <a
             href={`${APP_URL}/`}
-            className="bg-accent text-bg font-semibold text-[13px] px-4 py-2 rounded-md hover:bg-accent/90 transition-colors"
+            className="text-[13px] font-semibold px-4 py-2 rounded-full text-bg bg-gradient-to-r from-accent via-rose to-accent2 hover:brightness-110 transition"
           >
             Start free
           </a>
@@ -152,707 +80,360 @@ function Nav() {
   );
 }
 
-// ============================================================================
-// HERO — full-bleed atmospheric video background, big bold typography
-// ============================================================================
+// ----------------------------------------------------------------------------
+// SIGNATURE — living waveform. Deterministic heights (no hydration mismatch);
+// a centered bell so the middle rises like a real spectrum.
+// ----------------------------------------------------------------------------
+function Waveform({ bars = 56, className = "" }: { bars?: number; className?: string }) {
+  const reduce = useReducedMotion();
+  const items = useMemo(
+    () =>
+      Array.from({ length: bars }, (_, i) => {
+        const bell = Math.exp(-Math.pow((i / (bars - 1) - 0.5) * 2.1, 2));
+        const base = (0.16 + 0.84 * Math.abs(Math.sin(i * 0.7) * Math.cos(i * 0.21))) * (0.35 + 0.65 * bell);
+        return { base, dur: 0.85 + (i % 6) * 0.14, delay: (i % 13) * 0.055 };
+      }),
+    [bars],
+  );
+  return (
+    <div className={`flex items-center justify-center gap-[3px] sm:gap-[4px] h-full ${className}`} aria-hidden="true">
+      {items.map((b, i) => (
+        <motion.span
+          key={i}
+          className="w-[3px] sm:w-[4px] rounded-full bg-gradient-to-t from-accent2/25 via-rose to-accent"
+          style={{ height: "100%", transformOrigin: "center" }}
+          initial={{ scaleY: b.base * 0.5 }}
+          animate={reduce ? { scaleY: b.base } : { scaleY: [b.base * 0.32, b.base, b.base * 0.5, b.base * 0.88, b.base * 0.4] }}
+          transition={reduce ? { duration: 0 } : { duration: b.dur, delay: b.delay, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// HERO
+// ----------------------------------------------------------------------------
 function Hero() {
-  // Scroll-driven parallax: the video drifts down at half speed (depth
-  // illusion), the content drifts up + fades out as you scroll past.
-  // Leonardo's hero feels alive scrolling because foreground and
-  // background move at different rates.
   const ref = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end start"],
-  });
-  const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
-  const contentY = useTransform(scrollYProgress, [0, 1], ["0%", "-15%"]);
-  const contentOpacity = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
+  const glowY = useTransform(scrollYProgress, [0, 1], [0, 120]);
+
+  const themes = [
+    "a rainy night in Beirut",
+    "my mother's kitchen table",
+    "the long road back home",
+    "falling in love in June",
+    "the city that raised me",
+    "letting go of an old friend",
+  ];
+  const [ti, setTi] = useState(0);
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    if (reduce) return;
+    const t = setInterval(() => setTi((x) => (x + 1) % themes.length), 2700);
+    return () => clearInterval(t);
+  }, [reduce, themes.length]);
 
   return (
-    <section
-      ref={ref}
-      className="relative h-[100vh] min-h-[640px] overflow-hidden flex items-center"
-    >
-      {/* Full-bleed looping video, parallaxed downward at half scroll
-          speed for depth */}
-      <motion.div
-        className="absolute inset-0"
-        style={{ y: bgY }}
-        aria-hidden="true"
-      >
-        {/* Decorative hero video. `preload="metadata"` (not "auto") so
-            the browser fetches the keyframe/duration but defers the
-            full payload until the video element actually mounts. With
-            preload="auto" the bytes raced with the H1's text+font for
-            mobile bandwidth and pushed LCP past 2.5s. */}
-        <LazyVideo
-          src={HERO_VIDEO}
-          className="w-full h-full"
-          rootMargin="0px"
-          preload="metadata"
-        />
-      </motion.div>
-      {/* Layered overlays for legibility */}
-      <div className="absolute inset-0 bg-gradient-to-b from-bg/30 via-bg/60 to-bg" />
-      <div className="absolute inset-0 bg-gradient-to-r from-bg/80 via-bg/30 to-transparent" />
-
-      {/* Aurora — flowing gradient mesh, parallaxed at a third speed
-          so it feels "deeper" than the foreground content */}
-      <motion.div className="absolute inset-0" style={{ y: useTransform(scrollYProgress, [0, 1], ["0%", "10%"]) }}>
-        <Aurora intensity={0.4} />
+    <section ref={ref} id="top" className="relative overflow-hidden pt-36 pb-24 sm:pt-44 sm:pb-28 px-5 sm:px-8">
+      {/* warm stage-light glow */}
+      <motion.div style={{ y: glowY }} aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute left-1/2 -translate-x-1/2 -top-20 h-[520px] w-[820px] max-w-[120vw] rounded-full blur-[120px] opacity-40"
+             style={{ background: "radial-gradient(ellipse at center, rgba(231,181,60,0.55), rgba(236,143,169,0.35) 42%, rgba(139,92,246,0.28) 68%, transparent 75%)" }} />
       </motion.div>
 
-      <motion.div
-        style={{ y: contentY, opacity: contentOpacity }}
-        className="relative max-w-7xl mx-auto px-5 sm:px-8 w-full"
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="inline-flex items-center gap-2 mb-6 px-3 py-1 rounded-full border border-white/15 bg-black/40 backdrop-blur-sm text-[11px] tracking-wide"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-          AI Arabic songs + short videos
+      <div className="max-w-3xl mx-auto text-center">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-[11px] tracking-[0.14em] text-muted mb-8">
+          <AudioLines className="w-3.5 h-3.5 text-rose" />
+          AI ARABIC SONG STUDIO
         </motion.div>
 
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-          className="text-[52px] sm:text-7xl lg:text-[100px] font-semibold tracking-[-0.045em] leading-[0.96] max-w-5xl mb-7"
-        >
-          Two modes.
+        <motion.h1 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.05 }}
+          className="font-display font-medium tracking-[-0.02em] leading-[1.02] text-[46px] sm:text-7xl">
+          Turn a feeling
           <br />
-          <span className="bg-gradient-to-br from-accent via-amber-200 to-accent2 bg-clip-text text-transparent">
-            One Arabic studio.
-          </span>
+          into a{" "}
+          <span className="italic bg-gradient-to-r from-accent via-rose to-accent2 bg-clip-text text-transparent">song.</span>
         </motion.h1>
 
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="text-lg sm:text-xl text-ink/85 max-w-2xl mb-3 leading-relaxed"
-        >
-          <strong className="text-ink">Short videos:</strong> Faceless Lab
-          writes the Arabic script, casts the characters, voices them in your
-          dialect, and renders the video.{" "}
-          <strong className="text-ink">AI songs:</strong> a theme becomes a
-          full Arabic ballad with Suno V5 vocals and matching cover art.
-          Preview before you spend. Refund on failure.
-        </motion.p>
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          // Bumped from text-muted/80 → text-ink/75 to clear WCAG AA
-          // contrast on this dark gradient overlay (the previous
-          // muted-with-opacity measured ~3.2:1, below the 4.5:1 floor).
-          className="text-base text-ink/75 max-w-xl mb-10 font-arabic"
-          dir="rtl"
-          lang="ar"
-        >
-          استوديو عربي بوضعَين: فيديوهات قصيرة وأغانٍ كاملة — راجع الناتج قبل أن تدفع
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.2 }}
+          className="font-arabic text-xl sm:text-2xl text-muted/90 mt-5" dir="rtl">
+          اكتب فكرة… واسمعها أغنية.
         </motion.p>
 
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="mb-5"
-        >
-          <PromptInput appUrl={APP_URL} />
-        </motion.div>
+        <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.28 }}
+          className="text-[15px] sm:text-lg text-muted leading-relaxed max-w-xl mx-auto mt-7">
+          Describe a theme, a memory, or a few words. Get a complete original Arabic song —
+          real vocals, written lyrics, and cover art — in minutes. No instruments. No studio.
+        </motion.p>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.55 }}
-          className="flex items-center gap-5 text-[12px] text-muted/80"
-        >
-          <a href="#showreel" className="group flex items-center gap-2 hover:text-ink transition-colors">
-            <span className="w-7 h-7 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 group-hover:bg-white/15 flex items-center justify-center transition-colors">
-              <Play className="w-3 h-3 fill-current ml-0.5" />
-            </span>
-            Watch the showreel
-          </a>
-          <span className="text-muted/40">·</span>
-          <span>Free to draft. Subscribe to generate.</span>
-        </motion.div>
-      </motion.div>
-
-      {/* Scroll cue */}
-      <motion.div
-        animate={{ y: [0, 6, 0] }}
-        transition={{ duration: 2, repeat: Infinity }}
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 text-muted/60 text-[10px] tracking-[0.2em]"
-      >
-        SCROLL
-        <div className="w-px h-6 bg-gradient-to-b from-muted/60 to-transparent" />
-      </motion.div>
-    </section>
-  );
-}
-
-// ============================================================================
-// SHOWREEL — Leonardo-style masonry gallery with filter pills above.
-// Mixed tile heights (tall = 9:16, medium = 4:5) so the grid reads as
-// curated rather than a strict spreadsheet.
-// ============================================================================
-function Showreel() {
-  const [filter, setFilter] = useState("all");
-  const visible = SHOWREEL.filter(
-    (s) => filter === "all" || s.category === filter,
-  );
-  return (
-    <section id="showreel" className="relative py-20 sm:py-24 border-t border-white/[0.05] overflow-hidden">
-      <Aurora intensity={0.18} />
-      <div className="relative max-w-7xl mx-auto px-5 sm:px-8">
-        <div className="flex items-end justify-between gap-6 flex-wrap mb-10">
-          <div>
-            <SectionEyebrow text="THE LIBRARY" />
-            <SectionTitle en="Stories rendered." ar="قصص جاهزة" />
-            <p className="mt-4 text-muted max-w-xl">
-              Every clip below was rendered from a one-line premise.
-              Characters and voices stay locked across beats.
-            </p>
-          </div>
-          {/* See-more link sits in the header for desktop visitors who
-              want to skip the gallery and go straight to the app. */}
-          <a
-            href={`${APP_URL}/`}
-            className="group hidden sm:inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink transition-colors"
-          >
-            View the full library
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-          </a>
-        </div>
-
-        {/* Filter pills — tighter and quieter than before */}
-        <div className="flex flex-wrap gap-1.5 mb-10">
-          {FILTERS.map((f) => {
-            const active = f.id === filter;
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setFilter(f.id)}
-                aria-pressed={active}
-                aria-label={`Filter showreel by ${f.label}`}
-                className={`text-[12px] font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                  active
-                    ? "bg-ink text-bg border-ink"
-                    : "bg-transparent text-muted border-white/10 hover:text-ink hover:border-white/25"
-                }`}
-              >
-                {f.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Masonry — CSS multi-column for Pinterest-style variable height */}
-        <div className="masonry" style={{ columnGap: "1rem" }}>
-          {visible.map((s, i) => (
-            <ShowreelTile key={`${filter}-${s.vid}`} item={s} index={i} />
-          ))}
-        </div>
-
-        {/* Mobile see-more link — appears below the grid since the
-            header version is hidden on small screens */}
-        <div className="mt-10 sm:hidden">
-          <a
-            href={`${APP_URL}/`}
-            className="group inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink transition-colors"
-          >
-            View the full library
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-          </a>
-        </div>
-
-        <style jsx>{`
-          .masonry {
-            /* Default to 2 columns on mobile — 1 column made each tile
-               huge and felt empty/repetitive. With 6 clips total, 2×3
-               packs neatly into a single phone screen. */
-            column-count: 2;
-            column-gap: 0.75rem;
-          }
-          @media (min-width: 640px) {
-            .masonry { column-count: 2; column-gap: 1rem; }
-          }
-          @media (min-width: 1024px) {
-            .masonry { column-count: 3; column-gap: 1rem; }
-          }
-        `}</style>
-      </div>
-    </section>
-  );
-}
-
-function ShowreelTile({
-  item,
-  index,
-}: {
-  item: (typeof SHOWREEL)[number];
-  index: number;
-}) {
-  // Tall = 9:16, medium = 4:5 — mixed aspect ratios are what makes the
-  // masonry read as gallery-curated rather than a rigid grid.
-  const aspect = item.ratio === "tall" ? "aspect-[9/16]" : "aspect-[4/5]";
-  return (
-    <motion.a
-      href={`${APP_URL}/`}
-      aria-label={`Open Faceless Lab — ${item.category} showreel clip (${item.tag})`}
-      initial={{ opacity: 0, y: 36, filter: "blur(8px)", scale: 0.96 }}
-      whileInView={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
-      viewport={{ once: true, margin: "-30px" }}
-      transition={{
-        duration: 0.8,
-        delay: (index % 4) * 0.09,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-      className="group relative block mb-4 overflow-hidden rounded-2xl border border-white/10 hover:border-accent/60 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(231,181,60,0.18)] transition-all duration-300 break-inside-avoid"
-      style={{ breakInside: "avoid" }}
-    >
-      <div className={`${aspect} relative`}>
-        <LazyVideo
-          src={mp4(item.vid)}
-          className="absolute inset-0 w-full h-full"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
-        {/* Soft top inner glow on hover */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-             style={{ background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(231,181,60,0.18), transparent 60%)" }} />
-        <div className="absolute inset-0 p-2.5 sm:p-4 flex flex-col justify-end">
-          <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-1.5">
-            <span className="text-[8px] sm:text-[9px] font-bold text-white/80 tracking-[0.15em] sm:tracking-[0.18em] uppercase px-1.5 sm:px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
-              {item.category}
-            </span>
-            <span className="text-[9px] sm:text-[10px] text-white/85 tracking-wider">
-              {item.tag}
-            </span>
-          </div>
-          <div
-            className="text-sm sm:text-lg font-semibold text-white font-arabic tracking-tight leading-snug"
-            dir="rtl"
-            lang="ar"
-          >
-            {item.caption}
-          </div>
-        </div>
-        <div className="absolute top-2 right-2 sm:top-3 sm:right-3 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
-        </div>
-      </div>
-    </motion.a>
-  );
-}
-
-// ============================================================================
-// WHY FACELESS — the four differentiators competitors don't have. These
-// are the load-bearing reasons to subscribe. Each card is a feature the
-// user gets exclusively here, with the contrast against alternatives
-// (Sora, Veo direct, Runway, Kling) implied not stated.
-// ============================================================================
-function WhyFaceless() {
-  const items = [
-    {
-      icon: Eye,
-      title: "Free script preview",
-      ar: "اقرأ القصة قبل أن تدفع",
-      body: "Write a one-line premise. We write the full Arabic script — for free. You only pay if you decide to render the video.",
-      badge: "No surprise bills",
-    },
-    {
-      icon: RotateCcw,
-      title: "Per-clip reroll",
-      ar: "أعد توليد لقطة واحدة",
-      body: "One clip looks wrong? Reroll just that clip. Pay for one, not all five. Most tools force a full restart.",
-      badge: "Pay for what works",
-    },
-    {
-      icon: ShieldCheck,
-      title: "Refund on failure",
-      ar: "استرداد تلقائي",
-      body: "If a render fails partway, every credit charged is automatically returned. You never pay for video you didn't receive.",
-      badge: "Money-back guarantee",
-    },
-    {
-      icon: Users,
-      title: "Locked characters across clips",
-      ar: "نفس الشخصية في كل لقطة",
-      body: "Same face, same voice, same outfit — clip after clip. Built on a reference image so identity persists where generic models drift.",
-      badge: "Consistent cast",
-    },
-    {
-      icon: Sparkles,
-      title: "Plus a full song studio",
-      ar: "وأيضًا استوديو أغاني كامل",
-      body: "Same account, second mode: theme → full Arabic song with Suno V5 vocals, lyric-aware cover art, and a sharable music-video page with karaoke-style lyric reveal.",
-      badge: "Two modes, one studio",
-    },
-  ];
-  return (
-    <section id="why" className="relative py-24 px-5 sm:px-8 border-t border-white/[0.05]">
-      <div className="max-w-7xl mx-auto">
-        <SectionEyebrow text="WHY US" />
-        <SectionTitle en="Built for Arabic creators." ar="مصنوع لصُنّاع المحتوى العربي" />
-        <p className="mt-4 text-muted max-w-2xl">
-          What the big AI tools won't give you: cost transparency, recovery
-          from failure, Arabic as a first-class citizen — and a music studio
-          in the same account.
-        </p>
-        <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {items.map((it, i) => (
-            <motion.div
-              key={it.title}
-              initial={{ opacity: 0, y: 32, filter: "blur(8px)" }}
-              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{
-                duration: 0.7,
-                delay: i * 0.08,
-                ease: [0.16, 1, 0.3, 1],
-              }}
-              className="relative bg-gradient-to-br from-accent/[0.05] to-transparent border border-accent/20 rounded-2xl p-7 hover:border-accent/40 transition-colors"
-            >
-              <span className="absolute top-5 right-5 text-[10px] font-bold text-accent tracking-[0.15em] uppercase px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20">
-                {it.badge}
+        {/* Prompt device — the product's first move, made tangible */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.36 }}
+          className="mt-9 max-w-lg mx-auto">
+          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-surface/70 p-2 pl-4 text-left shadow-2xl shadow-black/40">
+            <PenLine className="w-4 h-4 text-muted shrink-0" />
+            <div className="flex-1 min-w-0 text-[14px] sm:text-[15px] text-ink/90 py-1.5 truncate">
+              <span className="text-muted">a song about </span>
+              <span className="relative inline-block align-bottom">
+                <AnimatePresence mode="wait">
+                  <motion.span key={ti} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.35 }}
+                    className="bg-gradient-to-r from-accent via-rose to-accent2 bg-clip-text text-transparent font-medium">
+                    {themes[ti]}
+                  </motion.span>
+                </AnimatePresence>
               </span>
-              <div className="w-11 h-11 rounded-xl bg-accent/10 border border-accent/25 flex items-center justify-center mb-5">
-                <it.icon className="w-5 h-5 text-accent" />
-              </div>
-              <h3 className="text-xl font-semibold mb-1 tracking-tight">
-                {it.title}
-              </h3>
-              <div
-                className="text-[13px] text-ink/75 mb-3 font-arabic"
-                dir="rtl"
-                lang="ar"
-              >
-                {it.ar}
-              </div>
-              <p className="text-[14px] text-ink/85 leading-relaxed">
-                {it.body}
-              </p>
-            </motion.div>
-          ))}
-        </div>
+            </div>
+            <a href={`${APP_URL}/`}
+              className="shrink-0 inline-flex items-center gap-1.5 text-[13px] font-semibold px-4 py-2.5 rounded-xl text-bg bg-gradient-to-r from-accent via-rose to-accent2 hover:brightness-110 transition">
+              Compose <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+          <p className="text-[12px] text-muted/70 mt-3">Free to write the lyrics. Pay only when you love the song.</p>
+        </motion.div>
       </div>
+
+      {/* signature waveform */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: 0.5 }}
+        className="max-w-4xl mx-auto mt-16 h-24 sm:h-28 px-2">
+        <Waveform />
+      </motion.div>
     </section>
   );
 }
 
-// ============================================================================
-// FEATURES — the broader set (script writer, cinematic render, dialects,
-// PDF). WhyFaceless above carries the differentiation argument; this
-// section just enumerates what you actually get.
-// ============================================================================
-function Features() {
+// ----------------------------------------------------------------------------
+// HOW IT WORKS — a true 3-step sequence (write → compose → share)
+// ----------------------------------------------------------------------------
+function HowItWorks() {
+  const steps = [
+    { n: "one", icon: PenLine, title: "Write a line", ar: "اكتب",
+      body: "Type a theme, a feeling, or a few words. We draft the Arabic lyrics for you — read them, tweak them, all free." },
+    { n: "two", icon: Mic2, title: "Hear it composed", ar: "استمع",
+      body: "Approve the words and they're sung into a full original Arabic song, with matching album art created to fit the mood." },
+    { n: "three", icon: Share2, title: "Share it", ar: "شارك",
+      body: "Get the audio and a shareable song page with a lyric reveal — send it to anyone, anywhere." },
+  ];
+  return (
+    <Section id="how" eyebrow="HOW IT WORKS" title="Three steps, no studio." ar="ثلاث خطوات">
+      <ol className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {steps.map((s, i) => (
+          <Reveal key={s.n} delay={i * 0.08}>
+            <li className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-7 hover:border-white/20 hover:bg-white/[0.035] transition-colors">
+              <div className="flex items-center justify-between mb-6">
+                <span className="font-display italic text-2xl text-muted/50">{s.n}</span>
+                <s.icon className="w-5 h-5 text-rose" />
+              </div>
+              <h3 className="text-lg font-semibold tracking-tight mb-1.5">{s.title}
+                <span className="font-arabic text-muted/60 text-sm ml-2" dir="rtl">{s.ar}</span>
+              </h3>
+              <p className="text-[14px] text-muted leading-relaxed">{s.body}</p>
+            </li>
+          </Reveal>
+        ))}
+      </ol>
+    </Section>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// WHAT YOU GET
+// ----------------------------------------------------------------------------
+function WhatYouGet() {
   const items = [
-    { icon: Wand2,     title: "AI script writer",   body: "One sentence becomes a full Arabic script. Dialogue, characters, shot directions." },
-    { icon: Film,      title: "Cinematic video",    body: "Each beat becomes a clip. Stitched with music and captions. 9:16, ready to share." },
-    { icon: Languages, title: "6 Arabic dialects",  body: "MSA, Syrian, Egyptian, Khaliji, Maghrebi, Iraqi. Real dialect voice — not translation." },
-    { icon: FileText,  title: "Free script PDF",    body: "Export the director's script even without rendering. Cover, cast, beats — yours to keep." },
+    { icon: Music4, title: "Original vocals", body: "A real sung performance of your song — melody and voice, not a robotic read-out." },
+    { icon: ScrollText, title: "Written lyrics", body: "Full Arabic lyrics you can preview and refine before anything is sung. Free to draft." },
+    { icon: Disc3, title: "Album cover", body: "Cover art generated to match the mood of each song — ready to post." },
+    { icon: Share2, title: "A song page", body: "A shareable page with a lyric reveal, plus the audio file to keep or send anywhere." },
+    { icon: Mic2, title: "A voice you keep", body: "Save a voice so the same singer carries across every song you make." },
+    { icon: Heart, title: "Pay only when you love it", body: "Drafting lyrics is always free. A credit is spent only when you approve the full song." },
   ];
   return (
-    <section id="features" className="relative py-24 px-5 sm:px-8">
-      <div className="max-w-7xl mx-auto">
-        <SectionEyebrow text="WHAT YOU GET" />
-        <SectionTitle en="An entire crew. In your pocket." ar="طاقم إنتاج كامل في جيبك" />
-        <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {items.map((it, i) => (
-            <motion.div
-              key={it.title}
-              initial={{ opacity: 0, y: 32, filter: "blur(8px)" }}
-              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{
-                duration: 0.7,
-                delay: i * 0.1,
-                ease: [0.16, 1, 0.3, 1],
-              }}
-              className="bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:bg-white/[0.04] hover:border-white/20 transition-colors"
-            >
-              <div className="w-9 h-9 rounded-lg border border-white/10 flex items-center justify-center mb-5">
-                <it.icon className="w-4 h-4 text-accent" />
+    <Section eyebrow="WHAT YOU GET" title="Everything a song needs." ar="كل ما تحتاجه الأغنية">
+      <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {items.map((it, i) => (
+          <Reveal key={it.title} delay={(i % 3) * 0.06}>
+            <div className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:border-white/20 transition-colors">
+              <div className="w-10 h-10 rounded-xl grid place-items-center mb-4 bg-gradient-to-br from-accent/15 via-rose/10 to-accent2/15 border border-white/10">
+                <it.icon className="w-4.5 h-4.5 text-rose" />
               </div>
-              <h3 className="text-[15px] font-semibold mb-1.5 tracking-tight">
-                {it.title}
-              </h3>
-              <p className="text-[13px] text-muted leading-relaxed">
-                {it.body}
-              </p>
-            </motion.div>
-          ))}
-        </div>
+              <h3 className="text-[15px] font-semibold tracking-tight mb-1.5">{it.title}</h3>
+              <p className="text-[13px] text-muted leading-relaxed">{it.body}</p>
+            </div>
+          </Reveal>
+        ))}
       </div>
-    </section>
+    </Section>
   );
 }
 
-// ============================================================================
-// TEMPLATES — every card a looping video preview
-// ============================================================================
-function Templates() {
+// ----------------------------------------------------------------------------
+// SHOWCASE — illustrative "theme → track" cards (gradient covers, not fake audio)
+// ----------------------------------------------------------------------------
+function Showcase() {
+  const cards = [
+    { title: "ليل بيروت", en: "Ballad", from: "from-indigo-500/40", to: "to-rose/40" },
+    { title: "طريق العودة", en: "Folk", from: "from-amber-500/40", to: "to-accent2/40" },
+    { title: "صيف الحب", en: "Pop", from: "from-rose/50", to: "to-orange-400/40" },
+    { title: "همسة قمر", en: "Lo-fi", from: "from-accent2/50", to: "to-cyan-400/30" },
+    { title: "زفة العريس", en: "Wedding", from: "from-accent/50", to: "to-rose/40" },
+    { title: "وطن", en: "Anthem", from: "from-emerald-500/40", to: "to-accent/40" },
+  ];
   return (
-    <section id="templates" className="relative py-24 px-5 sm:px-8 border-t border-white/[0.05]">
-      <div className="max-w-7xl mx-auto">
-        <SectionEyebrow text="TEMPLATES" />
-        <SectionTitle en="Six places to start." ar="ست نقاط بداية" />
-        <p className="mt-4 text-muted max-w-2xl">
-          Pick a setting. The AI writes a story around your one-line premise.
-        </p>
-        <div className="mt-14 grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {THEMES.map((t, i) => (
-            <motion.a
-              key={t.id}
-              href={`${APP_URL}/?theme=${t.id}`}
-              initial={{ opacity: 0, y: 36, filter: "blur(8px)", scale: 0.96 }}
-              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
-              viewport={{ once: true, margin: "-30px" }}
-              transition={{
-                duration: 0.8,
-                delay: i * 0.08,
-                ease: [0.16, 1, 0.3, 1],
-              }}
-              className="group relative aspect-[4/5] rounded-2xl overflow-hidden border border-white/10 hover:border-accent/60 hover:scale-[1.02] hover:shadow-[0_0_60px_rgba(231,181,60,0.18)] transition-all duration-300"
-            >
-              <LazyVideo
-                src={mp4(t.vid)}
-                className="absolute inset-0 w-full h-full"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-                   style={{ background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(231,181,60,0.18), transparent 60%)" }} />
-              <div className="absolute inset-0 p-5 flex flex-col justify-end">
-                <div className="text-[10px] font-medium text-white/85 tracking-[0.18em] uppercase mb-1">
-                  {t.en}
-                </div>
-                <div
-                  className="text-xl sm:text-2xl font-semibold text-white tracking-tight font-arabic mb-1"
-                  dir="rtl"
-                  lang="ar"
-                >
-                  {t.ar}
-                </div>
-                <p className="text-[11px] text-white/85 leading-snug line-clamp-2">
-                  {t.blurb}
-                </p>
+    <Section id="songs" eyebrow="A FEW THEMES → TRACKS" title="Any mood becomes a song." ar="كل إحساس يصير أغنية">
+      <p className="text-[14px] text-muted max-w-xl mt-4">
+        Pick a feeling and a style — a ballad, folk, pop, an anthem — and Faceless Lab writes and sings it in Arabic. A taste of what you can make:
+      </p>
+      <div className="mt-12 grid grid-cols-2 md:grid-cols-3 gap-4">
+        {cards.map((c, i) => (
+          <Reveal key={c.title} delay={(i % 3) * 0.06}>
+            <div className="group relative aspect-square rounded-2xl overflow-hidden border border-white/10">
+              <div className={`absolute inset-0 bg-gradient-to-br ${c.from} ${c.to}`} />
+              <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/40 to-transparent" />
+              {/* play glyph */}
+              <div className="absolute top-3 right-3 w-9 h-9 rounded-full grid place-items-center bg-black/30 backdrop-blur border border-white/20 opacity-90 group-hover:scale-110 transition-transform">
+                <div className="w-0 h-0 ml-0.5 border-y-[6px] border-y-transparent border-l-[10px] border-l-white" />
               </div>
-              <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <ArrowRight className="w-3.5 h-3.5 text-white" />
+              <div className="absolute inset-x-0 bottom-0 p-4">
+                <div className="h-8 mb-2 opacity-80"><Waveform bars={28} /></div>
+                <div className="flex items-end justify-between gap-2">
+                  <span className="font-arabic text-lg leading-none" dir="rtl">{c.title}</span>
+                  <span className="text-[10px] tracking-widest uppercase text-muted">{c.en}</span>
+                </div>
               </div>
-            </motion.a>
-          ))}
-        </div>
+            </div>
+          </Reveal>
+        ))}
       </div>
-    </section>
+      <p className="text-[12px] text-muted/60 mt-6">Illustrative — your songs are yours to keep and share.</p>
+    </Section>
   );
 }
 
-// ============================================================================
-// PRICING
-// ============================================================================
-function Pricing() {
+// ----------------------------------------------------------------------------
+// WHY
+// ----------------------------------------------------------------------------
+function Why() {
+  const points = [
+    { title: "Arabic-first", body: "Written and sung in Arabic from your idea — not translated through another language on the way." },
+    { title: "Free to try", body: "Draft as many sets of lyrics as you like for free. You only spend a credit when you approve the full song." },
+    { title: "Your song is yours", body: "Keep the audio, the lyrics, and the cover. Post it anywhere, no strings attached." },
+    { title: "Made for sharing", body: "Every song comes with a page and a lyric reveal built to look right on a phone." },
+  ];
+  return (
+    <Section eyebrow="WHY FACELESS LAB" title="What we won't compromise on." ar="ما لا نتنازل عنه">
+      <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {points.map((p, i) => (
+          <Reveal key={p.title} delay={(i % 2) * 0.06}>
+            <div className="flex gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+              <Check className="w-5 h-5 text-rose shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-[15px] font-semibold tracking-tight mb-1">{p.title}</h3>
+                <p className="text-[13px] text-muted leading-relaxed">{p.body}</p>
+              </div>
+            </div>
+          </Reveal>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// PRICING TEASER — links to /pricing for detail
+// ----------------------------------------------------------------------------
+function PricingTeaser() {
   const tiers = [
-    {
-      name: "Silver", price: "$9", credits: 12, blurb: "For trying ideas",
-      perks: [
-        "12 video clips / month",
-        "Free unlimited script previews",
-        "Per-clip reroll (no full restart)",
-        "Refund on failed renders",
-        "All 6 dialects + templates",
-      ],
-    },
-    {
-      name: "Gold", price: "$29", credits: 60, blurb: "For weekly drops",
-      recommended: true,
-      perks: [
-        "60 video clips / month",
-        "Priority rendering queue",
-        "Free unlimited script previews",
-        "Per-clip reroll (no full restart)",
-        "Refund on failed renders",
-        "All 6 dialects + templates",
-      ],
-    },
-    {
-      name: "Platinum", price: "$79", credits: 200, blurb: "For daily output",
-      perks: [
-        "200 video clips / month",
-        "Priority rendering queue",
-        "Free unlimited script previews",
-        "Per-clip reroll (no full restart)",
-        "Refund on failed renders",
-        "All 6 dialects + templates",
-      ],
-    },
+    { name: "Silver", price: 9, credits: 12, featured: false },
+    { name: "Gold", price: 29, credits: 60, featured: true },
+    { name: "Platinum", price: 79, credits: 200, featured: false },
   ];
   return (
-    <section id="pricing" className="relative py-24 px-5 sm:px-8 border-t border-white/[0.05]">
-      <div className="max-w-5xl mx-auto">
-        <SectionEyebrow text="PRICING" />
-        <SectionTitle en="Subscribe once. Render every month." ar="اشترك مرة. ارند كل شهر" />
-        <p className="mt-4 text-muted max-w-2xl">
-          1 credit = 1 video clip. Pause or change tier any time.
-          <span className="text-ink/85"> Every plan includes free unlimited script previews and automatic refund if a render fails — you only pay for video that actually delivers.</span>
-        </p>
-        <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-3">
-          {tiers.map((t, i) => (
-            <motion.div
-              key={t.name}
-              initial={{ opacity: 0, y: 36, filter: "blur(8px)" }}
-              whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{
-                duration: 0.8,
-                delay: i * 0.12,
-                ease: [0.16, 1, 0.3, 1],
-              }}
-              className={`relative rounded-xl p-7 border ${
-                t.recommended
-                  ? "bg-accent/[0.08] border-accent/40"
-                  : "bg-white/[0.02] border-white/10"
-              }`}
-            >
-              {t.recommended && (
-                <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-accent text-bg text-[10px] font-semibold tracking-wide">
-                  RECOMMENDED
-                </div>
-              )}
-              <h3 className="text-base font-semibold mb-1">{t.name}</h3>
-              <div className="text-[13px] text-muted mb-6">{t.blurb}</div>
-              <div className="flex items-baseline gap-1 mb-6">
-                <span className="text-4xl font-semibold tracking-tight">{t.price}</span>
-                <span className="text-muted text-sm">/ mo</span>
+    <Section id="pricing" eyebrow="PRICING" title="One credit makes a song." ar="رصيد واحد = أغنية">
+      <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {tiers.map((t, i) => (
+          <Reveal key={t.name} delay={i * 0.06}>
+            <div className={`h-full rounded-2xl p-6 flex flex-col ${t.featured ? "border-2 border-transparent bg-surface [background:linear-gradient(theme(colors.surface),theme(colors.surface))_padding-box,linear-gradient(to_right,#E7B53C,#EC8FA9,#8B5CF6)_border-box] border-2" : "border border-white/10 bg-white/[0.02]"}`}>
+              {t.featured && <div className="self-start text-[10px] font-bold tracking-[0.16em] mb-3 bg-gradient-to-r from-accent via-rose to-accent2 bg-clip-text text-transparent">MOST POPULAR</div>}
+              <h3 className="text-lg font-semibold tracking-tight">{t.name}</h3>
+              <div className="flex items-baseline gap-1 mt-2">
+                <span className="font-display text-4xl">${t.price}</span>
+                <span className="text-muted text-sm">/mo</span>
               </div>
-              <ul className="space-y-2 mb-7">
-                {t.perks.map((p) => (
-                  <li key={p} className="flex items-start gap-2 text-[13px] text-ink/90">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-accent flex-shrink-0 mt-0.5" />
-                    {p}
-                  </li>
-                ))}
-              </ul>
-              <a
-                href={`${APP_URL}/`}
-                className={`block text-center font-semibold text-sm py-2.5 rounded-md transition-colors ${
-                  t.recommended
-                    ? "bg-accent text-bg hover:bg-accent/90"
-                    : "bg-white/5 text-ink hover:bg-white/10 border border-white/10"
-                }`}
-              >
-                Get {t.name}
-              </a>
-            </motion.div>
-          ))}
-        </div>
+              <div className="text-[13px] text-rose mt-1">{t.credits} credits / month</div>
+            </div>
+          </Reveal>
+        ))}
       </div>
-    </section>
+      <div className="mt-8">
+        <a href="/pricing" className="inline-flex items-center gap-2 text-[14px] font-medium text-ink hover:text-rose transition-colors">
+          See full plans <ArrowRight className="w-4 h-4" />
+        </a>
+      </div>
+    </Section>
   );
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // FINAL CTA
-// ============================================================================
+// ----------------------------------------------------------------------------
 function FinalCTA() {
   return (
-    <section className="relative py-28 sm:py-32 px-5 sm:px-8 overflow-hidden border-t border-white/[0.05]">
-      <div className="absolute inset-0 opacity-30">
-        <LazyVideo src={mp4(8537)} className="w-full h-full" rootMargin="0px" />
-      </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-bg via-bg/60 to-bg" />
-      <Aurora intensity={0.35} />
-      <div className="relative max-w-3xl mx-auto text-center">
-        <div className="inline-flex justify-center mb-7">
-          <SparkleLogo size={56} />
-        </div>
-        <h2 className="text-4xl sm:text-6xl font-semibold tracking-[-0.035em] mb-5">
-          Your first draft is free.
+    <section className="relative overflow-hidden px-5 sm:px-8 py-28 sm:py-32">
+      <div aria-hidden className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 h-[380px] w-[720px] max-w-[120vw] rounded-full blur-[120px] opacity-30"
+           style={{ background: "radial-gradient(ellipse at center, rgba(236,143,169,0.5), rgba(139,92,246,0.3) 55%, transparent 72%)" }} />
+      <div className="max-w-2xl mx-auto text-center">
+        <div className="inline-flex mb-7"><SparkleLogo size={46} /></div>
+        <h2 className="font-display font-medium tracking-[-0.02em] text-4xl sm:text-6xl leading-[1.03]">
+          Your first song is <span className="italic bg-gradient-to-r from-accent via-rose to-accent2 bg-clip-text text-transparent">free.</span>
         </h2>
-        <p className="text-base sm:text-lg text-muted max-w-md mx-auto mb-9">
-          A short video or an Arabic song — write one line, we do the rest.
-          Pay only when you generate.
+        <p className="text-muted max-w-md mx-auto mt-5">
+          Write one line and hear the lyrics come back. Sing the full song whenever you're ready.
         </p>
-        <a
-          href={`${APP_URL}/`}
-          className="inline-flex items-center gap-2 bg-accent text-bg font-semibold text-base px-7 py-3.5 rounded-lg hover:bg-accent/90 transition-colors shadow-xl shadow-accent/20"
-        >
-          <Sparkles className="w-4 h-4" />
-          Start creating
-          <ArrowRight className="w-4 h-4" />
+        <a href={`${APP_URL}/`}
+          className="mt-9 inline-flex items-center gap-2 text-base font-semibold px-7 py-3.5 rounded-full text-bg bg-gradient-to-r from-accent via-rose to-accent2 hover:brightness-110 transition shadow-xl shadow-rose/20">
+          <Sparkles className="w-4 h-4" /> Start free <ArrowRight className="w-4 h-4" />
         </a>
       </div>
     </section>
   );
 }
 
-// ============================================================================
-// FOOTER
-// ============================================================================
-function Footer() {
-  return (
-    <footer className="border-t border-white/[0.06] py-10 px-5 sm:px-8">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center gap-5">
-        <div className="flex items-center gap-2.5">
-          <SparkleLogo size={22} />
-          <span className="text-[13px] text-muted">
-            Faceless Lab · faceless-lab.com
-          </span>
-        </div>
-        <div className="sm:ml-auto flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[13px] text-muted">
-          <a href="/pricing" className="hover:text-ink transition-colors">Pricing</a>
-          <a href="/about" className="hover:text-ink transition-colors">About</a>
-          <a href="/press" className="hover:text-ink transition-colors">Press</a>
-          <a href="/terms" className="hover:text-ink transition-colors">Terms</a>
-          <a href="/privacy" className="hover:text-ink transition-colors">Privacy</a>
-          <a href="/refund" className="hover:text-ink transition-colors">Refunds</a>
-          <a href="/contact" className="hover:text-ink transition-colors">Contact</a>
-          <a href={`${APP_URL}/`} className="hover:text-ink transition-colors">Sign in</a>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
-// ============================================================================
+// ----------------------------------------------------------------------------
 // PRIMITIVES
-// ============================================================================
-function SectionEyebrow({ text }: { text: string }) {
+// ----------------------------------------------------------------------------
+function Section({ id, eyebrow, title, ar, children }: {
+  id?: string; eyebrow: string; title: string; ar: string; children: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-3 mb-4">
-      <div className="w-8 h-px bg-accent" />
-      <span className="text-[10px] font-bold text-accent tracking-[0.22em]">
-        {text}
-      </span>
-    </div>
+    <section id={id} className="relative py-24 px-5 sm:px-8 border-t border-white/[0.05]">
+      <div className="max-w-5xl mx-auto">
+        <Reveal>
+          <div className="flex items-center gap-3 mb-4">
+            <span className="w-8 h-px bg-gradient-to-r from-accent to-rose" />
+            <span className="text-[10px] font-bold tracking-[0.22em] text-rose">{eyebrow}</span>
+          </div>
+          <h2 className="font-display font-medium tracking-[-0.02em] leading-tight text-3xl sm:text-5xl">
+            {title}
+            <span className="font-arabic text-muted/50 text-xl sm:text-2xl font-normal ml-3" dir="rtl">{ar}</span>
+          </h2>
+        </Reveal>
+        {children}
+      </div>
+    </section>
   );
 }
 
-function SectionTitle({ en, ar }: { en: string; ar: string }) {
+function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   return (
-    <motion.h2
-      initial={{ opacity: 0, y: 24, filter: "blur(12px)" }}
-      whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-      className="text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.03em] leading-tight"
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.55, delay, ease: "easeOut" }}
     >
-      {en}
-      <span
-        // text-muted at full opacity (#B4BAC4) clears 4.5:1 against bg.
-        // The previous /60 modifier dropped it below 3:1.
-        className="ml-3 text-muted text-xl sm:text-2xl font-normal font-arabic"
-        dir="rtl"
-        lang="ar"
-      >
-        {ar}
-      </span>
-    </motion.h2>
+      {children}
+    </motion.div>
   );
 }

@@ -14,6 +14,7 @@ const config: Config = {
         surface2: "#1A2238",
         accent: "#E7B53C",      // brand gold
         accent2: "#8B5CF6",     // violet for variety
+        rose: "#EC8FA9",        // warm rose — the middle note of the stage-light gradient
         ink: "#E5E7EB",
         // Bumped muted from #9CA3AF → #B4BAC4 to clear the WCAG AA
         // 4.5:1 contrast threshold against bg #0A0E1A. The old value
@@ -33,6 +34,8 @@ const config: Config = {
         // rendered in a generic sans (no Naskh shaping). With this wiring
         // the named font actually loads.
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        // Editorial serif for lyric-like headlines — used with restraint.
+        display: ["var(--font-display)", "ui-serif", "Georgia", "'Times New Roman'", "serif"],
         arabic: ["var(--font-arabic)", "'Noto Naskh Arabic'", "'Amiri'", "ui-sans-serif", "sans-serif"],
       },
       animation: {

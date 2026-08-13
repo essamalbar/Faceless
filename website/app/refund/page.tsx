@@ -4,7 +4,7 @@ import { LegalShell, H2, P, UL } from "@/components/site-chrome";
 export const metadata: Metadata = {
   title: "Refund & Cancellation Policy",
   description:
-    "How cancellations and refunds work at Faceless Lab: cancel anytime to stop renewals, automatic credit refunds when a render fails, and how to request a refund through Paddle, our Merchant of Record.",
+    "How cancellations and refunds work at Faceless Lab: cancel anytime to stop renewals, automatic credit refunds when a generation fails, and how to request a refund through Paddle, our Merchant of Record.",
   alternates: { canonical: "/refund" },
 };
 
@@ -32,7 +32,7 @@ export default function RefundPage() {
         <P>
           You should only pay for output that actually delivers. If a generation fails after a credit is charged, the
           Service <strong>automatically returns that credit</strong> to your balance. If you believe a credit was charged
-          for a failed render and not returned, contact us and we&apos;ll make it right.
+          for a failed generation and not returned, contact us and we&apos;ll make it right.
         </P>
       </div>
 

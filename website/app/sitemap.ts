@@ -5,7 +5,7 @@
 
 import type { MetadataRoute } from "next";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-shorts.vercel.app";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://faceless-lab.com";
 
 const themes = ["folkloric", "memory", "wilderness", "urban", "domestic", "travel"];
 const dialects = ["msa", "syrian", "egyptian", "khaliji", "maghrebi", "iraqi"];
@@ -31,7 +31,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }));
 
   // Anchor URLs let search engines understand the section structure
-  // (and give us featured snippets for "AI Arabic video templates" etc).
+  // (and give us featured snippets for "AI Arabic song styles" etc).
   const sections: MetadataRoute.Sitemap = [
     "#templates", "#showreel", "#features", "#pricing",
   ].map((hash) => ({

@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     type: "website",
     title: "Press Kit — Faceless Lab",
     description:
-      "Brand assets, key facts, and press contact for Faceless Lab, the Arabic AI studio for short videos and AI songs.",
+      "Brand assets, key facts, and press contact for Faceless Lab, the Arabic-first AI song studio.",
     url: "/press",
   },
   twitter: {
@@ -126,16 +126,16 @@ function Boilerplate() {
         <SectionTitle en="One paragraph, ready to paste." ar="فقرة جاهزة للنسخ" />
         <div className="mt-10 bg-white/[0.02] border border-white/10 rounded-2xl p-7 sm:p-9">
           <p className="text-[15px] sm:text-base text-ink/90 leading-relaxed">
-            Faceless Lab is an Arabic-first AI studio for short-form video and
-            music. From a single Arabic sentence, the platform writes a full
-            cinematic script in one of six dialects, casts and locks the
-            characters, and renders a 9:16 short video — or, in song mode,
-            generates a full Arabic ballad with Suno V5 vocals and matching
-            cover art. Drafts are free; users pay only when they approve a
-            render, and any failed render is refunded automatically. Founded
-            in 2026 by Essam and headquartered in Dubai, Faceless Lab targets
-            the Arabic creator economy that has been chronically underserved
-            by general-purpose AI tools.
+            Faceless Lab is an Arabic-first AI song studio. From a single
+            Arabic sentence — a theme, a feeling, a memory — the platform
+            drafts full lyrics in one of six dialects, then performs them as a
+            complete original song with real sung vocals and matching cover
+            art. Drafting the lyrics is free; users pay a single credit only
+            when they approve the finished song, and a credit is returned
+            automatically if a song fails to generate. Founded in 2026 by
+            Essam and headquartered in Dubai, Faceless Lab targets the Arabic
+            creator economy that has been chronically underserved by
+            general-purpose AI tools.
           </p>
         </div>
       </div>
@@ -164,7 +164,7 @@ function BrandAssets() {
     {
       icon: Layers,
       title: "Screenshot pack",
-      blurb: "Four shots — home, lyrics, share, render.",
+      blurb: "Four shots — home, lyrics, cover art, share.",
       href: "/press/faceless-lab-screenshots.zip",
     },
   ];
@@ -223,7 +223,7 @@ function KeyFacts() {
     },
     {
       label: "Tech stack",
-      value: "Google Veo (video), Kuaishou Kling (video), Suno V5 (vocals), Black Forest Labs Flux (cover art)",
+      value: "State-of-the-art AI vocal and image models, behind a proprietary Arabic-first lyric-and-song pipeline",
     },
   ];
   return (

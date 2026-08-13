@@ -1,6 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import { Inter, Noto_Naskh_Arabic } from "next/font/google";
+import { Inter, Noto_Naskh_Arabic, Fraunces } from "next/font/google";
 
 // Self-host the marketing fonts via next/font. This eliminates:
 //   - render-blocking <link> to fonts.googleapis.com (TTFB win)
@@ -22,17 +22,25 @@ const notoArabic = Noto_Naskh_Arabic({
   weight: ["400", "600", "700"],
 });
 
+// Editorial serif for lyric-like display headlines. Variable font (weight +
+// optical size) — loaded once, used with restraint on the landing page.
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-display",
+});
+
 // ---------------------------------------------------------------------------
 // SEO METADATA
 //
 // Goals:
 //   1. Win Arabic search intent (the actual market) — Arabic queries are
 //      the load-bearing audience and there are no real competitors yet.
-//   2. Surface the four differentiators that competitors LACK:
-//        - free script preview before payment
-//        - per-clip reroll instead of all-or-nothing
-//        - refund on render failure
-//        - 6 Arabic dialects
+//   2. Surface the differentiators that matter for songs:
+//        - free lyric draft before payment
+//        - pay only when you love the finished song
+//        - matching AI cover art for every track
+//        - Arabic-first vocals across dialects and styles
 //   3. Self-describe as a SoftwareApplication via JSON-LD so Google can
 //      build a rich result with pricing + rating.
 //
@@ -54,37 +62,26 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Faceless Lab — AI Arabic songs + short videos | أغاني وفيديوهات قصيرة بالذكاء الاصطناعي",
+    default: "Faceless Lab — Turn a feeling into a song | أنشئ أغنية عربية بالذكاء الاصطناعي",
     template: "%s · Faceless Lab",
   },
   description:
-    "Generate cinematic Arabic short videos in any genre AND original Arabic songs with AI. Video: 6 dialects, free script preview, per-clip reroll, refund on failure. Songs: Suno V5 vocals, lyric-aware cover art, shareable music videos. أنشئ فيديوهات قصيرة وأغاني عربية احترافية.",
+    "Describe a theme or a feeling and get a complete original Arabic song — real vocals, written lyrics, and album art — in minutes. No instruments, no studio. Free draft first; pay only when you love it. اكتب فكرة، واحصل على أغنية عربية كاملة.",
   keywords: [
-    // Video — existing
-    "Arabic AI video",
-    "Arabic short videos",
-    "AI video generator",
-    "Veo Arabic",
-    "Arabic Shorts maker",
-    "TikTok Arabic AI",
-    "YouTube Shorts Arabic",
-    "فيديو قصير بالذكاء الاصطناعي",
-    "إنشاء فيديو عربي",
-    "مولد فيديو قصير",
-    "فيديوهات تيك توك بالعربي",
-    "ذكاء اصطناعي فيديو عربي",
-    "صانع فيديوهات قصيرة",
-    "Veo3 Arabic",
-    "Kling Arabic video",
-    // Songs — new
     "AI Arabic song generator",
-    "Suno Arabic",
+    "create Arabic song with AI",
     "AI music Arabic",
+    "Arabic song maker",
+    "original Arabic songs AI",
+    "AI singer Arabic",
     "Arabic ballad AI",
+    "turn lyrics into a song",
     "مولد أغاني بالذكاء الاصطناعي",
-    "أغاني عربية AI",
-    "ذكاء اصطناعي موسيقى",
-    "AI music video Arabic",
+    "إنشاء أغنية عربية",
+    "أغاني عربية بالذكاء الاصطناعي",
+    "اصنع أغنية",
+    "ذكاء اصطناعي موسيقى عربية",
+    "كتابة أغنية",
   ],
   alternates: {
     canonical: SITE_URL,
@@ -102,17 +99,17 @@ export const metadata: Metadata = {
     type: "website",
     url: SITE_URL,
     siteName: "Faceless Lab",
-    title: "Faceless Lab — AI Arabic songs + short videos",
+    title: "Faceless Lab — Turn a feeling into a song",
     description:
-      "Two modes, one studio. Generate a full Arabic short video from one sentence, or an AI-sung Arabic song with cover art from a theme. اكتب جملة، احصل على فيلم قصير. اكتب فكرة، احصل على أغنية كاملة.",
+      "Describe a theme and get a full original Arabic song — vocals, lyrics, and album art. Free draft first; pay only when you love it. اكتب فكرة، واحصل على أغنية كاملة.",
     locale: "ar_SA",
   },
   twitter: {
     // Same — twitter card pulls from app/opengraph-image.tsx automatically.
     card: "summary_large_image",
-    title: "Faceless Lab — AI Arabic songs + short videos",
+    title: "Faceless Lab — Turn a feeling into a song",
     description:
-      "Two modes, one studio. Arabic short videos AND AI-sung Arabic songs. Free draft, pay only when you generate.",
+      "AI-composed original Arabic songs from a single idea — vocals, lyrics, and cover art. Free draft, pay only when you love it.",
   },
   robots: {
     index: true,
@@ -155,46 +152,20 @@ const softwareApplicationLd = {
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Web, iOS, Android",
   "description":
-    "AI Arabic content studio with two modes: (1) Short Videos — turn a one-line premise into a full cinematic Arabic short in any genre with native dialect dialogue, locked character identity across clips, and per-clip refund on failure. (2) AI Songs — generate full Arabic songs with Suno V5 vocals and lyric-aware AI cover art, with sharable music-video output.",
+    "An AI Arabic song studio. Describe a theme or a feeling and get a complete original Arabic song — real vocals, written lyrics, and matching album art — in minutes. Draft the lyrics free; pay only when you approve the full song. Share it as a song page anywhere.",
   "offers": [
-    {
-      "@type": "Offer",
-      "name": "Silver",
-      "price": "9",
-      "priceCurrency": "USD",
-      "description": "12 video clips / month",
-    },
-    {
-      "@type": "Offer",
-      "name": "Gold",
-      "price": "29",
-      "priceCurrency": "USD",
-      "description": "60 video clips / month — recommended",
-    },
-    {
-      "@type": "Offer",
-      "name": "Platinum",
-      "price": "79",
-      "priceCurrency": "USD",
-      "description": "200 video clips / month",
-    },
+    { "@type": "Offer", "name": "Silver", "price": "9", "priceCurrency": "USD", "description": "12 credits / month" },
+    { "@type": "Offer", "name": "Gold", "price": "29", "priceCurrency": "USD", "description": "60 credits / month — recommended" },
+    { "@type": "Offer", "name": "Platinum", "price": "79", "priceCurrency": "USD", "description": "200 credits / month" },
   ],
   "featureList": [
-    // Video mode
-    "AI Arabic script writer (6 dialects: MSA, Syrian, Egyptian, Khaliji, Maghrebi, Iraqi)",
-    "Free script preview before any paid render",
-    "Per-clip reroll — regenerate one bad clip without paying for the whole video",
-    "Automatic refund if a render fails",
-    "Character identity locked across clips via reference image",
-    "Native Arabic dialogue with lip-synced audio",
-    "9:16 vertical export ready for TikTok, YouTube Shorts, Instagram Reels",
-    // Songs mode
-    "AI Arabic song generator powered by Suno V5",
-    "Lyric-aware AI cover art via Flux Kontext Max",
-    "Voice persona save & reuse — keep the same singer across multiple songs",
-    "Free lyrics + cover-prompt draft before any paid generation",
-    "Square 1:1 music-video export with karaoke-style lyric reveal on the shareable page",
-    "Take A / Take B swap — pick the better Suno vocal take, free re-assemble",
+    "Turn a theme or feeling into a complete original Arabic song",
+    "Real sung vocals — no instruments or studio needed",
+    "Written Arabic lyrics you can preview and refine for free",
+    "Matching album cover art generated for every song",
+    "A shareable song page with a lyric reveal — send it anywhere",
+    "Save a voice so the same singer carries across your songs",
+    "Pay only when you love it — drafting lyrics is always free",
   ],
 };
 
@@ -204,74 +175,56 @@ const faqLd = {
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "Do I pay if the render fails?",
+      "name": "What does Faceless Lab do?",
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "No. Every credit charged against a failed render is refunded automatically. You only pay for clips that successfully deliver.",
+          "You describe a theme, a mood, or a few lines, and Faceless Lab writes and performs a complete original Arabic song — vocals, lyrics, and a matching album cover — in minutes. No instruments or studio needed.",
       },
     },
     {
       "@type": "Question",
-      "name": "Can I preview the script before paying?",
+      "name": "Do I need to know music?",
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "Yes. Script generation is always free. You write a one-line premise, the AI produces a full Arabic script with characters, dialogue, and shot directions, then you decide whether to render. Subscribe only when you're ready to pay for the rendered video.",
+          "No. If you can describe a feeling in a sentence, you can make a song. You review the written lyrics for free, then generate the full sung track when you're happy with them.",
       },
     },
     {
       "@type": "Question",
-      "name": "What if just one clip looks wrong?",
+      "name": "Can I try it before paying?",
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "Reroll only that clip. You pay for one clip, not the whole video. Most competitors force you to re-render everything from scratch.",
+          "Yes. Writing the lyrics is always free. You only spend a credit when you approve the full song — so you pay only for songs you love.",
       },
     },
     {
       "@type": "Question",
-      "name": "Which Arabic dialects are supported?",
+      "name": "Is the song mine?",
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "Six dialects: Modern Standard Arabic (MSA / فصحى), Syrian (شامي), Egyptian (مصري), Khaliji (خليجي), Maghrebi (مغاربي), and Iraqi (عراقي). The script writer matches both vocabulary and rhythm to the dialect you pick.",
+          "You own the songs you generate. You get the audio, the lyrics, the cover art, and a shareable song page you can post anywhere.",
       },
     },
     {
       "@type": "Question",
-      "name": "Can I publish to TikTok and YouTube?",
+      "name": "How much does it cost?",
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "Yes. Every render is 9:16 vertical (1080×1920) with native audio and burned-in Arabic captions — ready to upload to TikTok, YouTube Shorts, and Instagram Reels. Direct-publish integrations are on the roadmap.",
+          "Plans start at $9/month (Silver, 12 credits). Gold is $29 (60 credits) and Platinum is $79 (200 credits). One credit makes one song, and drafting the lyrics is free.",
       },
     },
     {
       "@type": "Question",
-      "name": "What's the difference vs Sora, Veo, or Runway?",
+      "name": "Which Arabic styles are supported?",
       "acceptedAnswer": {
         "@type": "Answer",
         "text":
-          "Those are general-purpose tools. Faceless Lab is Arabic-first: the script writer is tuned for Arabic storytelling, character identity persists across clips, and the audio is genuine Arabic dialect — not English translated. Pricing is also clip-by-clip refundable, not all-or-nothing.",
-      },
-    },
-    {
-      "@type": "Question",
-      "name": "Can I generate Arabic songs too?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text":
-          "Yes. Faceless Lab has a second mode that generates a full Arabic song from a theme and style. Suno V5 produces the vocals; Flux Kontext Max produces a matching album cover. You get a 1:1 music video with karaoke-style lyric reveal on the share page, ready for WhatsApp and Instagram. Voice personas let you keep the same singer across future songs.",
-      },
-    },
-    {
-      "@type": "Question",
-      "name": "How much does a song cost?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text":
-          "About 1 credit per song. The cost is approximately equal to one video clip, so the same monthly subscription covers both modes. Drafts (lyrics + cover prompt) are free; you only pay when you approve the full generation.",
+          "Faceless Lab is Arabic-first and handles a range of styles and dialects — from classical and ballad to modern pop — matching the words and the delivery to the mood you choose.",
       },
     },
   ],
@@ -283,14 +236,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${notoArabic.variable}`}>
+    <html lang="en" className={`${inter.variable} ${notoArabic.variable} ${fraunces.variable}`}>
       <head>
-        {/* Preconnect to the Mixkit CDN that serves every background
-            video. Saves the DNS + TLS round-trip when the hero video
-            (and downstream lazy clips) start fetching — measurable LCP
-            win on mobile networks. */}
-        <link rel="preconnect" href="https://assets.mixkit.co" crossOrigin="" />
-        <link rel="dns-prefetch" href="https://assets.mixkit.co" />
         <link
           rel="alternate"
           type="application/rss+xml"

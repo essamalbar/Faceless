@@ -16,7 +16,7 @@ import { ImageResponse } from "next/og";
 // Fonts download, no special platform requirements. Edge runtime works
 // for ImageResponse on Vercel but fails when next start runs locally
 // without an edge function host, so keep this on Node.js.
-export const alt = "Faceless — AI Arabic song & short-video generator";
+export const alt = "Faceless Lab — AI Arabic song generator";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -124,7 +124,7 @@ export default async function Image() {
               textTransform: "uppercase",
             }}
           >
-            AI · Arabic · Shorts
+            AI · Arabic · Song
           </div>
         </div>
 
@@ -157,7 +157,7 @@ export default async function Image() {
                 color: "transparent",
               }}
             >
-              Get a cinematic Arabic short.
+              Get a full Arabic song.
             </div>
           </div>
 
@@ -172,7 +172,7 @@ export default async function Image() {
               maxWidth: 1000,
             }}
           >
-            من جملة واحدة إلى فيلم قصير عربي كامل
+            من جملة واحدة إلى أغنية عربية كاملة
           </div>
         </div>
 
@@ -187,13 +187,11 @@ export default async function Image() {
             alignItems: "center",
           }}
         >
-          <span>Free script preview</span>
+          <span>Original vocals</span>
           <span style={{ color: "rgba(231,181,60,0.5)" }}>·</span>
-          <span>Per-clip reroll</span>
+          <span>Written lyrics</span>
           <span style={{ color: "rgba(231,181,60,0.5)" }}>·</span>
-          <span>Refund on failure</span>
-          <span style={{ color: "rgba(231,181,60,0.5)" }}>·</span>
-          <span>6 Arabic dialects</span>
+          <span>Free draft first</span>
         </div>
       </div>
     ),

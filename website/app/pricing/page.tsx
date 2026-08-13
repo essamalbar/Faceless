@@ -15,7 +15,7 @@ const APP_URL =
 export const metadata: Metadata = {
   title: "Pricing — Simple monthly plans",
   description:
-    "Faceless Lab pricing: Silver $9/mo (12 credits), Gold $29/mo (60 credits), Platinum $79/mo (200 credits). One credit works for a song or a video clip. Free drafts; pay only when you generate. Billed securely via Paddle.",
+    "Faceless Lab pricing: Silver $9/mo (12 credits), Gold $29/mo (60 credits), Platinum $79/mo (200 credits). One credit makes one song. Free drafts; pay only when you generate. Billed securely via Paddle.",
   alternates: { canonical: "/pricing" },
   openGraph: {
     type: "website",
@@ -31,7 +31,7 @@ const PLANS = [
     price: 9,
     credits: 12,
     blurb: "For trying ideas.",
-    features: ["12 credits / month", "AI songs + short videos", "Free lyric & script drafts", "Standard support"],
+    features: ["12 credits / month", "AI Arabic songs", "Free lyric drafts", "Standard support"],
     featured: false,
   },
   {
@@ -39,7 +39,7 @@ const PLANS = [
     price: 29,
     credits: 60,
     blurb: "For weekly drops.",
-    features: ["60 credits / month", "Everything in Silver", "Voice persona save & reuse", "Priority render queue"],
+    features: ["60 credits / month", "Everything in Silver", "Voice persona save & reuse", "Priority queue"],
     featured: true,
   },
   {
@@ -47,7 +47,7 @@ const PLANS = [
     price: 79,
     credits: 200,
     blurb: "For daily output.",
-    features: ["200 credits / month", "Everything in Gold", "Highest render priority", "Early access to new features"],
+    features: ["200 credits / month", "Everything in Gold", "Highest priority", "Early access to new features"],
     featured: false,
   },
 ];
@@ -64,7 +64,7 @@ export default function PricingPage() {
             Simple monthly plans.
           </h1>
           <p className="text-lg text-muted max-w-xl mx-auto">
-            One credit makes a song or a video clip. Drafts are free — you only spend a credit when you approve a full generation.
+            One credit makes one song. Drafts are free — you only spend a credit when you approve a full generation.
           </p>
         </div>
       </section>
@@ -117,8 +117,8 @@ export default function PricingPage() {
       <section className="px-5 sm:px-8 py-12">
         <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
           {[
-            ["Free drafts", "Preview lyrics, cover prompts, and scripts before spending a single credit."],
-            ["Refund on failure", "If a render fails, the credits are returned automatically."],
+            ["Free drafts", "Preview lyrics and cover prompts before spending a single credit."],
+            ["Refund on failure", "If a song fails to generate, the credit is returned automatically."],
             ["Cancel anytime", "Manage or cancel your subscription from the app — no lock-in."],
           ].map(([h, b]) => (
             <div key={h} className="border border-white/10 rounded-xl p-5 bg-white/[0.02]">

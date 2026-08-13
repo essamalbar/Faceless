@@ -22,7 +22,7 @@ export default function PrivacyPage() {
         <H2>1. What we collect</H2>
         <UL>
           <li><strong>Account data:</strong> your email address and authentication details (managed by our auth provider, Supabase).</li>
-          <li><strong>Content you create:</strong> the prompts, themes, and lyrics you enter, and the songs, videos, and images you generate.</li>
+          <li><strong>Content you create:</strong> the prompts, themes, and lyrics you enter, and the songs, lyrics, and cover images you generate.</li>
           <li><strong>Usage &amp; technical data:</strong> logs, device/browser information, and diagnostics used to run and secure the Service.</li>
           <li><strong>Billing data:</strong> handled by <strong>Paddle</strong>, our Merchant of Record. Paddle processes your payment details — <strong>we do not store your full card numbers</strong>. We keep a record of your plan, credit ledger, and transaction references.</li>
         </UL>
