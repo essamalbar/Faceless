@@ -662,6 +662,7 @@ class FacelessApiClient {
     String? artistId,
     String? dialect,
     String qualityTier = 'standard',
+    String? genre,
     bool ownershipAttested = false,
   }) async {
     final body = <String, dynamic>{
@@ -676,6 +677,7 @@ class FacelessApiClient {
       'video_mode': videoMode,
       if (artistId != null) 'artist_id': artistId,
       'quality_tier': qualityTier,
+      if (genre != null) 'genre': genre,
       'ownership_attested': ownershipAttested,
     };
     final r = await _http.post(
