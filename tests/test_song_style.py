@@ -212,3 +212,38 @@ def test_compose_style_caps_negative_tags_at_200():
     assert res.source.startswith("producer:")   # producer output was accepted
     assert len(res.negative_tags) <= 200
     assert not res.negative_tags.endswith(",")
+
+
+def test_compose_style_forced_genre_overrides_inference():
+    # "حزينة" → infer_genre would pick arabic_ballad; force rock instead.
+    # _StubLLM(raises=True) forces the recipe fallback so genre_key is deterministic.
+    res = compose_style(
+        _StubLLM(raises=True),
+        theme="أغنية حزينة عن الفراق", title="عنوان",
+        lyrics="[Verse 1]\nكلمات\n[Chorus]\nلازمة",
+        language="ar", dialect=None, style_hint=None, vocal_gender="m",
+        forced_genre_key="rock",
+    )
+    assert res.genre_key == "rock"
+    assert "distorted electric guitars" in res.style_prompt  # rock recipe instrumentation
+
+
+def test_compose_style_invalid_forced_genre_falls_back_to_inference():
+    res = compose_style(
+        _StubLLM(raises=True),
+        theme="أغنية حزينة عن الفراق", title="عنوان",
+        lyrics="[Verse 1]\nكلمات\n[Chorus]\nلازمة",
+        language="ar", dialect=None, style_hint=None, vocal_gender="m",
+        forced_genre_key="not_a_real_genre",
+    )
+    assert res.genre_key == "arabic_ballad"
+
+
+def test_compose_style_none_forced_genre_uses_inference():
+    res = compose_style(
+        _StubLLM(raises=True),
+        theme="أغنية حزينة عن الفراق", title="عنوان",
+        lyrics="[Verse 1]\nكلمات\n[Chorus]\nلازمة",
+        language="ar", dialect=None, style_hint=None, vocal_gender="m",
+    )
+    assert res.genre_key == "arabic_ballad"

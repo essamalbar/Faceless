@@ -369,10 +369,17 @@ def _looks_weak(style: str, recipe: Recipe) -> bool:
 
 def compose_style(llm, *, theme: str, title: str, lyrics: str, language: str,
                   dialect: str | None, style_hint: str | None,
-                  vocal_gender: str | None) -> StyleResult:
+                  vocal_gender: str | None,
+                  forced_genre_key: str | None = None) -> StyleResult:
     """Producer pass: strongest-model style prompt, recipe fallback on
-    failure or weak output. Never raises — always returns a usable steer."""
-    genre_key = infer_genre(theme, style_hint, language, dialect)
+    failure or weak output. Never raises — always returns a usable steer.
+
+    If ``forced_genre_key`` names a real recipe it is honored exactly
+    (the create screen's genre grid); otherwise genre is inferred as before.
+    """
+    genre_key = (forced_genre_key
+                 if forced_genre_key in GENRE_RECIPES
+                 else infer_genre(theme, style_hint, language, dialect))
     recipe = GENRE_RECIPES[genre_key]
     fb_style, fb_neg = _recipe_style(recipe, vocal_gender, style_hint)
     fb_neg = _trim_to_last_comma(fb_neg, MAX_NEGATIVE_CHARS)
