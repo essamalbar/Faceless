@@ -45,6 +45,9 @@ build/
 # Claude Code session state
 .claude/
 
+# Superpowers brainstorming scratch (visual companion mockups, session state)
+.superpowers/
+
 # Generated music tracks (binaries — re-create via scripts/generate_placeholder_music.sh)
 assets/music/*.mp3
 
