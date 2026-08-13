@@ -10,6 +10,7 @@ import '../api/settings.dart';
 import '../config.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/song_genres.dart';
 import '../widgets/artist_avatar.dart';
 import '../widgets/faceless_logo.dart';
 import 'artist_edit_screen.dart';
@@ -230,13 +231,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openNewSongWithSample(String theme, String presetLabel) async {
+  Future<void> _openNewSongWithSample(String theme, String genreKey) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => NewSongScreen(
           client: _client,
           initialTheme: theme,
-          initialPresetLabel: presetLabel,
+          initialGenreKey: genreKey,
         ),
       ),
     );
@@ -897,8 +898,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: _SongsEmptyState(
                     onCreate: _openNewSong,
-                    onTrySample: (theme, presetLabel) =>
-                        _openNewSongWithSample(theme, presetLabel),
+                    onTrySample: (theme, genreKey) =>
+                        _openNewSongWithSample(theme, genreKey),
                   ),
                 ),
               ],
@@ -3193,24 +3194,32 @@ class _BalanceBadgeState extends State<_BalanceBadge> {
 }
 
 
+/// Localized genre label for a sample chip caption. Falls back to the raw
+/// key (should never happen — every sample key must exist in kSongGenres).
+String _genreLabel(BuildContext context, String genreKey) {
+  for (final g in kSongGenres) {
+    if (g.key == genreKey) return g.label(context.l10n);
+  }
+  return genreKey;
+}
+
 /// Empty state shown on the Song tab when the user has no songs yet.
 /// Offers a "Try one of these" set of one-tap samples that pre-fill
-/// the new-song form with a vetted theme + style preset, so a new
-/// user can hit "Generate draft" without typing anything.
+/// the new-song form with a vetted theme + genre, so a new user can hit
+/// "Generate draft" without typing anything.
 class _SongsEmptyState extends StatelessWidget {
   final VoidCallback onCreate;
-  final void Function(String theme, String presetLabel) onTrySample;
+  final void Function(String theme, String genreKey) onTrySample;
   const _SongsEmptyState({required this.onCreate, required this.onTrySample});
 
-  // Samples paired with the style preset that best fits the vibe.
-  // Preset labels MUST match _kStylePresets in new_song_screen.dart.
+  // Samples paired with the genre key that best fits the vibe.
+  // Genre keys MUST match a key in kSongGenres (lib/ui/song_genres.dart).
   static const _samples = <(String, String, String)>[
-    // (emoji, theme prefilled, preset label)
-    ('🌙', 'أغنية رومانسية عن القمر والشوق', 'Romantic Arabic (reference)'),
-    ('💔', 'أغنية حزينة عن الفراق', 'Sad Arabic Ballad'),
-    ('🎶', 'أغنية بحرية خليجية عن البحر والصيد', 'Khaleeji Romantic'),
-    ('🎸', 'A quiet acoustic song about long drives at night',
-        'Acoustic Slow'),
+    // (emoji, theme prefilled, genre key)
+    ('🌙', 'أغنية رومانسية عن القمر والشوق', 'arabic_ballad'),
+    ('💔', 'أغنية حزينة عن الفراق', 'arabic_ballad'),
+    ('🎶', 'أغنية بحرية خليجية عن البحر والصيد', 'khaleeji'),
+    ('🎸', 'A quiet acoustic song about long drives at night', 'pop'),
   ];
 
   @override
@@ -3233,11 +3242,11 @@ class _SongsEmptyState extends StatelessWidget {
           style: const TextStyle(color: FacelessTheme.textSecondary),
         ),
         const SizedBox(height: 24),
-        for (final (emoji, theme, preset) in _samples)
+        for (final (emoji, theme, genreKey) in _samples)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: OutlinedButton(
-              onPressed: () => onTrySample(theme, preset),
+              onPressed: () => onTrySample(theme, genreKey),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                 alignment: AlignmentDirectional.centerStart,
@@ -3254,7 +3263,7 @@ class _SongsEmptyState extends StatelessWidget {
                             textAlign: TextAlign.start,
                             style: const TextStyle(fontWeight: FontWeight.w500)),
                         const SizedBox(height: 2),
-                        Text(preset,
+                        Text(_genreLabel(context, genreKey),
                             style: const TextStyle(
                                 fontSize: 11,
                                 color: FacelessTheme.textSecondary)),
