@@ -231,6 +231,7 @@ def generate_song_script(
     language: str,
     dialect: str | None = None,
     vocal_gender: str | None = "m",
+    genre_key: str | None = None,
 ) -> SongScript:
     """One-shot LLM call; returns a validated SongScript.
 
@@ -310,7 +311,7 @@ def generate_song_script(
     style = compose_style(
         llm, theme=theme, title=parsed["title"], lyrics=lyrics,
         language=language, dialect=dialect, style_hint=style_hint,
-        vocal_gender=vocal_gender,
+        vocal_gender=vocal_gender, forced_genre_key=genre_key,
     )
 
     return SongScript(

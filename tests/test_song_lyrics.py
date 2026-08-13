@@ -263,3 +263,26 @@ def test_writer_tier_reflects_lyrics_call_not_diacritize_fallback():
         style_hint=None, language="ar",
     )
     assert script.writer_tier == "anthropic"
+
+
+def test_generate_song_script_forwards_genre_key(monkeypatch):
+    from pipeline import song_lyrics as sl
+    captured = {}
+    real = sl.compose_style
+
+    def spy(llm, **kwargs):
+        captured["forced_genre_key"] = kwargs.get("forced_genre_key")
+        return real(llm, **kwargs)
+
+    monkeypatch.setattr(sl, "compose_style", spy)
+    llm = _stub_llm("""{
+        "title": "T",
+        "lyrics": "[Verse 1]\\na\\n[Chorus]\\nb",
+        "style_prompt": "pop, 100 BPM, synths, male vocal, 2020s, major key",
+        "cover_prompt": "a bright city skyline"
+    }""")
+    sl.generate_song_script(
+        llm=llm, theme="x", custom_lyrics=None, style_hint=None,
+        language="ar", genre_key="rock",
+    )
+    assert captured["forced_genre_key"] == "rock"
