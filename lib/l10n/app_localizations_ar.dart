@@ -2250,4 +2250,55 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get qualityDialectIraqi => 'عراقي';
+
+  @override
+  String get genrePickerLabel => 'اختر النوع';
+
+  @override
+  String get genrePickerHint => 'تلقائي = دع الذكاء يقرر';
+
+  @override
+  String get genreAuto => 'تلقائي';
+
+  @override
+  String get genreArabicPop => 'بوب عربي';
+
+  @override
+  String get genreArabicBallad => 'بالاد';
+
+  @override
+  String get genreKhaleeji => 'خليجي';
+
+  @override
+  String get genreTarab => 'طرب';
+
+  @override
+  String get genreArabicTrap => 'تراب';
+
+  @override
+  String get genreShaabi => 'شعبي';
+
+  @override
+  String get genreHipHop => 'هيب هوب';
+
+  @override
+  String get genreRnb => 'آر أند بي';
+
+  @override
+  String get genrePop => 'بوب';
+
+  @override
+  String get genreRock => 'روك';
+
+  @override
+  String get genreEdm => 'إلكترونيك';
+
+  @override
+  String get genreCinematic => 'سينمائي';
+
+  @override
+  String get advancedOptions => 'خيارات متقدمة';
+
+  @override
+  String get addMyLyrics => 'اكتب كلماتي';
 }

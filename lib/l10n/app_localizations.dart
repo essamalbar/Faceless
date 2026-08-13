@@ -3895,6 +3895,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Iraqi'**
   String get qualityDialectIraqi;
+
+  /// No description provided for @genrePickerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a genre'**
+  String get genrePickerLabel;
+
+  /// No description provided for @genrePickerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto = let AI decide'**
+  String get genrePickerHint;
+
+  /// No description provided for @genreAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get genreAuto;
+
+  /// No description provided for @genreArabicPop.
+  ///
+  /// In en, this message translates to:
+  /// **'Arabic Pop'**
+  String get genreArabicPop;
+
+  /// No description provided for @genreArabicBallad.
+  ///
+  /// In en, this message translates to:
+  /// **'Ballad'**
+  String get genreArabicBallad;
+
+  /// No description provided for @genreKhaleeji.
+  ///
+  /// In en, this message translates to:
+  /// **'Khaleeji'**
+  String get genreKhaleeji;
+
+  /// No description provided for @genreTarab.
+  ///
+  /// In en, this message translates to:
+  /// **'Tarab'**
+  String get genreTarab;
+
+  /// No description provided for @genreArabicTrap.
+  ///
+  /// In en, this message translates to:
+  /// **'Trap'**
+  String get genreArabicTrap;
+
+  /// No description provided for @genreShaabi.
+  ///
+  /// In en, this message translates to:
+  /// **'Shaabi'**
+  String get genreShaabi;
+
+  /// No description provided for @genreHipHop.
+  ///
+  /// In en, this message translates to:
+  /// **'Hip-Hop'**
+  String get genreHipHop;
+
+  /// No description provided for @genreRnb.
+  ///
+  /// In en, this message translates to:
+  /// **'R&B'**
+  String get genreRnb;
+
+  /// No description provided for @genrePop.
+  ///
+  /// In en, this message translates to:
+  /// **'Pop'**
+  String get genrePop;
+
+  /// No description provided for @genreRock.
+  ///
+  /// In en, this message translates to:
+  /// **'Rock'**
+  String get genreRock;
+
+  /// No description provided for @genreEdm.
+  ///
+  /// In en, this message translates to:
+  /// **'EDM'**
+  String get genreEdm;
+
+  /// No description provided for @genreCinematic.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinematic'**
+  String get genreCinematic;
+
+  /// No description provided for @advancedOptions.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced options'**
+  String get advancedOptions;
+
+  /// No description provided for @addMyLyrics.
+  ///
+  /// In en, this message translates to:
+  /// **'Write my own lyrics'**
+  String get addMyLyrics;
 }
 
 class _AppLocalizationsDelegate

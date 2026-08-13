@@ -632,5 +632,22 @@
   "qualityDialectEgyptian": "مصري",
   "qualityDialectKhaleeji": "خليجي",
   "qualityDialectLevantine": "شامي",
-  "qualityDialectIraqi": "عراقي"
+  "qualityDialectIraqi": "عراقي",
+  "genrePickerLabel": "اختر النوع",
+  "genrePickerHint": "تلقائي = دع الذكاء يقرر",
+  "genreAuto": "تلقائي",
+  "genreArabicPop": "بوب عربي",
+  "genreArabicBallad": "بالاد",
+  "genreKhaleeji": "خليجي",
+  "genreTarab": "طرب",
+  "genreArabicTrap": "تراب",
+  "genreShaabi": "شعبي",
+  "genreHipHop": "هيب هوب",
+  "genreRnb": "آر أند بي",
+  "genrePop": "بوب",
+  "genreRock": "روك",
+  "genreEdm": "إلكترونيك",
+  "genreCinematic": "سينمائي",
+  "advancedOptions": "خيارات متقدمة",
+  "addMyLyrics": "اكتب كلماتي"
 }

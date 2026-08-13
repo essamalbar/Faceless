@@ -1223,5 +1223,22 @@
   "qualityDialectEgyptian": "Egyptian",
   "qualityDialectKhaleeji": "Khaleeji (Gulf)",
   "qualityDialectLevantine": "Levantine",
-  "qualityDialectIraqi": "Iraqi"
+  "qualityDialectIraqi": "Iraqi",
+  "genrePickerLabel": "Pick a genre",
+  "genrePickerHint": "Auto = let AI decide",
+  "genreAuto": "Auto",
+  "genreArabicPop": "Arabic Pop",
+  "genreArabicBallad": "Ballad",
+  "genreKhaleeji": "Khaleeji",
+  "genreTarab": "Tarab",
+  "genreArabicTrap": "Trap",
+  "genreShaabi": "Shaabi",
+  "genreHipHop": "Hip-Hop",
+  "genreRnb": "R&B",
+  "genrePop": "Pop",
+  "genreRock": "Rock",
+  "genreEdm": "EDM",
+  "genreCinematic": "Cinematic",
+  "advancedOptions": "Advanced options",
+  "addMyLyrics": "Write my own lyrics"
 }
