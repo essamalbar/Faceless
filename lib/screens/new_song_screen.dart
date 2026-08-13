@@ -121,6 +121,9 @@ class _NewSongScreenState extends State<NewSongScreen> {
     setState(() {
       _artist = a;
       _language = a.defaultLanguage;
+      if (!isGenreValidForLanguage(_genreKey, _language)) {
+        _genreKey = null;
+      }
       _vocalGender = a.defaultVocalGender;
       if (a.defaultDialect.isNotEmpty) {
         _dialect = a.defaultDialect;
@@ -491,140 +494,6 @@ class _NewSongScreenState extends State<NewSongScreen> {
                 language: _language,
                 onChanged: (k) => setState(() => _genreKey = k),
               ),
-              const SizedBox(height: 16),
-              // Advanced options — dialect, style hint, quality tier, Suno
-              // model, persona. Collapsed by default.
-              ExpansionTile(
-                title: Text(l10n.advancedOptions),
-                initiallyExpanded: false,
-                children: [
-                  // Arabic dialect — only meaningful when the song is
-                  // Arabic. null = Auto (server / LLM decides).
-                  if (_language == 'ar') ...[
-                    DropdownButtonFormField<String?>(
-                      initialValue: _dialect,
-                      decoration: InputDecoration(
-                        labelText: l10n.qualityDialectLabel,
-                        border: const OutlineInputBorder(),
-                      ),
-                      items: <DropdownMenuItem<String?>>[
-                        DropdownMenuItem(
-                            value: null,
-                            child: Text(l10n.qualityDialectAuto)),
-                        DropdownMenuItem(
-                            value: 'msa',
-                            child: Text(l10n.qualityDialectMsa)),
-                        DropdownMenuItem(
-                            value: 'egyptian',
-                            child: Text(l10n.qualityDialectEgyptian)),
-                        DropdownMenuItem(
-                            value: 'khaleeji',
-                            child: Text(l10n.qualityDialectKhaleeji)),
-                        DropdownMenuItem(
-                            value: 'levantine',
-                            child: Text(l10n.qualityDialectLevantine)),
-                        DropdownMenuItem(
-                            value: 'iraqi',
-                            child: Text(l10n.qualityDialectIraqi)),
-                      ],
-                      onChanged: (v) => setState(() => _dialect = v),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  // Style hint for Suno — user can edit freely.
-                  TextField(
-                    controller: _styleCtrl,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      labelText: l10n.newSongStyleHintLabel,
-                      hintText: l10n.newSongStyleHintHint,
-                      border: const OutlineInputBorder(),
-                      alignLabelWithHint: true,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Quality tier — premium runs best-of-N + AI A&R + master.
-                  Text(
-                    l10n.newSongQualityLabel,
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  SegmentedButton<String>(
-                    segments: [
-                      ButtonSegment(
-                        value: 'standard',
-                        label: Text(l10n.newSongQualityStandard),
-                      ),
-                      ButtonSegment(
-                        value: 'premium',
-                        label: Text(l10n.newSongQualityPremium),
-                      ),
-                    ],
-                    selected: {_qualityTier},
-                    onSelectionChanged: (s) =>
-                        setState(() => _qualityTier = s.first),
-                  ),
-                  if (_qualityTier == 'premium') ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      l10n.newSongQualityPremiumHint,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  // Suno model picker. Default V5_5 is the highest quality
-                  // at design time. V5 has a slightly different voice
-                  // character — useful for A/B testing. V4_5 is the older
-                  // fallback for users on the cheaper tier.
-                  DropdownButtonFormField<String?>(
-                    initialValue: _sunoModel,
-                    decoration: InputDecoration(
-                      labelText: l10n.newSongSunoModelLabel,
-                      helperText: l10n.newSongSunoModelHelper,
-                      border: const OutlineInputBorder(),
-                    ),
-                    items: [
-                      DropdownMenuItem(value: null,
-                          child: Text(l10n.newSongSunoModelDefault)),
-                      DropdownMenuItem(
-                          value: 'V5_5',
-                          child: Text(l10n.newSongSunoModelLatest)),
-                      const DropdownMenuItem(value: 'V5', child: Text('V5')),
-                      const DropdownMenuItem(
-                          value: 'V4_5', child: Text('V4_5')),
-                      DropdownMenuItem(
-                          value: 'V4',
-                          child: Text(l10n.newSongSunoModelLegacy)),
-                    ],
-                    onChanged: (v) => setState(() => _sunoModel = v),
-                  ),
-                  // Voice picker — only shows once user has saved at
-                  // least one persona. Default is "Auto" which lets
-                  // Suno pick.
-                  if (_personas.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String?>(
-                      initialValue: _personaId,
-                      decoration: InputDecoration(
-                        labelText: l10n.newSongVoiceLabel,
-                        helperText: l10n.newSongVoiceHelper,
-                        border: const OutlineInputBorder(),
-                      ),
-                      items: <DropdownMenuItem<String?>>[
-                        DropdownMenuItem(
-                          value: null,
-                          child: Text(l10n.newSongVoiceAuto),
-                        ),
-                        for (final p in _personas)
-                          DropdownMenuItem(
-                              value: p.id, child: Text(p.name)),
-                      ],
-                      onChanged: (v) => setState(() => _personaId = v),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                ],
-              ),
             ],
             const SizedBox(height: 16),
             // Vocal gender — defaults to Male to match the reference
@@ -667,6 +536,144 @@ class _NewSongScreenState extends State<NewSongScreen> {
               selected: {_videoMode},
               onSelectionChanged: (s) =>
                   setState(() => _videoMode = s.first),
+            ),
+            const SizedBox(height: 16),
+            // Advanced options — dialect, style hint, quality tier, Suno
+            // model, persona. Shared by both modes (each control keeps its
+            // original per-mode guard); collapsed by default unless a
+            // style is already prefilled (trend brief / artist default),
+            // so the user can see what was stamped.
+            ExpansionTile(
+              title: Text(l10n.advancedOptions),
+              initiallyExpanded: _styleCtrl.text.trim().isNotEmpty,
+              children: [
+                // Arabic dialect — only meaningful when the song is
+                // Arabic. null = Auto (server / LLM decides). Shared.
+                if (_language == 'ar') ...[
+                  DropdownButtonFormField<String?>(
+                    initialValue: _dialect,
+                    decoration: InputDecoration(
+                      labelText: l10n.qualityDialectLabel,
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: <DropdownMenuItem<String?>>[
+                      DropdownMenuItem(
+                          value: null, child: Text(l10n.qualityDialectAuto)),
+                      DropdownMenuItem(
+                          value: 'msa', child: Text(l10n.qualityDialectMsa)),
+                      DropdownMenuItem(
+                          value: 'egyptian',
+                          child: Text(l10n.qualityDialectEgyptian)),
+                      DropdownMenuItem(
+                          value: 'khaleeji',
+                          child: Text(l10n.qualityDialectKhaleeji)),
+                      DropdownMenuItem(
+                          value: 'levantine',
+                          child: Text(l10n.qualityDialectLevantine)),
+                      DropdownMenuItem(
+                          value: 'iraqi',
+                          child: Text(l10n.qualityDialectIraqi)),
+                    ],
+                    onChanged: (v) => setState(() => _dialect = v),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                // Style hint + quality tier — theme path only (upload/cover
+                // has its own "your touch" field and is always standard
+                // quality).
+                if (_createMode != 'upload') ...[
+                  TextField(
+                    controller: _styleCtrl,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: l10n.newSongStyleHintLabel,
+                      hintText: l10n.newSongStyleHintHint,
+                      border: const OutlineInputBorder(),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Quality tier — premium runs best-of-N + AI A&R + master.
+                  Text(
+                    l10n.newSongQualityLabel,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    segments: [
+                      ButtonSegment(
+                        value: 'standard',
+                        label: Text(l10n.newSongQualityStandard),
+                      ),
+                      ButtonSegment(
+                        value: 'premium',
+                        label: Text(l10n.newSongQualityPremium),
+                      ),
+                    ],
+                    selected: {_qualityTier},
+                    onSelectionChanged: (s) =>
+                        setState(() => _qualityTier = s.first),
+                  ),
+                  if (_qualityTier == 'premium') ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      l10n.newSongQualityPremiumHint,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                ],
+                // Suno model picker. Default V5_5 is the highest quality
+                // at design time. V5 has a slightly different voice
+                // character — useful for A/B testing. V4_5 is the older
+                // fallback for users on the cheaper tier. Shared.
+                DropdownButtonFormField<String?>(
+                  initialValue: _sunoModel,
+                  decoration: InputDecoration(
+                    labelText: l10n.newSongSunoModelLabel,
+                    helperText: l10n.newSongSunoModelHelper,
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: [
+                    DropdownMenuItem(value: null,
+                        child: Text(l10n.newSongSunoModelDefault)),
+                    DropdownMenuItem(
+                        value: 'V5_5',
+                        child: Text(l10n.newSongSunoModelLatest)),
+                    const DropdownMenuItem(value: 'V5', child: Text('V5')),
+                    const DropdownMenuItem(
+                        value: 'V4_5', child: Text('V4_5')),
+                    DropdownMenuItem(
+                        value: 'V4',
+                        child: Text(l10n.newSongSunoModelLegacy)),
+                  ],
+                  onChanged: (v) => setState(() => _sunoModel = v),
+                ),
+                // Voice picker — only shows once user has saved at least
+                // one persona. Default is "Auto" which lets Suno pick.
+                // Shared.
+                if (_personas.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String?>(
+                    initialValue: _personaId,
+                    decoration: InputDecoration(
+                      labelText: l10n.newSongVoiceLabel,
+                      helperText: l10n.newSongVoiceHelper,
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: <DropdownMenuItem<String?>>[
+                      DropdownMenuItem(
+                        value: null,
+                        child: Text(l10n.newSongVoiceAuto),
+                      ),
+                      for (final p in _personas)
+                        DropdownMenuItem(value: p.id, child: Text(p.name)),
+                    ],
+                    onChanged: (v) => setState(() => _personaId = v),
+                  ),
+                ],
+                const SizedBox(height: 8),
+              ],
             ),
             const SizedBox(height: 16),
             if (_error != null)
