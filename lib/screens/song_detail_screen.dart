@@ -12,6 +12,8 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/brand.dart';
+import '../widgets/perform_sheet.dart';
 
 class SongDetailScreen extends StatefulWidget {
   final FacelessApiClient client;
@@ -34,6 +36,14 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   bool _videoLoading = false;
   String? _videoError;
   bool _showControls = true;
+
+  // "Make me sing this" — separate inline player for perform.mp4 (a fixed
+  // 30s clip, so a lighter tap-to-toggle control surface than the main
+  // song player's scrubber).
+  VideoPlayerController? _performVideoController;
+  bool _performVideoLoading = false;
+  String? _performVideoError;
+  bool _performPolling = false;
 
   static const _terminalStatuses = {'complete', 'failed', 'canceled'};
 
@@ -65,6 +75,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       final s = await widget.client.getSong(widget.runId);
       if (!mounted) return;
       setState(() => _summary = s);
+      if (s.performStatus == 'rendering') _pollPerformStatus();
       if (_terminalStatuses.contains(s.status)) {
         setState(() => _polling = false);
         return;
@@ -127,6 +138,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               event['perform_video'] as String? ?? summary.performVideo,
         );
         setState(() => _summary = merged);
+        if (merged.performStatus == 'rendering') _pollPerformStatus();
         if (_terminalStatuses.contains(merged.status)) {
           setState(() => _polling = false);
         }
@@ -140,7 +152,9 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
         // pull fields the SSE didn't carry (e.g. hasVideo path-existence).
         if (!mounted) return;
         widget.client.getSong(widget.runId).then((s) {
-          if (mounted) setState(() => _summary = s);
+          if (!mounted) return;
+          setState(() => _summary = s);
+          if (s.performStatus == 'rendering') _pollPerformStatus();
         }).catchError((_) {});
       },
     );
@@ -248,6 +262,129 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.l10n.songDetailRetryFailed('$e'))),
       );
+    }
+  }
+
+  // ─── "make me sing this" ────────────────────────────────────────────────────
+
+  Future<void> _openPerformSheet() async {
+    final status = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => PerformSheet(client: widget.client, runId: widget.runId),
+    );
+    if (status == null || !mounted) return;
+    _mergePerformStatus(status, video: null);
+    if (status == 'rendering') _pollPerformStatus();
+  }
+
+  /// Patch just the perform fields into the current snapshot so the UI
+  /// reflects the render kicking off without waiting for a full refetch.
+  void _mergePerformStatus(String status, {String? video}) {
+    final s = _summary;
+    if (s == null) return;
+    setState(() {
+      _summary = SongSummary(
+        id: s.id,
+        status: s.status,
+        title: s.title,
+        theme: s.theme,
+        createdAt: s.createdAt,
+        hasVideo: s.hasVideo,
+        chosenTake: s.chosenTake,
+        lastError: s.lastError,
+        failureStage: s.failureStage,
+        watermarked: s.watermarked,
+        videoMode: s.videoMode,
+        artistId: s.artistId,
+        artistName: s.artistName,
+        released: s.released,
+        youtubeUrl: s.youtubeUrl,
+        source: s.source,
+        trendRationale: s.trendRationale,
+        performStatus: status,
+        performVideo: video ?? s.performVideo,
+      );
+    });
+  }
+
+  /// Slow poll for `performStatus` specifically. The main [_poll]/SSE
+  /// machinery is tied to the song's own lifecycle and stops once
+  /// `status` is terminal (already "complete" by the time this feature is
+  /// reachable) — so once a render is kicked off we re-fetch the same
+  /// [FacelessApiClient.getSong] snapshot on a timer until it resolves.
+  Future<void> _pollPerformStatus() async {
+    if (_performPolling) return; // already looping
+    _performPolling = true;
+    try {
+      while (mounted && _summary?.performStatus == 'rendering') {
+        await Future.delayed(const Duration(seconds: 4));
+        if (!mounted) return;
+        try {
+          final s = await widget.client.getSong(widget.runId);
+          if (mounted) setState(() => _summary = s);
+        } catch (_) {
+          // Tolerate transient errors; the loop retries.
+        }
+      }
+    } finally {
+      _performPolling = false;
+    }
+  }
+
+  Future<void> _initPerformVideo() async {
+    setState(() {
+      _performVideoLoading = true;
+      _performVideoError = null;
+    });
+    final old = _performVideoController;
+    _performVideoController = null;
+    old?.removeListener(_onPerformVideoTick);
+    await old?.dispose();
+
+    try {
+      final url = await widget.client.performVideoUrl(widget.runId);
+      final c = VideoPlayerController.networkUrl(url);
+      await c.initialize();
+      c.setLooping(false);
+      c.addListener(_onPerformVideoTick);
+      if (!mounted) {
+        await c.dispose();
+        return;
+      }
+      setState(() {
+        _performVideoController = c;
+        _performVideoLoading = false;
+      });
+      c.play();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _performVideoLoading = false;
+        _performVideoError = e.toString();
+      });
+    }
+  }
+
+  void _onPerformVideoTick() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  /// Save/share affordance for perform.mp4 — same authed-URL hand-off as
+  /// [_downloadVideo].
+  Future<void> _openPerformVideoExternally() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final uri = await widget.client.performVideoUrl(widget.runId);
+      await launchUrl(uri, webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(context.l10n.songDetailDownloadFailed('$e'))),
+        );
+      }
     }
   }
 
@@ -817,6 +954,10 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
         artistName: s.artistName,
         released: s.released,
         youtubeUrl: url,
+        source: s.source,
+        trendRationale: s.trendRationale,
+        performStatus: s.performStatus,
+        performVideo: s.performVideo,
       );
     });
   }
@@ -1111,6 +1252,10 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            // "Make me sing this" — photo → lip-synced performance video
+            // of the hook (~$2.40, charged on approve).
+            _buildPerformSection(context, s),
             const SizedBox(height: 8),
             // Save this song's voice as a Persona for reuse in
             // future songs. Closest thing Suno offers to voice
@@ -1452,6 +1597,151 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     );
   }
 
+  // ─── "make me sing this" ────────────────────────────────────────────────────
+
+  Widget _buildPerformSection(BuildContext context, SongSummary s) {
+    switch (s.performStatus) {
+      case 'rendering':
+        return GlassCard(
+          padding: const EdgeInsets.all(14),
+          child: const Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Rendering your performance video — this can take a '
+                  'few minutes…',
+                ),
+              ),
+            ],
+          ),
+        );
+      case 'complete':
+        return GlassCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '✨ Your performance video',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+              _buildPerformVideoSection(context),
+            ],
+          ),
+        );
+      case 'failed':
+        return GlassCard(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Performance video failed to render.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try again'),
+                onPressed: _openPerformSheet,
+              ),
+            ],
+          ),
+        );
+      default:
+        // Never started — offer the feature.
+        return OutlinedButton.icon(
+          icon: const Icon(Icons.auto_awesome),
+          label: const Text('✨ Make me sing this'),
+          onPressed: _openPerformSheet,
+        );
+    }
+  }
+
+  Widget _buildPerformVideoSection(BuildContext context) {
+    final c = _performVideoController;
+
+    if (c == null && !_performVideoLoading && _performVideoError == null) {
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Play performance'),
+              onPressed: _initPerformVideo,
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.ios_share),
+            label: const Text('Save / share'),
+            onPressed: _openPerformVideoExternally,
+          ),
+        ],
+      );
+    }
+
+    if (_performVideoLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_performVideoError != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.l10n.songDetailVideoLoadError(_performVideoError!),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.refresh),
+            label: Text(context.l10n.commonRetry),
+            onPressed: _initPerformVideo,
+          ),
+        ],
+      );
+    }
+
+    if (c == null) return const SizedBox.shrink();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: GestureDetector(
+        onTap: () => setState(() {
+          c.value.isPlaying ? c.pause() : c.play();
+        }),
+        child: AspectRatio(
+          aspectRatio: c.value.aspectRatio,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              VideoPlayer(c),
+              if (!c.value.isPlaying)
+                const Icon(Icons.play_circle_filled,
+                    size: 64, color: Colors.white70),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ─── take swap ──────────────────────────────────────────────────────────────
 
   Widget _buildTakeSwapCard(BuildContext context, SongSummary s) {
@@ -1558,9 +1848,12 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   @override
   void dispose() {
     _polling = false;
+    _performPolling = false;
     _eventsSub?.cancel();
     _videoController?.removeListener(_onVideoTick);
     _videoController?.dispose();
+    _performVideoController?.removeListener(_onPerformVideoTick);
+    _performVideoController?.dispose();
     super.dispose();
   }
 }
