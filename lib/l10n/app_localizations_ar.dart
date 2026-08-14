@@ -412,27 +412,6 @@ class AppLocalizationsAr extends AppLocalizations {
   String get newSongCustomLyricsHint => 'اتركه فارغًا ليكتبها الذكاء الاصطناعي';
 
   @override
-  String get newSongQuickStyles => 'أنماط سريعة';
-
-  @override
-  String get newSongPresetRomanticArabic => 'عربي رومانسي (مرجعي)';
-
-  @override
-  String get newSongPresetSadArabicBallad => 'أغنية عربية حزينة';
-
-  @override
-  String get newSongPresetKhaleejiRomantic => 'خليجي رومانسي';
-
-  @override
-  String get newSongPresetUpbeatArabicPop => 'بوب عربي حيوي';
-
-  @override
-  String get newSongPresetAcousticSlow => 'أكوستيك هادئ';
-
-  @override
-  String get newSongPresetEnglishPopBallad => 'بوب إنجليزي عاطفي';
-
-  @override
   String get newSongStyleHintLabel => 'وصف الأسلوب';
 
   @override

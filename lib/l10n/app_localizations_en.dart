@@ -414,27 +414,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newSongCustomLyricsHint => 'Leave empty for AI';
 
   @override
-  String get newSongQuickStyles => 'Quick styles';
-
-  @override
-  String get newSongPresetRomanticArabic => 'Romantic Arabic (reference)';
-
-  @override
-  String get newSongPresetSadArabicBallad => 'Sad Arabic Ballad';
-
-  @override
-  String get newSongPresetKhaleejiRomantic => 'Khaleeji Romantic';
-
-  @override
-  String get newSongPresetUpbeatArabicPop => 'Upbeat Arabic Pop';
-
-  @override
-  String get newSongPresetAcousticSlow => 'Acoustic Slow';
-
-  @override
-  String get newSongPresetEnglishPopBallad => 'English Pop Ballad';
-
-  @override
   String get newSongStyleHintLabel => 'Style hint';
 
   @override

@@ -842,48 +842,6 @@ abstract class AppLocalizations {
   /// **'Leave empty for AI'**
   String get newSongCustomLyricsHint;
 
-  /// No description provided for @newSongQuickStyles.
-  ///
-  /// In en, this message translates to:
-  /// **'Quick styles'**
-  String get newSongQuickStyles;
-
-  /// No description provided for @newSongPresetRomanticArabic.
-  ///
-  /// In en, this message translates to:
-  /// **'Romantic Arabic (reference)'**
-  String get newSongPresetRomanticArabic;
-
-  /// No description provided for @newSongPresetSadArabicBallad.
-  ///
-  /// In en, this message translates to:
-  /// **'Sad Arabic Ballad'**
-  String get newSongPresetSadArabicBallad;
-
-  /// No description provided for @newSongPresetKhaleejiRomantic.
-  ///
-  /// In en, this message translates to:
-  /// **'Khaleeji Romantic'**
-  String get newSongPresetKhaleejiRomantic;
-
-  /// No description provided for @newSongPresetUpbeatArabicPop.
-  ///
-  /// In en, this message translates to:
-  /// **'Upbeat Arabic Pop'**
-  String get newSongPresetUpbeatArabicPop;
-
-  /// No description provided for @newSongPresetAcousticSlow.
-  ///
-  /// In en, this message translates to:
-  /// **'Acoustic Slow'**
-  String get newSongPresetAcousticSlow;
-
-  /// No description provided for @newSongPresetEnglishPopBallad.
-  ///
-  /// In en, this message translates to:
-  /// **'English Pop Ballad'**
-  String get newSongPresetEnglishPopBallad;
-
   /// No description provided for @newSongStyleHintLabel.
   ///
   /// In en, this message translates to:

@@ -488,6 +488,8 @@ class _NewSongScreenState extends State<NewSongScreen> {
               // Genre grid — Auto (null) lets the lyrics/style LLM infer.
               Text(l10n.genrePickerLabel,
                   style: Theme.of(context).textTheme.labelLarge),
+              Text(l10n.genrePickerHint,
+                  style: const TextStyle(fontSize: 12, color: FacelessTheme.faint)),
               const SizedBox(height: 8),
               GenreGrid(
                 selectedKey: _genreKey,

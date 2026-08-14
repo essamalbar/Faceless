@@ -73,7 +73,28 @@ class _TileShell extends StatelessWidget {
             width: selected ? 2.5 : 1,
           ),
         ),
-        child: child,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            child,
+            // Selected-state check badge (spec §5.2: green ring + check).
+            if (selected)
+              Positioned.directional(
+                textDirection: Directionality.of(context),
+                top: -6,
+                end: -6,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: const BoxDecoration(
+                    color: FacelessTheme.accent,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check, size: 12, color: Colors.white),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -96,6 +117,8 @@ class _AutoTile extends StatelessWidget {
           children: [
             const Text('✨', style: TextStyle(fontSize: 16)),
             Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                     fontWeight: FontWeight.w600, fontSize: 12, color: FacelessTheme.accent)),
           ],
@@ -130,6 +153,8 @@ class _GenreTile extends StatelessWidget {
           children: [
             Text(genre.emoji, style: const TextStyle(fontSize: 16)),
             Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                     fontWeight: FontWeight.w600, fontSize: 12, color: Color(0xFF3A2F36))),
           ],
