@@ -722,6 +722,41 @@ class FacelessApiClient {
     return _parse(r, (j) => (j as Map<String, dynamic>)['run_id'] as String);
   }
 
+  /// "Make me sing this": submit a photo to render a fixed 30-second
+  /// lip-synced performance video of the song's hook (Kie Kling AI Avatar).
+  /// Multipart POST — mirrors [uploadCoverSong]'s shape: same auth headers,
+  /// `file` field for the photo bytes, `ownership_attested` as a string
+  /// field. Returns the run's status from the JSON ack (e.g. "rendering").
+  Future<String> performSong({
+    required String runId,
+    required List<int> photoBytes,
+    required String filename,
+    required bool ownershipAttested,
+  }) async {
+    final req =
+        http.MultipartRequest('POST', await _uri('/songs/$runId/perform'));
+    req.headers.addAll(await _headers()); // Authorization + Accept (no Content-Type)
+    req.fields['ownership_attested'] = ownershipAttested.toString();
+    req.files.add(http.MultipartFile.fromBytes('file', photoBytes, filename: filename));
+    final r = await http.Response.fromStream(await _http.send(req));
+    return _parse(r, (j) => (j as Map<String, dynamic>)['status'] as String? ?? '');
+  }
+
+  /// Authed URL for the rendered "Make me sing this" video (perform.mp4).
+  /// Token in the QUERY STRING — same browser-header-restriction workaround
+  /// as [songVideoUrl] (a `<video>` element can't attach Authorization
+  /// headers), so this streams straight into VideoPlayerController.networkUrl.
+  Future<Uri> performVideoUrl(String runId) async {
+    final base = await _settings.baseUrl();
+    final token = await _resolveToken();
+    if (base == null || token == null) {
+      throw FacelessApiException('Not configured');
+    }
+    return Uri.parse(
+      '${_stripTrailing(base)}/songs/$runId/perform-video?token=$token',
+    );
+  }
+
   /// Trend Engine: timely song briefs (cached server-side; refresh forces
   /// new ideas).
   Future<List<TrendBrief>> trendBriefs({bool refresh = false, String language = 'ar'}) async {

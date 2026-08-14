@@ -119,6 +119,12 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           artistName: summary.artistName,
           released: summary.released,
           youtubeUrl: summary.youtubeUrl,
+          // "Make me sing this" — read from the event if the backend starts
+          // pushing it over SSE, else keep whatever the last snapshot had.
+          performStatus:
+              event['perform_status'] as String? ?? summary.performStatus,
+          performVideo:
+              event['perform_video'] as String? ?? summary.performVideo,
         );
         setState(() => _summary = merged);
         if (_terminalStatuses.contains(merged.status)) {
@@ -653,6 +659,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             artistName: s.artistName,
             released: confirmed,
             youtubeUrl: s.youtubeUrl,
+            performStatus: s.performStatus,
+            performVideo: s.performVideo,
           );
         });
       }

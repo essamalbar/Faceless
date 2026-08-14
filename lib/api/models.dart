@@ -341,6 +341,12 @@ class SongSummary {
   // YouTube publish: watch URL once the song was uploaded (manually or
   // via artist auto-publish). Null = not on YouTube yet.
   final String? youtubeUrl;
+  // "Make me sing this" (photo → lip-synced performance video): null when
+  // never started, else e.g. "rendering" / "complete" / "failed".
+  final String? performStatus;
+  // Filename of the rendered performance clip (e.g. "perform.mp4") once
+  // performStatus == "complete". Null otherwise.
+  final String? performVideo;
 
   SongSummary({
     required this.id,
@@ -360,6 +366,8 @@ class SongSummary {
     this.youtubeUrl,
     this.source,
     this.trendRationale,
+    this.performStatus,
+    this.performVideo,
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -380,6 +388,8 @@ class SongSummary {
         youtubeUrl: j['youtube_url'] as String?,
         source: j['source'] as String?,
         trendRationale: j['trend_rationale'] as String?,
+        performStatus: j['perform_status'] as String?,
+        performVideo: j['perform_video'] as String?,
       );
 }
 
