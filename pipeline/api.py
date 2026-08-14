@@ -620,6 +620,10 @@ class SongRunSummary(BaseModel):
     # produced file name once complete. Drives the perform sheet + result UI.
     perform_status: str | None = None
     perform_video: str | None = None
+    # Fixed credit price of a perform render (config perform_credits_per_video),
+    # surfaced so the UI shows the real charge, never a hardcoded figure that
+    # drifts from config (review finding 4).
+    perform_credits: int | None = None
 
 
 class RunProgress(BaseModel):
@@ -4146,6 +4150,10 @@ def get_song(run_id: str, user: User = Depends(require_user)):
     state = _read_state(run_dir)
     if state.get("kind") != "song":
         raise HTTPException(404, "not a song run")
+    # The fixed perform price (config) so the UI shows the real charge (finding 4).
+    from pipeline.config import load_config
+    perform_credits = int(load_config(Path(os.environ.get(
+        "FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))).perform_credits_per_video)
     return SongRunSummary(
         id=run_id,
         status=state.get("status", "unknown"),
@@ -4167,6 +4175,7 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         trend_rationale=state.get("trend_rationale"),
         perform_status=state.get("perform_status"),
         perform_video=state.get("perform_video"),
+        perform_credits=perform_credits,
     )
 
 

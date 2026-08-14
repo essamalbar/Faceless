@@ -21,12 +21,16 @@ typedef ImagePickerFn = Future<XFile?> Function(ImageSource source);
 class PerformSheet extends StatefulWidget {
   final FacelessApiClient client;
   final String runId;
+  // Credits actually charged for the render (from the backend config), shown
+  // on the cost card so the disclosed price can't drift from what's charged.
+  final int performCredits;
   final ImagePickerFn? pickImage;
 
   const PerformSheet({
     super.key,
     required this.client,
     required this.runId,
+    this.performCredits = 3,
     this.pickImage,
   });
 
@@ -227,14 +231,16 @@ class _PerformSheetState extends State<PerformSheet> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: FacelessTheme.border),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.bolt, size: 18, color: FacelessTheme.accent),
-                      SizedBox(width: 8),
+                      const Icon(Icons.bolt, size: 18, color: FacelessTheme.accent),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '30-second hook video · ~\$2.40 · charged on approve.',
-                          style: TextStyle(
+                          '30-second hook video · ${widget.performCredits} '
+                          '${widget.performCredits == 1 ? "credit" : "credits"}'
+                          ' · charged on approve',
+                          style: const TextStyle(
                             fontSize: 12.5,
                             color: FacelessTheme.textSecondary,
                           ),

@@ -83,4 +83,21 @@ void main() {
 
     expect(_approveButton(tester).onPressed, isNull);
   });
+
+  testWidgets('cost card shows the real credit price, not a hardcoded figure',
+      (tester) async {
+    // Finding 4: the disclosed price must equal what's charged
+    // (perform_credits from the backend), never a stale hardcoded string.
+    final client = FacelessApiClient(_FixedSettings());
+    await tester.pumpWidget(_host(PerformSheet(
+      client: client,
+      runId: 'run-1',
+      performCredits: 7,
+      pickImage: (source) async => null,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('7 credits'), findsOneWidget);
+    expect(find.textContaining(r'$2.40'), findsNothing);
+  });
 }

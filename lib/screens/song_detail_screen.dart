@@ -258,7 +258,11 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => PerformSheet(client: widget.client, runId: widget.runId),
+      builder: (_) => PerformSheet(
+        client: widget.client,
+        runId: widget.runId,
+        performCredits: _summary?.performCredits ?? 3,
+      ),
     );
     if (status == null || !mounted) return;
     _mergePerformStatus(status, video: null);
