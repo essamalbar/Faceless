@@ -391,6 +391,57 @@ class SongSummary {
         performStatus: j['perform_status'] as String?,
         performVideo: j['perform_video'] as String?,
       );
+
+  /// Returns a copy with the given fields overridden and ALL others preserved.
+  /// Use this for local-state stamps (release toggle, YouTube publish, perform
+  /// status) instead of hand-rebuilding the object — a manual reconstruction
+  /// silently drops any field it forgets to copy (this bit source/trendRationale
+  /// before). Note: this preserves-or-overrides; it can't set a field back to
+  /// null. That's fine for every current caller (perform video is only read
+  /// when performStatus == "complete", so a stale value during rendering/failed
+  /// is never shown).
+  SongSummary copyWith({
+    String? id,
+    String? status,
+    String? title,
+    String? theme,
+    String? createdAt,
+    bool? hasVideo,
+    int? chosenTake,
+    String? lastError,
+    String? failureStage,
+    bool? watermarked,
+    String? videoMode,
+    String? artistId,
+    String? artistName,
+    bool? released,
+    String? youtubeUrl,
+    String? source,
+    String? trendRationale,
+    String? performStatus,
+    String? performVideo,
+  }) =>
+      SongSummary(
+        id: id ?? this.id,
+        status: status ?? this.status,
+        title: title ?? this.title,
+        theme: theme ?? this.theme,
+        createdAt: createdAt ?? this.createdAt,
+        hasVideo: hasVideo ?? this.hasVideo,
+        chosenTake: chosenTake ?? this.chosenTake,
+        lastError: lastError ?? this.lastError,
+        failureStage: failureStage ?? this.failureStage,
+        watermarked: watermarked ?? this.watermarked,
+        videoMode: videoMode ?? this.videoMode,
+        artistId: artistId ?? this.artistId,
+        artistName: artistName ?? this.artistName,
+        released: released ?? this.released,
+        youtubeUrl: youtubeUrl ?? this.youtubeUrl,
+        source: source ?? this.source,
+        trendRationale: trendRationale ?? this.trendRationale,
+        performStatus: performStatus ?? this.performStatus,
+        performVideo: performVideo ?? this.performVideo,
+      );
 }
 
 /// Artist Core: a virtual artist — identity wrapper around a persona voice.

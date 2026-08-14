@@ -110,32 +110,18 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           return;
         }
         // Merge event fields into the current summary
-        final merged = SongSummary(
-          id: summary.id,
-          status: (event['status'] as String?) ?? summary.status,
-          title: summary.title,
-          theme: summary.theme,
-          createdAt: summary.createdAt,
-          hasVideo: summary.hasVideo
-              || (event['status'] == 'complete'),
-          chosenTake: (event['chosen_take'] as int?) ?? summary.chosenTake,
-          lastError: event['last_error'] as String? ?? summary.lastError,
-          failureStage:
-              event['failure_stage'] as String? ?? summary.failureStage,
-          // Fields the SSE events never carry — keep the snapshot values
-          // so merges don't silently reset them to their defaults.
-          watermarked: summary.watermarked,
-          videoMode: summary.videoMode,
-          artistId: summary.artistId,
-          artistName: summary.artistName,
-          released: summary.released,
-          youtubeUrl: summary.youtubeUrl,
-          // "Make me sing this" — read from the event if the backend starts
-          // pushing it over SSE, else keep whatever the last snapshot had.
-          performStatus:
-              event['perform_status'] as String? ?? summary.performStatus,
-          performVideo:
-              event['perform_video'] as String? ?? summary.performVideo,
+        // copyWith overrides only what the SSE event carries; every other
+        // field (title/theme/artist/released/youtube/source/trendRationale…)
+        // is preserved automatically — a hand-rebuild here used to silently
+        // drop source/trendRationale.
+        final merged = summary.copyWith(
+          status: event['status'] as String?,
+          hasVideo: summary.hasVideo || (event['status'] == 'complete'),
+          chosenTake: event['chosen_take'] as int?,
+          lastError: event['last_error'] as String?,
+          failureStage: event['failure_stage'] as String?,
+          performStatus: event['perform_status'] as String?,
+          performVideo: event['perform_video'] as String?,
         );
         setState(() => _summary = merged);
         if (merged.performStatus == 'rendering') _pollPerformStatus();
@@ -285,27 +271,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final s = _summary;
     if (s == null) return;
     setState(() {
-      _summary = SongSummary(
-        id: s.id,
-        status: s.status,
-        title: s.title,
-        theme: s.theme,
-        createdAt: s.createdAt,
-        hasVideo: s.hasVideo,
-        chosenTake: s.chosenTake,
-        lastError: s.lastError,
-        failureStage: s.failureStage,
-        watermarked: s.watermarked,
-        videoMode: s.videoMode,
-        artistId: s.artistId,
-        artistName: s.artistName,
-        released: s.released,
-        youtubeUrl: s.youtubeUrl,
-        source: s.source,
-        trendRationale: s.trendRationale,
-        performStatus: status,
-        performVideo: video ?? s.performVideo,
-      );
+      _summary = s.copyWith(performStatus: status, performVideo: video);
     });
   }
 
@@ -780,25 +746,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       final s = _summary;
       if (s != null) {
         setState(() {
-          _summary = SongSummary(
-            id: s.id,
-            status: s.status,
-            title: s.title,
-            theme: s.theme,
-            createdAt: s.createdAt,
-            hasVideo: s.hasVideo,
-            chosenTake: s.chosenTake,
-            lastError: s.lastError,
-            failureStage: s.failureStage,
-            watermarked: s.watermarked,
-            videoMode: s.videoMode,
-            artistId: s.artistId,
-            artistName: s.artistName,
-            released: confirmed,
-            youtubeUrl: s.youtubeUrl,
-            performStatus: s.performStatus,
-            performVideo: s.performVideo,
-          );
+          _summary = s.copyWith(released: confirmed);
         });
       }
       setDialogState(() => setBusy(false));
@@ -938,27 +886,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final s = _summary;
     if (s == null) return;
     setState(() {
-      _summary = SongSummary(
-        id: s.id,
-        status: s.status,
-        title: s.title,
-        theme: s.theme,
-        createdAt: s.createdAt,
-        hasVideo: s.hasVideo,
-        chosenTake: s.chosenTake,
-        lastError: s.lastError,
-        failureStage: s.failureStage,
-        watermarked: s.watermarked,
-        videoMode: s.videoMode,
-        artistId: s.artistId,
-        artistName: s.artistName,
-        released: s.released,
-        youtubeUrl: url,
-        source: s.source,
-        trendRationale: s.trendRationale,
-        performStatus: s.performStatus,
-        performVideo: s.performVideo,
-      );
+      _summary = s.copyWith(youtubeUrl: url);
     });
   }
 
