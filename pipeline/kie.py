@@ -254,6 +254,28 @@ class KieClient:
             raise KieError(f"unified submit response missing taskId: {resp}")
         return str(task_id)
 
+    def submit_avatar_job(
+        self,
+        *,
+        image_url: str,
+        audio_url: str,
+        model: str,
+    ) -> str:
+        """Submit an audio-driven talking/singing avatar job (Kling AI Avatar)
+        via the unified /jobs/createTask endpoint: one portrait `image_url` + an
+        `audio_url` (the song hook) → a lip-synced singing video. Poll the result
+        with `wait_for_unified_video` (same recordInfo/resultUrls shape)."""
+        body = {
+            "model": model,
+            "input": {"image_url": image_url, "audio_url": audio_url},
+        }
+        resp = self._post_json(JOBS_CREATETASK_PATH, body)
+        data = resp.get("data") or {}
+        task_id = data.get("taskId") or resp.get("taskId")
+        if not task_id:
+            raise KieError(f"avatar submit response missing taskId: {resp}")
+        return str(task_id)
+
     def wait_for_unified_video(
         self, task_id: str, poll_interval_s: int = 5, timeout_s: int = 600,
     ) -> str:
