@@ -624,6 +624,9 @@ class SongRunSummary(BaseModel):
     # surfaced so the UI shows the real charge, never a hardcoded figure that
     # drifts from config (review finding 4).
     perform_credits: int | None = None
+    # Whether "Make me sing this" is enabled — the app hides the button when
+    # false (feature ships OFF until its money guard + Kie id land).
+    perform_enabled: bool = False
 
 
 class RunProgress(BaseModel):
@@ -4150,10 +4153,6 @@ def get_song(run_id: str, user: User = Depends(require_user)):
     state = _read_state(run_dir)
     if state.get("kind") != "song":
         raise HTTPException(404, "not a song run")
-    # The fixed perform price (config) so the UI shows the real charge (finding 4).
-    from pipeline.config import load_config
-    perform_credits = int(load_config(Path(os.environ.get(
-        "FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))).perform_credits_per_video)
     return SongRunSummary(
         id=run_id,
         status=state.get("status", "unknown"),
@@ -4175,7 +4174,8 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         trend_rationale=state.get("trend_rationale"),
         perform_status=state.get("perform_status"),
         perform_video=state.get("perform_video"),
-        perform_credits=perform_credits,
+        perform_credits=_perform_credits(),
+        perform_enabled=_perform_enabled(),
     )
 
 
@@ -4940,6 +4940,40 @@ def get_song_video(
 # ---------------------------------------------------------------------------
 
 
+# --- perform feature flag + cached config -----------------------------------
+# Caches the parsed config so get_song (polled frequently) doesn't re-read+parse
+# config.yaml on every call (review re-finding 4). Keyed on the config path so
+# a test pointing FACELESS_CONFIG elsewhere still loads fresh.
+_CONFIG_CACHE: dict = {}
+
+
+def _config_path() -> str:
+    return os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml"))
+
+
+def _cached_config_for(path: str):
+    cfg = _CONFIG_CACHE.get(path)
+    if cfg is None:
+        from pipeline.config import load_config
+        cfg = load_config(Path(path))
+        _CONFIG_CACHE[path] = cfg
+    return cfg
+
+
+def _perform_credits() -> int:
+    return int(_cached_config_for(_config_path()).perform_credits_per_video)
+
+
+def _perform_enabled() -> bool:
+    """Whether "Make me sing this" is available. OFF by default until its DB
+    double-charge guard + a real Kie avatar_model id are in place; the
+    FACELESS_PERFORM_ENABLED env var overrides config (used by tests)."""
+    env = os.environ.get("FACELESS_PERFORM_ENABLED")
+    if env is not None:
+        return env.strip().lower() in ("1", "true", "yes", "on")
+    return bool(getattr(_cached_config_for(_config_path()), "perform_enabled", False))
+
+
 @app.post("/songs/{run_id}/perform")
 def perform_song(
     run_id: str,
@@ -4952,6 +4986,8 @@ def perform_song(
     Avatar). Charge is scoped to a per-attempt reference id so a failed render
     (auto-refunded on the next poll) never claws back the delivered song, and
     supports "Redo" without over-refunding a prior successful render."""
+    if not _perform_enabled():
+        raise HTTPException(403, detail={"code": "perform_disabled"})
     _require_terms_accepted(user)
     _require_email_confirmed(user)
     import pipeline.credits as _credits

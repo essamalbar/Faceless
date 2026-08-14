@@ -126,6 +126,10 @@ class Config:
     # reads straight off config.yaml. Defaulted so older configs keep loading.
     perform_credits_per_video: int = 3
     perform_hook_seconds: int = 30
+    # "Make me sing this" ships OFF until its DB double-charge guard + a real
+    # Kie avatar_model id are in place. Enable via config.yaml or the
+    # FACELESS_PERFORM_ENABLED=1 env override.
+    perform_enabled: bool = False
 
 
 def load_config(path: Path) -> Config:

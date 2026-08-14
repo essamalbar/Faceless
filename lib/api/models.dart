@@ -350,6 +350,9 @@ class SongSummary {
   // Fixed credit price of a perform render (from backend config), so the UI
   // shows the real charge instead of a hardcoded figure.
   final int? performCredits;
+  // Whether "Make me sing this" is enabled (backend flag). The button is
+  // hidden when false — the feature ships off until its money guard + Kie id.
+  final bool performEnabled;
 
   SongSummary({
     required this.id,
@@ -372,6 +375,7 @@ class SongSummary {
     this.performStatus,
     this.performVideo,
     this.performCredits,
+    this.performEnabled = false,
   });
 
   factory SongSummary.fromJson(Map<String, dynamic> j) => SongSummary(
@@ -395,6 +399,7 @@ class SongSummary {
         performStatus: j['perform_status'] as String?,
         performVideo: j['perform_video'] as String?,
         performCredits: j['perform_credits'] as int?,
+        performEnabled: (j['perform_enabled'] as bool?) ?? false,
       );
 
   /// Returns a copy with the given fields overridden and ALL others preserved.
@@ -426,6 +431,7 @@ class SongSummary {
     String? performStatus,
     String? performVideo,
     int? performCredits,
+    bool? performEnabled,
   }) =>
       SongSummary(
         id: id ?? this.id,
@@ -448,6 +454,7 @@ class SongSummary {
         performStatus: performStatus ?? this.performStatus,
         performVideo: performVideo ?? this.performVideo,
         performCredits: performCredits ?? this.performCredits,
+        performEnabled: performEnabled ?? this.performEnabled,
       );
 }
 

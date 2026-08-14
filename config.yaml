@@ -130,3 +130,4 @@ song:
 # and fixed hook length. Model id lives under kie.avatar_model above.
 perform_credits_per_video: 3     # ~$2.40 Kie spend (30s x ~$0.08/s) — matches cinematic tier
 perform_hook_seconds: 30         # length of the highest-energy hook we render
+perform_enabled: false           # OFF until the DB double-charge guard + real Kie avatar_model id are set

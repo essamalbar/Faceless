@@ -1184,10 +1184,12 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            // "Make me sing this" — photo → lip-synced performance video
-            // of the hook (~$2.40, charged on approve).
-            _buildPerformSection(context, s),
+            // "Make me sing this" — hidden unless the backend enables the
+            // feature (perform_enabled); its money guard + Kie id land first.
+            if (s.performEnabled) ...[
+              const SizedBox(height: 8),
+              _buildPerformSection(context, s),
+            ],
             const SizedBox(height: 8),
             // Save this song's voice as a Persona for reuse in
             // future songs. Closest thing Suno offers to voice

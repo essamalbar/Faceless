@@ -16,6 +16,9 @@ def app(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("FACELESS_API_TOKEN", token)
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path / "out"))
     monkeypatch.setenv("KIE_API_KEY", "stub")
+    # "Make me sing this" ships OFF by default; enable it for the tests that
+    # exercise it (a dedicated test covers the disabled → 403 path).
+    monkeypatch.setenv("FACELESS_PERFORM_ENABLED", "1")
     from pipeline import api as api_mod
     api_mod.set_spawn_fn(lambda args, run_dir: 999999)
     canned = json.dumps({
@@ -2106,3 +2109,18 @@ def test_run_perform_worker_passes_generous_render_timeout(tmp_path, monkeypatch
     rc = run_mod._run_perform(argparse.Namespace(resume=str(run_dir)))
     assert rc == 0
     assert seen.get("timeout_s", 0) >= 1800, seen
+
+
+def test_perform_disabled_returns_403(app, monkeypatch):
+    # Feature flag OFF (config default) → the endpoint refuses before any work.
+    monkeypatch.delenv("FACELESS_PERFORM_ENABLED", raising=False)
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    r = client.post(
+        "/songs/any-run/perform",
+        files={"file": ("p.jpg", b"x", "image/jpeg")},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"]["code"] == "perform_disabled"
