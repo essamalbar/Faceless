@@ -78,7 +78,11 @@ def render_avatar(
     model: str,
     out_path: Path,
     poll_interval_s: int = 5,
-    timeout_s: int = 600,
+    # Generous default: a timeout here fails the worker and triggers an
+    # auto-refund, but the Kie job may still complete and bill — so waiting too
+    # short means real Kie spend with no credit charged. _run_perform passes an
+    # explicit 1800s; keep this default comfortably above a queued avatar render.
+    timeout_s: int = 1800,
 ) -> Path:
     """Submit the avatar job (photo + hook audio), wait for the render, and
     download the mp4 to `out_path`. `client` is a KieClient (or a stub)."""

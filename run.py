@@ -1654,6 +1654,13 @@ def _run_perform(args) -> int:
             audio_url=audio_url,
             model=cfg.kie.avatar_model,
             out_path=run_dir / "perform.mp4",
+            # Money-safety tradeoff: if we time out waiting, this worker fails
+            # and the API auto-refunds the perform charge — but the Kie job may
+            # still finish and bill, so a too-tight timeout means real Kie spend
+            # with no credit charged. A 30s Kling avatar renders in well under a
+            # minute, but the job can queue for many minutes under load, so we
+            # wait generously (30 min) to keep timeout-then-still-billed rare.
+            timeout_s=1800,
         )
         write_state(perform_status="complete", perform_video="perform.mp4")
         return 0

@@ -1841,3 +1841,268 @@ def test_run_perform_worker_records_failure_and_exits_nonzero(tmp_path, monkeypa
     assert "kie avatar job failed" in st["perform_last_error"]
     assert st["status"] == "complete"
     assert not (run_dir / "perform.mp4").exists()
+
+
+# ---------------------------------------------------------------------------
+# Phase C "Make me sing this" — MONEY-BUG regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_perform_redo_after_success_deletes_stale_video_and_can_refund(app, monkeypatch):
+    """CRITICAL Bug 1: a redo after a SUCCESSFUL perform must delete the old
+    perform.mp4. Otherwise, if the new worker dies before writing
+    perform_status='failed', _reconcile_perform_refund's dead-pid branch
+    (`not perform.mp4.exists()`) sees the STALE file, skips the refund, and
+    leaves perform_status stuck 'rendering' forever — the user paid for the
+    redo and gets nothing back."""
+    from pipeline import api as api_mod, credits
+
+    # In-memory ledger. REF0 (the delivered prior perform) stays charged.
+    bal = {"v": 97}  # 100 - 3 for the delivered prior perform
+    charge_log: list[tuple[str, int]] = [("run:perform:REF0", 3)]
+
+    def fake_deduct(user, amount, run_id, reason):
+        bal["v"] -= amount
+        charge_log.append((run_id, amount))
+        return bal["v"]
+
+    def fake_refund_run_charges(user, *, run_id, reason):
+        net = sum(a for (rid, a) in charge_log if rid == run_id)
+        if net > 0:
+            bal["v"] += net
+            charge_log.append((run_id, -net))
+            return net
+        return 0
+
+    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    monkeypatch.setattr(credits, "refund_run_charges", fake_refund_run_charges)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: bal["v"])
+    # The redo's worker pid always reads DEAD (worker died immediately); the
+    # prior 'complete' attempt is never liveness-checked (short-circuit).
+    monkeypatch.setattr(api_mod, "_process_alive", lambda *a, **k: False)
+
+    # New worker "dies" instantly: returns a pid but writes no further state
+    # and produces no perform.mp4.
+    api_mod.set_spawn_fn(lambda args, run_dir: 4242)
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+
+    # Seed a prior SUCCESSFUL perform: perform.mp4 on disk + complete state.
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state.update({
+        "perform_status": "complete",
+        "perform_ref": "run:perform:REF0",
+        "perform_video": "perform.mp4",
+        "perform_refunded": False,
+    })
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+    (run_dir / "perform.mp4").write_bytes(b"old-delivered-mp4")
+
+    # Redo.
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert bal["v"] == 94  # redo charged 3 (REF_new); REF0 untouched
+
+    # The stale perform.mp4 must be gone so the dead-worker refund can fire.
+    assert not (run_dir / "perform.mp4").exists()
+
+    # Poll → reconciler sees rendering + dead pid + NO perform.mp4 → refunds.
+    g = client.get(f"/songs/{run_id}",
+                   headers={"Authorization": f"Bearer {token}"})
+    assert g.status_code == 200, g.text
+    # Not wedged in 'rendering'.
+    assert g.json()["perform_status"] == "failed"
+    # Redo charge refunded; the delivered REF0 charge is kept.
+    assert bal["v"] == 97
+    state2 = json.loads((run_dir / "api_state.json").read_text())
+    assert state2["perform_refunded"] is True
+
+
+def test_perform_redo_settles_prior_pending_refund(app, monkeypatch):
+    """CRITICAL Bug 2: when attempt-1 FAILED with its refund still pending
+    (perform_refunded unset), a redo must settle REF1 BEFORE charging REF2 —
+    otherwise overwriting perform_ref orphans REF1 and its charge is lost."""
+    from pipeline import api as api_mod, credits
+
+    bal = {"v": 97}  # 100 - 3 for attempt-1's still-un-refunded charge
+    charge_log: list[tuple[str, int]] = [("run:perform:REF1", 3)]
+    refunded_refs: list[str] = []
+
+    def fake_deduct(user, amount, run_id, reason):
+        bal["v"] -= amount
+        charge_log.append((run_id, amount))
+        return bal["v"]
+
+    def fake_refund_run_charges(user, *, run_id, reason):
+        net = sum(a for (rid, a) in charge_log if rid == run_id)
+        if net > 0:
+            bal["v"] += net
+            charge_log.append((run_id, -net))
+            refunded_refs.append(run_id)
+            return net
+        return 0
+
+    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    monkeypatch.setattr(credits, "refund_run_charges", fake_refund_run_charges)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: bal["v"])
+    api_mod.set_spawn_fn(lambda args, run_dir: 4242)
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+
+    # Seed a prior FAILED attempt whose refund is still pending.
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state.update({
+        "perform_status": "failed",
+        "perform_ref": "run:perform:REF1",
+        "perform_refunded": False,
+    })
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+
+    # REF1 (attempt 1) must have been refunded — its charge is not orphaned.
+    assert "run:perform:REF1" in refunded_refs
+    ref1_net = sum(a for (rid, a) in charge_log if rid == "run:perform:REF1")
+    assert ref1_net == 0  # attempt-1 made whole
+
+    # Attempt 2 charged its OWN fresh ref (not REF1).
+    state2 = json.loads((run_dir / "api_state.json").read_text())
+    ref2 = state2["perform_ref"]
+    assert ref2.startswith(f"{run_id}:perform:") and ref2 != "run:perform:REF1"
+    ref2_net = sum(a for (rid, a) in charge_log if rid == ref2)
+    assert ref2_net == 3  # attempt 2's own charge
+
+    # Net balance: REF1 refunded (net 0), REF2 charged (-3) → 100 - 3 = 97.
+    assert bal["v"] == 97
+
+
+def test_perform_concurrent_requests_charge_once(app, monkeypatch):
+    """CRITICAL Bug 3: two concurrent POST /perform must NOT both charge. The
+    second request (arriving while the first is mid-charge, before its worker
+    writes state) must be rejected with 409 BEFORE it deducts a second time."""
+    from fastapi.testclient import TestClient
+    from pipeline import api as api_mod, credits
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+    SONG_ID = run_id
+
+    charges: list[str] = []
+    spawn_calls: list = []
+    second: dict = {}
+    fired = {"done": False}
+
+    def fake_deduct(user, amount, run_id, reason):
+        charges.append(run_id)
+        if not fired["done"]:
+            # Fire the SECOND request WHILE the first is still inside its
+            # charge→spawn critical section (before it has written any
+            # perform_status). This is the exact race window.
+            fired["done"] = True
+            b_client = TestClient(api_mod.app)
+            second["resp"] = b_client.post(
+                f"/songs/{SONG_ID}/perform",
+                files={"file": _PERFORM_PHOTO},
+                data={"ownership_attested": "true"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        return 100 - amount
+
+    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    def fake_spawn(args, run_dir):
+        spawn_calls.append(args)
+        return 4242
+
+    api_mod.set_spawn_fn(fake_spawn)
+
+    r = client.post(
+        f"/songs/{SONG_ID}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    # The second concurrent request was rejected before charging.
+    assert second["resp"].status_code == 409, second["resp"].text
+    # Exactly ONE charge and ONE spawn total.
+    assert len(charges) == 1, charges
+    assert len(spawn_calls) == 1, spawn_calls
+
+
+def test_perform_spawn_failure_message_truthful_when_refund_fails(app, monkeypatch):
+    """Bug 6: when the spawn fails AND the auto-refund ALSO fails, the credit
+    is still deducted — the 503 message must NOT claim 'you were not charged'."""
+    from pipeline import api as api_mod, credits
+
+    monkeypatch.setattr(
+        credits, "check_or_deduct",
+        lambda user, amount, run_id, reason: 100 - amount)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    def refund_boom(user, *, run_id, reason):
+        raise RuntimeError("billing backend down")
+
+    monkeypatch.setattr(credits, "refund_run_charges", refund_boom)
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+
+    def spawn_boom(args, run_dir):
+        raise RuntimeError("cloud run job dispatch quota exceeded")
+
+    api_mod.set_spawn_fn(spawn_boom)
+
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 503, r.text
+    detail = r.json()["detail"]
+    assert "not charged" not in detail.lower(), detail
+    # The refund is still pending → message must say so.
+    assert "refund" in detail.lower(), detail
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["perform_refunded"] is False  # refund did NOT land
+
+
+def test_run_perform_worker_passes_generous_render_timeout(tmp_path, monkeypatch):
+    """Bug 4: _run_perform must pass a generous explicit render timeout so a
+    queued-under-load Kling avatar render isn't failed (and auto-refunded)
+    while the Kie job still finishes and bills — real spend with no charge."""
+    import argparse
+    import run as run_mod
+    from pipeline import perform as perform_mod, video as video_mod, kie as kie_mod
+
+    run_dir = _perform_worker_run_dir(tmp_path)
+    monkeypatch.setattr(perform_mod, "extract_hook",
+                        lambda mp3, out, hook_s=30.0: out.write_bytes(b"hook"))
+    monkeypatch.setattr(video_mod, "_upload_image_get_url", lambda p: "http://img")
+    monkeypatch.setattr(video_mod, "_upload_file_get_url",
+                        lambda p, *, content_type: "http://aud")
+    monkeypatch.setattr(kie_mod, "KieClient", lambda *a, **k: object())
+
+    seen = {}
+
+    def fake_render(*, client, image_url, audio_url, model, out_path, **k):
+        seen.update(k)
+        out_path.write_bytes(b"rendered-mp4")
+        return out_path
+
+    monkeypatch.setattr(perform_mod, "render_avatar", fake_render)
+
+    rc = run_mod._run_perform(argparse.Namespace(resume=str(run_dir)))
+    assert rc == 0
+    assert seen.get("timeout_s", 0) >= 1800, seen
