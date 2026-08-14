@@ -101,6 +101,12 @@ _COST_BY_MODEL: dict[str, float] = {
     "kling/v2-1-master-image-to-video": 0.16,
     "kling-2.6/image-to-video":    0.056,
     "kling-2.6/text-to-video":     0.056,
+    # Phase C "Make me sing this" — Kie Kling AI Avatar (audio-driven singing
+    # avatar). ~$0.08/s → a 30s hook ≈ $2.40. "avatar" alias covers any
+    # avatar_model id the config points at.
+    "kling/ai-avatar-std":         0.08,
+    "kling/ai-avatar-pro":         0.08,
+    "avatar":                      0.08,
 }
 DEFAULT_COST_PER_SECOND_USD = 0.10  # fallback for unmapped models — defensive
 FLUX_COST_PER_RUN_USD = 0.05        # Single Flux character sheet per run
@@ -609,6 +615,11 @@ class SongRunSummary(BaseModel):
     # Morning drafts: how this song originated + the brief's "why now" line.
     source: str | None = None
     trend_rationale: str | None = None
+    # Phase C "Make me sing this": status of the photo → singing-video render
+    # (None = never requested; "rendering" | "complete" | "failed") and the
+    # produced file name once complete. Drives the perform sheet + result UI.
+    perform_status: str | None = None
+    perform_video: str | None = None
 
 
 class RunProgress(BaseModel):
@@ -3878,6 +3889,96 @@ def _reconcile_downgrade_refund(run_dir: Path, user: "User") -> None:
     _write_state(run_dir, surcharge_refunded=True)
 
 
+def _reconcile_perform_refund(run_dir: Path, user: "User") -> None:
+    """Auto-refund a failed "Make me sing this" render exactly once.
+
+    The perform worker is fire-and-forget — nothing watches its exit code — so
+    the refund is reconciled here whenever the client polls the song status.
+    This mirrors _reconcile_downgrade_refund (the existing reconciler-on-read
+    pattern called from get_song), but scoped to the PER-ATTEMPT reference id
+    (``state['perform_ref']``) so a failed video never refunds the delivered
+    song's charge nor a previously-delivered perform video.
+
+    A render is refundable when the worker wrote perform_status='failed', OR its
+    pid is dead and it never produced perform.mp4 (crash / OOM before it could
+    write the failure). Idempotent: refund_run_charges nets the perform-scoped
+    ledger to zero (a second call is a 0 no-op), and the perform_refunded flag
+    is set ONLY after the refund succeeds, so a raised refund retries next poll.
+    """
+    from pipeline.credits import refund_run_charges
+    state = _read_state(run_dir)
+    if state.get("perform_refunded"):
+        return
+    perform_ref = state.get("perform_ref")
+    if not perform_ref:
+        return  # no perform attempt was ever charged
+    pstatus = state.get("perform_status")
+    failed = pstatus == "failed"
+    if pstatus == "rendering" and state.get("perform_pid") is not None:
+        # Worker crashed without writing 'failed'. Only trust a dead pid once
+        # the pid was actually recorded (guards the charge→pid-write window,
+        # where a poll would otherwise see rendering + no pid and refund a
+        # render that is really just starting).
+        if (not _process_alive(state.get("perform_pid"), run_dir)
+                and not (run_dir / "perform.mp4").exists()):
+            failed = True
+    if not failed:
+        return
+    try:
+        refund_run_charges(
+            user, run_id=perform_ref,
+            reason="perform render failed — auto-refund",
+        )
+    except Exception:
+        # Billing anomaly — surface it (alert metric matches "[billing]") but
+        # leave the flag UNSET so the next poll retries the refund.
+        get_logger().error(
+            "[billing] perform auto-refund failed",
+            exc_info=True, extra={"run_id": run_dir.name})
+        return
+    _write_state(run_dir, perform_status="failed", perform_refunded=True)
+
+
+def _spawn_perform_or_refund(
+    user: "User", run_id: str, run_dir: Path, perform_ref: str, args: list[str]
+) -> int:
+    """Spawn the perform worker after the perform credits were ALREADY charged.
+
+    If the spawn itself raises (Cloud Run Job dispatch / quota error), refund
+    the PERFORM-scoped charge, mark perform_status=failed, and surface 503.
+    Mirrors _spawn_paid_or_refund, but (a) refunds the per-attempt reference id
+    so a failed video never claws back the delivered song, and (b) writes only
+    perform_* keys — NEVER the song's top-level ``status`` (it is already
+    ``complete``). Returns the pid on success."""
+    try:
+        return _SPAWN_FN(args, run_dir)
+    except Exception as e:
+        refunded_ok = False
+        try:
+            from pipeline.credits import refund_run_charges
+            refund_run_charges(
+                user, run_id=perform_ref,
+                reason="perform render failed to start (spawn error)",
+            )
+            refunded_ok = True
+        except Exception:
+            get_logger().error(
+                "[billing] perform refund after spawn failure failed",
+                exc_info=True, extra={"run_id": run_id},
+            )
+        _write_state(
+            run_dir, perform_status="failed",
+            # Only claim refunded when the refund actually landed; otherwise
+            # leave it False so _reconcile_perform_refund retries on next poll.
+            perform_refunded=refunded_ok,
+            perform_last_error=f"spawn failed: {type(e).__name__}: {e}",
+        )
+        raise HTTPException(
+            503,
+            "could not start the video — you were not charged; please retry",
+        )
+
+
 def _resolve_song_dir(run_id: str, user: "User") -> Path:
     """Locate the run dir; 404 if missing or owned by someone else."""
     run_dir = _run_dir(run_id, user)
@@ -3987,6 +4088,8 @@ def _enforce_llm_rate_limit(user: "User") -> None:
 def get_song(run_id: str, user: User = Depends(require_user)):
     run_dir = _resolve_song_dir(run_id, user)
     _reconcile_downgrade_refund(run_dir, user)
+    # Phase C: auto-refund a failed "Make me sing this" render on this poll.
+    _reconcile_perform_refund(run_dir, user)
     state = _read_state(run_dir)
     if state.get("kind") != "song":
         raise HTTPException(404, "not a song run")
@@ -4009,6 +4112,8 @@ def get_song(run_id: str, user: User = Depends(require_user)):
         youtube_url=state.get("youtube_url"),
         source=state.get("source"),
         trend_rationale=state.get("trend_rationale"),
+        perform_status=state.get("perform_status"),
+        perform_video=state.get("perform_video"),
     )
 
 
@@ -4765,6 +4870,129 @@ def get_song_video(
         raise HTTPException(404, "final.mp4 not yet assembled")
     # run_id is an ASCII timestamp; the Arabic title would need RFC 5987.
     name = f"faceless-song-{run_id}.mp4" if download else None
+    return _serve_video(path, request, download_name=name)
+
+
+# ---------------------------------------------------------------------------
+# Phase C "Make me sing this" — photo → 30s lip-synced singing video
+# ---------------------------------------------------------------------------
+
+
+@app.post("/songs/{run_id}/perform")
+def perform_song(
+    run_id: str,
+    file: UploadFile = File(...),
+    ownership_attested: bool = Form(False),
+    user: User = Depends(require_user),
+):
+    """Charge the fixed perform price and spawn a worker that turns a photo +
+    the finished song's hook into a 30s lip-synced singing video (Kie Kling AI
+    Avatar). Charge is scoped to a per-attempt reference id so a failed render
+    (auto-refunded on the next poll) never claws back the delivered song, and
+    supports "Redo" without over-refunding a prior successful render."""
+    _require_terms_accepted(user)
+    _require_email_confirmed(user)
+    import pipeline.credits as _credits
+    from pipeline.config import load_config
+
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+    if state.get("status") != "complete":
+        raise HTTPException(409, "song is not complete yet")
+    # NOTE: the finished-song audio artifact is song.mp3 (final.mp3 does not
+    # exist in this codebase — see /songs/{id}/audio).
+    if not (run_dir / "song.mp3").exists():
+        raise HTTPException(409, "song audio not found")
+    if not ownership_attested:
+        raise HTTPException(400, {"code": "ownership_not_attested"})
+    # Idempotency: refuse a second render while one is genuinely in flight.
+    if (state.get("perform_status") == "rendering"
+            and _process_alive(state.get("perform_pid"), run_dir)):
+        raise HTTPException(409, "a video is already rendering for this song")
+
+    # Validate + save the photo — mirrors POST /artists/{id}/avatar.
+    ext = Path(file.filename or "").suffix.lower()
+    ctype = (file.content_type or "").lower()
+    if not (ctype.startswith("image/") or ext in _IMAGE_EXTS):
+        raise HTTPException(422, "photo must be an image (png, jpg, webp)")
+    if ext not in _IMAGE_EXTS:
+        ext = ".png"
+    # Remove any prior perform photo (possibly a different ext) so the worker's
+    # perform_photo.* glob resolves to exactly one file.
+    for old in run_dir.glob("perform_photo.*"):
+        old.unlink(missing_ok=True)
+    dest = run_dir / f"perform_photo{ext}"
+    total = 0
+    with dest.open("wb") as out:
+        while chunk := file.file.read(1 << 20):
+            total += len(chunk)
+            if total > _AVATAR_MAX_BYTES:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(413, "photo too large (max 10 MB)")
+            out.write(chunk)
+    if total == 0:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(422, "uploaded file was empty")
+
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+    amount = int(cfg.perform_credits_per_video)
+
+    if user.role != "service":
+        balance = _credits.get_balance(user.id)
+        if balance < amount:
+            _raise_402_insufficient_credits(balance, amount)
+
+    # Per-attempt reference id: isolates this charge from the song's own charge
+    # AND from any prior perform attempt, so refund_run_charges can never
+    # over-refund a delivered video. reference_id is free-text in the schema.
+    perform_ref = f"{run_id}:perform:{uuid.uuid4().hex[:12]}"
+    try:
+        new_balance = _credits.check_or_deduct(
+            user, amount=amount, run_id=perform_ref, reason="perform-spend")
+    except _credits.InsufficientCredits as e:
+        _raise_402_insufficient_credits(e.balance, e.required)
+
+    # Record the attempt BEFORE spawning (pid unknown yet). Reset every
+    # prior-attempt perform_* flag so a stale perform_refunded/failed from an
+    # earlier render can't suppress this attempt's auto-refund.
+    _write_state(
+        run_dir, perform_status="rendering", perform_ref=perform_ref,
+        perform_refunded=False, perform_last_error=None,
+        perform_video=None, perform_pid=None,
+    )
+    args = ["--perform", "--resume", str(run_dir), "--user-id", user.id]
+    pid = _spawn_perform_or_refund(user, run_id, run_dir, perform_ref, args)
+    # Re-read so we don't clobber a worker-side perform_status the in-process
+    # test spawn may have written synchronously between _SPAWN_FN and here.
+    current = _read_state(run_dir)
+    _write_state(run_dir, perform_pid=pid)
+    return {
+        "run_id": run_id,
+        "perform_status": current.get("perform_status", "rendering"),
+        "status": current.get("perform_status", "rendering"),
+        "balance_after": new_balance,
+    }
+
+
+@app.get("/songs/{run_id}/perform-video")
+def get_perform_video(
+    run_id: str,
+    request: Request,
+    download: bool = False,
+    user: User = Depends(require_user_header_or_query),
+):
+    """Stream the perform.mp4 with HTTP Range support (mirrors
+    GET /songs/{id}/video). Reconciles a failed render's refund on the way in."""
+    run_dir = _resolve_song_dir(run_id, user)
+    _reconcile_perform_refund(run_dir, user)
+    path = run_dir / "perform.mp4"
+    if not path.exists():
+        raise HTTPException(404, "perform.mp4 not yet rendered")
+    name = f"faceless-perform-{run_id}.mp4" if download else None
     return _serve_video(path, request, download_name=name)
 
 

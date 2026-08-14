@@ -90,6 +90,10 @@ kie:
                                  # generates Arabic narration and we mix it
                                  # into clips during assembly. Set true ONLY
                                  # when switching back to a Veo model.
+  avatar_model: "kling/ai-avatar-std"  # Phase C "Make me sing this" — Kie Kling
+                                 # AI Avatar (audio-driven singing/lip-sync).
+                                 # TODO: confirm exact id from
+                                 # docs.kie.ai/kling-ai-avatar before first real render.
 
 song:
   # Suno model id. V5_5 is latest (max 8 min, 5000-char prompt, 1000-char style).
@@ -120,3 +124,9 @@ song:
   premium_credit_surcharge: 4
   ar_judge_enabled: false        # shadow-mode: judge logs only until validated
   master_engine: matchering      # matchering | ffmpeg (api reserved, not built)
+
+# Phase C "Make me sing this" — photo → 30s lip-synced singing video via Kie's
+# Kling AI Avatar. Fixed price (charged on submit, refunded on render failure)
+# and fixed hook length. Model id lives under kie.avatar_model above.
+perform_credits_per_video: 3     # ~$2.40 Kie spend (30s x ~$0.08/s) — matches cinematic tier
+perform_hook_seconds: 30         # length of the highest-energy hook we render

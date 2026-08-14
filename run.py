@@ -658,6 +658,11 @@ def main_with_args(argv: list[str]) -> int:
     # Shorts mode (Kie.ai) ------------------------------------------------
     p.add_argument("--shorts", action="store_true",
                    help="Use Shorts/TikTok pipeline (Kie.ai Veo, vertical 9:16, ~30s)")
+    # Perform mode ("Make me sing this", Phase C) -------------------------
+    p.add_argument("--perform", action="store_true",
+                   help="Photo + finished-song hook -> 30s lip-synced singing "
+                        "video via Kie Kling AI Avatar. Requires --resume "
+                        "<run-dir> holding song.mp3 + perform_photo.*")
     p.add_argument("--reroll-clips", help="Comma-separated 1-based clip indices to regenerate (Shorts mode)")
     p.add_argument("--skip-video", action="store_true",
                    help="Use placeholder black mp4 clips (Shorts dev only)")
@@ -743,6 +748,8 @@ def main_with_args(argv: list[str]) -> int:
     log = RunLog(run_dir)
 
     try:
+        if args.perform:
+            return _run_perform(args)
         if args.mode == "song":
             return _run_song_post_approve(args)
 
@@ -1567,6 +1574,99 @@ def _run_song_post_approve(args) -> int:
         # run to get the refund path (see cancel_song in pipeline/api.py).
         # Auto-refunding here would make songs free on the retry-success
         # path (fail once, refund, resume, succeed on the same paid job).
+        return 1
+
+
+def _run_perform(args) -> int:
+    """Perform-mode worker ("Make me sing this", Phase C).
+
+    Reads a FINISHED song's audio (song.mp3) + the saved perform_photo.* from
+    the --resume dir, extracts the highest-energy 30s hook, publishes photo +
+    hook to public URLs, and drives Kie's Kling AI Avatar to render a lip-synced
+    singing video to perform.mp4.
+
+    State contract (mirrors _run_song_post_approve's write_state, but scoped to
+    the perform_* keys ONLY): rendering -> complete | failed. It MUST NEVER
+    touch the top-level ``status`` key — the song is already ``complete`` and
+    clobbering it would break cancel_song's complete-guard and open a free-song
+    refund vector.
+
+    Money contract: nothing watches this worker's exit code. On ANY failure we
+    record perform_status=failed + perform_last_error and exit non-zero; the API
+    refunds the perform-scoped charge on the next status poll via
+    _reconcile_perform_refund (see pipeline/api.py). The audio artifact is
+    song.mp3, NOT final.mp3 (final.mp3 does not exist in this codebase).
+    """
+    import json as _json
+    import os as _os
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    from pipeline.config import load_config
+    from pipeline.kie import KieClient
+    from pipeline.perform import extract_hook, render_avatar
+    from pipeline.video import _upload_file_get_url, _upload_image_get_url
+
+    if not args.resume:
+        print("--perform requires --resume <run-dir>", file=_sys.stderr)
+        return 2
+    run_dir = _Path(args.resume)
+    if not run_dir.is_dir():
+        print(f"run dir not found: {run_dir}", file=_sys.stderr)
+        return 2
+
+    state_path = run_dir / "api_state.json"
+
+    def write_state(**patch):
+        """Atomic perform-scoped state write. Only ever patches perform_* keys —
+        never the song's top-level status."""
+        state = _json.loads(state_path.read_text()) if state_path.exists() else {}
+        state.update(patch)
+        tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+        tmp.write_text(_json.dumps(state, ensure_ascii=False, indent=2))
+        tmp.replace(state_path)
+
+    cfg_path_str = _os.environ.get(
+        "FACELESS_CONFIG", str(REPO_ROOT / "config.yaml"))
+    cfg = load_config(_Path(cfg_path_str))
+
+    try:
+        write_state(perform_status="rendering", perform_last_error=None)
+
+        song_mp3 = run_dir / "song.mp3"
+        if not song_mp3.exists():
+            raise RuntimeError("song.mp3 not found — song audio missing")
+        photos = sorted(run_dir.glob("perform_photo.*"))
+        if not photos:
+            raise RuntimeError(
+                "perform_photo not found — upload the photo again")
+        photo = photos[0]
+
+        hook_path = run_dir / "hook.mp3"
+        extract_hook(song_mp3, hook_path, hook_s=float(cfg.perform_hook_seconds))
+
+        image_url = _upload_image_get_url(photo)
+        audio_url = _upload_file_get_url(hook_path, content_type="audio/mpeg")
+
+        render_avatar(
+            client=KieClient(),
+            image_url=image_url,
+            audio_url=audio_url,
+            model=cfg.kie.avatar_model,
+            out_path=run_dir / "perform.mp4",
+        )
+        write_state(perform_status="complete", perform_video="perform.mp4")
+        return 0
+    except Exception as e:
+        # NOT refunded here — the API auto-refunds the perform-scoped charge on
+        # the next poll (see _reconcile_perform_refund in pipeline/api.py). We
+        # only record the failure + exit non-zero. Refunding in-worker would
+        # also make a retry-then-succeed path free.
+        write_state(
+            perform_status="failed",
+            perform_last_error=f"{type(e).__name__}: {e}",
+        )
+        print(f"[perform] failed: {e}", file=_sys.stderr)
         return 1
 
 

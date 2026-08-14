@@ -1486,3 +1486,358 @@ def test_post_songs_without_genre_infers_arabic(app):
     run_dir = _find_run_dir(r.json()["run_id"])
     song_json = json.loads((run_dir / "song.json").read_text())
     assert "distorted electric guitars" not in song_json["style_prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Phase C "Make me sing this" — photo → 30s singing video
+# ---------------------------------------------------------------------------
+
+# A tiny valid-looking PNG upload (content-type is what the validator trusts).
+_PERFORM_PHOTO = ("me.png", b"\x89PNG\r\n\x1a\nfakepngbytes", "image/png")
+
+
+def _complete_song_with_audio(app, monkeypatch):
+    """A complete song whose song.mp3 exists on disk (perform's audio source)."""
+    run_id, run_dir, client, token = _setup_complete_song(app, monkeypatch)
+    (run_dir / "song.mp3").write_bytes(b"ID3fake-song-audio")
+    return run_id, run_dir, client, token
+
+
+def test_perform_happy_path_charges_saves_photo_and_spawns(app, monkeypatch):
+    """POST /songs/{id}/perform on a complete song deducts
+    perform_credits_per_video, saves the photo, spawns, and returns ok."""
+    from pipeline import api as api_mod, credits
+
+    charges: list[dict] = []
+
+    def fake_deduct(user, amount, run_id, reason):
+        charges.append({"amount": amount, "run_id": run_id, "reason": reason})
+        return 100 - amount
+
+    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    spawn_calls: list = []
+
+    def fake_spawn(args, run_dir):
+        spawn_calls.append(args)
+        return 4242
+
+    api_mod.set_spawn_fn(fake_spawn)
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["perform_status"] == "rendering"
+
+    # Charged exactly the config price (3), under a PERFORM-scoped reference id
+    # (never the bare run_id → can't refund the delivered song).
+    assert len(charges) == 1
+    assert charges[0]["amount"] == 3
+    assert charges[0]["run_id"].startswith(f"{run_id}:perform:")
+    assert charges[0]["run_id"] != run_id
+
+    # Photo saved + worker spawned with --perform --resume.
+    assert (run_dir / "perform_photo.png").exists()
+    assert spawn_calls and "--perform" in spawn_calls[0]
+    assert "--resume" in spawn_calls[0]
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["perform_status"] == "rendering"
+    assert state["perform_ref"].startswith(f"{run_id}:perform:")
+    # The song itself is untouched.
+    assert state["status"] == "complete"
+
+
+def test_perform_rejects_when_song_not_complete(app, monkeypatch):
+    """A song still awaiting approval can't be performed → 409."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    create = client.post(
+        "/songs", json={"theme": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]  # status == awaiting_approval
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409, r.text
+
+
+def test_perform_rejects_when_ownership_not_attested(app, monkeypatch):
+    """Missing likeness attestation → 400 {'code': 'ownership_not_attested'}."""
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "false"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"]["code"] == "ownership_not_attested"
+
+
+def test_perform_returns_402_when_insufficient_credits(app, monkeypatch):
+    """check_or_deduct raising InsufficientCredits → 402 (paywall payload)."""
+    from pipeline import api as api_mod, credits
+
+    def boom_deduct(user, amount, run_id, reason):
+        raise credits.InsufficientCredits(balance=0, required=amount)
+
+    monkeypatch.setattr(credits, "check_or_deduct", boom_deduct)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 402, r.text
+    assert r.json()["detail"]["code"] == "insufficient_credits"
+
+
+def test_perform_refunds_and_fails_when_spawn_errors(app, monkeypatch):
+    """MONEY BUG guard (spawn-time): credits are deducted BEFORE the perform
+    worker is spawned. If the spawn raises, the user is refunded on the
+    PERFORM-scoped reference id and the endpoint returns 503 — and the song's
+    top-level status stays ``complete`` (never clobbered to failed)."""
+    from pipeline import api as api_mod, credits
+
+    monkeypatch.setattr(
+        credits, "check_or_deduct",
+        lambda user, amount, run_id, reason: 100 - amount,
+    )
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    refunds: list[str] = []
+    monkeypatch.setattr(
+        credits, "refund_run_charges",
+        lambda user, *, run_id, reason: refunds.append(run_id) or 3,
+    )
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+
+    def boom(args, run_dir):
+        raise RuntimeError("cloud run job dispatch quota exceeded")
+
+    api_mod.set_spawn_fn(boom)
+
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 503, r.text
+    # Refunded exactly once, on the perform-scoped ref (NOT the bare run_id).
+    assert len(refunds) == 1
+    assert refunds[0].startswith(f"{run_id}:perform:")
+    assert refunds[0] != run_id
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["perform_status"] == "failed"
+    assert state["perform_refunded"] is True
+    # INVARIANT: a failed perform never clobbers the delivered song.
+    assert state["status"] == "complete"
+
+
+def test_perform_worker_failure_auto_refunds_on_poll(app, monkeypatch):
+    """MOST IMPORTANT: the perform worker FAILS after the charge (writes
+    perform_status=failed, exits non-zero). On the next status poll the API
+    auto-refunds the perform-scoped charge and the user's balance is RESTORED.
+    The song's original charge is untouched (perform-scoped reference id)."""
+    from pipeline import api as api_mod, credits
+
+    # In-memory ledger so we can assert the balance is literally restored.
+    bal = {"v": 100}
+    charge_log: list[tuple[str, int]] = []
+
+    def fake_deduct(user, amount, run_id, reason):
+        bal["v"] -= amount
+        charge_log.append((run_id, amount))
+        return bal["v"]
+
+    def fake_refund_run_charges(user, *, run_id, reason):
+        net = sum(a for (rid, a) in charge_log if rid == run_id)
+        bal["v"] += net
+        return net
+
+    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    monkeypatch.setattr(credits, "refund_run_charges", fake_refund_run_charges)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: bal["v"])
+
+    def failing_worker(args, run_dir):
+        # Simulate a worker that started, then the Kie avatar render failed.
+        st = json.loads((run_dir / "api_state.json").read_text())
+        st["perform_status"] = "failed"
+        st["perform_last_error"] = "RuntimeError: kie avatar job failed"
+        (run_dir / "api_state.json").write_text(json.dumps(st))
+        return 5150
+
+    api_mod.set_spawn_fn(failing_worker)
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+
+    r = client.post(
+        f"/songs/{run_id}/perform",
+        files={"file": _PERFORM_PHOTO},
+        data={"ownership_attested": "true"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert bal["v"] == 97  # charged 3, not yet refunded
+
+    perform_ref = json.loads(
+        (run_dir / "api_state.json").read_text())["perform_ref"]
+    assert perform_ref.startswith(f"{run_id}:perform:") and perform_ref != run_id
+
+    # Poll the song status → reconciler fires the auto-refund.
+    g = client.get(
+        f"/songs/{run_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert g.status_code == 200, g.text
+    assert g.json()["perform_status"] == "failed"
+
+    # Balance RESTORED, exactly once (net-safe on a second poll).
+    assert bal["v"] == 100
+    client.get(f"/songs/{run_id}", headers={"Authorization": f"Bearer {token}"})
+    assert bal["v"] == 100  # idempotent — no double refund
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["perform_refunded"] is True
+    assert state["status"] == "complete"  # song never clobbered
+
+
+def test_perform_reconciler_no_op_when_complete(app, monkeypatch):
+    """The reconciler must NOT refund a SUCCESSFUL perform (perform.mp4 on
+    disk / perform_status complete)."""
+    from pipeline import api as api_mod, credits
+
+    monkeypatch.setattr(
+        credits, "refund_run_charges",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must NOT refund a completed perform")),
+    )
+
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state.update({
+        "perform_status": "complete",
+        "perform_ref": f"{run_id}:perform:abc123",
+        "perform_video": "perform.mp4",
+    })
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+    (run_dir / "perform.mp4").write_bytes(b"fake-mp4")
+
+    g = client.get(
+        f"/songs/{run_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert g.status_code == 200, g.text
+    assert g.json()["perform_status"] == "complete"
+    assert g.json()["perform_video"] == "perform.mp4"
+
+
+def test_get_perform_video_streams_file(app, monkeypatch):
+    """GET /songs/{id}/perform-video streams perform.mp4 (404 before render)."""
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+
+    missing = client.get(
+        f"/songs/{run_id}/perform-video",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert missing.status_code == 404
+
+    (run_dir / "perform.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42fake")
+    got = client.get(
+        f"/songs/{run_id}/perform-video",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert got.status_code in (200, 206), got.text
+    assert got.content
+
+
+def _perform_worker_run_dir(tmp_path):
+    run_dir = tmp_path / "out" / "u" / "2026-08-14-000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "api_state.json").write_text(
+        json.dumps({"kind": "song", "status": "complete"}))
+    (run_dir / "song.mp3").write_bytes(b"fake-song-audio")
+    (run_dir / "perform_photo.png").write_bytes(b"fake-png")
+    return run_dir
+
+
+def test_run_perform_worker_happy_path(tmp_path, monkeypatch):
+    """Direct execution of run._run_perform: song.mp3 + photo → perform.mp4,
+    writes perform_status=complete, exits 0, and NEVER touches `status`."""
+    import argparse
+    import run as run_mod
+    from pipeline import perform as perform_mod, video as video_mod, kie as kie_mod
+
+    run_dir = _perform_worker_run_dir(tmp_path)
+    monkeypatch.setattr(perform_mod, "extract_hook",
+                        lambda mp3, out, hook_s=30.0: out.write_bytes(b"hook"))
+    monkeypatch.setattr(video_mod, "_upload_image_get_url", lambda p: "http://img")
+    monkeypatch.setattr(video_mod, "_upload_file_get_url",
+                        lambda p, *, content_type: "http://aud")
+    monkeypatch.setattr(kie_mod, "KieClient", lambda *a, **k: object())
+    seen = {}
+
+    def fake_render(*, client, image_url, audio_url, model, out_path, **k):
+        seen.update(image_url=image_url, audio_url=audio_url, model=model)
+        out_path.write_bytes(b"rendered-mp4")
+        return out_path
+
+    monkeypatch.setattr(perform_mod, "render_avatar", fake_render)
+
+    rc = run_mod._run_perform(argparse.Namespace(resume=str(run_dir)))
+    assert rc == 0
+    assert seen["image_url"] == "http://img" and seen["audio_url"] == "http://aud"
+    st = json.loads((run_dir / "api_state.json").read_text())
+    assert st["perform_status"] == "complete"
+    assert st["perform_video"] == "perform.mp4"
+    assert st["status"] == "complete"  # song status never clobbered
+    assert (run_dir / "perform.mp4").exists()
+
+
+def test_run_perform_worker_records_failure_and_exits_nonzero(tmp_path, monkeypatch):
+    """When the render fails, run._run_perform writes perform_status=failed +
+    perform_last_error, exits non-zero, and leaves `status` == complete (so the
+    API's refund path can fire without a free-song vector)."""
+    import argparse
+    import run as run_mod
+    from pipeline import perform as perform_mod, video as video_mod, kie as kie_mod
+
+    run_dir = _perform_worker_run_dir(tmp_path)
+    monkeypatch.setattr(perform_mod, "extract_hook",
+                        lambda mp3, out, hook_s=30.0: out.write_bytes(b"hook"))
+    monkeypatch.setattr(video_mod, "_upload_image_get_url", lambda p: "http://img")
+    monkeypatch.setattr(video_mod, "_upload_file_get_url",
+                        lambda p, *, content_type: "http://aud")
+    monkeypatch.setattr(kie_mod, "KieClient", lambda *a, **k: object())
+
+    def boom(**k):
+        raise RuntimeError("kie avatar job failed")
+
+    monkeypatch.setattr(perform_mod, "render_avatar", boom)
+
+    rc = run_mod._run_perform(argparse.Namespace(resume=str(run_dir)))
+    assert rc == 1
+    st = json.loads((run_dir / "api_state.json").read_text())
+    assert st["perform_status"] == "failed"
+    assert "kie avatar job failed" in st["perform_last_error"]
+    assert st["status"] == "complete"
+    assert not (run_dir / "perform.mp4").exists()

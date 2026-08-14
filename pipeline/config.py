@@ -80,6 +80,10 @@ class KieConfig:
     # ElevenLabs voice stage is skipped — Veo generates the audio. We lose
     # voice-ID control but gain real lip sync at no extra cost.
     native_audio: bool = True
+    # Phase C "Make me sing this": Kie Kling AI Avatar model id (audio-driven
+    # singing avatar). Defaulted so existing config blocks keep loading.
+    # TODO: confirm the exact id from docs.kie.ai/kling-ai-avatar.
+    avatar_model: str = "kling/ai-avatar-std"
 
 
 @dataclass(frozen=True)
@@ -117,6 +121,11 @@ class Config:
     captions: CaptionsConfig
     kie: KieConfig
     song: SongConfig | None = None
+    # Phase C "Make me sing this": fixed credit price + hook length for the
+    # photo → 30s singing-avatar render. Top-level (not under kie/song) so it
+    # reads straight off config.yaml. Defaulted so older configs keep loading.
+    perform_credits_per_video: int = 3
+    perform_hook_seconds: int = 30
 
 
 def load_config(path: Path) -> Config:
@@ -132,4 +141,7 @@ def load_config(path: Path) -> Config:
         captions=CaptionsConfig(**raw["captions"]),
         kie=KieConfig(**raw["kie"]),
         song=SongConfig(**raw["song"]) if "song" in raw else None,
+        perform_credits_per_video=int(
+            raw.get("perform_credits_per_video", 3)),
+        perform_hook_seconds=int(raw.get("perform_hook_seconds", 30)),
     )
