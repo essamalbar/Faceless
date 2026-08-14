@@ -261,7 +261,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       builder: (_) => PerformSheet(
         client: widget.client,
         runId: widget.runId,
-        performCredits: _summary?.performCredits ?? 3,
+        performCredits: _summary?.performCredits,
       ),
     );
     if (status == null || !mounted) return;

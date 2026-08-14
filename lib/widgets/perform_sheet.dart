@@ -23,14 +23,16 @@ class PerformSheet extends StatefulWidget {
   final String runId;
   // Credits actually charged for the render (from the backend config), shown
   // on the cost card so the disclosed price can't drift from what's charged.
-  final int performCredits;
+  // Null = not loaded yet → show NO number rather than a guess that could
+  // disagree with config (review re-finding 5).
+  final int? performCredits;
   final ImagePickerFn? pickImage;
 
   const PerformSheet({
     super.key,
     required this.client,
     required this.runId,
-    this.performCredits = 3,
+    this.performCredits,
     this.pickImage,
   });
 
@@ -237,9 +239,11 @@ class _PerformSheetState extends State<PerformSheet> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '30-second hook video · ${widget.performCredits} '
-                          '${widget.performCredits == 1 ? "credit" : "credits"}'
-                          ' · charged on approve',
+                          widget.performCredits == null
+                              ? '30-second hook video · charged on approve'
+                              : '30-second hook video · ${widget.performCredits} '
+                                  '${widget.performCredits == 1 ? "credit" : "credits"}'
+                                  ' · charged on approve',
                           style: const TextStyle(
                             fontSize: 12.5,
                             color: FacelessTheme.textSecondary,

@@ -100,4 +100,18 @@ void main() {
     expect(find.textContaining('7 credits'), findsOneWidget);
     expect(find.textContaining(r'$2.40'), findsNothing);
   });
+
+  testWidgets('cost card shows no number until the price is known (re-finding 5)',
+      (tester) async {
+    final client = FacelessApiClient(_FixedSettings());
+    await tester.pumpWidget(_host(PerformSheet(
+      client: client,
+      runId: 'run-1',
+      // performCredits omitted → null (summary not loaded): no guessed number.
+      pickImage: (source) async => null,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('credits'), findsNothing);
+    expect(find.textContaining('charged on approve'), findsOneWidget);
+  });
 }
