@@ -48,12 +48,12 @@ class GenreGrid extends StatelessWidget {
 
 class _TileShell extends StatelessWidget {
   final Widget child;
-  final Gradient gradient;
+  final Gradient selectedGradient;
   final bool selected;
   final VoidCallback onTap;
   const _TileShell({
     required this.child,
-    required this.gradient,
+    required this.selectedGradient,
     required this.selected,
     required this.onTap,
   });
@@ -66,10 +66,12 @@ class _TileShell extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          gradient: gradient,
+          // Selected → solid genre gradient; unselected → frosted glass.
+          gradient: selected ? selectedGradient : null,
+          color: selected ? null : FacelessTheme.glass,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? FacelessTheme.accent : Colors.white.withValues(alpha: 0.6),
+            color: selected ? FacelessTheme.accent : FacelessTheme.border,
             width: selected ? 2.5 : 1,
           ),
         ),
@@ -110,7 +112,11 @@ class _AutoTile extends StatelessWidget {
   Widget build(BuildContext context) => _TileShell(
         selected: selected,
         onTap: onTap,
-        gradient: const LinearGradient(colors: [Color(0xFFEAF7F0), Color(0xFFE4F3F4)]),
+        selectedGradient: const LinearGradient(
+          colors: [Color(0xFF1F2B3A), Color(0xFF183A34)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -120,7 +126,7 @@ class _AutoTile extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                    fontWeight: FontWeight.w600, fontSize: 12, color: FacelessTheme.accent)),
+                    fontWeight: FontWeight.w600, fontSize: 12, color: FacelessTheme.textPrimary)),
           ],
         ),
       );
@@ -142,7 +148,7 @@ class _GenreTile extends StatelessWidget {
   Widget build(BuildContext context) => _TileShell(
         selected: selected,
         onTap: onTap,
-        gradient: LinearGradient(
+        selectedGradient: LinearGradient(
           colors: genre.gradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -156,7 +162,7 @@ class _GenreTile extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                    fontWeight: FontWeight.w600, fontSize: 12, color: Color(0xFF3A2F36))),
+                    fontWeight: FontWeight.w600, fontSize: 12, color: FacelessTheme.textPrimary)),
           ],
         ),
       );

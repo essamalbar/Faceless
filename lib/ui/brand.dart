@@ -1,6 +1,9 @@
-/// Shared brand UI widgets for the Faceless light look: a soft pastel
-/// gradient background, frosted white cards, a charcoal primary button,
-/// green accent text, and pastel cover art. Used across every screen.
+/// Shared brand UI widgets for the Faceless glassy dark-neon look: a
+/// near-black backdrop lit by blurred pink/purple/cyan glow, frosted
+/// translucent cards with bright glass edges, a pink→purple gradient primary
+/// button, gradient accent text, and dark neon cover art. Used across every
+/// screen. Widget NAMES are kept stable so screens inherit the look without
+/// edits — only the rendering changed from the old light look.
 library;
 
 import 'dart:ui';
@@ -8,21 +11,22 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Full-bleed soft pastel backdrop (warm cream → cool lavender → light) with
-/// a couple of gentle glows. Wrapped around the whole app in main.dart so
-/// every screen sits on it; individual scaffolds are transparent.
+/// Full-bleed near-black backdrop lit by soft pink/purple/cyan neon glows.
+/// Wrapped around the whole app in main.dart so every screen sits on it;
+/// individual scaffolds are transparent. The glows are RadialGradient fades
+/// (no blur filter here — the frosted blur lives in GlassCard).
 class MeshBackground extends StatelessWidget {
   final Widget child;
   const MeshBackground({super.key, required this.child});
 
-  Widget _blob(Color c, double size) => IgnorePointer(
+  Widget _blob(Color c, double size, double alpha) => IgnorePointer(
         child: Container(
           width: size,
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
-              colors: [c.withValues(alpha: 0.9), c.withValues(alpha: 0.0)],
+              colors: [c.withValues(alpha: alpha), c.withValues(alpha: 0.0)],
             ),
           ),
         ),
@@ -31,22 +35,28 @@ class MeshBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
-    final s = (w * 0.9).clamp(360.0, 820.0);
+    final s = (w * 0.95).clamp(360.0, 840.0);
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFBF6EE), Color(0xFFF2EFF7), Color(0xFFE9EBF2)],
+          colors: [Color(0xFF0B0810), Color(0xFF140C1F), Color(0xFF0B0810)],
           stops: [0.0, 0.5, 1.0],
         ),
       ),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Positioned(left: -s * 0.3, top: -s * 0.35, child: _blob(const Color(0xFFF8ECD7), s)),
-          Positioned(right: -s * 0.35, top: -s * 0.4, child: _blob(const Color(0xFFEBE7F7), s * 0.95)),
-          Positioned(right: -s * 0.25, bottom: -s * 0.35, child: _blob(const Color(0xFFE4EEF0), s * 0.8)),
+          Positioned(
+              left: -s * 0.3, top: -s * 0.35,
+              child: _blob(const Color(0xFFFF4D8D), s, 0.5)),
+          Positioned(
+              right: -s * 0.35, top: -s * 0.3,
+              child: _blob(const Color(0xFFA25BFF), s * 0.98, 0.5)),
+          Positioned(
+              right: -s * 0.25, bottom: -s * 0.3,
+              child: _blob(const Color(0xFF3FE0D0), s * 0.8, 0.32)),
           child,
         ],
       ),
@@ -54,8 +64,8 @@ class MeshBackground extends StatelessWidget {
   }
 }
 
-/// Frosted-white surface: translucent white + blur + hairline border + soft
-/// shadow. The "glass" over the pastel background.
+/// Frosted translucent surface: dark glass fill + blur + a bright glass top
+/// edge + hairline border + soft shadow. The "glass" over the neon glow.
 class GlassCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -83,7 +93,18 @@ class GlassCard extends StatelessWidget {
           child: Container(
             padding: padding,
             decoration: BoxDecoration(
-              color: tint ?? FacelessTheme.glass,
+              // Bright top edge → glass sheen. A solid tint overrides it.
+              color: tint,
+              gradient: tint == null
+                  ? LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.10),
+                        FacelessTheme.glass,
+                      ],
+                    )
+                  : null,
               borderRadius: r,
               border: Border.all(color: FacelessTheme.border),
             ),
@@ -99,7 +120,7 @@ class GlassCard extends StatelessWidget {
   }
 }
 
-/// Primary CTA — charcoal ink fill with white text and a soft shadow.
+/// Primary CTA — pink→purple gradient fill, white text, neon glow.
 class GradientButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -141,15 +162,16 @@ class GradientButton extends StatelessWidget {
       opacity: disabled ? 0.5 : 1,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: FacelessTheme.ink,
+          gradient: FacelessTheme.brandGradient,
           borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
           boxShadow: disabled
               ? null
               : [
                   BoxShadow(
-                    color: FacelessTheme.ink.withValues(alpha: 0.28),
+                    color: FacelessTheme.accent.withValues(alpha: 0.40),
                     blurRadius: 24,
-                    offset: const Offset(0, 12),
+                    offset: const Offset(0, 10),
                   ),
                 ],
         ),
@@ -166,7 +188,7 @@ class GradientButton extends StatelessWidget {
   }
 }
 
-/// Paints text with the green→teal brand gradient (accent headline words).
+/// Paints text with the pink→purple brand gradient (accent headline words).
 class GradientText extends StatelessWidget {
   final String text;
   final TextStyle style;
@@ -183,7 +205,7 @@ class GradientText extends StatelessWidget {
   }
 }
 
-/// Small white pill (credits, status, tags) with a soft shadow. Optional
+/// Small glass pill (credits, status, tags) with a hairline border. Optional
 /// leading dot.
 class BrandPill extends StatelessWidget {
   final String label;
@@ -197,7 +219,7 @@ class BrandPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: FacelessTheme.glass,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: FacelessTheme.border),
         boxShadow: FacelessTheme.softShadow,
@@ -223,16 +245,16 @@ class BrandPill extends StatelessWidget {
   }
 }
 
-/// Deterministic SOFT PASTEL gradient for a cover placeholder, seeded by a
-/// string so the same song always gets the same tasteful art.
+/// Deterministic DARK NEON gradient for a cover placeholder, seeded by a
+/// string so the same song always gets the same art.
 LinearGradient coverGradient(String seed) {
   const palettes = [
-    [Color(0xFFE7E1F4), Color(0xFFDCEBE6)], // lavender → mint
-    [Color(0xFFF3E7D3), Color(0xFFF0D9DE)], // cream → blush
-    [Color(0xFFDCEBE6), Color(0xFFD6E6F0)], // mint → sky
-    [Color(0xFFEDE3F5), Color(0xFFF3E7D3)], // lilac → cream
-    [Color(0xFFF0D9DE), Color(0xFFE7E1F4)], // blush → lavender
-    [Color(0xFFD6E6F0), Color(0xFFDDEFE4)], // sky → mint
+    [Color(0xFF3A2352), Color(0xFF7A2E6E)], // plum → magenta
+    [Color(0xFF1F3A5C), Color(0xFF2E7A6E)], // deep blue → teal
+    [Color(0xFF5C1F3A), Color(0xFFA2405B)], // wine → rose
+    [Color(0xFF2B2352), Color(0xFF5A3AA6)], // indigo → violet
+    [Color(0xFF5C3A1F), Color(0xFFA2762E)], // bronze → amber
+    [Color(0xFF1F5C4A), Color(0xFF2EA27A)], // emerald → jade
   ];
   final h = seed.codeUnits.fold<int>(0, (a, b) => a + b);
   final p = palettes[h % palettes.length];

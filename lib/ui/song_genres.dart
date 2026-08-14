@@ -32,19 +32,20 @@ class SongGenre {
       };
 }
 
+// Dark saturated neon gradient pairs (glassy dark-neon theme). Cosmetic only.
 const kSongGenres = <SongGenre>[
-  SongGenre('arabic_pop', '🎤', [Color(0xFFFFE3D3), Color(0xFFFBD0E0)], arabicOnly: true),
-  SongGenre('arabic_ballad', '💔', [Color(0xFFE7DEF9), Color(0xFFD6E4FB)], arabicOnly: true),
-  SongGenre('khaleeji', '🌙', [Color(0xFFD8F3E7), Color(0xFFCDECEF)], arabicOnly: true),
-  SongGenre('tarab_classic', '🎻', [Color(0xFFFBEFCB), Color(0xFFF6E0C4)], arabicOnly: true),
-  SongGenre('arabic_trap', '🔥', [Color(0xFFE4D9FA), Color(0xFFD9DEFB)], arabicOnly: true),
-  SongGenre('folk_shaabi', '🪗', [Color(0xFFFCE1EC), Color(0xFFF3D9E9)], arabicOnly: true),
-  SongGenre('hiphop_rap', '🎧', [Color(0xFFE1F0E6), Color(0xFFDCEFEA)]),
-  SongGenre('rnb_soul', '🎹', [Color(0xFFDEE6F2), Color(0xFFE9E1F1)]),
-  SongGenre('pop', '🎶', [Color(0xFFFFE9D8), Color(0xFFF7D9E6)]),
-  SongGenre('rock', '🎸', [Color(0xFFE6E1F5), Color(0xFFD9DEFB)]),
-  SongGenre('edm_electropop', '🎛️', [Color(0xFFD8F0F3), Color(0xFFCDE8EF)]),
-  SongGenre('cinematic_ost', '🎬', [Color(0xFFDEE6F2), Color(0xFFE4DDEF)]),
+  SongGenre('arabic_pop', '🎤', [Color(0xFF3A2352), Color(0xFF7A2E6E)], arabicOnly: true),
+  SongGenre('arabic_ballad', '💔', [Color(0xFF2B2352), Color(0xFF5A3AA6)], arabicOnly: true),
+  SongGenre('khaleeji', '🌙', [Color(0xFF1F3A5C), Color(0xFF2E7A6E)], arabicOnly: true),
+  SongGenre('tarab_classic', '🎻', [Color(0xFF5C3A1F), Color(0xFFA2762E)], arabicOnly: true),
+  SongGenre('arabic_trap', '🔥', [Color(0xFF5C1F3A), Color(0xFFA2405B)], arabicOnly: true),
+  SongGenre('folk_shaabi', '🪗', [Color(0xFF5A1F52), Color(0xFF9E2E7A)], arabicOnly: true),
+  SongGenre('hiphop_rap', '🎧', [Color(0xFF1F5C4A), Color(0xFF2EA27A)]),
+  SongGenre('rnb_soul', '🎹', [Color(0xFF3A1F52), Color(0xFF6E2E7A)]),
+  SongGenre('pop', '🎶', [Color(0xFF5C1F45), Color(0xFFA2406B)]),
+  SongGenre('rock', '🎸', [Color(0xFF23264A), Color(0xFF3A3AA6)]),
+  SongGenre('edm_electropop', '🎛️', [Color(0xFF1F4A5C), Color(0xFF2E8AA2)]),
+  SongGenre('cinematic_ost', '🎬', [Color(0xFF2A2440), Color(0xFF4A3A6E)]),
 ];
 
 List<SongGenre> genresForLanguage(String language) =>

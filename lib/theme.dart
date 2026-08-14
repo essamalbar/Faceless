@@ -1,50 +1,55 @@
-/// Faceless brand theme — light, premium, calm. Soft pastel gradient
-/// background (warm cream → cool lavender), frosted white cards with soft
-/// shadows, dark ink text, a restrained green accent, charcoal buttons.
-/// Modeled on the approved reference. A global pastel background sits behind
-/// every screen (main.dart's MaterialApp.builder + ui/brand.dart MeshBackground).
+/// Faceless brand theme — glassy dark-neon. Near-black background lit by
+/// blurred pink/purple/cyan glow, frosted translucent cards with bright glass
+/// edges, a pink→purple gradient for primary actions + selection, Space
+/// Grotesk display / Inter (Cairo for Arabic) body. A global neon-lit
+/// background sits behind every screen (main.dart's MaterialApp.builder +
+/// ui/brand.dart MeshBackground).
+///
+/// Token + widget NAMES are kept stable so screens inherit the look through
+/// the shared layer without edits — only the VALUES changed from the old
+/// light theme. See docs/superpowers/specs/2026-08-14-dark-neon-glass-design-system-design.md
 library;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class FacelessTheme {
-  // --- Palette (light) --------------------------------------------------
-  static const bg = Color(0xFFF4F1F7); // light base (mesh paints the gradient)
-  static const surface = Color(0xFFFFFFFF); // white card
-  static const surface2 = Color(0xFFF4F2EC); // soft warm/sand secondary
-  static const accent = Color(0xFF2FA36B); // restrained green (primary accent)
-  static const accent2 = Color(0xFF38BFA6); // teal (gradient/wave secondary)
-  static const accentMid = Color(0xFF33AF89); // between (gradient middle)
-  static const ink = Color(0xFF232636); // charcoal — primary buttons
-  static const textPrimary = Color(0xFF1B1E28); // near-black
-  static const textSecondary = Color(0xFF767C8C);
-  static const faint = Color(0xFFA2A7B4);
-  static const danger = Color(0xFFE5484D);
-  static const success = Color(0xFF2FA36B);
-  static const warning = Color(0xFFE39A2B);
-  static const info = Color(0xFF3B82F6);
+  // --- Palette (dark-neon) ----------------------------------------------
+  static const bg = Color(0xFF0B0810); // near-black base (mesh paints glow)
+  static const surface = Color(0xFF1A1327); // SOLID dark card / menu ground
+  static const surface2 = Color(0xFF211830); // slightly lighter dark
+  static const accent = Color(0xFFFF4D8D); // neon pink (primary accent)
+  static const accent2 = Color(0xFFA25BFF); // neon purple (gradient secondary)
+  static const accentMid = Color(0xFFCF54C0); // between (3-stop gradient middle)
+  static const ink = Color(0xFF7C3AED); // deep neon violet — solid filled buttons
+  static const textPrimary = Color(0xFFF5F0FB); // near-white
+  static const textSecondary = Color(0xFFBEB0D6); // muted lavender
+  static const faint = Color(0xFF84769C);
+  static const danger = Color(0xFFFF5A67);
+  static const success = Color(0xFF3FE0D0); // cyan-green, readable on dark
+  static const warning = Color(0xFFFFC94D);
+  static const info = Color(0xFF4D8DFF);
 
-  // Soft green→teal used for the logo mark, accent headline words, dots.
+  // Pink→purple used for the logo mark, accent headline words, primary CTA.
   static const brandGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF34A473), accent2],
+    colors: [accent, accent2],
   );
 
-  // Frosted-white surfaces + hairline borders over the pastel background.
-  static Color get glass => Colors.white.withValues(alpha: 0.72);
-  static Color get glassStrong => Colors.white.withValues(alpha: 0.86);
-  static Color get border => Colors.black.withValues(alpha: 0.07);
+  // Frosted translucent surfaces + bright hairline borders over the neon glow.
+  static Color get glass => Colors.white.withValues(alpha: 0.055);
+  static Color get glassStrong => Colors.white.withValues(alpha: 0.10);
+  static Color get border => Colors.white.withValues(alpha: 0.14);
   static List<BoxShadow> get softShadow => [
         BoxShadow(
-          color: const Color(0xFF1E2046).withValues(alpha: 0.08),
-          blurRadius: 34,
-          offset: const Offset(0, 12),
+          color: Colors.black.withValues(alpha: 0.38),
+          blurRadius: 28,
+          offset: const Offset(0, 8),
         ),
       ];
 
-  /// Space Grotesk display/heading style (dark ink, Cairo fallback for Arabic).
+  /// Space Grotesk display/heading style (near-white text, Cairo fallback).
   static TextStyle display({
     double size = 28,
     FontWeight weight = FontWeight.w700,
@@ -62,13 +67,13 @@ class FacelessTheme {
 
   static ThemeData build({Locale? locale}) {
     final isArabic = locale?.languageCode == 'ar';
-    final base = ThemeData.light(useMaterial3: true);
+    final base = ThemeData.dark(useMaterial3: true);
     final scheme = ColorScheme.fromSeed(
       seedColor: accent,
-      brightness: Brightness.light,
+      brightness: Brightness.dark,
       surface: surface,
-      primary: ink,
-      secondary: accent,
+      primary: accent,
+      secondary: accent2,
       error: danger,
     ).copyWith(surfaceContainerHighest: surface2);
 
@@ -103,6 +108,7 @@ class FacelessTheme {
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: border),
         ),
+        textStyle: const TextStyle(color: textPrimary),
       ),
       dropdownMenuTheme: DropdownMenuThemeData(
         menuStyle: MenuStyle(
@@ -156,17 +162,17 @@ class FacelessTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: textPrimary,
-          backgroundColor: Colors.white,
+          backgroundColor: glass,
           side: BorderSide(color: border),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(foregroundColor: ink),
+        style: TextButton.styleFrom(foregroundColor: accent),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: Colors.white,
+        backgroundColor: glass,
         side: BorderSide(color: border),
         labelStyle: const TextStyle(color: textPrimary, fontSize: 13),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
@@ -174,7 +180,7 @@ class FacelessTheme {
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith(
-            (s) => s.contains(WidgetState.selected) ? ink : Colors.white,
+            (s) => s.contains(WidgetState.selected) ? accent : glass,
           ),
           foregroundColor: WidgetStateProperty.resolveWith(
             (s) => s.contains(WidgetState.selected) ? Colors.white : textSecondary,
@@ -186,7 +192,7 @@ class FacelessTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: surface2,
         hintStyle: const TextStyle(color: faint),
         labelStyle: const TextStyle(color: textSecondary),
         contentPadding:
@@ -211,7 +217,7 @@ class FacelessTheme {
   static LinearGradient get heroGradient => const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Colors.transparent, Color(0x11000000), Color(0x22000000)],
+        colors: [Colors.transparent, Color(0x33000000), Color(0x66000000)],
         stops: [0.0, 0.7, 1.0],
       );
 
