@@ -104,11 +104,14 @@ def test_healthz_writer_degraded_false_without_marker(client, monkeypatch):
 
 def test_healthz_writer_degraded_true_with_marker(client, monkeypatch):
     _clear_llm_keys(monkeypatch)
+    from datetime import datetime, timezone
     from pipeline import api as api_mod
     marker = api_mod._llm_fallback_marker()
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text('{"last_fallback_at": "2026-08-07T00:00:00+00:00"}',
-                      encoding="utf-8")
+    # A RECENT fallback (within the 24h window) reports degraded. Use a live
+    # timestamp — a hardcoded date is a time-bomb once it ages past the window.
+    ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    marker.write_text(json.dumps({"last_fallback_at": ts}), encoding="utf-8")
     body = client.get("/healthz").json()
     assert body["writer_degraded"] is True
 

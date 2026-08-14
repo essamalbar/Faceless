@@ -980,6 +980,37 @@ def _llm_fallback_marker() -> Path:
     return _out_root() / "llm_fallback.json"
 
 
+# A recorded primary→Groq fallback only counts as a LIVE degradation for this
+# many hours. Beyond it the marker is stale (a one-off past event) and must NOT
+# keep the service reporting degraded — see _llm_fallback_status.
+_LLM_FALLBACK_WINDOW_H = 24.0
+
+
+def _llm_fallback_status() -> dict:
+    """Read the runtime LLM-fallback marker with a freshness window.
+
+    `degraded` is True only when a fallback into the weak writer (Groq) was
+    recorded within the last `_LLM_FALLBACK_WINDOW_H` hours. A missing,
+    unreadable, or stale marker is NOT degraded — so an old one-off fallback
+    can't pin /health (or the in-app banner) to degraded forever. Both /health
+    (_writer_tier_status) and /system/llm-status read through here so they can
+    never disagree."""
+    p = _llm_fallback_marker()
+    if not p.exists():
+        return {"degraded": False, "last_fallback_at": None, "error": None}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        ts = datetime.fromisoformat(data.get("last_fallback_at"))
+        age_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
+        return {
+            "degraded": age_h <= _LLM_FALLBACK_WINDOW_H,
+            "last_fallback_at": data.get("last_fallback_at"),
+            "error": data.get("error"),
+        }
+    except Exception:
+        return {"degraded": False, "last_fallback_at": None, "error": None}
+
+
 def _writer_tier_status() -> dict:
     """Which LLM writer the API would use, plus whether a runtime degradation
     was recorded — surfaced on /healthz so an operator can spot a silent
@@ -987,8 +1018,9 @@ def _writer_tier_status() -> dict:
 
     `writer_tier` mirrors `_build_llm()`'s env-key preference order
     (ANTHROPIC → GEMINI → GROQ), reporting the top *configured* provider or
-    `"none"` when no LLM key is set. `writer_degraded` is True when a
-    runtime fallback marker exists under the out-root."""
+    `"none"` when no LLM key is set. `writer_degraded` is True only when a
+    runtime fallback into Groq was recorded within the last 24h (a stale
+    marker no longer counts — see _llm_fallback_status)."""
     if os.environ.get("ANTHROPIC_API_KEY"):
         tier = "anthropic"
     elif os.environ.get("GEMINI_API_KEY"):
@@ -997,7 +1029,8 @@ def _writer_tier_status() -> dict:
         tier = "groq"
     else:
         tier = "none"
-    return {"writer_tier": tier, "writer_degraded": _llm_fallback_marker().exists()}
+    return {"writer_tier": tier,
+            "writer_degraded": _llm_fallback_status()["degraded"]}
 
 
 def _record_llm_fallback(exc: Exception) -> None:
@@ -1021,21 +1054,9 @@ def _record_llm_fallback(exc: Exception) -> None:
 @app.get("/system/llm-status")
 def llm_status(user: User = Depends(require_user)):
     """degraded=True when the primary LLM fell back to Groq within the last
-    24h → the app shows a 'lyric quality reduced' banner."""
-    p = _llm_fallback_marker()
-    if not p.exists():
-        return {"degraded": False, "last_fallback_at": None, "error": None}
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        ts = datetime.fromisoformat(data.get("last_fallback_at"))
-        age_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
-        return {
-            "degraded": age_h <= 24,
-            "last_fallback_at": data.get("last_fallback_at"),
-            "error": data.get("error"),
-        }
-    except Exception:
-        return {"degraded": False, "last_fallback_at": None, "error": None}
+    24h → the app shows a 'lyric quality reduced' banner. Shares the same
+    freshness logic as /health via _llm_fallback_status."""
+    return _llm_fallback_status()
 
 
 def _build_song_llm():
