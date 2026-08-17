@@ -131,4 +131,4 @@ song:
 # and fixed hook length. Model id lives under kie.avatar_model above.
 perform_credits_per_video: 3     # ~$2.40 Kie spend (30s x ~$0.08/s) — matches cinematic tier
 perform_hook_seconds: 30         # length of the highest-energy hook we render
-perform_enabled: true            # ON: DB double-charge guard (claim_perform) + Kie avatar_model both in place
+perform_enabled: false           # OFF (2026-08-17): pulled from the app — too expensive (~$2.40/render) + poor avatar quality. Guard + model stay wired if ever revisited.
