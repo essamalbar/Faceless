@@ -52,6 +52,15 @@ if command -v flutter >/dev/null 2>&1; then
     exit 1
   fi
 
+  # `flutter build web` reuses a cached web_plugin_registrant.dart keyed on the
+  # build config. Adding a web plugin AFTER a prior build (e.g. image_picker ->
+  # image_picker_for_web) leaves that registrant stale, so registerWith() is
+  # never emitted and the plugin fails at runtime with MissingPluginException
+  # (fallback to the method channel, which has no web handler). Clean forces the
+  # registrant + bundle to regenerate from the current plugin set.
+  flutter clean >/dev/null
+  flutter pub get >/dev/null
+
   flutter build web --release \
     --base-href /app/ \
     --dart-define="FACELESS_API_URL=${PROD_API_URL}" \
