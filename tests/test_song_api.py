@@ -1513,11 +1513,15 @@ def test_perform_happy_path_charges_saves_photo_and_spawns(app, monkeypatch):
 
     charges: list[dict] = []
 
-    def fake_deduct(user, amount, run_id, reason):
-        charges.append({"amount": amount, "run_id": run_id, "reason": reason})
+    def fake_claim(user, *, run_id, amount, reference_id, reason, stale_seconds):
+        # `reference_id` is the perform-scoped ref the endpoint generates;
+        # `run_id` is now the bare run id (the atomic claim's in-flight key).
+        charges.append({"amount": amount, "run_id": run_id,
+                        "reference_id": reference_id, "reason": reason})
         return 100 - amount
 
-    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    monkeypatch.setattr(credits, "claim_perform", fake_claim)
+    monkeypatch.setattr(credits, "release_perform_claim", lambda **k: None)
     monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
 
     spawn_calls: list = []
@@ -1544,8 +1548,10 @@ def test_perform_happy_path_charges_saves_photo_and_spawns(app, monkeypatch):
     # (never the bare run_id → can't refund the delivered song).
     assert len(charges) == 1
     assert charges[0]["amount"] == 3
-    assert charges[0]["run_id"].startswith(f"{run_id}:perform:")
-    assert charges[0]["run_id"] != run_id
+    assert charges[0]["reference_id"].startswith(f"{run_id}:perform:")
+    assert charges[0]["reference_id"] != run_id
+    # The claim itself is keyed to the bare run id (the in-flight guard's key).
+    assert charges[0]["run_id"] == run_id
 
     # Photo saved + worker spawned with --perform --resume.
     assert (run_dir / "perform_photo.png").exists()
@@ -1591,13 +1597,14 @@ def test_perform_rejects_when_ownership_not_attested(app, monkeypatch):
 
 
 def test_perform_returns_402_when_insufficient_credits(app, monkeypatch):
-    """check_or_deduct raising InsufficientCredits → 402 (paywall payload)."""
+    """claim_perform raising InsufficientCredits → 402 (paywall payload)."""
     from pipeline import api as api_mod, credits
 
-    def boom_deduct(user, amount, run_id, reason):
+    def boom_claim(user, *, run_id, amount, reference_id, reason, stale_seconds):
         raise credits.InsufficientCredits(balance=0, required=amount)
 
-    monkeypatch.setattr(credits, "check_or_deduct", boom_deduct)
+    monkeypatch.setattr(credits, "claim_perform", boom_claim)
+    monkeypatch.setattr(credits, "release_perform_claim", lambda **k: None)
     monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
 
     run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
@@ -1618,16 +1625,24 @@ def test_perform_refunds_and_fails_when_spawn_errors(app, monkeypatch):
     top-level status stays ``complete`` (never clobbered to failed)."""
     from pipeline import api as api_mod, credits
 
-    monkeypatch.setattr(
-        credits, "check_or_deduct",
-        lambda user, amount, run_id, reason: 100 - amount,
-    )
+    captured: dict = {}
+
+    def fake_claim(user, *, run_id, amount, reference_id, reason, stale_seconds):
+        captured["reference_id"] = reference_id
+        return 100 - amount
+
+    monkeypatch.setattr(credits, "claim_perform", fake_claim)
     monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
 
     refunds: list[str] = []
     monkeypatch.setattr(
         credits, "refund_run_charges",
         lambda user, *, run_id, reason: refunds.append(run_id) or 3,
+    )
+    released: list[dict] = []
+    monkeypatch.setattr(
+        credits, "release_perform_claim",
+        lambda **k: released.append(k),
     )
 
     run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
@@ -1648,6 +1663,12 @@ def test_perform_refunds_and_fails_when_spawn_errors(app, monkeypatch):
     assert len(refunds) == 1
     assert refunds[0].startswith(f"{run_id}:perform:")
     assert refunds[0] != run_id
+    # …and the in-flight claim was released for THIS attempt (ref-scoped) so a
+    # retry can re-claim — keyed by the bare run id + the perform ref.
+    assert len(released) == 1
+    assert released[0] == {"run_id": run_id,
+                           "reference_id": captured["reference_id"]}
+    assert captured["reference_id"] == refunds[0]
 
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["perform_status"] == "failed"
@@ -1667,9 +1688,9 @@ def test_perform_worker_failure_auto_refunds_on_poll(app, monkeypatch):
     bal = {"v": 100}
     charge_log: list[tuple[str, int]] = []
 
-    def fake_deduct(user, amount, run_id, reason):
+    def fake_claim(user, *, run_id, amount, reference_id, reason, stale_seconds):
         bal["v"] -= amount
-        charge_log.append((run_id, amount))
+        charge_log.append((reference_id, amount))
         return bal["v"]
 
     def fake_refund_run_charges(user, *, run_id, reason):
@@ -1677,7 +1698,8 @@ def test_perform_worker_failure_auto_refunds_on_poll(app, monkeypatch):
         bal["v"] += net
         return net
 
-    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    monkeypatch.setattr(credits, "claim_perform", fake_claim)
+    monkeypatch.setattr(credits, "release_perform_claim", lambda **k: None)
     monkeypatch.setattr(credits, "refund_run_charges", fake_refund_run_charges)
     monkeypatch.setattr(credits, "get_balance", lambda uid: bal["v"])
 
@@ -1864,9 +1886,9 @@ def test_perform_redo_after_success_deletes_stale_video_and_can_refund(app, monk
     bal = {"v": 97}  # 100 - 3 for the delivered prior perform
     charge_log: list[tuple[str, int]] = [("run:perform:REF0", 3)]
 
-    def fake_deduct(user, amount, run_id, reason):
+    def fake_claim(user, *, run_id, amount, reference_id, reason, stale_seconds):
         bal["v"] -= amount
-        charge_log.append((run_id, amount))
+        charge_log.append((reference_id, amount))
         return bal["v"]
 
     def fake_refund_run_charges(user, *, run_id, reason):
@@ -1877,7 +1899,10 @@ def test_perform_redo_after_success_deletes_stale_video_and_can_refund(app, monk
             return net
         return 0
 
-    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    released: list[dict] = []
+    monkeypatch.setattr(credits, "claim_perform", fake_claim)
+    monkeypatch.setattr(credits, "release_perform_claim",
+                        lambda **k: released.append(k))
     monkeypatch.setattr(credits, "refund_run_charges", fake_refund_run_charges)
     monkeypatch.setattr(credits, "get_balance", lambda uid: bal["v"])
     # The redo's worker pid always reads DEAD (worker died immediately); the
@@ -1911,6 +1936,10 @@ def test_perform_redo_after_success_deletes_stale_video_and_can_refund(app, monk
     assert r.status_code == 200, r.text
     assert bal["v"] == 94  # redo charged 3 (REF_new); REF0 untouched
 
+    # The settle-step released the prior delivered attempt's claim (ref-scoped)
+    # so this redo could re-claim.
+    assert {"run_id": run_id, "reference_id": "run:perform:REF0"} in released
+
     # The stale perform.mp4 must be gone so the dead-worker refund can fire.
     assert not (run_dir / "perform.mp4").exists()
 
@@ -1936,9 +1965,9 @@ def test_perform_redo_settles_prior_pending_refund(app, monkeypatch):
     charge_log: list[tuple[str, int]] = [("run:perform:REF1", 3)]
     refunded_refs: list[str] = []
 
-    def fake_deduct(user, amount, run_id, reason):
+    def fake_claim(user, *, run_id, amount, reference_id, reason, stale_seconds):
         bal["v"] -= amount
-        charge_log.append((run_id, amount))
+        charge_log.append((reference_id, amount))
         return bal["v"]
 
     def fake_refund_run_charges(user, *, run_id, reason):
@@ -1950,7 +1979,10 @@ def test_perform_redo_settles_prior_pending_refund(app, monkeypatch):
             return net
         return 0
 
-    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    released: list[dict] = []
+    monkeypatch.setattr(credits, "claim_perform", fake_claim)
+    monkeypatch.setattr(credits, "release_perform_claim",
+                        lambda **k: released.append(k))
     monkeypatch.setattr(credits, "refund_run_charges", fake_refund_run_charges)
     monkeypatch.setattr(credits, "get_balance", lambda uid: bal["v"])
     api_mod.set_spawn_fn(lambda args, run_dir: 4242)
@@ -1978,6 +2010,8 @@ def test_perform_redo_settles_prior_pending_refund(app, monkeypatch):
     assert "run:perform:REF1" in refunded_refs
     ref1_net = sum(a for (rid, a) in charge_log if rid == "run:perform:REF1")
     assert ref1_net == 0  # attempt-1 made whole
+    # …and REF1's in-flight claim was released (ref-scoped) before re-claiming.
+    assert {"run_id": run_id, "reference_id": "run:perform:REF1"} in released
 
     # Attempt 2 charged its OWN fresh ref (not REF1).
     state2 = json.loads((run_dir / "api_state.json").read_text())
@@ -1990,39 +2024,36 @@ def test_perform_redo_settles_prior_pending_refund(app, monkeypatch):
     assert bal["v"] == 97
 
 
-def test_perform_concurrent_requests_charge_once(app, monkeypatch):
-    """CRITICAL Bug 3: two concurrent POST /perform must NOT both charge. The
-    second request (arriving while the first is mid-charge, before its worker
-    writes state) must be rejected with 409 BEFORE it deducts a second time."""
-    from fastapi.testclient import TestClient
+# NOTE on the cross-instance double-charge guarantee.
+# The old test_perform_concurrent_requests_charge_once fired a nested request
+# from inside a mocked check_or_deduct to exercise an O_EXCL file lock. That
+# mechanism is GONE: the perform double-charge guard is now a single atomic
+# Postgres transaction (the claim_perform RPC — a per-run + per-user advisory
+# lock) so it holds across Cloud Run instances, where pids and file locks do
+# not. That serialization lives in the DB function and, by this repo's mock-all-
+# external-services rule, cannot be exercised with a mocked DB — it is verified
+# by design + review, not a unit test. What we CAN and DO pin here is the
+# endpoint's contract when the RPC reports an in-flight render: a 409 that
+# neither charges nor destroys a previously delivered video (the advisor-
+# mandated after-claim ordering of all destructive run-dir mutations).
+def test_perform_in_flight_returns_409_without_charging_or_destroying_video(
+        app, monkeypatch):
+    """Contract: claim_perform raising PerformInFlight → 409, and the endpoint
+    performs NO destructive run-dir mutations (it never clears perform_photo.*,
+    deletes the delivered perform.mp4, overwrites terminal state, or spawns a
+    worker). Those mutations happen only AFTER the atomic claim succeeds, so a
+    request rejected as in-flight can never clobber a delivered render."""
     from pipeline import api as api_mod, credits
 
-    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
-    SONG_ID = run_id
+    def in_flight_claim(user, *, run_id, amount, reference_id, reason,
+                        stale_seconds):
+        raise credits.PerformInFlight(run_id=run_id)
 
-    charges: list[str] = []
-    spawn_calls: list = []
-    second: dict = {}
-    fired = {"done": False}
-
-    def fake_deduct(user, amount, run_id, reason):
-        charges.append(run_id)
-        if not fired["done"]:
-            # Fire the SECOND request WHILE the first is still inside its
-            # charge→spawn critical section (before it has written any
-            # perform_status). This is the exact race window.
-            fired["done"] = True
-            b_client = TestClient(api_mod.app)
-            second["resp"] = b_client.post(
-                f"/songs/{SONG_ID}/perform",
-                files={"file": _PERFORM_PHOTO},
-                data={"ownership_attested": "true"},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        return 100 - amount
-
-    monkeypatch.setattr(credits, "check_or_deduct", fake_deduct)
+    monkeypatch.setattr(credits, "claim_perform", in_flight_claim)
+    monkeypatch.setattr(credits, "release_perform_claim", lambda **k: None)
     monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    spawn_calls: list = []
 
     def fake_spawn(args, run_dir):
         spawn_calls.append(args)
@@ -2030,18 +2061,41 @@ def test_perform_concurrent_requests_charge_once(app, monkeypatch):
 
     api_mod.set_spawn_fn(fake_spawn)
 
+    run_id, run_dir, client, token = _complete_song_with_audio(app, monkeypatch)
+
+    # Seed a prior DELIVERED perform: perform.mp4 + perform_photo.png on disk,
+    # terminal 'complete' state with a known ref.
+    state = json.loads((run_dir / "api_state.json").read_text())
+    state.update({
+        "perform_status": "complete",
+        "perform_ref": f"{run_id}:perform:DELIVERED",
+        "perform_video": "perform.mp4",
+    })
+    (run_dir / "api_state.json").write_text(json.dumps(state))
+    DELIVERED_MP4 = b"the-delivered-singing-video-bytes"
+    DELIVERED_PHOTO = b"the-delivered-photo-bytes"
+    (run_dir / "perform.mp4").write_bytes(DELIVERED_MP4)
+    (run_dir / "perform_photo.png").write_bytes(DELIVERED_PHOTO)
+
     r = client.post(
-        f"/songs/{SONG_ID}/perform",
+        f"/songs/{run_id}/perform",
         files={"file": _PERFORM_PHOTO},
         data={"ownership_attested": "true"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert r.status_code == 200, r.text
-    # The second concurrent request was rejected before charging.
-    assert second["resp"].status_code == 409, second["resp"].text
-    # Exactly ONE charge and ONE spawn total.
-    assert len(charges) == 1, charges
-    assert len(spawn_calls) == 1, spawn_calls
+    assert r.status_code == 409, r.text
+
+    # A 409 must NOT destroy the delivered video or its photo (after-claim
+    # ordering) — bytes intact, not merely present.
+    assert (run_dir / "perform.mp4").exists()
+    assert (run_dir / "perform.mp4").read_bytes() == DELIVERED_MP4
+    assert (run_dir / "perform_photo.png").exists()
+    assert (run_dir / "perform_photo.png").read_bytes() == DELIVERED_PHOTO
+    # …and must NOT overwrite the terminal state or spawn a worker.
+    settled = json.loads((run_dir / "api_state.json").read_text())
+    assert settled["perform_status"] == "complete"
+    assert settled["perform_ref"] == f"{run_id}:perform:DELIVERED"
+    assert spawn_calls == []
 
 
 def test_perform_spawn_failure_message_truthful_when_refund_fails(app, monkeypatch):
@@ -2050,8 +2104,10 @@ def test_perform_spawn_failure_message_truthful_when_refund_fails(app, monkeypat
     from pipeline import api as api_mod, credits
 
     monkeypatch.setattr(
-        credits, "check_or_deduct",
-        lambda user, amount, run_id, reason: 100 - amount)
+        credits, "claim_perform",
+        lambda user, *, run_id, amount, reference_id, reason, stale_seconds:
+            100 - amount)
+    monkeypatch.setattr(credits, "release_perform_claim", lambda **k: None)
     monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
 
     def refund_boom(user, *, run_id, reason):
@@ -2112,8 +2168,10 @@ def test_run_perform_worker_passes_generous_render_timeout(tmp_path, monkeypatch
 
 
 def test_perform_disabled_returns_403(app, monkeypatch):
-    # Feature flag OFF (config default) → the endpoint refuses before any work.
-    monkeypatch.delenv("FACELESS_PERFORM_ENABLED", raising=False)
+    # Feature flag forced OFF via the env override (config now ships it ON) →
+    # the endpoint refuses before any work. _perform_enabled() checks the env
+    # var first, so "0" wins regardless of config.yaml's perform_enabled: true.
+    monkeypatch.setenv("FACELESS_PERFORM_ENABLED", "0")
     fastapi_app, token = app
     client = TestClient(fastapi_app)
     r = client.post(

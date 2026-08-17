@@ -3973,6 +3973,18 @@ def _spawn_perform_or_refund(
                 "[billing] perform refund after spawn failure failed",
                 exc_info=True, extra={"run_id": run_id},
             )
+        # Free the in-flight DB claim so a retry can re-claim (ref-scoped: only
+        # deletes THIS attempt's claim, never a concurrent one). If the refund
+        # above raised, the charge is retried by _reconcile_perform_refund on the
+        # next poll; the redo settle-step also guards against orphaning it.
+        try:
+            from pipeline.credits import release_perform_claim
+            release_perform_claim(run_id=run_id, reference_id=perform_ref)
+        except Exception:
+            get_logger().error(
+                "[billing] perform claim release after spawn failure failed",
+                exc_info=True, extra={"run_id": run_id},
+            )
         _write_state(
             run_dir, perform_status="failed",
             # Only claim refunded when the refund actually landed; otherwise
@@ -3992,51 +4004,15 @@ def _spawn_perform_or_refund(
         )
 
 
-# Filesystem mutex that closes the read-check-then-charge window in
-# perform_song. Named distinctly from the perform_photo.* / perform.mp4
-# artifacts so no glob picks it up.
-_PERFORM_CLAIM_LOCK = "perform.claim.lock"
-# A holder that crashed mid-critical-section (API killed between charge and
-# lock release) leaves a stale lock. Reclaim one older than this so a dead
-# process can't wedge the feature forever. The window it guards (deduct +
-# spawn) is milliseconds, so any lock this old is definitively abandoned.
-_PERFORM_CLAIM_STALE_S = 120
-
-
-def _acquire_perform_claim(run_dir: Path) -> None:
-    """Atomically claim the perform charge→spawn critical section.
-
-    Bug guard (concurrent double-charge): two concurrent
-    ``POST /songs/{id}/perform`` requests would otherwise both pass the
-    "already rendering?" check and each ``check_or_deduct`` + spawn — the
-    Postgres advisory lock only prevents a NEGATIVE balance, not a second
-    VALID deduction, so the user is charged twice and two workers race on the
-    same perform.mp4. ``O_CREAT | O_EXCL`` is atomic on POSIX: exactly one
-    caller creates the lock; the rest get 409. The caller MUST pair this with
-    ``_release_perform_claim`` in a ``finally``.
-    """
-    lock = run_dir / _PERFORM_CLAIM_LOCK
-    try:
-        os.close(os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644))
-        return
-    except FileExistsError:
-        pass
-    try:
-        age = time.time() - lock.stat().st_mtime
-    except FileNotFoundError:
-        age = _PERFORM_CLAIM_STALE_S + 1  # released underneath us → treat as free
-    if age < _PERFORM_CLAIM_STALE_S:
-        raise HTTPException(409, "a video is already being started for this song")
-    # Stale lock from a crashed request — atomically steal it.
-    lock.unlink(missing_ok=True)
-    try:
-        os.close(os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644))
-    except FileExistsError:
-        raise HTTPException(409, "a video is already being started for this song")
-
-
-def _release_perform_claim(run_dir: Path) -> None:
-    (run_dir / _PERFORM_CLAIM_LOCK).unlink(missing_ok=True)
+# Age past which a perform claim is treated as an abandoned/crashed render and
+# stolen by a fresh claim (crash recovery). MUST exceed the whole render ceiling
+# — the worker waits up to 1800s for Kie, plus photo/audio uploads, queue, and
+# spawn latency — NOT the old 120s charge→spawn window: stealing a claim whose
+# worker is still alive re-opens two concurrent renders and two charges. The
+# O_EXCL file lock this replaces could not serialize across Cloud Run instances
+# (gcsfuse), and pids are meaningless cross-instance; the DB claim row is the
+# authoritative cross-instance guard. See claim_perform in the migration.
+_PERFORM_STALE_SECONDS = 3600
 
 
 def _resolve_song_dir(run_id: str, user: "User") -> Path:
@@ -4983,9 +4959,16 @@ def perform_song(
 ):
     """Charge the fixed perform price and spawn a worker that turns a photo +
     the finished song's hook into a 30s lip-synced singing video (Kie Kling AI
-    Avatar). Charge is scoped to a per-attempt reference id so a failed render
-    (auto-refunded on the next poll) never claws back the delivered song, and
-    supports "Redo" without over-refunding a prior successful render."""
+    Avatar).
+
+    Double-charge safety is a single Postgres transaction (claim_perform): a
+    per-run + per-user advisory lock lets exactly one caller hold a run's
+    in-flight perform at a time, across every Cloud Run instance — the old
+    O_EXCL file lock could not (gcsfuse), and pids are meaningless
+    cross-instance. The charge is scoped to a per-attempt reference id so a
+    failed render (auto-refunded on the next poll) never claws back the
+    delivered song, and "Redo" re-claims cleanly without over-refunding a prior
+    successful render."""
     if not _perform_enabled():
         raise HTTPException(403, detail={"code": "perform_disabled"})
     _require_terms_accepted(user)
@@ -5005,114 +4988,94 @@ def perform_song(
         raise HTTPException(409, "song audio not found")
     if not ownership_attested:
         raise HTTPException(400, {"code": "ownership_not_attested"})
-    # Fast-path idempotency (optimization only): refuse a second render while
-    # one is genuinely in flight. The AUTHORITATIVE re-check happens again under
-    # the claim lock below — this pre-lock read can race a request that has
-    # since spawned a live worker and released the lock.
+    # Fast-path idempotency (optimization only): refuse a second render while one
+    # is genuinely in flight, before we bother reading the upload. The
+    # AUTHORITATIVE guard is claim_perform below, atomic across instances; this
+    # local read only saves work in the common case.
     if (state.get("perform_status") == "rendering"
             and _process_alive(state.get("perform_pid"), run_dir)):
         raise HTTPException(409, "a video is already rendering for this song")
 
-    # Atomically claim the charge→spawn critical section BEFORE deducting, so a
-    # second concurrent request is rejected (409) before it can charge (the
-    # concurrent double-charge bug). Everything that mutates run state / money
-    # runs under this claim; the finally always releases it.
-    _acquire_perform_claim(run_dir)
-    try:
-        # Authoritative in-flight re-check, now that we hold the claim. If the
-        # pre-lock read raced a request that has since spawned a live worker and
-        # released the lock, reject here — otherwise we'd double-charge and
-        # delete a live render's perform.mp4.
-        current_state = _read_state(run_dir)
-        if (current_state.get("perform_status") == "rendering"
-                and _process_alive(current_state.get("perform_pid"), run_dir)):
-            raise HTTPException(409, "a video is already rendering for this song")
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+    amount = int(cfg.perform_credits_per_video)
 
-        # Validate + save the photo — mirrors POST /artists/{id}/avatar.
-        ext = Path(file.filename or "").suffix.lower()
-        ctype = (file.content_type or "").lower()
-        if not (ctype.startswith("image/") or ext in _IMAGE_EXTS):
-            raise HTTPException(422, "photo must be an image (png, jpg, webp)")
-        if ext not in _IMAGE_EXTS:
-            ext = ".png"
-        # Remove prior per-attempt artifacts so a NEW attempt can't be wedged by
-        # a previous one: (a) the photo (glob — possibly a different ext) so the
-        # worker's perform_photo.* glob resolves to exactly one file, and (b) a
-        # stale perform.mp4 / hook.mp3. If a prior perform.mp4 were left on disk
-        # and this attempt's worker died before writing perform_status='failed',
-        # _reconcile_perform_refund's dead-pid branch (which requires
-        # `not perform.mp4.exists()`) would see the STALE file, skip the refund,
-        # and leave perform_status stuck 'rendering' forever.
-        for old in run_dir.glob("perform_photo.*"):
-            old.unlink(missing_ok=True)
-        (run_dir / "perform.mp4").unlink(missing_ok=True)
-        (run_dir / "hook.mp3").unlink(missing_ok=True)
-        dest = run_dir / f"perform_photo{ext}"
+    # Validate + read the upload into a TEMP file OUTSIDE the perform_photo.*
+    # glob, BEFORE claiming. Destructive run-dir mutations (clearing the old
+    # photo, deleting the delivered perform.mp4) happen ONLY after a successful
+    # claim below — so a 409 (render in flight) or 402 (insufficient) never
+    # disturbs a queued worker's photo or destroys the delivered video. No lock
+    # is held across this read: the claim is a DB row, not a file mutex, so
+    # upload duration no longer extends any critical section.
+    ext = Path(file.filename or "").suffix.lower()
+    ctype = (file.content_type or "").lower()
+    if not (ctype.startswith("image/") or ext in _IMAGE_EXTS):
+        raise HTTPException(422, "photo must be an image (png, jpg, webp)")
+    if ext not in _IMAGE_EXTS:
+        ext = ".png"
+    tmp_photo = run_dir / "perform_upload.part"
+    try:
         total = 0
-        with dest.open("wb") as out:
+        with tmp_photo.open("wb") as out:
             while chunk := file.file.read(1 << 20):
                 total += len(chunk)
                 if total > _AVATAR_MAX_BYTES:
                     out.close()
-                    dest.unlink(missing_ok=True)
                     raise HTTPException(413, "photo too large (max 10 MB)")
                 out.write(chunk)
         if total == 0:
-            dest.unlink(missing_ok=True)
             raise HTTPException(422, "uploaded file was empty")
 
-        cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
-        cfg = load_config(cfg_path)
-        amount = int(cfg.perform_credits_per_video)
-
-        # Settle the PRIOR attempt BEFORE overwriting perform_ref, so no
-        # attempt's charge is silently orphaned (the redo-orphans-refund bug).
-        # We hold the claim and just proved (above) that no live worker owns
-        # this slot, so a prior 'rendering' with a None/dead pid is a
-        # definitively-dead attempt (a crash between the rendering-state write
-        # and the pid write, or OOM before it wrote 'failed'); mark it failed so
-        # the reconciler's plain failed-branch refunds it — otherwise its
-        # `perform_pid is not None` guard would skip it forever and the orphan
-        # guard below would wedge every future redo. Runs AFTER the stale
-        # perform.mp4 delete above so the reconciler's dead-pid branch isn't
-        # blocked by it, and BEFORE the balance pre-check so a refund funds this
-        # retry.
-        prior_ref = current_state.get("perform_ref")
-        prior_status = current_state.get("perform_status")
-        if prior_ref and not current_state.get("perform_refunded"):
-            if prior_status == "rendering":
-                _write_state(run_dir, perform_status="failed")
+        # Settle a prior TERMINAL attempt so its claim is released before we
+        # re-claim. A live render (status 'rendering') is left untouched → the
+        # claim below returns in_flight (409). A crashed render still marked
+        # 'rendering' is handled by claim_perform's staleness steal.
+        prior_ref = state.get("perform_ref")
+        prior_status = state.get("perform_status")
+        if prior_ref and prior_status in ("complete", "failed"):
+            # Refund a failed prior (idempotent no-op for 'complete'), then
+            # release its claim (ref-scoped) so this redo can re-claim.
             _reconcile_perform_refund(run_dir, user)
             settled = _read_state(run_dir)
-            if (settled.get("perform_ref") == prior_ref
-                    and not settled.get("perform_refunded")
-                    and prior_status != "complete"):
-                # The reconciler could not settle the prior charge — its
-                # refund_run_charges is actually raising (a real billing
-                # anomaly, already logged). Refuse rather than overwrite
-                # perform_ref and orphan the prior charge.
+            if (prior_status == "failed"
+                    and settled.get("perform_ref") == prior_ref
+                    and not settled.get("perform_refunded")):
+                # The reconciler could not refund the prior failed charge (a real
+                # billing anomaly, already logged). Refuse rather than release its
+                # claim + charge again and orphan the prior charge.
                 raise HTTPException(
                     503,
                     "a previous attempt's refund is still pending — please retry")
+            _credits.release_perform_claim(run_id=run_id, reference_id=prior_ref)
 
-        if user.role != "service":
-            balance = _credits.get_balance(user.id)
-            if balance < amount:
-                _raise_402_insufficient_credits(balance, amount)
-
-        # Per-attempt reference id: isolates this charge from the song's own
-        # charge AND from any prior perform attempt, so refund_run_charges can
-        # never over-refund a delivered video. reference_id is free-text.
+        # Atomic in-flight guard + charge. Per-attempt reference id isolates this
+        # charge from the song's own charge AND any prior perform attempt, so
+        # refund_run_charges can never over-refund a delivered video.
         perform_ref = f"{run_id}:perform:{uuid.uuid4().hex[:12]}"
         try:
-            new_balance = _credits.check_or_deduct(
-                user, amount=amount, run_id=perform_ref, reason="perform-spend")
+            new_balance = _credits.claim_perform(
+                user, run_id=run_id, amount=amount, reference_id=perform_ref,
+                reason="perform-spend", stale_seconds=_PERFORM_STALE_SECONDS)
+        except _credits.PerformInFlight:
+            raise HTTPException(
+                409, "a video is already being started for this song")
         except _credits.InsufficientCredits as e:
             _raise_402_insufficient_credits(e.balance, e.required)
 
+        # WON the claim — only now commit destructive mutations. Clear any prior
+        # perform_photo.* (glob — possibly a different ext) so the worker's glob
+        # resolves to exactly one file, delete the stale perform.mp4 / hook.mp3
+        # (deferred RR-1: a failed redo still loses a delivered video — tracked
+        # follow-up), then move the validated upload into place.
+        for old in run_dir.glob("perform_photo.*"):
+            old.unlink(missing_ok=True)
+        (run_dir / "perform.mp4").unlink(missing_ok=True)
+        (run_dir / "hook.mp3").unlink(missing_ok=True)
+        tmp_photo.replace(run_dir / f"perform_photo{ext}")
+
         # Record the attempt BEFORE spawning (pid unknown yet). Reset every
-        # prior-attempt perform_* flag so a stale perform_refunded/failed from
-        # an earlier render can't suppress this attempt's auto-refund.
+        # prior-attempt perform_* flag so a stale perform_refunded/failed from an
+        # earlier render can't suppress this attempt's auto-refund.
         _write_state(
             run_dir, perform_status="rendering", perform_ref=perform_ref,
             perform_refunded=False, perform_last_error=None,
@@ -5131,7 +5094,9 @@ def perform_song(
             "balance_after": new_balance,
         }
     finally:
-        _release_perform_claim(run_dir)
+        # No-op after replace() moved it into place; cleans up the temp upload on
+        # any early exit (validation error, 409/402/503, spawn failure).
+        tmp_photo.unlink(missing_ok=True)
 
 
 @app.get("/songs/{run_id}/perform-video")

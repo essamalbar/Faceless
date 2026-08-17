@@ -82,8 +82,9 @@ class KieConfig:
     native_audio: bool = True
     # Phase C "Make me sing this": Kie Kling AI Avatar model id (audio-driven
     # singing avatar). Defaulted so existing config blocks keep loading.
-    # TODO: confirm the exact id from docs.kie.ai/kling-ai-avatar.
-    avatar_model: str = "kling/ai-avatar-std"
+    # Confirmed from the Kie createTask sample — input = {image_url, audio_url,
+    # prompt?}; matches KieClient.submit_avatar_job.
+    avatar_model: str = "kling/ai-avatar-pro"
 
 
 @dataclass(frozen=True)
@@ -148,4 +149,5 @@ def load_config(path: Path) -> Config:
         perform_credits_per_video=int(
             raw.get("perform_credits_per_video", 3)),
         perform_hook_seconds=int(raw.get("perform_hook_seconds", 30)),
+        perform_enabled=bool(raw.get("perform_enabled", False)),
     )

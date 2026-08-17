@@ -173,6 +173,39 @@ def deduct_credits_atomic(*, user_id: str, amount: int, kind: str,
     return int(resp.data)
 
 
+def claim_perform_atomic(*, user_id: str, run_id: str, amount: int,
+                         reference_id: str, description: str,
+                         is_service: bool, stale_seconds: int) -> dict:
+    """Atomic in-flight guard + charge for one "Make me sing this" render, via
+    the claim_perform Postgres function. Returns the function's jsonb verdict:
+
+      {"ok": True,  "balance": int, "stolen_reference_id": str | None}
+      {"ok": False, "reason": "in_flight"}
+      {"ok": False, "reason": "insufficient", "balance": int,
+                    "stolen_reference_id": str | None}
+
+    Exactly one caller can hold a run's claim at a time across all instances.
+    ``stolen_reference_id`` (when present) is a crashed prior render's charge
+    the caller must refund."""
+    resp = _client().rpc("claim_perform", {
+        "p_user_id": user_id, "p_run_id": run_id, "p_amount": amount,
+        "p_reference_id": reference_id, "p_description": description,
+        "p_is_service": is_service, "p_stale_seconds": stale_seconds,
+    }).execute()
+    return resp.data
+
+
+def release_perform_claim(*, run_id: str, reference_id: str) -> str | None:
+    """Compare-and-delete the perform claim for ``run_id`` — but only if it still
+    holds ``reference_id``. Ref-scoped so a stale-state poll on another instance
+    cannot release a newer attempt's live claim. Returns the deleted reference_id
+    or None (nothing matched — a no-op release)."""
+    resp = _client().rpc("release_perform_claim", {
+        "p_run_id": run_id, "p_reference_id": reference_id,
+    }).execute()
+    return resp.data
+
+
 def record_rate_event(user_id: str, action: str) -> None:
     """Append one rate-limit event for (user, action). Backs the DB-backed
     daily song cap and the LLM draft/regen throttle — shared across all

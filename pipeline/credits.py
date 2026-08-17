@@ -40,6 +40,17 @@ class InsufficientCredits(Exception):
         return f"insufficient credits: have {self.balance}, need {self.required}"
 
 
+@dataclass(frozen=True)
+class PerformInFlight(Exception):
+    """Raised when a "Make me sing this" render is already in flight for this
+    run — a second concurrent/rapid perform request is refused before it can
+    charge."""
+    run_id: str
+
+    def __str__(self) -> str:
+        return f"a perform render is already in flight for run {self.run_id}"
+
+
 def _is_service(user: User) -> bool:
     return user.role == "service"
 
@@ -128,3 +139,56 @@ def refund_run_charges(
         description=reason,
     )
     return refund_amount
+
+
+def claim_perform(
+    user: User,
+    *,
+    run_id: str,
+    amount: int,
+    reference_id: str,
+    reason: str,
+    stale_seconds: int,
+) -> int:
+    """Atomically guard + charge one "Make me sing this" render. Returns the new
+    balance.
+
+    Exactly one caller can hold a run's in-flight perform at a time, across all
+    Cloud Run instances — the guard is a single Postgres transaction (per-run +
+    per-user advisory locks), not the old cross-instance-unsafe file lock. A
+    crashed prior render's claim (older than ``stale_seconds``) is stolen and its
+    charge auto-refunded here so the run is never wedged.
+
+    Raises:
+      PerformInFlight     — a live render already owns this run.
+      InsufficientCredits — the balance can't cover ``amount`` (nothing charged).
+
+    Service tokens bypass the ledger but STILL take the claim, so a service redo
+    cannot double-spawn a render."""
+    from pipeline.db import claim_perform_atomic
+    result = claim_perform_atomic(
+        user_id=user.id, run_id=run_id, amount=amount,
+        reference_id=reference_id, description=reason,
+        is_service=_is_service(user), stale_seconds=stale_seconds,
+    )
+    stolen = result.get("stolen_reference_id")
+    if stolen:
+        # A prior render crashed past the staleness ceiling; its charge never
+        # delivered a video. Net it back to zero (idempotent) before proceeding.
+        refund_run_charges(
+            user, run_id=stolen, reason="perform render abandoned — auto-refund")
+    if not result.get("ok"):
+        if result.get("reason") == "in_flight":
+            raise PerformInFlight(run_id=run_id)
+        raise InsufficientCredits(
+            balance=int(result.get("balance", 0)), required=amount)
+    return int(result.get("balance", 0))
+
+
+def release_perform_claim(*, run_id: str, reference_id: str) -> None:
+    """Release the in-flight perform claim for ``run_id`` — but only if it still
+    holds ``reference_id`` (compare-and-delete). Idempotent: a no-op if the claim
+    was already released or a newer attempt now owns the run. Call this on every
+    terminal outcome (success, failure, spawn error) so a redo can re-claim."""
+    from pipeline.db import release_perform_claim as _release
+    _release(run_id=run_id, reference_id=reference_id)
