@@ -41,18 +41,23 @@ def test_submit_avatar_job_posts_image_and_audio(monkeypatch):
 
     monkeypatch.setattr(client, "_post_json", fake_post)
     tid = client.submit_avatar_job(
-        image_url="http://img", audio_url="http://aud", model="kling/ai-avatar")
+        image_url="http://img", audio_url="http://aud", model="kling/ai-avatar",
+        prompt="sing it")
     assert tid == "task-123"
     assert captured["body"]["model"] == "kling/ai-avatar"
     assert captured["body"]["input"]["image_url"] == "http://img"
     assert captured["body"]["input"]["audio_url"] == "http://aud"
+    # Kie rejects a submit without a prompt ("prompt is required") — it must be
+    # in the request body.
+    assert captured["body"]["input"]["prompt"] == "sing it"
 
 
 def test_submit_avatar_job_missing_taskid_raises(monkeypatch):
     client = KieClient(api_key="stub")
     monkeypatch.setattr(client, "_post_json", lambda p, b: {"data": {}})
     with pytest.raises(KieError):
-        client.submit_avatar_job(image_url="i", audio_url="a", model="m")
+        client.submit_avatar_job(
+            image_url="i", audio_url="a", model="m", prompt="p")
 
 
 # --- orchestration ----------------------------------------------------------
@@ -60,7 +65,8 @@ def test_submit_avatar_job_missing_taskid_raises(monkeypatch):
 def test_render_avatar_submits_waits_downloads(monkeypatch, tmp_path):
     client = KieClient(api_key="stub")
     seen: dict = {}
-    monkeypatch.setattr(client, "submit_avatar_job", lambda **k: "t1")
+    monkeypatch.setattr(client, "submit_avatar_job",
+                        lambda **k: seen.update(submit=k) or "t1")
     monkeypatch.setattr(
         client, "wait_for_unified_video", lambda tid, **k: "http://video.mp4")
 
@@ -70,8 +76,11 @@ def test_render_avatar_submits_waits_downloads(monkeypatch, tmp_path):
 
     monkeypatch.setattr(client, "download", fake_dl)
     out = tmp_path / "perform.mp4"
-    render_avatar(client=client, image_url="i", audio_url="a", model="m", out_path=out)
+    render_avatar(client=client, image_url="i", audio_url="a", model="m",
+                  prompt="p", out_path=out)
     assert seen["url"] == "http://video.mp4"
+    # prompt must be forwarded to the submit call (Kie requires it).
+    assert seen["submit"]["prompt"] == "p"
     assert out.exists()
 
 

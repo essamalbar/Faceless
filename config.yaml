@@ -93,7 +93,8 @@ kie:
   avatar_model: "kling/ai-avatar-pro"  # Phase C "Make me sing this" — Kie Kling
                                  # AI Avatar (audio-driven singing/lip-sync).
                                  # Confirmed from the Kie createTask sample:
-                                 # input = { image_url, audio_url, prompt? }.
+                                 # input = { image_url, audio_url, prompt }.
+  avatar_prompt: "The person in the photo sings the song with natural facial expression and subtle head movement, lip-synced to the audio."  # REQUIRED by Kie — a submit without a prompt is rejected ("prompt is required")
 
 song:
   # Suno model id. V5_5 is latest (max 8 min, 5000-char prompt, 1000-char style).

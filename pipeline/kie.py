@@ -260,14 +260,23 @@ class KieClient:
         image_url: str,
         audio_url: str,
         model: str,
+        prompt: str,
     ) -> str:
         """Submit an audio-driven talking/singing avatar job (Kling AI Avatar)
         via the unified /jobs/createTask endpoint: one portrait `image_url` + an
         `audio_url` (the song hook) → a lip-synced singing video. Poll the result
-        with `wait_for_unified_video` (same recordInfo/resultUrls shape)."""
+        with `wait_for_unified_video` (same recordInfo/resultUrls shape).
+
+        `prompt` is REQUIRED by kling/ai-avatar-* — the API rejects a submit
+        without it (`{'code':500,'msg':'prompt is required'}`); it guides the
+        avatar's expression/motion while the audio drives the lip sync."""
         body = {
             "model": model,
-            "input": {"image_url": image_url, "audio_url": audio_url},
+            "input": {
+                "image_url": image_url,
+                "audio_url": audio_url,
+                "prompt": prompt,
+            },
         }
         resp = self._post_json(JOBS_CREATETASK_PATH, body)
         data = resp.get("data") or {}

@@ -76,6 +76,7 @@ def render_avatar(
     image_url: str,
     audio_url: str,
     model: str,
+    prompt: str,
     out_path: Path,
     poll_interval_s: int = 5,
     # Generous default: a timeout here fails the worker and triggers an
@@ -87,7 +88,7 @@ def render_avatar(
     """Submit the avatar job (photo + hook audio), wait for the render, and
     download the mp4 to `out_path`. `client` is a KieClient (or a stub)."""
     task_id = client.submit_avatar_job(
-        image_url=image_url, audio_url=audio_url, model=model)
+        image_url=image_url, audio_url=audio_url, model=model, prompt=prompt)
     video_url = client.wait_for_unified_video(
         task_id, poll_interval_s=poll_interval_s, timeout_s=timeout_s)
     client.download(video_url, out_path)

@@ -83,8 +83,14 @@ class KieConfig:
     # Phase C "Make me sing this": Kie Kling AI Avatar model id (audio-driven
     # singing avatar). Defaulted so existing config blocks keep loading.
     # Confirmed from the Kie createTask sample — input = {image_url, audio_url,
-    # prompt?}; matches KieClient.submit_avatar_job.
+    # prompt}; matches KieClient.submit_avatar_job.
     avatar_model: str = "kling/ai-avatar-pro"
+    # kling/ai-avatar-* REJECTS a submit without a prompt ("prompt is
+    # required"). Guides expression/motion; the audio drives the lip sync.
+    avatar_prompt: str = (
+        "The person in the photo sings the song with natural facial "
+        "expression and subtle head movement, lip-synced to the audio."
+    )
 
 
 @dataclass(frozen=True)

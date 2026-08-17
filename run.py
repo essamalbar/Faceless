@@ -1642,7 +1642,14 @@ def _run_perform(args) -> int:
                 "perform_photo not found — upload the photo again")
         photo = photos[0]
 
-        hook_path = run_dir / "hook.mp3"
+        # Extract the hook to LOCAL disk, not the gcsfuse run dir. ffmpeg seeks
+        # back to patch the mp3 header after writing frames, which gcsfuse's
+        # streaming write handler rejects (BufferedWriteHandler.OutOfOrderError)
+        # — leaving a truncated/corrupt hook that Kie could accept-then-bill and
+        # fail on. We only need the hook to produce a public audio_url, so a
+        # local tempfile is sufficient and avoids the gcsfuse write pattern.
+        import tempfile as _tempfile
+        hook_path = _Path(_tempfile.gettempdir()) / f"hook_{run_dir.name}.mp3"
         extract_hook(song_mp3, hook_path, hook_s=float(cfg.perform_hook_seconds))
 
         image_url = _upload_image_get_url(photo)
@@ -1653,6 +1660,7 @@ def _run_perform(args) -> int:
             image_url=image_url,
             audio_url=audio_url,
             model=cfg.kie.avatar_model,
+            prompt=cfg.kie.avatar_prompt,
             out_path=run_dir / "perform.mp4",
             # Money-safety tradeoff: if we time out waiting, this worker fails
             # and the API auto-refunds the perform charge — but the Kie job may
