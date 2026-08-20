@@ -58,6 +58,7 @@ def test_lyric_color_format_and_accent_alignment():
         lyric = template.lyric
         accent1 = hex_to_rgb(template.accent1)
         accent2 = hex_to_rgb(template.accent2)
+        text_color = hex_to_rgb(template.text)
 
         # Validate ASS color format for all lyric colors
         for color_name, color_str in [
@@ -68,16 +69,18 @@ def test_lyric_color_format_and_accent_alignment():
             assert re.match(r"^&H[0-9A-Fa-f]{8}&$", color_str), \
                 f"{key}.lyric.{color_name} invalid ASS format: {color_str}"
 
-        # Check karaoke_fill is close to one of the accent colors
+        # Check karaoke_fill is close to one of: accent1, accent2, or text color
         fill_rgb = decode_ass_color(lyric.karaoke_fill)
         dist_a1_fill = color_distance(fill_rgb, accent1)
         dist_a2_fill = color_distance(fill_rgb, accent2)
-        min_dist_fill = min(dist_a1_fill, dist_a2_fill)
+        dist_text_fill = color_distance(fill_rgb, text_color)
+        min_dist_fill = min(dist_a1_fill, dist_a2_fill, dist_text_fill)
         assert min_dist_fill < 25, \
             f"{key}.lyric.karaoke_fill {lyric.karaoke_fill} (RGB{fill_rgb}) " \
-            f"far from accent1{accent1} (dist={dist_a1_fill:.1f}) and accent2{accent2} (dist={dist_a2_fill:.1f})"
+            f"far from accent1{accent1} (dist={dist_a1_fill:.1f}), accent2{accent2} (dist={dist_a2_fill:.1f}), " \
+            f"and text{text_color} (dist={dist_text_fill:.1f})"
 
-        # Check hook_color is close to one of the accent colors
+        # Check hook_color is close to one of the accent colors (accents only, not text)
         hook_rgb = decode_ass_color(lyric.hook_color)
         dist_a1_hook = color_distance(hook_rgb, accent1)
         dist_a2_hook = color_distance(hook_rgb, accent2)
@@ -85,3 +88,7 @@ def test_lyric_color_format_and_accent_alignment():
         assert min_dist_hook < 25, \
             f"{key}.lyric.hook_color {lyric.hook_color} (RGB{hook_rgb}) " \
             f"far from accent1{accent1} (dist={dist_a1_hook:.1f}) and accent2{accent2} (dist={dist_a2_hook:.1f})"
+
+        # Invariant: karaoke_fill and hook_color must be distinct (hooks must stand out from sung words)
+        assert lyric.karaoke_fill != lyric.hook_color, \
+            f"{key}.lyric: karaoke_fill and hook_color must be distinct, got both {lyric.karaoke_fill}"
