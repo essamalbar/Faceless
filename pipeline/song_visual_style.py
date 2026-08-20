@@ -52,7 +52,7 @@ _TEMPLATES: dict[str, VisualTemplate] = {
     "arabic_ballad": VisualTemplate(
         genre_key="arabic_ballad", bg="#17060f", accent1="#ffd3a8", accent2="#b8607e",
         text="#ffe3d2",
-        lyric=LyricStyle(_font(_DEFAULT_FONT), "&H00D2E3FF&", "&H80D2E3FF&",
+        lyric=LyricStyle(_font(_DEFAULT_FONT), "&H00A8D3FF&", "&H80A8D3FF&",
                          "&H00A8D3FF&", "&H00000000&", 3, glow=True),
         fx_set=("grade_warm", "push_in", "light_sweep", "grain"),
         overlay_dir="assets/overlays/arabic_ballad", transition="dip"),

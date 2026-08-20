@@ -73,15 +73,15 @@ def test_lyric_color_format_and_accent_alignment():
         dist_a1_fill = color_distance(fill_rgb, accent1)
         dist_a2_fill = color_distance(fill_rgb, accent2)
         min_dist_fill = min(dist_a1_fill, dist_a2_fill)
-        assert min_dist_fill < 150, \
+        assert min_dist_fill < 25, \
             f"{key}.lyric.karaoke_fill {lyric.karaoke_fill} (RGB{fill_rgb}) " \
-            f"far from accent1{accent1} (dist={dist_a1_fill:.0f}) and accent2{accent2} (dist={dist_a2_fill:.0f})"
+            f"far from accent1{accent1} (dist={dist_a1_fill:.1f}) and accent2{accent2} (dist={dist_a2_fill:.1f})"
 
         # Check hook_color is close to one of the accent colors
         hook_rgb = decode_ass_color(lyric.hook_color)
         dist_a1_hook = color_distance(hook_rgb, accent1)
         dist_a2_hook = color_distance(hook_rgb, accent2)
         min_dist_hook = min(dist_a1_hook, dist_a2_hook)
-        assert min_dist_hook < 150, \
+        assert min_dist_hook < 25, \
             f"{key}.lyric.hook_color {lyric.hook_color} (RGB{hook_rgb}) " \
-            f"far from accent1{accent1} (dist={dist_a1_hook:.0f}) and accent2{accent2} (dist={dist_a2_hook:.0f})"
+            f"far from accent1{accent1} (dist={dist_a1_hook:.1f}) and accent2{accent2} (dist={dist_a2_hook:.1f})"
