@@ -42,7 +42,7 @@ def test_build_overlay_cmd_covers_every_kind_with_a_distinct_graph():
     geometric/grain) must build a valid, alpha-transparent command, and
     each kind's filtergraph must differ (no kind is a silent copy of
     another)."""
-    kinds = ("particles", "bokeh", "light_sweep", "geometric", "grain")
+    kinds = ("particles", "bokeh", "light_sweep", "geometric")
     graphs = set()
     for kind in kinds:
         cmd = build_overlay_cmd(kind, Path(f"/tmp/{kind}.webm"), (640, 360), 4)

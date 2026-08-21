@@ -38,9 +38,11 @@ def _particles(w: int, h: int, seconds: int) -> str:
     transparent. Life's cell pattern is frame-to-frame decorrelated, so the
     loop seam (last frame -> first frame on repeat) isn't perceptible."""
     return (
-        f"life=size={w}x{h}:mold=10:rate=25:ratio=0.10:stitch=1:"
+        f"life=size={w}x{h}:mold=3:rate=25:ratio=0.04:stitch=1:"
         f"life_color=white:death_color=black:mold_color=black,"
-        f"colorkey=color=black:similarity=0.10:blend=0,"
+        f"gblur=sigma=2,"
+        f"colorkey=color=black:similarity=0.16:blend=0.05,"
+        f"format=rgba,colorchannelmixer=aa=0.7,"
         f"format=yuva420p"
     )
 
@@ -79,18 +81,6 @@ def _geometric(w: int, h: int, seconds: int) -> str:
     )
 
 
-def _grain(w: int, h: int, seconds: int) -> str:
-    """Film-grain texture: per-pixel random noise over a flat field at low
-    opacity. Noise is already decorrelated frame-to-frame, so it loops
-    seamlessly by construction (no directional motion to jump-cut)."""
-    return (
-        f"color=size={w}x{h}:color=gray,"
-        f"noise=alls=30:allf=t+u,"
-        f"format=rgba,colorchannelmixer=aa=0.35,"
-        f"format=yuva420p"
-    )
-
-
 # kind -> callable(w, h, seconds) -> ffmpeg -filter_complex lavfi graph.
 # Each entry renders a seamless, alpha-transparent loop for one overlay
 # "kind" (see docs/superpowers/specs/2026-08-20-animated-genre-song-video-design.md,
@@ -100,7 +90,6 @@ _LAVFI: dict[str, Callable[[int, int, int], str]] = {
     "bokeh": _bokeh,
     "light_sweep": _light_sweep,
     "geometric": _geometric,
-    "grain": _grain,
 }
 
 
@@ -117,5 +106,11 @@ def build_overlay_cmd(
     src = _LAVFI[kind](w, h, seconds)
     return [
         "ffmpeg", "-y", "-filter_complex", src, "-t", str(seconds),
-        "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", str(out),
+        # VP9 constant-quality at an aggressive CRF. Overlays are soft,
+        # semi-transparent, and scaled up at composite time, so heavy
+        # compression is invisible — but it keeps each loop small (a full-res
+        # default-CRF particle loop was ~37 MB, which ballooned the final
+        # video). -an: overlays are video-only.
+        "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "42",
+        "-pix_fmt", "yuva420p", "-an", str(out),
     ]

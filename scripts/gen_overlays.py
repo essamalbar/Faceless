@@ -35,7 +35,9 @@ from pipeline.song_overlays import REPO_ROOT, build_overlay_cmd  # noqa: E402
 from pipeline.song_style import GENRE_RECIPES  # noqa: E402
 from pipeline.song_visual_style import visual_template_for  # noqa: E402
 
-DEFAULT_SIZE = (1080, 1920)
+# Overlays are soft + scaled up to the video frame at composite time, so a
+# half-res loop is visually identical and a fraction of the file size.
+DEFAULT_SIZE = (720, 1280)
 DEFAULT_SECONDS = 6
 
 
@@ -46,7 +48,7 @@ def _kinds_for(fx_set: tuple[str, ...]) -> list[str]:
     particles + geometric for extra "wow"; warm/push-in genres get bokeh;
     cool-graded genres get geometric. Capped at 3 so the starter library
     per genre stays small."""
-    kinds: list[str] = [k for k in ("light_sweep", "grain") if k in fx_set]
+    kinds: list[str] = [k for k in ("light_sweep",) if k in fx_set]
     if "grade_neon" in fx_set:
         kinds += ["particles", "geometric"]
     elif "rgb_glitch" in fx_set:
@@ -56,7 +58,7 @@ def _kinds_for(fx_set: tuple[str, ...]) -> list[str]:
     if "grade_cool" in fx_set:
         kinds.append("geometric")
     deduped = list(dict.fromkeys(kinds))
-    return deduped[:3] or ["grain"]
+    return deduped[:3] or ["bokeh"]
 
 
 def genres_with_overlays() -> list[str]:

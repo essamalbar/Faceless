@@ -93,14 +93,14 @@ def _beat_flash(beats: dict) -> str:
     """Brightness POP + saturation kick on each beat -- short window so it reads
     as a hit, not a fade. Compact periodic enable (see _beat_pulse_expr)."""
     expr = _beat_pulse_expr(beats, _BEAT_FLASH_WINDOW)
-    return (f"eq=brightness=0.28:saturation=1.5:enable='{expr}'"
+    return (f"eq=brightness=0.14:saturation=1.12:enable='{expr}'"
             if expr else "null")
 
 
 def _rgb_glitch(beats: dict) -> str:
     """Channel-shift glitch pulsed on each beat (compact periodic enable)."""
     expr = _beat_pulse_expr(beats, _GLITCH_WINDOW)
-    return f"rgbashift=rh=9:bh=-9:enable='{expr}'" if expr else "null"
+    return f"rgbashift=rh=4:bh=-4:enable='{expr}'" if expr else "null"
 
 
 def build_filtergraph(*, template: VisualTemplate, beats: dict,
@@ -141,7 +141,7 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
         # fps=30 gives the zoompan filter (fed by an otherwise-undefined-
         # rate `-loop 1` still) a defined output rate.
         stmts.append(
-            f"[{cur}]zoompan=z='min(1.0+0.0011*on,1.35)':d=1:"
+            f"[{cur}]zoompan=z='min(1.0+0.0009*on,1.30)':d=1:"
             f"s={w}x{h}:fps=30[{nxt}]"
         )
         cur = nxt
@@ -149,28 +149,28 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
     if "grade_neon" in fx:
         a, b, nxt = f"{cur}_a", f"{cur}_b", f"{cur}_grade"
         stmts.append(f"[{cur}]split=2[{a}][{b}]")
-        stmts.append(f"[{a}]eq=contrast=1.32:saturation=1.75[{a}g]")
-        stmts.append(f"[{b}]gblur=sigma=18,eq=brightness=0.16:saturation=2.0[{b}g]")
+        stmts.append(f"[{a}]eq=contrast=1.18:saturation=1.4[{a}g]")
+        stmts.append(f"[{b}]gblur=sigma=14,eq=brightness=0.08:saturation=1.5[{b}g]")
         stmts.append(f"[{a}g][{b}g]blend=all_mode=screen[{nxt}]")
         cur = nxt
     elif "grade_warm" in fx:
         nxt = f"{cur}_grade"
         stmts.append(
-            f"[{cur}]eq=saturation=1.3:contrast=1.12,"
-            f"colorbalance=rs=0.14:bs=-0.12[{nxt}]"
+            f"[{cur}]eq=saturation=1.18:contrast=1.08,"
+            f"colorbalance=rs=0.08:bs=-0.08[{nxt}]"
         )
         cur = nxt
     elif "grade_cool" in fx:
         nxt = f"{cur}_grade"
         stmts.append(
-            f"[{cur}]eq=saturation=1.24:contrast=1.16,"
-            f"colorbalance=bs=0.15:rs=-0.10[{nxt}]"
+            f"[{cur}]eq=saturation=1.15:contrast=1.10,"
+            f"colorbalance=bs=0.10:rs=-0.06[{nxt}]"
         )
         cur = nxt
     elif "grade_pop" in fx:
         nxt = f"{cur}_grade"
         stmts.append(
-            f"[{cur}]curves=preset=increase_contrast,eq=saturation=1.5[{nxt}]"
+            f"[{cur}]curves=preset=increase_contrast,eq=saturation=1.25[{nxt}]"
         )
         cur = nxt
 
@@ -196,7 +196,7 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
         # eq filter re-evaluate the expression (with the `t` variable) every
         # frame instead of once at init.
         stmts.append(
-            f"[{cur}]eq=brightness='0.11*sin(2*PI*t/2.5)':eval=frame[{nxt}]"
+            f"[{cur}]eq=brightness='0.07*sin(2*PI*t/3)':eval=frame[{nxt}]"
         )
         cur = nxt
 
@@ -370,7 +370,13 @@ def build_animated_video(
         cmd += [
             "-filter_complex", fg,
             "-map", "[v]", "-map", f"{audio_idx}:a",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            # CRF 23 + a hard bitrate ceiling so the file size stays sane
+            # (~8 Mbps -> ~150 MB for a 2.5-min 9:16 clip). Without -maxrate a
+            # busy/noisy frame could balloon to multi-GB (a temporal-grain
+            # filter once produced a 3 GB output). Explicit -r 30 gives the
+            # looped-still input a defined output rate.
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-maxrate", "8M", "-bufsize", "16M", "-r", "30",
             "-c:a", "aac", "-b:a", "192k",
             "-pix_fmt", "yuv420p",
             # -shortest is what actually bounds the -loop 1 / -stream_loop -1
