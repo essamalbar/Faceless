@@ -75,13 +75,18 @@ def _beat_flash(beat_times: list[float]) -> str:
     """Brightness pop on each beat -- short window so it reads as a flash,
     not a fade."""
     exprs = _beat_windows(beat_times, _BEAT_FLASH_WINDOW)
-    return f"eq=brightness=0.12:enable='{exprs}'" if exprs else "null"
+    # Punchy: a strong brightness POP plus a saturation kick so beats hit in
+    # colour, not just luma. Brief window (see _BEAT_FLASH_WINDOW) keeps it a
+    # hit, not a fade.
+    return (f"eq=brightness=0.28:saturation=1.5:enable='{exprs}'"
+            if exprs else "null")
 
 
 def _rgb_glitch(beat_times: list[float]) -> str:
     """Channel-shift glitch pulsed on each beat."""
     exprs = _beat_windows(beat_times, _GLITCH_WINDOW)
-    return f"rgbashift=rh=3:bh=-3:enable='{exprs}'" if exprs else "null"
+    # Bigger channel split so the glitch actually reads on a phone screen.
+    return f"rgbashift=rh=9:bh=-9:enable='{exprs}'" if exprs else "null"
 
 
 def build_filtergraph(*, template: VisualTemplate, beats: dict,
@@ -123,7 +128,7 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
         # fps=30 gives the zoompan filter (fed by an otherwise-undefined-
         # rate `-loop 1` still) a defined output rate.
         stmts.append(
-            f"[{cur}]zoompan=z='min(1.0+0.0006*on,1.25)':d=1:"
+            f"[{cur}]zoompan=z='min(1.0+0.0011*on,1.35)':d=1:"
             f"s={w}x{h}:fps=30[{nxt}]"
         )
         cur = nxt
@@ -131,28 +136,28 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
     if "grade_neon" in fx:
         a, b, nxt = f"{cur}_a", f"{cur}_b", f"{cur}_grade"
         stmts.append(f"[{cur}]split=2[{a}][{b}]")
-        stmts.append(f"[{a}]eq=contrast=1.15:saturation=1.35[{a}g]")
-        stmts.append(f"[{b}]gblur=sigma=14,eq=brightness=0.10:saturation=1.6[{b}g]")
+        stmts.append(f"[{a}]eq=contrast=1.32:saturation=1.75[{a}g]")
+        stmts.append(f"[{b}]gblur=sigma=18,eq=brightness=0.16:saturation=2.0[{b}g]")
         stmts.append(f"[{a}g][{b}g]blend=all_mode=screen[{nxt}]")
         cur = nxt
     elif "grade_warm" in fx:
         nxt = f"{cur}_grade"
         stmts.append(
-            f"[{cur}]eq=saturation=1.12:contrast=1.05,"
-            f"colorbalance=rs=0.08:bs=-0.08[{nxt}]"
+            f"[{cur}]eq=saturation=1.3:contrast=1.12,"
+            f"colorbalance=rs=0.14:bs=-0.12[{nxt}]"
         )
         cur = nxt
     elif "grade_cool" in fx:
         nxt = f"{cur}_grade"
         stmts.append(
-            f"[{cur}]eq=saturation=1.05:contrast=1.08,"
-            f"colorbalance=bs=0.10:rs=-0.06[{nxt}]"
+            f"[{cur}]eq=saturation=1.24:contrast=1.16,"
+            f"colorbalance=bs=0.15:rs=-0.10[{nxt}]"
         )
         cur = nxt
     elif "grade_pop" in fx:
         nxt = f"{cur}_grade"
         stmts.append(
-            f"[{cur}]curves=preset=increase_contrast,eq=saturation=1.2[{nxt}]"
+            f"[{cur}]curves=preset=increase_contrast,eq=saturation=1.5[{nxt}]"
         )
         cur = nxt
 
@@ -168,7 +173,7 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
 
     if "grain" in fx:
         nxt = f"{cur}_grain"
-        stmts.append(f"[{cur}]noise=alls=8:allf=t[{nxt}]")
+        stmts.append(f"[{cur}]noise=alls=16:allf=t[{nxt}]")
         cur = nxt
 
     if "light_sweep" in fx:
@@ -178,13 +183,13 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
         # eq filter re-evaluate the expression (with the `t` variable) every
         # frame instead of once at init.
         stmts.append(
-            f"[{cur}]eq=brightness='0.05*sin(2*PI*t/3)':eval=frame[{nxt}]"
+            f"[{cur}]eq=brightness='0.11*sin(2*PI*t/2.5)':eval=frame[{nxt}]"
         )
         cur = nxt
 
     if "vignette" in fx:
         nxt = f"{cur}_vig"
-        stmts.append(f"[{cur}]vignette=PI/5[{nxt}]")
+        stmts.append(f"[{cur}]vignette=PI/4[{nxt}]")
         cur = nxt
 
     if has_overlay:
