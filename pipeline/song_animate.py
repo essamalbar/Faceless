@@ -262,8 +262,15 @@ def _render_still_backdrop(
         frames = max(1, round((seg.end - seg.start) * _STILL_FPS))
         dur = frames / _STILL_FPS
         clip = work / f"bg_seg_{i:04d}.mp4"
+        # NOT stills[seg.image_idx]: build_cut_schedule is called with
+        # sections=[] (this interface has no section-timing input), so
+        # song_scenes._image_for_time always returns imgs[0] and every
+        # seg.image_idx is 0 -- using it here would pin every segment to
+        # stills[0], leaving stills[1:] dead weight (2026-08-20 review
+        # finding). Round-robin over the beat-cut schedule by loop index
+        # instead so the pool actually rotates.
         _run([
-            "ffmpeg", "-y", "-loop", "1", "-i", str(stills[seg.image_idx]),
+            "ffmpeg", "-y", "-loop", "1", "-i", str(stills[i % len(stills)]),
             "-vf", _backdrop_segment_vf(seg, frames, w, h),
             "-t", f"{dur:.3f}", "-r", str(_STILL_FPS),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
@@ -314,7 +321,12 @@ def build_animated_video(
         cover = backdrop
     else:
         stills = list(backdrop)
-        cover = stills[0] if stills else None
+        if not stills:
+            # Silently falling through to `cover = None` would reach the
+            # ffmpeg invocation as a literal "-i None" -- fail fast at the
+            # API boundary instead (2026-08-20 review finding, Minor).
+            raise ValueError("backdrop list must not be empty")
+        cover = stills[0]
     use_concat_bg = len(stills) > 1
 
     work = Path(tempfile.mkdtemp(prefix="song-animate-"))

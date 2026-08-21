@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import pipeline.song_animate as sa
 from pipeline.song_visual_style import visual_template_for
 
@@ -206,9 +208,17 @@ def test_still_list_backdrop_renders_beat_cut_concat_then_composites(
     song = tmp_path / "song.mp3"; song.write_bytes(b"mp3")
     ass = tmp_path / "k.ass"; ass.write_text("[Script Info]\n")
 
+    # Dense beat grid (48 beats, 0.5s apart, up to 24.0s) so
+    # build_cut_schedule's default bars_per_cut=4/beats_per_bar=4 (cut every
+    # 16 beats) actually yields 3 segments -- one per still in the pool.
+    # The original 8-beat grid here collapsed to a single segment after
+    # _merge_short, which meant the round-robin fix below was never
+    # exercised (stills[1]/stills[2] would "pass" even if dead code).
+    beat_times = [0.5 * n for n in range(1, 49)]
+
     res = sa.build_animated_video(
         backdrop=stills, song_mp3=song, ass_path=ass,
-        beats={"beat_times": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]},
+        beats={"beat_times": beat_times},
         template=visual_template_for("arabic_trap"), out_path=out,
     )
 
@@ -220,3 +230,33 @@ def test_still_list_backdrop_renders_beat_cut_concat_then_composites(
     final_cmd = seen_cmds[-1]
     assert "-stream_loop" in final_cmd
     assert str(stills[0]) not in final_cmd  # not fed directly as input 0
+
+    # The beat-cut schedule must actually ROTATE through the still pool --
+    # every still in a multi-still backdrop should be fed to some ffmpeg
+    # call as an -i input, not just stills[0]. (Regression check for the
+    # song_scenes.build_cut_schedule(sections=[]) bug where every segment's
+    # image_idx was 0, so stills[1:] were never rendered at all.)
+    for still in stills:
+        assert any(str(still) in cmd for cmd in seen_cmds), (
+            f"{still} was never used as an ffmpeg input -- backdrop pool "
+            "did not rotate"
+        )
+
+
+def test_empty_still_list_backdrop_raises_value_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(sa, "overlay_clips_for", lambda k: [])
+
+    def boom(cmd, **kw):
+        raise AssertionError("ffmpeg should not run for an empty backdrop list")
+    monkeypatch.setattr(sa.subprocess, "run", boom)
+
+    out = tmp_path / "final.mp4"
+    song = tmp_path / "song.mp3"; song.write_bytes(b"mp3")
+    ass = tmp_path / "k.ass"; ass.write_text("[Script Info]\n")
+
+    with pytest.raises(ValueError):
+        sa.build_animated_video(
+            backdrop=[], song_mp3=song, ass_path=ass,
+            beats={"beat_times": [0.5]},
+            template=visual_template_for("arabic_trap"), out_path=out,
+        )
