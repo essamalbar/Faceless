@@ -63,30 +63,44 @@ _STILL_UPSCALE_FACTOR = 2  # pre-zoompan upscale to avoid resampling blur
 _STILL_ZOOM_END = 1.13
 
 
-def _beat_windows(beat_times: list[float], window: float) -> str:
-    """`between(t,b0,b0+window)+between(t,b1,b1+window)+...` built straight
-    from the beat grid -- the load-bearing property both beat-synced FX
-    filters below share (see design spec: "beat-flash ... enable'd on
-    beat_times"). Empty when there are no beats."""
-    return "+".join(f"between(t,{b:.3f},{b + window:.3f})" for b in beat_times)
+def _beat_pulse_expr(beats: dict, window: float) -> str | None:
+    """A COMPACT periodic enable expression that pulses once per beat on the
+    tempo grid -- `lt(mod(t-offset,period),window)` -- instead of enumerating
+    one `between(t,...)` term PER BEAT.
+
+    A full song has hundreds of beats; enumerating them all built a
+    -filter_complex string so large that prod ffmpeg failed at PARSE with
+    "Cannot allocate memory", and the animated render silently fell back to a
+    static cover. `period` comes from tempo_bpm (or the mean beat gap); `offset`
+    is the first beat so the pulse aligns to the downbeat. None when there are
+    no beats (caller emits a `null` passthrough)."""
+    bt = beats.get("beat_times") or []
+    if not bt:
+        return None
+    bpm = beats.get("tempo_bpm") or 0
+    if bpm and float(bpm) > 0:
+        period = 60.0 / float(bpm)
+    elif len(bt) >= 2:
+        period = (float(bt[-1]) - float(bt[0])) / (len(bt) - 1)
+    else:
+        period = 0.5  # unknown tempo + single beat -> assume 120 BPM
+    offset = float(bt[0])
+    # Plain commas inside enable='...' — same convention the between() form used.
+    return f"lt(mod(t-{offset:.3f},{period:.4f}),{window:.3f})"
 
 
-def _beat_flash(beat_times: list[float]) -> str:
-    """Brightness pop on each beat -- short window so it reads as a flash,
-    not a fade."""
-    exprs = _beat_windows(beat_times, _BEAT_FLASH_WINDOW)
-    # Punchy: a strong brightness POP plus a saturation kick so beats hit in
-    # colour, not just luma. Brief window (see _BEAT_FLASH_WINDOW) keeps it a
-    # hit, not a fade.
-    return (f"eq=brightness=0.28:saturation=1.5:enable='{exprs}'"
-            if exprs else "null")
+def _beat_flash(beats: dict) -> str:
+    """Brightness POP + saturation kick on each beat -- short window so it reads
+    as a hit, not a fade. Compact periodic enable (see _beat_pulse_expr)."""
+    expr = _beat_pulse_expr(beats, _BEAT_FLASH_WINDOW)
+    return (f"eq=brightness=0.28:saturation=1.5:enable='{expr}'"
+            if expr else "null")
 
 
-def _rgb_glitch(beat_times: list[float]) -> str:
-    """Channel-shift glitch pulsed on each beat."""
-    exprs = _beat_windows(beat_times, _GLITCH_WINDOW)
-    # Bigger channel split so the glitch actually reads on a phone screen.
-    return f"rgbashift=rh=9:bh=-9:enable='{exprs}'" if exprs else "null"
+def _rgb_glitch(beats: dict) -> str:
+    """Channel-shift glitch pulsed on each beat (compact periodic enable)."""
+    expr = _beat_pulse_expr(beats, _GLITCH_WINDOW)
+    return f"rgbashift=rh=9:bh=-9:enable='{expr}'" if expr else "null"
 
 
 def build_filtergraph(*, template: VisualTemplate, beats: dict,
@@ -112,7 +126,6 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
     an explicit split).
     """
     w, h = size
-    beat_times = list(beats.get("beat_times", []))
     fx = template.fx_set
 
     stmts: list[str] = []
@@ -163,12 +176,12 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
 
     if "beat_flash" in fx:
         nxt = f"{cur}_flash"
-        stmts.append(f"[{cur}]{_beat_flash(beat_times)}[{nxt}]")
+        stmts.append(f"[{cur}]{_beat_flash(beats)}[{nxt}]")
         cur = nxt
 
     if "rgb_glitch" in fx:
         nxt = f"{cur}_glitch"
-        stmts.append(f"[{cur}]{_rgb_glitch(beat_times)}[{nxt}]")
+        stmts.append(f"[{cur}]{_rgb_glitch(beats)}[{nxt}]")
         cur = nxt
 
     if "grain" in fx:

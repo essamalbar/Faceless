@@ -16,11 +16,29 @@ def test_filtergraph_uses_asplit_when_a_label_is_reused():
     assert "ass=" in fg                      # lyrics burned last
 
 
-def test_beat_flash_enable_exprs_come_from_beat_times():
+def test_beat_flash_uses_compact_periodic_enable():
     fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
-                              beats={"beat_times": [0.5, 1.0]},
+                              beats={"beat_times": [0.5, 1.0], "tempo_bpm": 120},
                               has_overlay=False, size=(1080, 1920))
-    assert "between(t,0.5" in fg and "between(t,1.0" in fg
+    # Periodic pulse on the tempo grid (period 60/120=0.5, offset=first beat),
+    # NOT one between() term per beat.
+    assert "lt(mod(t-0.500," in fg
+    assert "between(t," not in fg
+
+
+def test_beat_enable_stays_compact_for_a_full_length_song():
+    """Regression: a real ~2.5-min song has hundreds of beats. Enumerating one
+    `between(t,...)` term per beat built a -filter_complex so large that prod
+    ffmpeg failed at parse with 'Cannot allocate memory' and the animated render
+    silently fell back to a static cover. The periodic enable must NOT grow with
+    beat count."""
+    many = [0.5 * n for n in range(1, 400)]  # ~399 beats (~200s)
+    fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
+                              beats={"beat_times": many, "tempo_bpm": 120},
+                              has_overlay=False, size=(1080, 1920))
+    assert "between(t," not in fg      # no per-beat enumeration
+    assert fg.count("mod(t-") == 2     # exactly one each for flash + glitch
+    assert len(fg) < 3000              # bounded regardless of beat count
 
 
 def test_build_animated_video_invokes_ffmpeg_and_writes_output(monkeypatch, tmp_path):
