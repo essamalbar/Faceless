@@ -1102,6 +1102,7 @@ def _run_song_post_approve(args) -> int:
     from pipeline import song, song_cover, song_assemble, song_align, song_og
     from pipeline import song_beats, song_cinematic, song_scenes
     from pipeline import song_import
+    from pipeline import song_animate, song_kinetic_ass, song_visual_style
     from pipeline.api import _build_song_llm  # Anthropic→Groq fallback router
     from pipeline.config import load_config
     from pipeline.kie import KieClient
@@ -1464,12 +1465,14 @@ def _run_song_post_approve(args) -> int:
             print(f"[song-post-approve] lyrics alignment failed, "
                   f"continuing without captions: {align_err}")
 
-        # --- Stage 2.6: beat detection (cinematic only) ---
+        # --- Stage 2.6: beat detection (cinematic + animated) ---
         # New resumable status. detect_beats() never raises (it falls back
         # to a fixed-BPM grid internally) and caches beats.json, so a
-        # /resume after this point is cheap.
+        # /resume after this point is cheap. Animated mode needs the beat
+        # grid too — the genre FX compositor beat-syncs flash/glitch/cut
+        # effects off it (see pipeline/song_animate.py).
         beats_data = None
-        if video_mode == "cinematic":
+        if video_mode in ("cinematic", "animated"):
             write_state(status="detecting_beats")
             beats_data = song_beats.detect_beats(
                 song_mp3, out_json=run_dir / "beats.json",
@@ -1513,6 +1516,40 @@ def _run_song_post_approve(args) -> int:
                     share_token=share_token,
                 )
                 write_state(video_downgraded=True)
+        elif video_mode == "animated":
+            # Genre-adaptive kinetic-lyric video (Tasks 1-5): karaoke/hook-word
+            # ASS burned over a moving backdrop with per-genre procedural FX,
+            # beat-synced. $0/render (ffmpeg-only, no AI calls) so — unlike
+            # cinematic — there is no credit surcharge to reconcile on
+            # fallback; see pipeline/api.py:_song_credit_amount (animated
+            # bills the same as static) and _reconcile_downgrade_refund
+            # (keyed to the cinematic surcharge specifically).
+            try:
+                if not lyrics_json.exists():
+                    raise FileNotFoundError(
+                        f"animated mode requires word timing, missing {lyrics_json}")
+                template = song_visual_style.visual_template_for(_genre_key_from(script))
+                ass_path = run_dir / "lyrics.ass"
+                song_kinetic_ass.build_kinetic_ass(
+                    lyrics_timing=json.loads(lyrics_json.read_text(encoding="utf-8")),
+                    template=template, out_path=ass_path,
+                )
+                song_animate.build_animated_video(
+                    backdrop=final_cover_path, song_mp3=song_mp3,
+                    ass_path=ass_path, beats=beats_data or {}, template=template,
+                    out_path=final_mp4,
+                )
+            except Exception as anim_err:
+                # Animated render failed (or word timing was unavailable) —
+                # fall back to the static cover video so the user still gets
+                # a playable file, same pattern as the cinematic branch above.
+                print(f"[song-post-approve] animated assemble failed ({anim_err}); "
+                      f"falling back to static cover video")
+                song_assemble.assemble_song_video(
+                    cover_path=final_cover_path, song_mp3=song_mp3, out_mp4=final_mp4,
+                    lyrics_json=lyrics_arg, title=script.get("title"),
+                    share_token=share_token,
+                )
         else:
             song_assemble.assemble_song_video(
                 cover_path=final_cover_path, song_mp3=song_mp3, out_mp4=final_mp4,
