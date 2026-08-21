@@ -483,6 +483,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newSongVideoCinematic => 'Cinematic video · 3 credits';
 
   @override
+  String get newSongVideoAnimated => 'Animated · 1 credit';
+
+  @override
   String get newSongQualityLabel => 'Quality';
 
   @override

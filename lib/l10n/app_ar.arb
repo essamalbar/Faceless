@@ -146,6 +146,7 @@
   "newSongVideoTypeLabel": "نوع الفيديو",
   "newSongVideoStatic": "غلاف ثابت · رصيد واحد",
   "newSongVideoCinematic": "فيديو سينمائي · 3 أرصدة",
+  "newSongVideoAnimated": "متحرّك · رصيد واحد",
   "newSongQualityLabel": "الجودة",
   "newSongQualityStandard": "قياسي",
   "newSongQualityPremium": "بريميوم · +4 أرصدة",

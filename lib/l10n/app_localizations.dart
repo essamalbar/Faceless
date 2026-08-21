@@ -974,6 +974,12 @@ abstract class AppLocalizations {
   /// **'Cinematic video · 3 credits'**
   String get newSongVideoCinematic;
 
+  /// No description provided for @newSongVideoAnimated.
+  ///
+  /// In en, this message translates to:
+  /// **'Animated · 1 credit'**
+  String get newSongVideoAnimated;
+
   /// No description provided for @newSongQualityLabel.
   ///
   /// In en, this message translates to:

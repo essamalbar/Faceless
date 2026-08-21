@@ -48,7 +48,7 @@ class _NewSongScreenState extends State<NewSongScreen> {
   String? _pickedName;
   String _language = 'ar';
   String? _dialect;           // Arabic dialect (null = auto; ar-only)
-  String _videoMode = 'static'; // 'static' | 'cinematic'
+  String _videoMode = 'static'; // 'static' | 'cinematic' | 'animated'
   String _qualityTier = 'standard'; // 'standard' | 'premium' (best-of-N + A&R + master)
   double _audioWeight = 0.8;   // cover faithfulness (Kie audioWeight)
   String _vocalGender = 'm';   // 'm' / 'f' / 'auto'
@@ -533,6 +533,10 @@ class _NewSongScreenState extends State<NewSongScreen> {
                 ButtonSegment(
                   value: 'cinematic',
                   label: Text(l10n.newSongVideoCinematic),
+                ),
+                ButtonSegment(
+                  value: 'animated',
+                  label: Text(l10n.newSongVideoAnimated),
                 ),
               ],
               selected: {_videoMode},

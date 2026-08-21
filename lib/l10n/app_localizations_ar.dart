@@ -481,6 +481,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get newSongVideoCinematic => 'فيديو سينمائي · 3 أرصدة';
 
   @override
+  String get newSongVideoAnimated => 'متحرّك · رصيد واحد';
+
+  @override
   String get newSongQualityLabel => 'الجودة';
 
   @override
