@@ -13,6 +13,12 @@ import json
 import subprocess
 from pathlib import Path
 
+from pipeline.song_ass_util import (
+    _ass_escape,
+    _escape_ffmpeg_filter_path,
+    _format_ass_time,
+)
+
 _FONT_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 
 FPS = 25
@@ -32,28 +38,6 @@ def ffprobe_duration(path: Path) -> float:
 
 
 _MIN_LINE_DUR_S = 0.6  # tiny cues feel like flashes — extend them
-
-
-def _format_ass_time(t: float) -> str:
-    """ASS expects H:MM:SS.cs (centiseconds, not milliseconds)."""
-    if t < 0:
-        t = 0
-    h = int(t // 3600)
-    m = int((t % 3600) // 60)
-    s = t % 60
-    return f"{h}:{m:02d}:{s:05.2f}"
-
-
-def _ass_escape(text: str) -> str:
-    """Escape characters that ASS treats specially in a Dialogue line."""
-    # ASS uses {} for inline tags and \N for line breaks. Strip them
-    # rather than encode — none should occur in clean lyric input, but
-    # be defensive. Keep newlines collapsed to spaces.
-    return (
-        text.replace("\n", " ")
-            .replace("{", "(")
-            .replace("}", ")")
-    )
 
 
 def _write_ass_subtitles(lyrics_data: dict, out_path: Path) -> bool:
@@ -151,21 +135,6 @@ def _ffmpeg_drawtext_escape(text: str) -> str:
             .replace(":", r"\:")
             .replace("\n", " ")
     )
-
-
-def _escape_ffmpeg_filter_path(p: Path) -> str:
-    """ffmpeg's filtergraph parser treats `:` as a delimiter and `'` /
-    `\\` as escape chars. The ass= filter takes its path argument in
-    that filtergraph string, so the path needs filtergraph-level
-    escaping (NOT shell escaping). On the typical Cloud Run path
-    `/mnt/runs/.../lyrics.ass` this matters mainly because of the
-    leading `/` is fine but any colon (Windows drive letter, never
-    seen on Linux) would otherwise break parsing."""
-    s = str(p)
-    s = s.replace("\\", "\\\\")
-    s = s.replace(":", "\\:")
-    s = s.replace("'", "\\'")
-    return s
 
 
 def build_metadata_args(title: str | None, share_token: str | None) -> list[str]:

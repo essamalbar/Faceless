@@ -31,10 +31,19 @@ def align_song_lyrics(*, song_mp3: Path, lyrics: str, out_json: Path) -> dict:
           "audio_duration": float,                # seconds
           "lines": [
             {"kind": "section", "text": "Verse 1", "start": 12.3, "end": 12.3, "stanza": 1},
-            {"kind": "line", "text": "في ليل بعيد", "start": 12.3, "end": 17.9, "stanza": 1},
+            {"kind": "line", "text": "في ليل بعيد", "start": 12.3, "end": 17.9, "stanza": 1,
+             "words": [{"text": "في", "start": 12.3, "end": 12.6}, ...],
+             "align_confidence": 1.0},
             ...
           ]
         }
+
+    Each `kind: "line"` item additionally carries `words` (per-word
+    `{"text","start","end"}` timings, paired by index with the same
+    Whisper-as-stopwatch timings used for the line span) and
+    `align_confidence` (fraction of the line's words that received a
+    timing, for the kinetic-lyric ASS builder to fall back gracefully
+    on low-confidence lines). Section headers do not carry these keys.
 
     Section headers (`[Verse 1]`) get start = the next sung line's start
     so the share-page scroll can land on them at the right moment.
@@ -69,7 +78,8 @@ def align_song_lyrics(*, song_mp3: Path, lyrics: str, out_json: Path) -> dict:
                 "end": None,
             })
             continue
-        n = len(item["text"].split())
+        line_words = item["text"].split()
+        n = len(line_words)
         if n == 0 or word_idx >= len(word_timings):
             last_end = (
                 (word_timings[-1].offset_ms + word_timings[-1].duration_ms) / 1000.0
@@ -81,9 +91,20 @@ def align_song_lyrics(*, song_mp3: Path, lyrics: str, out_json: Path) -> dict:
                 "stanza": item["stanza"],
                 "start": last_end,
                 "end": min(last_end + 2.0, audio_dur),
+                "words": [],
+                "align_confidence": 0.0,
             })
             continue
         taken = word_timings[word_idx : word_idx + n]
+        got = len(taken)
+        words = [
+            {
+                "text": w_txt,
+                "start": round(wt.offset_ms / 1000.0, 3),
+                "end": round((wt.offset_ms + wt.duration_ms) / 1000.0, 3),
+            }
+            for w_txt, wt in zip(line_words, taken)
+        ]
         start = taken[0].offset_ms / 1000.0
         end = (taken[-1].offset_ms + taken[-1].duration_ms) / 1000.0
         out_lines.append({
@@ -92,6 +113,8 @@ def align_song_lyrics(*, song_mp3: Path, lyrics: str, out_json: Path) -> dict:
             "stanza": item["stanza"],
             "start": start,
             "end": end,
+            "words": words,
+            "align_confidence": round(got / n, 3),
         })
         word_idx += n
 

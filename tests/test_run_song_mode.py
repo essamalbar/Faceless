@@ -8,6 +8,7 @@ import pytest
 
 import run as run_mod
 from pipeline import song, song_cover, song_assemble, song_beats, song_cinematic
+from pipeline import song_align, song_animate
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -221,6 +222,163 @@ def test_cinematic_empty_scene_pool_downgrades_to_static(tmp_path: Path, monkeyp
 
     state = json.loads((run_dir / "api_state.json").read_text())
     assert state["video_downgraded"] is True
+    assert state["status"] == "complete"
+
+
+def _setup_animated_run(tmp_path: Path, monkeypatch):
+    """Shared harness for the animated-mode routing tests below — mirrors
+    _setup_cinematic_run but with video_mode='animated'. Mocks
+    align_song_lyrics + detect_beats (rather than letting real Whisper
+    decode run) since these tests exercise ROUTING, not alignment fidelity;
+    the fake lyrics-timing payload carries real words[]/align_confidence so
+    song_kinetic_ass.build_kinetic_ass (left unmocked) has valid input."""
+    run_dir = tmp_path / "song-run-animated"
+    run_dir.mkdir()
+
+    (run_dir / "song.json").write_text(json.dumps({
+        "title": "Test",
+        "lyrics": "[Verse 1]\nhi\n[Chorus]\nworld",
+        "style_prompt": "Arabic pop ballad, slow tempo 72 BPM, oud, male vocal, modern, minor key",
+        "cover_prompt": "moonlight over the sea",
+        "language": "ar",
+        "video_mode": "animated",
+    }))
+    (run_dir / "api_state.json").write_text(json.dumps({
+        "kind": "song", "status": "generating_song",
+    }))
+
+    def fake_submit(client, *, lyrics, style_prompt, title,
+                    model=song.SUNO_MODEL_ID, **_extra):
+        return "fake-task"
+
+    def fake_wait(client, task_id, *, poll_interval_s=5, timeout_s=600):
+        return [
+            song.SongTake(url="https://kie.ai/t1.mp3", duration_s=3.0),
+            song.SongTake(url="https://kie.ai/t2.mp3", duration_s=2.8),
+        ]
+
+    def fake_download(client, url, out_path):
+        shutil.copy(FIXTURE_SONG, out_path)
+
+    monkeypatch.setattr(song, "submit_song_job", fake_submit)
+    monkeypatch.setattr(song, "wait_for_song", fake_wait)
+    monkeypatch.setattr(song, "download_take", fake_download)
+
+    def fake_cover(*, client, cover_prompt, out_dir):
+        out = out_dir / "cover_raw.png"
+        shutil.copy(FIXTURE_COVER, out)
+        return out
+    monkeypatch.setattr(song_cover, "generate_cover_image", fake_cover)
+
+    def fake_align(*, song_mp3, lyrics, out_json):
+        data = {
+            "audio_duration": 5.0,
+            "lines": [
+                {"kind": "section", "text": "Verse 1", "stanza": 1,
+                 "start": 0.0, "end": 0.0},
+                {"kind": "line", "text": "hi", "stanza": 1,
+                 "start": 0.0, "end": 1.0,
+                 "words": [{"text": "hi", "start": 0.0, "end": 1.0}],
+                 "align_confidence": 1.0},
+                {"kind": "section", "text": "Chorus", "stanza": 2,
+                 "start": 1.0, "end": 1.0},
+                {"kind": "line", "text": "world", "stanza": 2,
+                 "start": 1.0, "end": 2.0,
+                 "words": [{"text": "world", "start": 1.0, "end": 2.0}],
+                 "align_confidence": 1.0},
+            ],
+        }
+        out_json.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return data
+    monkeypatch.setattr(song_align, "align_song_lyrics", fake_align)
+
+    def fake_beats(song_mp3, *, out_json, fallback_bpm=120.0):
+        return {"tempo_bpm": 120.0, "beat_times": [0.0, 1.0, 2.0], "source": "stub"}
+    monkeypatch.setattr(song_beats, "detect_beats", fake_beats)
+
+    monkeypatch.setenv("KIE_API_KEY", "stub")
+    return run_dir
+
+
+def test_animated_mode_calls_build_animated_video(tmp_path: Path, monkeypatch):
+    run_dir = _setup_animated_run(tmp_path, monkeypatch)
+
+    called = {}
+    def fake_animate(**k):
+        called["hit"] = True
+        called.update(k)
+        k["out_path"].write_bytes(b"fake-animated-mp4")
+        return k["out_path"]
+    monkeypatch.setattr(song_animate, "build_animated_video", fake_animate)
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    assert rc == 0
+    assert called.get("hit") is True
+    # build_kinetic_ass ran for real (not mocked) and produced the ASS the
+    # animated compositor was handed.
+    assert called["ass_path"] == run_dir / "lyrics.ass"
+    assert (run_dir / "lyrics.ass").exists()
+    assert called["backdrop"] == run_dir / "cover.png"
+    assert called["beats"]["beat_times"] == [0.0, 1.0, 2.0]
+    assert called["template"].genre_key  # a real VisualTemplate, not a stub
+    assert (run_dir / "final.mp4").exists()
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "complete"
+    # Animated bills the same as static (no AI-cost surcharge) — must never
+    # set the cinematic-surcharge-refund flag.
+    assert not state.get("video_downgraded")
+
+
+def test_animated_render_failure_falls_back_to_static(tmp_path: Path, monkeypatch):
+    run_dir = _setup_animated_run(tmp_path, monkeypatch)
+
+    def boom(**k):
+        raise RuntimeError("ffmpeg blew up")
+    monkeypatch.setattr(song_animate, "build_animated_video", boom)
+
+    static_called = {}
+    def fake_static(*, cover_path, song_mp3, out_mp4,
+                    lyrics_json=None, title=None, share_token=None):
+        static_called["cover_path"] = cover_path
+        out_mp4.write_bytes(b"fake-static-mp4")
+    monkeypatch.setattr(song_assemble, "assemble_song_video", fake_static)
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    assert rc == 0
+    assert static_called, "static assembler was not called on animated failure"
+    assert (run_dir / "final.mp4").exists()
+
+    state = json.loads((run_dir / "api_state.json").read_text())
+    assert state["status"] == "complete"
+    assert not state.get("video_downgraded")
+
+
+def test_animated_missing_word_timing_falls_back_to_static(tmp_path: Path, monkeypatch):
+    """If lyrics.json never got written (Whisper alignment failed upstream —
+    a best-effort stage), the animated branch must fall back to static
+    rather than crash the whole run."""
+    run_dir = _setup_animated_run(tmp_path, monkeypatch)
+
+    def fake_align_fails(*, song_mp3, lyrics, out_json):
+        raise RuntimeError("whisper unavailable")
+    monkeypatch.setattr(song_align, "align_song_lyrics", fake_align_fails)
+
+    static_called = {}
+    def fake_static(*, cover_path, song_mp3, out_mp4,
+                    lyrics_json=None, title=None, share_token=None):
+        static_called["cover_path"] = cover_path
+        out_mp4.write_bytes(b"fake-static-mp4")
+    monkeypatch.setattr(song_assemble, "assemble_song_video", fake_static)
+
+    rc = run_mod.main_with_args(["--mode", "song", "--resume", str(run_dir)])
+
+    assert rc == 0
+    assert static_called, "static assembler was not called when word timing was missing"
+    assert (run_dir / "final.mp4").exists()
+    state = json.loads((run_dir / "api_state.json").read_text())
     assert state["status"] == "complete"
 
 

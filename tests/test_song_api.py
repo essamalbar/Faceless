@@ -540,6 +540,52 @@ def test_approve_static_song_deducts_one_credit(app, monkeypatch):
     assert r.json()["balance_after"] == 99
 
 
+def test_create_song_accepts_animated_video_mode(app):
+    """video_mode='animated' (genre-adaptive kinetic-lyric video, Tasks 1-5)
+    must be accepted by the CreateSongRequest validator, not rejected 422
+    alongside 'static'/'cinematic'."""
+    fastapi_app, token = app
+    c = TestClient(fastapi_app)
+    r = c.post("/songs", json={"theme": "x", "video_mode": "animated"},
+               headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code in (200, 201), r.text
+    run_id = r.json()["run_id"]
+    run_dir = _find_run_dir(run_id)
+    song_data = json.loads((run_dir / "song.json").read_text())
+    assert song_data["video_mode"] == "animated"
+
+
+def test_approve_animated_song_deducts_one_credit(app, monkeypatch):
+    """Animated mode is ffmpeg-only (no extra AI calls) so it must bill the
+    same 1 credit as static — NOT the 3-credit cinematic surcharge."""
+    fastapi_app, token = app
+    client = TestClient(fastapi_app)
+    from pipeline import api as api_mod, credits
+
+    api_mod.set_spawn_fn(lambda args, run_dir: 12345)
+    monkeypatch.setattr(credits, "get_balance", lambda uid: 100)
+
+    captured = {}
+    def _capture(user, *, amount, run_id, reason):
+        captured["amount"] = amount
+        return 100 - amount
+    monkeypatch.setattr(credits, "check_or_deduct", _capture)
+
+    create = client.post(
+        "/songs", json={"theme": "x", "video_mode": "animated"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    run_id = create.json()["run_id"]
+
+    r = client.post(
+        f"/songs/{run_id}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert captured["amount"] == 1
+    assert r.json()["balance_after"] == 99
+
+
 def test_reroll_cinematic_song_deducts_three_credits(app, monkeypatch):
     """reroll-takes on a cinematic song must charge 3 credits, not 1."""
     from pipeline import api as api_mod, credits

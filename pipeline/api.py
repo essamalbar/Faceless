@@ -415,7 +415,10 @@ class CreateSongRequest(BaseModel):
     # _ALLOWED_SUNO_MODELS below. None → use config default (V5_5).
     suno_model: str | None = None
     # Video render mode. "static" = single cover still over audio (1 credit);
-    # "cinematic" = beat-synced multi-scene pool (3 credits).
+    # "cinematic" = beat-synced multi-scene pool (3 credits); "animated" =
+    # genre-adaptive kinetic-lyric video, procedural FX + karaoke ASS over
+    # a moving backdrop (ffmpeg-only, no extra AI calls, so it bills at the
+    # same 1 credit as static — see pipeline/api.py:_song_credit_amount).
     video_mode: str = "static"
     # Make this song AS an artist: the artist's persona (voice) + default
     # style fill any fields the request left empty, and the run is stamped
@@ -446,8 +449,8 @@ class CreateSongRequest(BaseModel):
     @field_validator("video_mode")
     @classmethod
     def _check_video_mode(cls, v: str) -> str:
-        if v not in ("static", "cinematic"):
-            raise ValueError("video_mode must be 'static' or 'cinematic'")
+        if v not in ("static", "cinematic", "animated"):
+            raise ValueError("video_mode must be 'static', 'cinematic', or 'animated'")
         return v
 
     @field_validator("quality_tier")
@@ -487,8 +490,8 @@ class CreateSongImportRequest(BaseModel):
     @field_validator("video_mode")
     @classmethod
     def _check_video_mode(cls, v: str) -> str:
-        if v not in ("static", "cinematic"):
-            raise ValueError("video_mode must be 'static' or 'cinematic'")
+        if v not in ("static", "cinematic", "animated"):
+            raise ValueError("video_mode must be 'static', 'cinematic', or 'animated'")
         return v
 
 
@@ -599,8 +602,9 @@ class SongRunSummary(BaseModel):
     # as None → treated as False by the Flutter UI). Drives the
     # "Apply watermark" CTA on the song detail screen.
     watermarked: bool = False
-    # "static" (single cover still) or "cinematic" (beat-synced multi-scene
-    # pool). Older songs without the key read as "static".
+    # "static" (single cover still), "cinematic" (beat-synced multi-scene
+    # pool), or "animated" (genre-adaptive kinetic-lyric video). Older songs
+    # without the key read as "static".
     video_mode: str = "static"
     # Artist Core: which artist this song belongs to (None = unassigned).
     # artist_name is denormalized into summaries so lists render without
