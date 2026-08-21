@@ -65,13 +65,26 @@ def _chorus_stanzas(lines: list[dict]) -> set[int]:
 
 
 def _karaoke_text(words: list[dict]) -> str:
-    """One `{\\kNN}` tag per word, NN = word duration in centiseconds (ASS's
-    \\k unit). Pre-sung vs sung colors come from the Kinetic style's
-    Secondary/Primary colours (see `_ass_header`) — no per-word color tag
-    needed here."""
+    """One `{\\kNN}` tag per word, NN in centiseconds (ASS's \\k unit).
+    Pre-sung vs sung colors come from the Kinetic style's Secondary/Primary
+    colours (see `_ass_header`) — no per-word color tag needed here.
+
+    ASS `\\k` durations are CUMULATIVE from the Dialogue event's start, not
+    independent per-word spans. Whisper word timings are frequently
+    non-contiguous (gaps at pauses/breaths/instrumental hits), so using each
+    word's own `end-start` as its `\\k` value drops those gaps and makes the
+    highlight run progressively EARLY within the line. Instead, derive each
+    word's `\\k` from the gap to the NEXT word's start (so the gap gets
+    absorbed into the preceding word's highlight and each highlight still
+    STARTS at the word's real start time); the last word falls back to its
+    own duration since there's no next start to measure to."""
     parts = []
-    for w in words:
-        cs = max(1, round((w["end"] - w["start"]) * 100))
+    for i, w in enumerate(words):
+        if i + 1 < len(words):
+            cs = round((words[i + 1]["start"] - w["start"]) * 100)
+        else:
+            cs = round((w["end"] - w["start"]) * 100)
+        cs = max(1, cs)
         parts.append(f"{{\\k{cs}}}{_ass_escape(w['text'])} ")
     return "".join(parts).rstrip()
 

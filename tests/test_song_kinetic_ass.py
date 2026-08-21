@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from pipeline.song_visual_style import visual_template_for
 from pipeline.song_kinetic_ass import build_kinetic_ass, pick_hook_word
 
@@ -57,3 +59,29 @@ def test_low_confidence_line_falls_back_to_line_snap(tmp_path):
 
 def test_pick_hook_word_prefers_long_content_word():
     assert pick_hook_word("يا قمر الليل") in ("الليل", "قمر")
+
+
+def test_karaoke_k_value_uses_gap_to_next_word_start_not_own_duration(tmp_path):
+    """Regression: ASS `\\k` durations are CUMULATIVE from the Dialogue
+    event's start, not independent per-word spans. Whisper word timings are
+    frequently non-contiguous (gaps at pauses/breaths/instrumental hits) —
+    using a word's own end-start as its `\\k` value silently drops that gap
+    and makes the highlight run progressively EARLY within the line. Word 0
+    here spans 0.0-0.5s but word 1 doesn't start until 1.0s: the first `\\k`
+    must reflect the 1.0s until word 1's real start, not word 0's own 0.5s
+    duration."""
+    timing = {"audio_duration": 5.0, "lines": [
+        {"kind": "line", "text": "أول ثاني", "start": 0.0, "end": 2.0, "stanza": 1,
+         "words": [{"text": "أول", "start": 0.0, "end": 0.5},
+                   {"text": "ثاني", "start": 1.0, "end": 1.5}],
+         "align_confidence": 1.0},
+    ]}
+    out = build_kinetic_ass(lyrics_timing=timing,
+                            template=visual_template_for("arabic_trap"),
+                            out_path=tmp_path / "k.ass")
+    body = out.read_text(encoding="utf-8")
+    event = [ln for ln in body.splitlines()
+             if ln.startswith("Dialogue:") and "أول" in ln][0]
+    first_k = re.search(r"\\k(\d+)", event)
+    assert first_k is not None
+    assert first_k.group(1) == "100"  # gap to next word's start (1.0s), not own duration (50)
