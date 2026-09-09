@@ -4,6 +4,8 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/brand.dart';
+import '../ui/primitives.dart';
 import '../widgets/paywall_dialog.dart';
 
 /// Two modes:
@@ -298,15 +300,12 @@ class _AiGenerateTabState extends State<_AiGenerateTab> {
                   style: TextStyle(
                       color: Theme.of(context).colorScheme.error)),
             ),
-          FilledButton.icon(
+          GradientButton(
+            expand: true,
+            icon: Icons.tune,
+            loading: _submitting,
             onPressed: _submitting ? null : _submit,
-            icon: _submitting
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.tune),
-            label:
-                Text(_submitting ? l.newRunWriting : l.newRunGenerateScript),
+            label: _submitting ? l.newRunWriting : l.newRunGenerateScript,
           ),
         ],
       ),
@@ -536,11 +535,11 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
                     decoration: BoxDecoration(
                       color: switch (_lastParseMethod!) {
                         ParseMethod.regex =>
-                            Colors.green.withValues(alpha: 0.15),
+                            FacelessTheme.success.withValues(alpha: 0.15),
                         ParseMethod.llmSplit =>
-                            Colors.orange.withValues(alpha: 0.18),
+                            FacelessTheme.info.withValues(alpha: 0.18),
                         ParseMethod.naiveFallback =>
-                            Colors.amber.withValues(alpha: 0.22),
+                            FacelessTheme.warning.withValues(alpha: 0.18),
                       },
                       borderRadius: BorderRadius.circular(6),
                     ),
@@ -555,9 +554,9 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
                           },
                           size: 16,
                           color: switch (_lastParseMethod!) {
-                            ParseMethod.regex => Colors.green,
-                            ParseMethod.llmSplit => Colors.orange,
-                            ParseMethod.naiveFallback => Colors.amber.shade700,
+                            ParseMethod.regex => FacelessTheme.success,
+                            ParseMethod.llmSplit => FacelessTheme.info,
+                            ParseMethod.naiveFallback => FacelessTheme.warning,
                           },
                         ),
                         const SizedBox(width: 6),
@@ -578,12 +577,7 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
               ],
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(l.newRunBeatsSection,
-                    style: const TextStyle(
-                        color: FacelessTheme.textSecondary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                        letterSpacing: 1.2)),
+                child: Eyebrow(l.newRunBeatsSection),
               ),
               const SizedBox(height: 8),
               ..._beats.asMap().entries.map((e) => _PasteBeatEditor(
@@ -620,19 +614,17 @@ class _PasteScriptTabState extends State<_PasteScriptTab> {
               ],
               SizedBox(
                 width: double.infinity,
-                child: FilledButton.icon(
+                child: GradientButton(
+                  expand: true,
+                  icon: Icons.check,
+                  loading: _submitting,
                   onPressed: _submitting ? null : _submit,
-                  icon: _submitting
-                      ? const SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.check),
-                  label: Text(_submitting
+                  label: _submitting
                       ? l.newRunSaving
                       : l.newRunUseScript(
                           _beats.length,
                           '\$${_estimatedCost().toStringAsFixed(2)}',
-                        )),
+                        ),
                 ),
               ),
             ],
@@ -774,15 +766,12 @@ class _MarkdownPasteDialogState extends State<_MarkdownPasteDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     flex: 2,
-                    child: FilledButton.icon(
+                    child: GradientButton(
+                      expand: true,
+                      icon: Icons.auto_fix_high,
+                      loading: _parsing,
                       onPressed: _parsing ? null : _parse,
-                      icon: _parsing
-                          ? const SizedBox(
-                              width: 16, height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.auto_fix_high),
-                      label: Text(
-                          _parsing ? l.newRunParsing : l.newRunParseToBeats),
+                      label: _parsing ? l.newRunParsing : l.newRunParseToBeats,
                     ),
                   ),
                 ],

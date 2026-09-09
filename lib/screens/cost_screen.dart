@@ -4,6 +4,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/primitives.dart';
 
 /// Cost dashboard — shows total Kie.ai (Veo + Flux) spend across all runs,
 /// plus a sortable per-run breakdown. Doesn't include ElevenLabs or LLM
@@ -80,15 +81,7 @@ class _CostScreenState extends State<CostScreen> {
                   const SizedBox(height: 16),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(
-                      _sortByAmount ? l.costByAmount : l.costByDate,
-                      style: const TextStyle(
-                        color: FacelessTheme.textSecondary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
+                    child: Eyebrow(_sortByAmount ? l.costByAmount : l.costByDate),
                   ),
                   const SizedBox(height: 8),
                   ...rows.map((r) => _RunSpendTile(row: r, total: s.totalUsd)),
