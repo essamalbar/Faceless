@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../theme.dart';
+import '../ui/brand.dart';
 
 class LegalScreen extends StatelessWidget {
   /// When set (and [mustAccept] is true) a sticky bottom "I Accept" bar is
@@ -178,15 +179,11 @@ class _AcceptBarState extends State<_AcceptBar> {
               ),
               const SizedBox(height: 10),
             ],
-            FilledButton(
+            GradientButton(
+              expand: true,
+              loading: _busy,
               onPressed: _busy ? null : _accept,
-              child: _busy
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('I Accept the Terms & Privacy'),
+              label: 'I Accept the Terms & Privacy',
             ),
           ],
         ),
