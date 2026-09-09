@@ -2894,6 +2894,24 @@ abstract class AppLocalizations {
   /// **'Rerolling clip {number} — 1 credit'**
   String runDetailRerollingClip(String number);
 
+  /// No description provided for @composingEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get composingEyebrow;
+
+  /// No description provided for @composingHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Weaving your song to sing'**
+  String get composingHeading;
+
+  /// No description provided for @composingFooterEta.
+  ///
+  /// In en, this message translates to:
+  /// **'Usually under 3 minutes — we\'ll notify you when it\'s done'**
+  String get composingFooterEta;
+
   /// No description provided for @runDetailStatusReady.
   ///
   /// In en, this message translates to:

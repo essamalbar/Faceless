@@ -1616,6 +1616,16 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get composingEyebrow => 'جارٍ الآن';
+
+  @override
+  String get composingHeading => 'نَنسِج أغنيتك';
+
+  @override
+  String get composingFooterEta =>
+      'عادةً أقل من ٣ دقائق — سنُعلمك عند الاكتمال';
+
+  @override
   String get runDetailStatusReady => 'جاهز للمشاهدة';
 
   @override

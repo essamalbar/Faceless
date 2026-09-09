@@ -1596,6 +1596,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get composingEyebrow => 'Now';
+
+  @override
+  String get composingHeading => 'Weaving your song to sing';
+
+  @override
+  String get composingFooterEta =>
+      'Usually under 3 minutes — we\'ll notify you when it\'s done';
+
+  @override
   String get runDetailStatusReady => 'Ready to watch';
 
   @override

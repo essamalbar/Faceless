@@ -870,6 +870,9 @@
       }
     }
   },
+  "composingEyebrow": "Now",
+  "composingHeading": "Weaving your song to sing",
+  "composingFooterEta": "Usually under 3 minutes — we'll notify you when it's done",
   "runDetailStatusReady": "Ready to watch",
   "runDetailStatusScriptReady": "Script ready — approve to generate the video",
   "runDetailStatusCharacterReady": "Character look ready — approve to generate clips",
