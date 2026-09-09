@@ -1772,6 +1772,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get editScriptVisualDescLabel => 'Visual description (English)';
 
   @override
+  String get editScriptBeatsSection => 'Beats';
+
+  @override
   String get costTitle => 'Spend';
 
   @override

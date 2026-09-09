@@ -966,6 +966,7 @@
   "editScriptTitleLabel": "Title",
   "editScriptArabicDialogueLabel": "Arabic dialogue (leave empty for silent beat)",
   "editScriptVisualDescLabel": "Visual description (English)",
+  "editScriptBeatsSection": "Beats",
   "costTitle": "Spend",
   "costSortByDate": "Sort by date",
   "costSortByAmount": "Sort by amount",

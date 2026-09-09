@@ -3140,6 +3140,12 @@ abstract class AppLocalizations {
   /// **'Visual description (English)'**
   String get editScriptVisualDescLabel;
 
+  /// No description provided for @editScriptBeatsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Beats'**
+  String get editScriptBeatsSection;
+
   /// No description provided for @costTitle.
   ///
   /// In en, this message translates to:

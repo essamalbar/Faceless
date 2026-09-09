@@ -507,6 +507,7 @@
   "editScriptTitleLabel": "العنوان",
   "editScriptArabicDialogueLabel": "الحوار العربي (اتركه فارغًا لمشهد صامت)",
   "editScriptVisualDescLabel": "الوصف البصري (بالإنجليزية)",
+  "editScriptBeatsSection": "المشاهد",
   "costTitle": "الإنفاق",
   "costSortByDate": "ترتيب حسب التاريخ",
   "costSortByAmount": "ترتيب حسب المبلغ",

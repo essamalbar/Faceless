@@ -1807,6 +1807,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get editScriptVisualDescLabel => 'الوصف البصري (بالإنجليزية)';
 
   @override
+  String get editScriptBeatsSection => 'المشاهد';
+
+  @override
   String get costTitle => 'الإنفاق';
 
   @override
