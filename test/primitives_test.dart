@@ -1,7 +1,4 @@
-// `StepState` is declared both by this package's primitives.dart AND by
-// Flutter's own Stepper widget (material.dart) — hide material's copy so
-// the brief's `StepState` (done/active/pending) resolves unambiguously.
-import 'package:flutter/material.dart' hide StepState;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:faceless/ui/primitives.dart';
 
@@ -29,9 +26,9 @@ void main() {
 
   testWidgets('StepList renders one row per item', (t) async {
     await t.pumpWidget(MaterialApp(home: Scaffold(body: StepList(const [
-      StepItem(label: 'Analyse', state: StepState.done),
-      StepItem(label: 'Melody', state: StepState.active, percent: 40),
-      StepItem(label: 'Cover', state: StepState.pending),
+      StepItem(label: 'Analyse', state: StepPhase.done),
+      StepItem(label: 'Melody', state: StepPhase.active, percent: 40),
+      StepItem(label: 'Cover', state: StepPhase.pending),
     ]))));
     expect(find.text('Analyse'), findsOneWidget);
     expect(find.text('Melody'), findsOneWidget);
@@ -131,7 +128,7 @@ void main() {
       MediaQuery(
         data: const MediaQueryData(disableAnimations: true),
         child: MaterialApp(home: Scaffold(body: StepList(const [
-          StepItem(label: 'Active step', state: StepState.active, percent: 40),
+          StepItem(label: 'Active step', state: StepPhase.active, percent: 40),
         ]))),
       ),
     );
@@ -142,7 +139,7 @@ void main() {
 
   testWidgets('StepList shows percent for active step', (t) async {
     await t.pumpWidget(MaterialApp(home: Scaffold(body: StepList(const [
-      StepItem(label: 'Melody', state: StepState.active, percent: 40),
+      StepItem(label: 'Melody', state: StepPhase.active, percent: 40),
     ]))));
     expect(find.text('40%'), findsOneWidget);
   });
@@ -154,7 +151,7 @@ void main() {
         child: Scaffold(body: Column(children: const [
           StatusPill(label: 'جاهز', kind: StatusKind.ready),
           StepList([
-            StepItem(label: 'قراءة الفكرة', state: StepState.done),
+            StepItem(label: 'قراءة الفكرة', state: StepPhase.done),
           ]),
         ])),
       ),

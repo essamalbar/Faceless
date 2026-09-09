@@ -79,12 +79,23 @@ class EditorialHeading extends StatelessWidget {
     }
     final lead = words.sublist(0, words.length - 1).join(' ');
     final last = words.last;
+    // `.left`/`.right` are PHYSICAL — resolve them against the ambient
+    // Directionality before mapping to WrapAlignment, or the mapping is
+    // backwards under RTL (e.g. `.right` must mean "start" in RTL, not
+    // "end"). `.start`/`.end`/`.center` are already direction-relative and
+    // pass through unchanged.
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+    final wrapAlignment = switch (textAlign) {
+      null => WrapAlignment.start,
+      TextAlign.center => WrapAlignment.center,
+      TextAlign.start => WrapAlignment.start,
+      TextAlign.end => WrapAlignment.end,
+      TextAlign.left => isRtl ? WrapAlignment.end : WrapAlignment.start,
+      TextAlign.right => isRtl ? WrapAlignment.start : WrapAlignment.end,
+      TextAlign.justify => WrapAlignment.start,
+    };
     return Wrap(
-      alignment: switch (textAlign) {
-        TextAlign.center => WrapAlignment.center,
-        TextAlign.end || TextAlign.right => WrapAlignment.end,
-        _ => WrapAlignment.start,
-      },
+      alignment: wrapAlignment,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text('$lead ', style: style, textAlign: textAlign),
@@ -486,10 +497,15 @@ class _ArtistBadgeState extends State<ArtistBadge>
             child: haloStatic,
           );
 
+    // Keep the outer footprint exactly `size` (matching the non-alive
+    // circle) so an alive badge doesn't grow 12px larger than its siblings
+    // and shift a horizontal row (e.g. the home artists row) — let the
+    // halo overflow the box via Clip.none instead of enlarging the box.
     return SizedBox(
-      width: widget.size + 12,
-      height: widget.size + 12,
+      width: widget.size,
+      height: widget.size,
       child: Stack(
+        clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [halo, circle],
       ),
@@ -499,11 +515,11 @@ class _ArtistBadgeState extends State<ArtistBadge>
 
 /// A single row in a [StepList] — mirrors "read idea" / "generate melody" /
 /// "design cover" progress rows on the composing screen.
-enum StepState { done, active, pending }
+enum StepPhase { done, active, pending }
 
 class StepItem {
   final String label;
-  final StepState state;
+  final StepPhase state;
   final int? percent;
   const StepItem({required this.label, required this.state, this.percent});
 }
@@ -544,7 +560,7 @@ class _StepRowState extends State<_StepRow> with SingleTickerProviderStateMixin 
   void didChangeDependencies() {
     super.didChangeDependencies();
     final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final shouldAnimate = widget.item.state == StepState.active && !reduceMotion;
+    final shouldAnimate = widget.item.state == StepPhase.active && !reduceMotion;
     if (shouldAnimate) {
       if (!_controller.isAnimating) _controller.repeat(reverse: true);
     } else {
@@ -566,7 +582,7 @@ class _StepRowState extends State<_StepRow> with SingleTickerProviderStateMixin 
 
   Widget _leading(bool reduceMotion) {
     switch (widget.item.state) {
-      case StepState.done:
+      case StepPhase.done:
         return Container(
           width: 22,
           height: 22,
@@ -577,7 +593,7 @@ class _StepRowState extends State<_StepRow> with SingleTickerProviderStateMixin 
           ),
           child: const Icon(Icons.check, size: 13, color: FacelessTheme.accent2),
         );
-      case StepState.pending:
+      case StepPhase.pending:
         return Container(
           width: 22,
           height: 22,
@@ -586,7 +602,7 @@ class _StepRowState extends State<_StepRow> with SingleTickerProviderStateMixin 
             border: Border.all(color: FacelessTheme.border),
           ),
         );
-      case StepState.active:
+      case StepPhase.active:
         final dot = Container(
           width: 9,
           height: 9,
@@ -631,13 +647,13 @@ class _StepRowState extends State<_StepRow> with SingleTickerProviderStateMixin 
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final item = widget.item;
-    final isActive = item.state == StepState.active;
-    final isPending = item.state == StepState.pending;
+    final isActive = item.state == StepPhase.active;
+    final isPending = item.state == StepPhase.pending;
 
     final labelColor = switch (item.state) {
-      StepState.done => FacelessTheme.faint,
-      StepState.pending => FacelessTheme.textSecondary,
-      StepState.active => FacelessTheme.textPrimary,
+      StepPhase.done => FacelessTheme.faint,
+      StepPhase.pending => FacelessTheme.textSecondary,
+      StepPhase.active => FacelessTheme.textPrimary,
     };
     final labelWeight = isActive ? FontWeight.w500 : FontWeight.w400;
 
