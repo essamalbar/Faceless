@@ -36,7 +36,7 @@ class ArtistAvatar extends StatelessWidget {
       child: Text(
         initial,
         style: TextStyle(
-          color: Colors.white,
+          color: FacelessTheme.textPrimary,
           fontWeight: FontWeight.w700,
           fontSize: size * 0.42,
         ),

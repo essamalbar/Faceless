@@ -21,14 +21,14 @@ class LlmBanner extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: FacelessTheme.accent.withValues(alpha: 0.08),
+          color: FacelessTheme.warning.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: FacelessTheme.borderAccent),
+          border: Border.all(color: FacelessTheme.warning.withValues(alpha: 0.35)),
         ),
         child: Row(
           children: [
             const Icon(Icons.warning_amber_rounded,
-                size: 18, color: FacelessTheme.accent),
+                size: 18, color: FacelessTheme.warning),
             const SizedBox(width: 10),
             Expanded(
               child: Text(

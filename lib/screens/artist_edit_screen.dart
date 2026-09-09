@@ -240,7 +240,8 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
         shape: BoxShape.circle,
         border: Border.all(color: FacelessTheme.border),
       ),
-      child: const Icon(Icons.person_outline, color: Colors.white, size: 32),
+      child: const Icon(Icons.person_outline,
+          color: FacelessTheme.textPrimary, size: 32),
     );
   }
 

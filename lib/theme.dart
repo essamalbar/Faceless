@@ -30,7 +30,10 @@ class FacelessTheme {
   static const faint = Color(0xFF6E685D);
   static const danger = Color(0xFFC6564E); // muted brick red
   static const success = Color(0xFF9DBB9C); // muted sage
-  static const warning = accent; // champagne outline (review state)
+  // Muted amber — distinct from champagne `accent` so a degraded/alarm
+  // banner doesn't read as a positive brand chip. Warmer + more saturated
+  // than champagne, but kept muted (not neon).
+  static const warning = Color(0xFFD9A441);
   static const info = Color(0xFF6E8BA6); // muted steel
 
   // Champagne gradient used for the logo mark, accent headline words, primary CTA.
