@@ -1266,12 +1266,9 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               // stays behavior-preserving rather than inventing one.
             ),
           ] else ...[
-            Directionality(
-              textDirection: TextDirection.rtl,
-              child: EditorialHeading(
-                s.title ?? l10n.songDetailTitleFallback,
-                size: 26,
-              ),
+            EditorialHeading(
+              s.title ?? l10n.songDetailTitleFallback,
+              size: 26,
             ),
             const SizedBox(height: 10),
             _buildStatusCard(context, s),
