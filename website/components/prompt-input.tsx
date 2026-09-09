@@ -67,11 +67,11 @@ export function PromptInput({ appUrl }: { appUrl: string }) {
       action={`${appUrl}/`}
       className="relative w-full max-w-2xl"
     >
-      <div className="group relative rounded-2xl border border-white/15 bg-black/55 backdrop-blur-xl shadow-2xl shadow-black/40 overflow-hidden hover:border-accent/50 focus-within:border-accent/70 transition-colors">
-        {/* Subtle inner glow on focus */}
+      <div className="group relative rounded-2xl border border-ink/15 bg-surface2/70 backdrop-blur-xl shadow-2xl shadow-black/40 overflow-hidden hover:border-accent/50 focus-within:border-accent/70 transition-colors">
+        {/* Subtle inner glow on focus — champagne, matches FacelessTheme.accent */}
         <div className="absolute inset-0 pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity"
              style={{
-               background: "radial-gradient(ellipse 100% 60% at 50% 50%, rgba(231,181,60,0.08), transparent 70%)",
+               background: "radial-gradient(ellipse 100% 60% at 50% 50%, rgba(201,169,110,0.08), transparent 70%)",
              }} />
         <label htmlFor="hero-premise" className="sr-only">
           One-line story premise
@@ -87,7 +87,7 @@ export function PromptInput({ appUrl }: { appUrl: string }) {
           // placeholder:text-muted/60 → /80: the lighter placeholder was
           // failing WCAG contrast inside the inputs (gray on near-black
           // measured ~2.6:1).
-          className="relative w-full bg-transparent text-ink placeholder:text-muted/80 px-5 pt-5 pb-3 text-base sm:text-lg leading-relaxed resize-none outline-none font-arabic"
+          className="relative w-full bg-transparent text-ink caret-accent placeholder:text-muted/80 px-5 pt-5 pb-3 text-base sm:text-lg leading-relaxed resize-none outline-none font-arabic"
         />
         <div className="relative flex items-center justify-between px-3 pb-3 pt-1">
           <div className="flex items-center gap-2 px-2 text-[11px] text-muted/70">

@@ -29,7 +29,7 @@ function sparklePath(cx: number, cy: number, r: number) {
 export function SparkleLogo({
   size = 32,
   withBackground = true,
-  markColor = "#0A0E1A",
+  markColor = "#0C0B0E", // app's obsidian `bg` token
   className = "",
 }: Props) {
   const cx = 50;
@@ -60,9 +60,12 @@ export function SparkleLogo({
       {withBackground && (
         <>
           <defs>
+            {/* Champagne gradient — mirrors FacelessTheme.brandGradient
+                (lib/theme.dart: accent2 -> accentDeep), the same stops the
+                app uses for its logo mark, headline accents, and primary CTA. */}
             <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#E7B53C" />
-              <stop offset="100%" stopColor="#B07F1F" />
+              <stop offset="0%" stopColor="#E4CE9E" />
+              <stop offset="100%" stopColor="#B4915A" />
             </linearGradient>
           </defs>
           <circle cx={cx} cy={cy} r={r} fill={`url(#${gradId})`} />
