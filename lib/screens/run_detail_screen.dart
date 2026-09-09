@@ -452,6 +452,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
               monogram: _composingMonogram(run),
               title: run.title ?? run.theme,
               steps: _composingSteps(context, run),
+              cancelLabel: context.l10n.runDetailCancelDiscard,
               onCancel: _busy ? null : _cancelAndDelete,
               busy: _busy,
             ),

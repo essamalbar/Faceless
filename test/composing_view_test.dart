@@ -36,6 +36,7 @@ void main() {
         artistName: 'Nour Al-Layl',
         title: 'Night in the Neighborhood',
         steps: steps,
+        cancelLabel: 'Cancel & Discard',
       ),
     ));
     await t.pump(const Duration(milliseconds: 100));
@@ -46,6 +47,9 @@ void main() {
     expect(find.textContaining('Night in the Neighborhood'), findsOneWidget);
     expect(find.text('Generating melody'), findsOneWidget);
     expect(find.text('40%'), findsOneWidget);
+    // cancelLabel is a plain caller-supplied string — the widget renders it
+    // verbatim, with no baked-in copy of its own.
+    expect(find.text('Cancel & Discard'), findsOneWidget);
   });
 
   testWidgets('renders under Arabic RTL and wires the cancel action',
@@ -57,6 +61,7 @@ void main() {
         monogram: 'ن',
         title: 'ليلة في الحي',
         steps: steps,
+        cancelLabel: 'إلغاء',
         onCancel: () => cancelled = true,
       ),
     ));
@@ -67,17 +72,14 @@ void main() {
     expect(find.text('ن'), findsOneWidget);
     expect(find.text('ليلة في الحي'), findsOneWidget);
 
-    // The cancel button sits below the fold of the fixed test viewport
-    // (ComposingView is long — hero + waveform + 5 steps + footer), same
-    // as it would in a short real device window inside the ListView.
-    await t.ensureVisible(find.byIcon(Icons.delete_forever));
-    await t.pump();
-    await t.tap(find.byIcon(Icons.delete_forever));
+    // The cancel link is the first child (top-corner, per the artboard),
+    // so it's on-screen without needing to scroll.
+    await t.tap(find.text('إلغاء'));
     await t.pump();
     expect(cancelled, isTrue);
   });
 
-  testWidgets('omits the subtitle line and cancel button when not provided',
+  testWidgets('omits the subtitle line and cancel link when not provided',
       (t) async {
     await t.pumpWidget(app(
       const Locale('en'),
@@ -85,7 +87,9 @@ void main() {
     ));
     await t.pump(const Duration(milliseconds: 100));
 
-    expect(find.byIcon(Icons.delete_forever), findsNothing);
+    // No cancelLabel supplied → no cancel affordance at all (the widget
+    // has no other TextButton).
+    expect(find.byType(TextButton), findsNothing);
   });
 
   testWidgets('disableAnimations: settles without a real cancel wired',

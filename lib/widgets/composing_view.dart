@@ -2,16 +2,17 @@
 /// screen shown while a song (or, currently, a legacy video run) is being
 /// generated. Mirrors
 /// `docs/superpowers/specs/redesign-artboards/DirectionA-Composing.dc.html`:
-/// an alive [ArtistBadge] with a champagne halo, an [Eyebrow] ("now"), an
-/// [EditorialHeading] with a champagne accent word, an optional
-/// "artist · title" subtitle, a [LivingWaveform], a [StepList] of the
-/// generation stages, a footer ETA note, and an optional quiet cancel
-/// action.
+/// a top-corner cancel link, an alive [ArtistBadge] with a champagne halo,
+/// an [Eyebrow] ("now"), an [EditorialHeading] with a champagne accent
+/// word, an optional "artist · title" subtitle, a [LivingWaveform], a
+/// [StepList] of the generation stages, and a footer ETA note.
 ///
-/// Deliberately generic — it takes plain strings/[StepItem]s rather than a
-/// [RunSummary]/`SongSummary`, so any screen with an in-progress generation
-/// state can drop it in. See `lib/screens/run_detail_screen.dart` for the
-/// current consumer and its status→[StepItem] mapping.
+/// Deliberately generic — it takes plain strings/[StepItem]s and a caller-
+/// supplied [cancelLabel] rather than any `RunSummary`/`SongSummary` model
+/// or `runDetail*`-flavoured l10n, so any screen with an in-progress
+/// generation state can drop it in with its own appropriate copy. See
+/// `lib/screens/run_detail_screen.dart` for the current consumer and its
+/// status→[StepItem] mapping.
 library;
 
 import 'package:flutter/material.dart';
@@ -34,7 +35,13 @@ class ComposingView extends StatelessWidget {
   /// Ordered generation stages to render in the [StepList].
   final List<StepItem> steps;
 
-  /// Called when the user taps the quiet cancel action. Null hides it.
+  /// Label for the quiet top-corner cancel link (e.g. "Cancel & Discard" /
+  /// "إلغاء الأغنية"). Caller-supplied so this widget stays data-agnostic —
+  /// null hides the cancel link entirely.
+  final String? cancelLabel;
+
+  /// Called when the user taps the cancel link. Ignored when [cancelLabel]
+  /// is null.
   final VoidCallback? onCancel;
 
   /// Disables the cancel action while a cancel request is in flight.
@@ -46,6 +53,7 @@ class ComposingView extends StatelessWidget {
     this.artistName,
     this.title,
     required this.steps,
+    this.cancelLabel,
     this.onCancel,
     this.busy = false,
   });
@@ -66,6 +74,33 @@ class ComposingView extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        // Top-corner cancel link, matching the artboard's "إلغاء" — sits
+        // opposite where a brand mark would go, on the directional END side
+        // so it lands top-left in RTL (as in the artboard) and top-right in
+        // LTR, rather than a fixed physical side.
+        if (cancelLabel != null) ...[
+          Align(
+            alignment: AlignmentDirectional.topEnd,
+            child: Opacity(
+              opacity: busy ? 0.5 : 1.0,
+              child: TextButton(
+                onPressed: busy ? null : onCancel,
+                style: TextButton.styleFrom(
+                  foregroundColor: FacelessTheme.textSecondary,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 4, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  cancelLabel!,
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         ArtistBadge(monogram: monogram, alive: true, size: 88),
         const SizedBox(height: 22),
         Eyebrow(l.composingEyebrow),
@@ -110,17 +145,6 @@ class ComposingView extends StatelessWidget {
             ),
           ],
         ),
-        if (onCancel != null) ...[
-          const SizedBox(height: 16),
-          TextButton.icon(
-            onPressed: busy ? null : onCancel,
-            style: TextButton.styleFrom(
-              foregroundColor: FacelessTheme.textSecondary,
-            ),
-            icon: const Icon(Icons.delete_forever, size: 18),
-            label: Text(l.runDetailCancelDiscard),
-          ),
-        ],
       ],
     );
   }
