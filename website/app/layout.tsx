@@ -1,6 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import { Inter, Noto_Naskh_Arabic, Fraunces } from "next/font/google";
+import { Manrope, Amiri, Cormorant_Garamond } from "next/font/google";
 
 // Self-host the marketing fonts via next/font. This eliminates:
 //   - render-blocking <link> to fonts.googleapis.com (TTFB win)
@@ -9,25 +9,35 @@ import { Inter, Noto_Naskh_Arabic, Fraunces } from "next/font/google";
 //     fallback (it wasn't actually loading before).
 // `display: "swap"` shows fallback text immediately, then swaps when the
 // font arrives — keeps LCP fast.
-const inter = Inter({
+//
+// Matches the app's editorial pairing (Obsidian & Champagne redesign,
+// Phase 2 Task 2): Manrope/Amiri/Cormorant Garamond replace the marketing
+// site's previous grotesque/naskh/serif trio. CSS var names are kept
+// identical so Tailwind config + every consumer (font-sans/font-arabic/
+// font-display classes) inherit without any other edits.
+const inter = Manrope({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-inter",
+  weight: ["400", "500", "600", "700"],
 });
 
-const notoArabic = Noto_Naskh_Arabic({
+const notoArabic = Amiri({
   subsets: ["arabic"],
   display: "swap",
   variable: "--font-arabic",
-  weight: ["400", "600", "700"],
+  weight: ["400", "700"],
 });
 
-// Editorial serif for lyric-like display headlines. Variable font (weight +
-// optical size) — loaded once, used with restraint on the landing page.
-const fraunces = Fraunces({
+// Editorial serif for lyric-like display headlines — same family the app
+// uses for its display type. Static font family; both italic and normal
+// styles are used across the landing page (e.g. numbered step labels).
+const fraunces = Cormorant_Garamond({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-display",
+  weight: ["500", "600"],
+  style: ["normal", "italic"],
 });
 
 // ---------------------------------------------------------------------------
@@ -141,7 +151,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0A0E1A",
+  themeColor: "#0C0B0E",
   colorScheme: "dark",
 };
 
