@@ -23,6 +23,34 @@ void main() {
     expect(find.text('x'), findsOneWidget);
   });
 
+  testWidgets('disableAnimations: MeshBackground settles (static fallback, no ticker)',
+      (t) async {
+    await t.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: const MaterialApp(
+          home: Scaffold(body: MeshBackground(child: Text('static'))),
+        ),
+      ),
+    );
+    // pumpAndSettle only completes if no ticker is left running — this is
+    // the regression guard for the static fallback Tasks 4-8 rely on.
+    await t.pumpAndSettle();
+    expect(find.text('static'), findsOneWidget);
+  });
+
+  testWidgets('animations enabled: MeshBackground still builds its child',
+      (t) async {
+    await t.pumpWidget(const MaterialApp(
+      home: Scaffold(body: MeshBackground(child: Text('animated'))),
+    ));
+    // Must NOT use pumpAndSettle here — the breathe animation runs an
+    // infinite repeating ticker and pumpAndSettle would hang waiting for
+    // the frame schedule to go idle.
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text('animated'), findsOneWidget);
+  });
+
   test('coverGradient uses jewel set, never violet/pink', () {
     for (final s in ['a','song','رحلة','xyz','12','artist']) {
       final g = coverGradient(s);

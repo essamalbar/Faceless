@@ -77,13 +77,22 @@ class _MeshBackgroundState extends State<MeshBackground>
       );
 
   @override
-  Widget build(BuildContext context) {
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Start/stop the ticker here (not in build) — didChangeDependencies
+    // re-runs exactly when an inherited dependency (MediaQuery) changes,
+    // which is when disableAnimations can flip.
     final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     if (reduceMotion) {
       if (_controller.isAnimating) _controller.stop();
     } else if (!_controller.isAnimating) {
       _controller.repeat(reverse: true);
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     // Scale the washes to the viewport so the top wash reads as a wide
     // ellipse (per the artboard) rather than a fixed-size spot on wide web.
     final w = MediaQuery.sizeOf(context).width;
@@ -100,14 +109,19 @@ class _MeshBackgroundState extends State<MeshBackground>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          IgnorePointer(
-            child: reduceMotion
-                ? _washes(1.0, topSize, baseSize)
-                : AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, _) =>
-                        _washes(0.65 + _controller.value * 0.35, topSize, baseSize),
-                  ),
+          // RepaintBoundary isolates the continuously-repainting breathe
+          // animation into its own layer so it doesn't invalidate/repaint
+          // `widget.child` (the rest of the app) on every tick.
+          RepaintBoundary(
+            child: IgnorePointer(
+              child: reduceMotion
+                  ? _washes(1.0, topSize, baseSize)
+                  : AnimatedBuilder(
+                      animation: _controller,
+                      builder: (context, _) =>
+                          _washes(0.65 + _controller.value * 0.35, topSize, baseSize),
+                    ),
+            ),
           ),
           widget.child,
         ],
