@@ -1954,6 +1954,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get artistEdit => 'Edit';
 
   @override
+  String get artistProfileEyebrow => 'Artist';
+
+  @override
   String artistNewSongCta(String name) {
     return 'New song as $name';
   }

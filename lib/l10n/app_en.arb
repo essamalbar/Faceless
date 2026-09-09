@@ -1072,6 +1072,7 @@
   "artistShare": "Share",
   "artistLinkCopied": "Artist link copied",
   "artistEdit": "Edit",
+  "artistProfileEyebrow": "Artist",
   "artistNewSongCta": "New song as {name}",
   "@artistNewSongCta": {
     "placeholders": {

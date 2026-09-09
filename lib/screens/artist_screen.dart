@@ -1,5 +1,6 @@
-/// Artist profile — header (avatar, name, @handle, bio, song count),
-/// actions (share public page, edit, new song as artist), and the
+/// Artist profile — the editorial "artist comes alive" screen: header
+/// (avatar with a breathing champagne halo, serif name, @handle, bio, song
+/// count), actions (share public page, edit, new song as artist), and the
 /// discography (existing songs filtered by artist_id, client-side).
 library;
 
@@ -11,7 +12,9 @@ import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/brand.dart';
+import '../ui/primitives.dart';
 import '../widgets/artist_avatar.dart';
+import '../widgets/home/song_row.dart';
 import 'artist_edit_screen.dart';
 import 'new_song_screen.dart';
 import 'song_detail_screen.dart';
@@ -28,6 +31,13 @@ class ArtistScreen extends StatefulWidget {
 class _ArtistScreenState extends State<ArtistScreen> {
   late Artist _artist;
   Future<List<SongSummary>>? _songsFuture;
+
+  // Same fallback the "your artists" home row uses (artists_row.dart)
+  // for artists with no uploaded/rendered avatar.
+  String get _monogram {
+    final name = _artist.name.trim();
+    return name.isEmpty ? '?' : name.characters.first;
+  }
 
   @override
   void initState() {
@@ -103,83 +113,138 @@ class _ArtistScreenState extends State<ArtistScreen> {
           await _songsFuture;
         },
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          // No horizontal padding at the list level — SongRow (below) bakes
+          // in its own 16px horizontal padding (matching the home screen's
+          // list), so every other block wraps itself in the same 16px inset
+          // individually to keep everything visually flush.
+          padding: const EdgeInsets.only(top: 8, bottom: 32),
           children: [
-            Center(
-              child: ArtistAvatar(
-                  artist: _artist, client: widget.client, size: 96),
-            ),
-            const SizedBox(height: 14),
-            Center(
-              child: Text(
-                _artist.name,
-                textAlign: TextAlign.center,
-                style: FacelessTheme.display(size: 28),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Center(
-              child: Text(
-                '@${_artist.handle}',
-                style: const TextStyle(
-                    color: FacelessTheme.textSecondary, fontSize: 14),
-              ),
-            ),
-            if (_artist.bio.trim().isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Center(
-                child: Text(
-                  _artist.bio,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: FacelessTheme.textPrimary, fontSize: 14),
+            _Reveal(
+              index: 0,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    Center(
+                      child: _artist.hasAvatar
+                          ? _AliveHalo(
+                              size: 96,
+                              child: ArtistAvatar(
+                                  artist: _artist,
+                                  client: widget.client,
+                                  size: 96),
+                            )
+                          : ArtistBadge(
+                              monogram: _monogram,
+                              alive: true,
+                              size: 96,
+                            ),
+                    ),
+                    const SizedBox(height: 18),
+                    Center(child: Eyebrow(l10n.artistProfileEyebrow)),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: EditorialHeading(
+                        _artist.name,
+                        size: 30,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Center(
+                      child: Text(
+                        '@${_artist.handle}',
+                        style: const TextStyle(
+                            color: FacelessTheme.textSecondary, fontSize: 14),
+                      ),
+                    ),
+                    if (_artist.bio.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Center(
+                        child: Text(
+                          _artist.bio,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: FacelessTheme.textPrimary, fontSize: 14),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Center(
+                      child: Text(
+                        l10n.artistSongCount(_artist.songCount),
+                        style: const TextStyle(
+                            color: FacelessTheme.textSecondary,
+                            fontSize: 12.5,
+                            letterSpacing: 0.2),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-            const SizedBox(height: 8),
-            Center(
-              child: Text(
-                l10n.artistSongCount(_artist.songCount),
-                style: const TextStyle(
-                    color: FacelessTheme.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 22),
+            _Reveal(
+              index: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.link,
+                            size: 18, color: FacelessTheme.accent2),
+                        label: Text(l10n.artistShare),
+                        style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: FacelessTheme.borderAccent)),
+                        onPressed: _share,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.edit_outlined,
+                            size: 18, color: FacelessTheme.accent2),
+                        label: Text(l10n.artistEdit),
+                        style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: FacelessTheme.borderAccent)),
+                        onPressed: _openEdit,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _Reveal(
+              index: 2,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GradientButton(
+                  label: l10n.artistNewSongCta(_artist.name),
+                  icon: Icons.add,
+                  expand: true,
+                  onPressed: _newSong,
+                ),
+              ),
+            ),
+            const SizedBox(height: 26),
+            _Reveal(
+              index: 3,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Hairline(),
               ),
             ),
             const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.link, size: 18),
-                    label: Text(l10n.artistShare),
-                    onPressed: _share,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: Text(l10n.artistEdit),
-                    onPressed: _openEdit,
-                  ),
-                ),
-              ],
+            _Reveal(
+              index: 4,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Eyebrow(l10n.artistDiscographyTitle),
+              ),
             ),
-            const SizedBox(height: 10),
-            GradientButton(
-              label: l10n.artistNewSongCta(_artist.name),
-              icon: Icons.add,
-              expand: true,
-              onPressed: _newSong,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              l10n.artistDiscographyTitle,
-              style: const TextStyle(
-                  color: FacelessTheme.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             FutureBuilder<List<SongSummary>>(
               future: _songsFuture,
               builder: (context, snap) {
@@ -191,7 +256,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
                 }
                 if (snap.hasError) {
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
                     child: Text(
                       '${snap.error}',
                       style: TextStyle(
@@ -204,7 +270,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
                     .toList();
                 if (songs.isEmpty) {
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 20),
                     child: Column(
                       children: [
                         Text(
@@ -225,7 +292,19 @@ class _ArtistScreenState extends State<ArtistScreen> {
                 }
                 return Column(
                   children: [
-                    for (final s in songs) _SongRow(song: s, onTap: _openSong),
+                    for (final (i, s) in songs.indexed)
+                      _Reveal(
+                        index: 5 + i,
+                        child: SongRow(
+                          title: s.title ?? s.theme ?? l10n.homeUntitled,
+                          status: s.status,
+                          released: s.released,
+                          onYoutube: s.youtubeUrl != null,
+                          coverUrlFuture:
+                              widget.client.songCoverUrl(s.id, thumb: true),
+                          onTap: () => _openSong(s),
+                        ),
+                      ),
                   ],
                 );
               },
@@ -237,131 +316,122 @@ class _ArtistScreenState extends State<ArtistScreen> {
   }
 }
 
-/// Simple white discography card: pastel cover placeholder + title + status
-/// pill. Taps open the existing SongDetailScreen.
-class _SongRow extends StatelessWidget {
-  final SongSummary song;
-  final void Function(SongSummary) onTap;
-  const _SongRow({required this.song, required this.onTap});
+/// Soft breathing champagne halo behind [child] — the "artist comes alive"
+/// motif from [ArtistBadge], applied here to the real avatar (photo or
+/// gradient-monogram fallback, both already handled by [ArtistAvatar]) so
+/// the reveal works whether or not the artist has an uploaded picture.
+/// Honors `MediaQuery.disableAnimations`.
+class _AliveHalo extends StatefulWidget {
+  final double size;
+  final Widget child;
+  const _AliveHalo({required this.size, required this.child});
+
+  @override
+  State<_AliveHalo> createState() => _AliveHaloState();
+}
+
+class _AliveHaloState extends State<_AliveHalo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 4000),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (!reduceMotion) {
+      if (!_controller.isAnimating) _controller.repeat(reverse: true);
+    } else {
+      if (_controller.isAnimating) _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final title = song.title ?? song.theme ?? l10n.homeUntitled;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Container(
-        decoration: BoxDecoration(
-          color: FacelessTheme.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: FacelessTheme.border),
-          boxShadow: FacelessTheme.softShadow,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => onTap(song),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      gradient: coverGradient(title),
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: const Icon(Icons.music_note,
-                        color: Colors.white, size: 24),
-                  ),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: FacelessTheme.surface2,
-                                borderRadius: BorderRadius.circular(999),
-                                border:
-                                    Border.all(color: FacelessTheme.border),
-                              ),
-                              child: Text(
-                                statusLabel(l10n, song.status),
-                                style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: FacelessTheme.textSecondary,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                            // Distribution: green "● Released" chip once the
-                            // song is marked live on the stores.
-                            if (song.released)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: FacelessTheme.accent
-                                      .withValues(alpha: 0.14),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  '● ${l10n.releaseBadge}',
-                                  style: const TextStyle(
-                                      fontSize: 11.5,
-                                      color: FacelessTheme.accent,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            // YouTube: subtle neutral "▶ YouTube" chip when
-                            // the song has been published to the channel.
-                            if (song.youtubeUrl != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: FacelessTheme.textSecondary
-                                      .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  '▶ ${l10n.ytBadge}',
-                                  style: const TextStyle(
-                                      fontSize: 11.5,
-                                      color: FacelessTheme.textSecondary,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right,
-                      color: FacelessTheme.faint),
-                ],
-              ),
-            ),
-          ),
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final haloStatic = Container(
+      width: widget.size + 14,
+      height: widget.size + 14,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            FacelessTheme.accent2.withValues(alpha: 0.35),
+            FacelessTheme.accent2.withValues(alpha: 0.0),
+          ],
         ),
       ),
+    );
+
+    final halo = reduceMotion
+        ? haloStatic
+        : AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final scale = 1.0 + _controller.value * 0.08;
+              final opacity = 0.55 + _controller.value * 0.35;
+              return Opacity(
+                opacity: opacity,
+                child: Transform.scale(scale: scale, child: child),
+              );
+            },
+            child: haloStatic,
+          );
+
+    // Keep the outer footprint exactly `size` (matching ArtistBadge's
+    // convention) so this doesn't grow larger than the space callers give
+    // it — the halo overflows via Clip.none instead of enlarging the box.
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [halo, widget.child],
+      ),
+    );
+  }
+}
+
+/// Fades + slides [child] up on first build — the staggered entrance for
+/// the artist header/action/discography blocks. Every instance shares the
+/// same duration but starts later for a higher [index], so the blocks
+/// settle in sequence rather than all at once. Honors
+/// `MediaQuery.disableAnimations` (renders [child] immediately, with no
+/// animation, when reduced motion is requested).
+class _Reveal extends StatelessWidget {
+  final int index;
+  final Widget child;
+  const _Reveal({required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) return child;
+    final delay = (index * 0.07).clamp(0.0, 0.7);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 640),
+      curve: Interval(delay, 1.0, curve: Curves.easeOutCubic),
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * 14),
+          child: child,
+        ),
+      ),
+      child: child,
     );
   }
 }

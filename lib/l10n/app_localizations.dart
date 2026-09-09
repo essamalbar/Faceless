@@ -3446,6 +3446,12 @@ abstract class AppLocalizations {
   /// **'Edit'**
   String get artistEdit;
 
+  /// No description provided for @artistProfileEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Artist'**
+  String get artistProfileEyebrow;
+
   /// No description provided for @artistNewSongCta.
   ///
   /// In en, this message translates to:

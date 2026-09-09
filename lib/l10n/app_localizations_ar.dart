@@ -1992,6 +1992,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get artistEdit => 'تعديل';
 
   @override
+  String get artistProfileEyebrow => 'الفنان';
+
+  @override
   String artistNewSongCta(String name) {
     return 'أغنية جديدة باسم $name';
   }
