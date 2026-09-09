@@ -42,6 +42,7 @@ class _PersonasScreenState extends State<PersonasScreen> {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: FacelessTheme.textPrimary,
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(l10n.commonDelete),

@@ -193,6 +193,10 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
               onPressed: () => Navigator.pop(ctx, false),
               child: Text(ctx.l10n.commonCancel)),
           FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: FacelessTheme.danger,
+                foregroundColor: FacelessTheme.textPrimary,
+              ),
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(ctx.l10n.commonDelete)),
         ],
