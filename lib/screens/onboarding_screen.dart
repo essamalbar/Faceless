@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/brand.dart';
+import '../ui/primitives.dart';
 
 /// Full-screen welcome carousel shown to first-time visitors immediately
 /// after login. Three slides explaining the two modes + the free-draft
@@ -167,22 +169,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: SizedBox(
                 width: double.infinity,
                 height: 52,
-                child: FilledButton(
+                child: GradientButton(
+                  expand: true,
                   onPressed: _next,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: FacelessTheme.accent,
-                    foregroundColor: const Color(0xFF0F0C06),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(26),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  child: Text(isLast
+                  label: isLast
                       ? context.l10n.onboardingLetsCreate
-                      : context.l10n.onboardingNext),
+                      : context.l10n.onboardingNext,
                 ),
               ),
             ),
@@ -239,26 +231,9 @@ class _SlideView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 48),
-          Text(
-            slide.eyebrow,
-            style: TextStyle(
-              color: FacelessTheme.accent,
-              fontSize: 12,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Eyebrow(slide.eyebrow),
           const SizedBox(height: 12),
-          Text(
-            slide.title,
-            style: TextStyle(
-              color: FacelessTheme.textPrimary,
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              height: 1.25,
-              letterSpacing: -0.5,
-            ),
-          ),
+          EditorialHeading(slide.title, size: 28),
           const SizedBox(height: 16),
           Text(
             slide.body,

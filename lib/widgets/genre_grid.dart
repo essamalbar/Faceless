@@ -92,7 +92,7 @@ class _TileShell extends StatelessWidget {
                     color: FacelessTheme.accent,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.check, size: 12, color: Colors.white),
+                  child: const Icon(Icons.check, size: 12, color: FacelessTheme.ink),
                 ),
               ),
           ],

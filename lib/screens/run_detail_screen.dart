@@ -11,6 +11,8 @@ import '../api/settings.dart';
 import '../config.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/primitives.dart';
+import '../widgets/composing_view.dart';
 import '../widgets/paywall_dialog.dart';
 import 'edit_script_screen.dart';
 import 'log_viewer_screen.dart';
@@ -440,46 +442,63 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _StatusBanner(run: run),
-          const SizedBox(height: 16),
-          if (run.title != null || run.premise != null) ...[
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-              decoration: BoxDecoration(
-                color: FacelessTheme.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+          // In-progress ("composing") is the signature AI-magic moment —
+          // it replaces the generic status banner + title/premise card +
+          // old progress panel + cancel button with one cinematic view.
+          // Every other state keeps the original banner/title/premise
+          // presentation untouched below.
+          if (run.isRunning) ...[
+            ComposingView(
+              monogram: _composingMonogram(run),
+              title: run.title ?? run.theme,
+              steps: _composingSteps(context, run),
+              cancelLabel: context.l10n.runDetailCancelDiscard,
+              onCancel: _busy ? null : _cancelAndDelete,
+              busy: _busy,
+            ),
+            const SizedBox(height: 24),
+          ] else ...[
+            _StatusBanner(run: run),
+            const SizedBox(height: 16),
+            if (run.title != null || run.premise != null) ...[
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                decoration: BoxDecoration(
+                  color: FacelessTheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (run.title != null)
+                      Text(
+                        run.title!,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              height: 1.3,
+                            ),
+                        textDirection: TextDirection.rtl,
+                      ),
+                    if (run.premise != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        run.premise!,
+                        textDirection: TextDirection.rtl,
+                        style: const TextStyle(
+                          color: FacelessTheme.textSecondary,
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (run.title != null)
-                    Text(
-                      run.title!,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            height: 1.3,
-                          ),
-                      textDirection: TextDirection.rtl,
-                    ),
-                  if (run.premise != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      run.premise!,
-                      textDirection: TextDirection.rtl,
-                      style: const TextStyle(
-                        color: FacelessTheme.textSecondary,
-                        fontSize: 13,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
           ],
           if (run.isComplete) ...[
             SizedBox(
@@ -636,10 +655,6 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
               ),
             ],
           ],
-          if (run.isRunning && run.progress != null) ...[
-            const SizedBox(height: 12),
-            _ProgressPanel(progress: run.progress!),
-          ],
           if (_script != null) ...[
             const SizedBox(height: 24),
             _ScriptPanel(
@@ -676,17 +691,82 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
               onCancel: _cancelAndDelete,
             ),
           ],
-          if (run.isRunning) ...[
-            const SizedBox(height: 16),
-            FilledButton.tonalIcon(
-              onPressed: _busy ? null : _cancelAndDelete,
-              icon: const Icon(Icons.delete_forever),
-              label: Text(context.l10n.runDetailCancelDiscard),
-            ),
-          ],
+          // Cancel while in-progress now lives inside ComposingView itself
+          // (a quiet TextButton wired to the same _cancelAndDelete flow).
         ],
       ),
     );
+  }
+
+  /// First grapheme of the run's title (falling back to its theme) for the
+  /// composing screen's hero [ArtistBadge]. Mirrors the pattern used for
+  /// artist avatars elsewhere (`lib/widgets/home/artists_row.dart`).
+  String _composingMonogram(RunSummary run) {
+    final name = (run.title ?? run.theme ?? '').trim();
+    return name.isEmpty ? '?' : name.characters.first;
+  }
+
+  /// Maps the run's live progress stage to an ordered [StepItem] list for
+  /// [ComposingView]. Stage order/labels mirror the old `_ProgressPanel`'s
+  /// switch exactly, so nothing shown here is new information — only the
+  /// presentation changed. When `progress` is null (e.g. status is
+  /// `creating`, before the backend has written its first snapshot) the
+  /// first stage is treated as active so the view always has one.
+  List<StepItem> _composingSteps(BuildContext context, RunSummary run) {
+    final l = context.l10n;
+    const stages = [
+      'script',
+      'character_sheet',
+      'video',
+      'captions',
+      'assemble',
+    ];
+    final progress = run.progress;
+    final activeStage = progress?.stage ?? 'script';
+    var activeIndex = stages.indexOf(activeStage);
+    if (activeIndex == -1) activeIndex = 0;
+
+    String labelFor(String stage, bool isActive) {
+      switch (stage) {
+        case 'script':
+          return l.runDetailStatusWriting;
+        case 'character_sheet':
+          return l.runDetailStagePreparingCharacters;
+        case 'video':
+          // Only the active occurrence has real clip counts to report —
+          // done/pending occurrences fall back to the generic label so we
+          // never render e.g. "clip 1 of 0" before the backend has a total.
+          if (isActive && progress != null && progress.clipsTotal > 0) {
+            return l.runDetailStageGeneratingClip(
+                progress.clipsDone + 1, progress.clipsTotal);
+          }
+          return l.runDetailStatusGenerating;
+        case 'captions':
+          return l.runDetailStageAligningCaptions;
+        case 'assemble':
+          return l.runDetailStageAssembling;
+        default:
+          return stage;
+      }
+    }
+
+    return [
+      for (var i = 0; i < stages.length; i++)
+        StepItem(
+          label: labelFor(stages[i], i == activeIndex),
+          state: i < activeIndex
+              ? StepPhase.done
+              : i == activeIndex
+                  ? StepPhase.active
+                  : StepPhase.pending,
+          percent: i == activeIndex &&
+                  stages[i] == 'video' &&
+                  progress != null &&
+                  progress.clipsTotal > 0
+              ? ((progress.fractional ?? 0) * 100).round()
+              : null,
+        ),
+    ];
   }
 
   @override
@@ -1088,69 +1168,6 @@ class _ApprovalBar extends StatelessWidget {
   }
 }
 
-
-class _ProgressPanel extends StatelessWidget {
-  final RunProgress progress;
-  const _ProgressPanel({required this.progress});
-
-  @override
-  Widget build(BuildContext context) {
-    final l = context.l10n;
-    final stageLabel = switch (progress.stage) {
-      'script' => l.runDetailStatusWriting,
-      'character_sheet' => l.runDetailStagePreparingCharacters,
-      'video' => l.runDetailStageGeneratingClip(
-          progress.clipsDone + 1, progress.clipsTotal),
-      'captions' => l.runDetailStageAligningCaptions,
-      'assemble' => l.runDetailStageAssembling,
-      _ => progress.stage,
-    };
-    final value = progress.fractional;
-    return Card(
-      color: FacelessTheme.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const SizedBox(
-                  width: 16, height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(stageLabel,
-                      style:
-                          const TextStyle(fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: value,
-                minHeight: 6,
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
-                valueColor: const AlwaysStoppedAnimation(FacelessTheme.accent),
-              ),
-            ),
-            if (progress.stage == 'video' && progress.clipsTotal > 0) ...[
-              const SizedBox(height: 6),
-              Text(
-                l.runDetailClipsDone(progress.clipsDone, progress.clipsTotal),
-                style: const TextStyle(
-                    color: FacelessTheme.textSecondary, fontSize: 12),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ErrorPanel extends StatelessWidget {
   final String error;

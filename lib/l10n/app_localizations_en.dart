@@ -192,6 +192,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeHeroSubtitle => 'Create your short stories with AI';
 
   @override
+  String get homeGreetingEyebrow => 'Welcome back';
+
+  @override
+  String get homeHeroHeading => 'What will your artist sing tonight?';
+
+  @override
   String get homeStartCreating => 'Start creating';
 
   @override
@@ -1590,6 +1596,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get composingEyebrow => 'Now';
+
+  @override
+  String get composingHeading => 'Weaving your song to sing';
+
+  @override
+  String get composingFooterEta =>
+      'Usually under 3 minutes — we\'ll notify you when it\'s done';
+
+  @override
   String get runDetailStatusReady => 'Ready to watch';
 
   @override
@@ -1754,6 +1770,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get editScriptVisualDescLabel => 'Visual description (English)';
+
+  @override
+  String get editScriptBeatsSection => 'Beats';
 
   @override
   String get costTitle => 'Spend';
@@ -1936,6 +1955,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get artistEdit => 'Edit';
+
+  @override
+  String get artistProfileEyebrow => 'Artist';
 
   @override
   String artistNewSongCta(String name) {

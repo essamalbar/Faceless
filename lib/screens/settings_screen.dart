@@ -11,6 +11,7 @@ import '../api/settings.dart';
 import '../config.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/primitives.dart';
 import 'billing_screen.dart';
 import 'legal_screen.dart';
 
@@ -141,7 +142,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: FacelessTheme.danger,
-                  foregroundColor: Colors.white),
+                  foregroundColor: FacelessTheme.textPrimary),
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(l10n.ytDisconnect)),
         ],
@@ -217,7 +218,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: FacelessTheme.danger,
-                  foregroundColor: Colors.white),
+                  foregroundColor: FacelessTheme.textPrimary),
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(l10n.settingsReset)),
         ],
@@ -247,7 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: FacelessTheme.danger,
-                  foregroundColor: Colors.white),
+                  foregroundColor: FacelessTheme.textPrimary),
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(l10n.settingsSignOut)),
         ],
@@ -515,15 +516,7 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          color: FacelessTheme.textSecondary.withValues(alpha: 0.7),
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-        ),
-      ),
+      child: Eyebrow(text),
     );
   }
 }
@@ -1112,7 +1105,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
         FilledButton(
           style: FilledButton.styleFrom(
             backgroundColor: FacelessTheme.danger,
-            foregroundColor: Colors.white,
+            foregroundColor: FacelessTheme.textPrimary,
           ),
           onPressed: _canDelete ? () => Navigator.pop(context, true) : null,
           child: const Text('Delete account'),

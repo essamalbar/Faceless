@@ -111,6 +111,8 @@
   "homeServerUnreachable": "Could not reach the server.",
   "homeHeroTagline": "AI-powered Arabic songs & short videos",
   "homeHeroSubtitle": "Create your short stories with AI",
+  "homeGreetingEyebrow": "Welcome back",
+  "homeHeroHeading": "What will your artist sing tonight?",
   "homeStartCreating": "Start creating",
   "homeFreeToWrite": "Free to write · Subscribe to render",
   "homeChooseTheme": "Choose a theme",
@@ -868,6 +870,9 @@
       }
     }
   },
+  "composingEyebrow": "Now",
+  "composingHeading": "Weaving your song to sing",
+  "composingFooterEta": "Usually under 3 minutes — we'll notify you when it's done",
   "runDetailStatusReady": "Ready to watch",
   "runDetailStatusScriptReady": "Script ready — approve to generate the video",
   "runDetailStatusCharacterReady": "Character look ready — approve to generate clips",
@@ -961,6 +966,7 @@
   "editScriptTitleLabel": "Title",
   "editScriptArabicDialogueLabel": "Arabic dialogue (leave empty for silent beat)",
   "editScriptVisualDescLabel": "Visual description (English)",
+  "editScriptBeatsSection": "Beats",
   "costTitle": "Spend",
   "costSortByDate": "Sort by date",
   "costSortByAmount": "Sort by amount",
@@ -1067,6 +1073,7 @@
   "artistShare": "Share",
   "artistLinkCopied": "Artist link copied",
   "artistEdit": "Edit",
+  "artistProfileEyebrow": "Artist",
   "artistNewSongCta": "New song as {name}",
   "@artistNewSongCta": {
     "placeholders": {

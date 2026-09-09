@@ -1,46 +1,53 @@
-/// Faceless brand theme — glassy dark-neon. Near-black background lit by
-/// blurred pink/purple/cyan glow, frosted translucent cards with bright glass
-/// edges, a pink→purple gradient for primary actions + selection, Space
-/// Grotesk display / Inter (Cairo for Arabic) body. A global neon-lit
-/// background sits behind every screen (main.dart's MaterialApp.builder +
+/// Faceless brand theme — Obsidian & Champagne. Warm near-black grounds lit by
+/// a soft champagne wash, frosted translucent cards with warm hairline edges,
+/// a champagne gradient for accents/CTAs, Cormorant Garamond (Amiri for
+/// Arabic) editorial display / Manrope (Tajawal for Arabic) body. A global
+/// ambient background sits behind every screen (main.dart's MaterialApp.builder +
 /// ui/brand.dart MeshBackground).
 ///
 /// Token + widget NAMES are kept stable so screens inherit the look through
-/// the shared layer without edits — only the VALUES changed from the old
-/// light theme. See docs/superpowers/specs/2026-08-14-dark-neon-glass-design-system-design.md
+/// the shared layer without edits — only the VALUES + fonts changed from the
+/// dark-neon system. See
+/// docs/superpowers/specs/2026-09-09-luxury-redesign-design-system.md
 library;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class FacelessTheme {
-  // --- Palette (dark-neon) ----------------------------------------------
-  static const bg = Color(0xFF0B0810); // near-black base (mesh paints glow)
-  static const surface = Color(0xFF1A1327); // SOLID dark card / menu ground
-  static const surface2 = Color(0xFF211830); // slightly lighter dark
-  static const accent = Color(0xFFFF4D8D); // neon pink (primary accent)
-  static const accent2 = Color(0xFFA25BFF); // neon purple (gradient secondary)
-  static const accentMid = Color(0xFFCF54C0); // between (3-stop gradient middle)
-  static const ink = Color(0xFF7C3AED); // deep neon violet — solid filled buttons
-  static const textPrimary = Color(0xFFF5F0FB); // near-white
-  static const textSecondary = Color(0xFFBEB0D6); // muted lavender
-  static const faint = Color(0xFF84769C);
-  static const danger = Color(0xFFFF5A67);
-  static const success = Color(0xFF3FE0D0); // cyan-green, readable on dark
-  static const warning = Color(0xFFFFC94D);
-  static const info = Color(0xFF4D8DFF);
+  // --- Palette (obsidian + champagne) ------------------------------------
+  static const bg = Color(0xFF0C0B0E); // warm near-black base (mesh paints wash)
+  static const bgDeep = Color(0xFF08070A); // darkest stop for the ambient mesh gradient
+  static const surface = Color(0xFF16151A); // SOLID dark card / menu ground
+  static const surface2 = Color(0xFF1E1C22); // slightly lighter dark
+  static const accent = Color(0xFFC9A96E); // champagne (the one metallic accent)
+  static const accent2 = Color(0xFFE4CE9E); // accent bright (gradient top)
+  static const accentMid = Color(0xFFD4B483); // 3-stop gradient middle
+  static const accentDeep = Color(0xFFB4915A); // gradient bottom
+  static const ink = surface; // solid obsidian ground (no gold-fill buttons)
+  static const textPrimary = Color(0xFFEFE9DE); // warm off-white, never pure white
+  static const textSecondary = Color(0xFFA39C8E); // muted warm grey
+  static const faint = Color(0xFF6E685D);
+  static const danger = Color(0xFFC6564E); // muted brick red
+  static const success = Color(0xFF9DBB9C); // muted sage
+  // Muted amber — distinct from champagne `accent` so a degraded/alarm
+  // banner doesn't read as a positive brand chip. Warmer + more saturated
+  // than champagne, but kept muted (not neon).
+  static const warning = Color(0xFFD9A441);
+  static const info = Color(0xFF6E8BA6); // muted steel
 
-  // Pink→purple used for the logo mark, accent headline words, primary CTA.
+  // Champagne gradient used for the logo mark, accent headline words, primary CTA.
   static const brandGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [accent, accent2],
+    colors: [accent2, accentDeep],
   );
 
-  // Frosted translucent surfaces + bright hairline borders over the neon glow.
-  static Color get glass => Colors.white.withValues(alpha: 0.055);
-  static Color get glassStrong => Colors.white.withValues(alpha: 0.10);
-  static Color get border => Colors.white.withValues(alpha: 0.14);
+  // Frosted translucent surfaces + warm hairline borders over the ambient wash.
+  static Color get glass => Colors.white.withValues(alpha: 0.03);
+  static Color get glassStrong => Colors.white.withValues(alpha: 0.06);
+  static Color get border => const Color(0xFFEEE9DE).withValues(alpha: 0.10);
+  static Color get borderAccent => const Color(0xFFC9A96E).withValues(alpha: 0.35);
   static List<BoxShadow> get softShadow => [
         BoxShadow(
           color: Colors.black.withValues(alpha: 0.38),
@@ -49,21 +56,45 @@ class FacelessTheme {
         ),
       ];
 
-  /// Space Grotesk display/heading style (near-white text, Cairo fallback).
+  /// Cormorant Garamond (EN) / Amiri (AR) editorial display style, warm
+  /// off-white text, with the other script as fallback so mixed strings
+  /// still shape correctly.
   static TextStyle display({
     double size = 28,
     FontWeight weight = FontWeight.w700,
     Color? color,
     double height = 1.05,
     double letterSpacing = -0.5,
-  }) =>
-      GoogleFonts.spaceGrotesk(
-        fontSize: size,
-        fontWeight: weight,
-        height: height,
-        letterSpacing: letterSpacing,
-        color: color ?? textPrimary,
-      ).copyWith(fontFamilyFallback: const ['Cairo']);
+    Locale? locale,
+  }) {
+    final isArabic = locale?.languageCode == 'ar';
+    // Negative tracking (the Cormorant default) reads fine on disconnected
+    // Latin letterforms but breaks connected Arabic script — Amiri's glyphs
+    // rely on positive/zero spacing to keep letter joins intact. Never apply
+    // negative letter-spacing to the Arabic (Amiri) branch.
+    final arabicLetterSpacing = letterSpacing < 0 ? 0.0 : letterSpacing;
+    final style = isArabic
+        ? GoogleFonts.amiri(
+            fontSize: size,
+            fontWeight: weight,
+            height: height,
+            letterSpacing: arabicLetterSpacing,
+            color: color ?? textPrimary,
+          )
+        : GoogleFonts.cormorantGaramond(
+            fontSize: size,
+            fontWeight: weight,
+            height: height,
+            letterSpacing: letterSpacing,
+            color: color ?? textPrimary,
+          );
+    final fallback = isArabic
+        ? GoogleFonts.cormorantGaramond().fontFamily
+        : GoogleFonts.amiri().fontFamily;
+    return style.copyWith(
+      fontFamilyFallback: [?fallback],
+    );
+  }
 
   static ThemeData build({Locale? locale}) {
     final isArabic = locale?.languageCode == 'ar';
@@ -77,19 +108,19 @@ class FacelessTheme {
       error: danger,
     ).copyWith(surfaceContainerHighest: surface2);
 
-    // Arabic UI: Cairo primary (Inter fallback for Latin snippets).
-    // English UI: Inter primary (Cairo fallback for Arabic content).
-    final cairo = GoogleFonts.cairo().fontFamily;
-    final inter = GoogleFonts.inter().fontFamily;
+    // Arabic UI: Tajawal primary (Manrope fallback for Latin snippets).
+    // English UI: Manrope primary (Tajawal fallback for Arabic content).
+    final manrope = GoogleFonts.manrope().fontFamily;
+    final tajawal = GoogleFonts.tajawal().fontFamily;
     final textTheme = (isArabic
-            ? GoogleFonts.cairoTextTheme(base.textTheme)
-            : GoogleFonts.interTextTheme(base.textTheme))
+            ? GoogleFonts.tajawalTextTheme(base.textTheme)
+            : GoogleFonts.manropeTextTheme(base.textTheme))
         .apply(
       bodyColor: textPrimary,
       displayColor: textPrimary,
       fontFamilyFallback: [
-        if (isArabic && inter != null) inter,
-        if (!isArabic && cairo != null) cairo,
+        if (isArabic && manrope != null) manrope,
+        if (!isArabic && tajawal != null) tajawal,
       ],
     );
 
@@ -143,8 +174,9 @@ class FacelessTheme {
       dividerTheme: DividerThemeData(color: border, thickness: 1),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: ink,
-          foregroundColor: Colors.white,
+          backgroundColor: surface,
+          foregroundColor: accent2,
+          side: BorderSide(color: borderAccent),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
           textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
@@ -152,8 +184,9 @@ class FacelessTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: ink,
-          foregroundColor: Colors.white,
+          backgroundColor: surface,
+          foregroundColor: accent2,
+          side: BorderSide(color: borderAccent),
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
@@ -183,7 +216,7 @@ class FacelessTheme {
             (s) => s.contains(WidgetState.selected) ? accent : glass,
           ),
           foregroundColor: WidgetStateProperty.resolveWith(
-            (s) => s.contains(WidgetState.selected) ? Colors.white : textSecondary,
+            (s) => s.contains(WidgetState.selected) ? bg : textSecondary,
           ),
           side: WidgetStateProperty.all(BorderSide(color: border)),
           shape: WidgetStateProperty.all(RoundedRectangleBorder(

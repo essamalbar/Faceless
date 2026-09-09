@@ -6,6 +6,7 @@ import '../api/client.dart';
 import '../api/settings.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/brand.dart';
 import '../widgets/faceless_logo.dart';
 import 'legal_screen.dart';
 
@@ -213,38 +214,11 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final isSignIn = _mode == _Mode.signIn;
     return Scaffold(
+      // The ambient champagne/jade wash comes from the global MeshBackground
+      // (main.dart) — this screen used to paint its own navy/gold/violet
+      // radial glow here, which both duplicated and clashed with it.
       body: Stack(
         children: [
-          // Soft radial accent in the background — gives the dark navy
-          // a bit of depth without being noisy.
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(-0.4, -0.6),
-                  radius: 1.1,
-                  colors: [
-                    Color(0x33E7B53C),  // gold glow, ~20% alpha
-                    Color(0x000A0E1A),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.7, 0.9),
-                  radius: 1.0,
-                  colors: [
-                    Color(0x288B5CF6),  // violet glow, ~16% alpha
-                    Color(0x000A0E1A),
-                  ],
-                ),
-              ),
-            ),
-          ),
           // Form
           SafeArea(
             child: Center(
@@ -454,26 +428,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               // Submit
                               SizedBox(
                                 height: 48,
-                                child: FilledButton(
+                                child: GradientButton(
+                                  expand: true,
+                                  loading: _busy,
                                   onPressed: (_busy ||
                                           (!isSignIn && !_agreedToTerms))
                                       ? null
                                       : _submit,
-                                  child: _busy
-                                      ? const SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2.5,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : Text(
-                                          isSignIn
-                                              ? context.l10n.commonSignIn
-                                              : context
-                                                  .l10n.loginCreateAccount,
-                                        ),
+                                  label: isSignIn
+                                      ? context.l10n.commonSignIn
+                                      : context.l10n.loginCreateAccount,
                                 ),
                               ),
                               const SizedBox(height: 14),

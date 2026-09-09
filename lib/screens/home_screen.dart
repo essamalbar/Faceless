@@ -11,8 +11,17 @@ import '../config.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/song_genres.dart';
-import '../widgets/artist_avatar.dart';
 import '../widgets/faceless_logo.dart';
+import '../widgets/home/artists_row.dart';
+import '../widgets/home/compose_cta.dart';
+import '../widgets/home/hero_greeting.dart';
+import '../widgets/home/home_header.dart';
+import '../widgets/home/home_shared.dart';
+import '../widgets/home/latest_release_card.dart';
+import '../widgets/home/llm_banner.dart';
+import '../widgets/home/morning_drafts_section.dart';
+import '../widgets/home/song_row.dart';
+import '../widgets/home/trending_section.dart';
 import 'artist_edit_screen.dart';
 import 'artist_screen.dart';
 import 'billing_screen.dart';
@@ -184,6 +193,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _openPersonas() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PersonasScreen(client: _client),
+    ));
+  }
+
   Future<void> _openSettings() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -314,44 +329,13 @@ class _HomeScreenState extends State<HomeScreen> {
       // AppBar over the body, the first sliver (_TopBar) renders BEHIND the
       // AppBar, occluding the refresh/settings icon hit-targets. Keep them
       // in separate vertical bands so the user can always tap the icons.
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: Row(
-          children: [
-            const FacelessLogo(size: 30),
-            const SizedBox(width: 10),
-            Text(context.l10n.appTitle,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-          ],
-        ),
-        actions: [
-          const Padding(
-            padding: EdgeInsetsDirectional.only(end: 4),
-            child: Center(child: _BalanceBadge()),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: context.l10n.homeRefresh,
-            onPressed: _refresh,
-          ),
-          // Only show the saved-voices entry when on the Song tab —
-          // it's a song-mode concept, irrelevant to video runs.
-          if (_mode == 'song')
-            IconButton(
-              icon: const Icon(Icons.record_voice_over),
-              tooltip: context.l10n.homeSavedVoices,
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => PersonasScreen(client: _client),
-              )),
-            ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: context.l10n.homeSettings,
-            onPressed: _openSettings,
-          ),
-        ],
+      appBar: HomeHeader(
+        // Only show the saved-voices entry when on the Song tab — it's a
+        // song-mode concept, irrelevant to video runs.
+        showSavedVoices: _mode == 'song',
+        onRefresh: _refresh,
+        onSavedVoices: _openPersonas,
+        onSettings: _openSettings,
       ),
       body: Column(
         children: [
@@ -361,37 +345,8 @@ class _HomeScreenState extends State<HomeScreen> {
           // branch below is now unreachable. The video pipeline stays dormant
           // in the backend rather than being deleted.
           if (_llmDegraded && !_llmBannerDismissed)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: FacelessTheme.warning.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: FacelessTheme.warning.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.warning_amber_rounded,
-                        size: 18, color: FacelessTheme.warning),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        context.l10n.llmDegradedBanner,
-                        style: const TextStyle(
-                            fontSize: 13, color: FacelessTheme.textPrimary),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 16),
-                      color: FacelessTheme.textSecondary,
-                      onPressed: () =>
-                          setState(() => _llmBannerDismissed = true),
-                    ),
-                  ],
-                ),
-              ),
+            LlmBanner(
+              onDismiss: () => setState(() => _llmBannerDismissed = true),
             ),
           Expanded(
             child: _mode == 'song'
@@ -598,45 +553,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _refreshArtistsAndSongs();
   }
 
-  /// Compact horizontal strip of artist avatars, "+" tile first. Shown even
-  /// when there are no artists yet (title + the create tile).
-  Widget _artistsSection() {
-    return FutureBuilder<List<Artist>>(
-      future: _artistsFuture,
-      builder: (context, snap) {
-        final artists = snap.data ?? const <Artist>[];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SongSectionTitle(
-              title: context.l10n.artistsSectionTitle,
-              trailing: artists.isEmpty ? '' : '${artists.length}',
-            ),
-            SizedBox(
-              height: 82,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _NewArtistTile(onTap: _openNewArtist),
-                  for (final a in artists)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(start: 14),
-                      child: _ArtistCircleTile(
-                        artist: a,
-                        client: _client,
-                        onTap: () => _openArtist(a),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _refreshTrends() async {
     setState(() {
       _trendsRefreshing = true;
@@ -662,214 +578,6 @@ class _HomeScreenState extends State<HomeScreen> {
         .then((_) => _refresh());
   }
 
-  /// Morning drafts: free overnight drafts awaiting the user's approval.
-  /// Data comes from the songs list itself — no extra endpoint.
-  Widget _morningDraftsSection(List<SongSummary> all) {
-    final drafts = all
-        .where((s) =>
-            s.source == 'morning_draft' && s.status == 'awaiting_approval')
-        .toList();
-    if (drafts.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-          child: Text('🌅 ${context.l10n.draftSectionTitle}',
-              style:
-                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-        ),
-        for (final d in drafts)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () => _openSong(d),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: FacelessTheme.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: FacelessTheme.accent.withValues(alpha: 0.45)),
-                  boxShadow: FacelessTheme.softShadow,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(d.title ?? d.theme ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 15)),
-                          if ((d.trendRationale ?? '').isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 3),
-                              child: Text(d.trendRationale!,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontSize: 12.5,
-                                      color: FacelessTheme.textSecondary)),
-                            ),
-                          if (d.artistName != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 3),
-                              child: Text(d.artistName!,
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      color: FacelessTheme.accent,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
-                      ),
-                      onPressed: () => _openSong(d),
-                      child: Text(context.l10n.draftReviewButton,
-                          style: const TextStyle(fontSize: 13)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// Trend Engine: "Trending now" — timely, ready-to-approve song briefs.
-  /// Fire-and-forget: any fetch error hides the section entirely.
-  Widget _trendsSection() {
-    return FutureBuilder<List<TrendBrief>>(
-      future: _trendsFuture,
-      builder: (context, snap) {
-        if (snap.hasError) return const SizedBox.shrink();
-        final briefs = snap.data ?? const <TrendBrief>[];
-        final loading =
-            snap.connectionState == ConnectionState.waiting || _trendsRefreshing;
-        if (briefs.isEmpty && !loading) {
-          return const SizedBox.shrink();
-        }
-        if (briefs.isEmpty) {
-          // First generation takes ~15-20s (charts + LLM). Show a compact
-          // placeholder so the feature is discoverable instead of invisible.
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Row(
-              children: [
-                Text('✨ ${context.l10n.trendSectionTitle}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15)),
-                const SizedBox(width: 12),
-                const SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(context.l10n.trendGenerating,
-                      style: const TextStyle(
-                          fontSize: 12.5,
-                          color: FacelessTheme.textSecondary)),
-                ),
-              ],
-            ),
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-              child: Row(
-                children: [
-                  Text('✨ ${context.l10n.trendSectionTitle}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 15)),
-                  const Spacer(),
-                  _trendsRefreshing
-                      ? const SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : IconButton(
-                          icon: const Icon(Icons.refresh, size: 18),
-                          color: FacelessTheme.textSecondary,
-                          visualDensity: VisualDensity.compact,
-                          tooltip: context.l10n.trendRefreshTooltip,
-                          onPressed: _refreshTrends,
-                        ),
-                ],
-              ),
-            ),
-            SizedBox(
-              height: 150,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: briefs.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (_, i) {
-                  final b = briefs[i];
-                  return Container(
-                    width: 250,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: FacelessTheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: FacelessTheme.border),
-                      boxShadow: FacelessTheme.softShadow,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(b.titleIdea.isEmpty ? b.theme : b.titleIdea,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 15)),
-                        const SizedBox(height: 5),
-                        Expanded(
-                          child: Text(b.rationale.isEmpty ? b.theme : b.rationale,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 12.5,
-                                  color: FacelessTheme.textSecondary)),
-                        ),
-                        Align(
-                          alignment: AlignmentDirectional.centerEnd,
-                          child: FilledButton(
-                            style: FilledButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 8),
-                            ),
-                            onPressed: () => _createFromBrief(b),
-                            child: Text(context.l10n.trendCreateButton,
-                                style: const TextStyle(fontSize: 13)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Widget _buildSongsList() {
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -890,17 +598,28 @@ class _HomeScreenState extends State<HomeScreen> {
           if (all.isEmpty) {
             // Trend briefs + artists row stay visible above the empty
             // state — a brand-new user gets timely ideas immediately.
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            return ListView(
+              // AlwaysScrollable so pull-to-refresh still works even when
+              // the empty state is shorter than the viewport (desktop web).
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                _trendsSection(),
-                _artistsSection(),
-                Expanded(
-                  child: _SongsEmptyState(
-                    onCreate: _openNewSong,
-                    onTrySample: (theme, genreKey) =>
-                        _openNewSongWithSample(theme, genreKey),
-                  ),
+                const HeroGreeting(),
+                TrendingSection(
+                  trendsFuture: _trendsFuture,
+                  refreshing: _trendsRefreshing,
+                  onRefresh: _refreshTrends,
+                  onCreate: _createFromBrief,
+                ),
+                ArtistsRow(
+                  artistsFuture: _artistsFuture,
+                  client: _client,
+                  onNewArtist: _openNewArtist,
+                  onOpenArtist: _openArtist,
+                ),
+                _SongsEmptyState(
+                  onCreate: _openNewSong,
+                  onTrySample: (theme, genreKey) =>
+                      _openNewSongWithSample(theme, genreKey),
                 ),
               ],
             );
@@ -928,37 +647,41 @@ class _HomeScreenState extends State<HomeScreen> {
           return ListView(
             padding: const EdgeInsets.only(bottom: 28),
             children: [
-              _morningDraftsSection(all),
-              _trendsSection(),
-              _artistsSection(),
+              const HeroGreeting(),
+              ComposeCta(onPressed: _openNewSong),
+              MorningDraftsSection(songs: all, onOpen: _openSong),
+              TrendingSection(
+                trendsFuture: _trendsFuture,
+                refreshing: _trendsRefreshing,
+                onRefresh: _refreshTrends,
+                onCreate: _createFromBrief,
+              ),
+              ArtistsRow(
+                artistsFuture: _artistsFuture,
+                client: _client,
+                onNewArtist: _openNewArtist,
+                onOpenArtist: _openArtist,
+              ),
               _SongSearchBar(
                 initial: _songQuery,
                 onChanged: (v) => setState(() => _songQuery = v),
               ),
               if (hero != null)
-                _SongHero(
+                LatestReleaseCard(
                   title: hero.title ?? hero.theme ?? context.l10n.homeUntitled,
+                  artistName: hero.artistName,
                   status: hero.status,
                   coverUrlFuture: _client.songCoverUrl(hero.id, thumb: false),
                   onTap: () => _openSong(hero),
                 ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _openNewSong,
-                    icon: const Icon(Icons.add),
-                    label: Text(context.l10n.homeNewSong),
-                  ),
-                ),
-              ),
               if (recent.isNotEmpty) ...[
-                _SongSectionTitle(
+                SongSectionTitle(
                     title: context.l10n.homeRecent,
                     trailing: context.l10n.homeTracksCount(all.length)),
                 SizedBox(
-                  height: 172,
+                  // 172 + a little slack: the redesign's StatusPill runs a
+                  // touch taller than the old compact status chip.
+                  height: 180,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -966,7 +689,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     separatorBuilder: (_, _) => const SizedBox(width: 12),
                     itemBuilder: (ctx, i) {
                       final s = recent[i];
-                      return _RecentTile(
+                      return RecentSongTile(
                         title: s.title ?? s.theme ?? context.l10n.homeUntitled,
                         status: s.status,
                         coverUrlFuture:
@@ -977,7 +700,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ],
-              _SongSectionTitle(
+              SongSectionTitle(
                 title: searching
                     ? context.l10n.homeResults
                     : context.l10n.homeYourSongs,
@@ -994,8 +717,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: FacelessTheme.textSecondary)),
                   ),
                 ),
-              ...filtered.map((s) => _SongCardC(
+              ...filtered.map((s) => SongRow(
                     title: s.title ?? s.theme ?? context.l10n.homeUntitled,
+                    artistName: s.artistName,
                     status: s.status,
                     released: s.released,
                     onYoutube: s.youtubeUrl != null,
@@ -1821,260 +1545,12 @@ class _StatusBadge extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Song list row — polished card with cover, title, and a friendly status pill
-// (replaces the raw `generating_song` / `complete` text in a flat ListTile).
+// Song search — the only remaining home-grown song-list widget; small enough
+// (and stateful around its own TextEditingController) that it stayed inline
+// rather than moving to lib/widgets/home/. Status styling, cover art, song
+// rows, and section titles now live in lib/widgets/home/ (SongStatusIndicator,
+// SongCover, SongRow, RecentSongTile, SongSectionTitle, etc.).
 // ---------------------------------------------------------------------------
-
-class _SongStatusStyle {
-  final String label;
-  final Color color;
-  final IconData icon;
-  final bool working; // show a spinner instead of the icon
-  const _SongStatusStyle(this.label, this.color, this.icon,
-      {this.working = false});
-}
-
-_SongStatusStyle _songStatusStyle(AppLocalizations l10n, String status) {
-  switch (status) {
-    case 'writing_lyrics':
-      return _SongStatusStyle(l10n.homeStatusWritingLyrics, FacelessTheme.info,
-          Icons.edit_note,
-          working: true);
-    case 'awaiting_approval':
-      return _SongStatusStyle(l10n.homeStatusReviewApprove,
-          FacelessTheme.accent, Icons.play_circle_fill);
-    case 'approved':
-    case 'generating_song':
-      return _SongStatusStyle(
-          l10n.homeStatusComposing, FacelessTheme.info, Icons.autorenew,
-          working: true);
-    case 'generating_cover':
-      return _SongStatusStyle(
-          l10n.homeStatusDesigningCover, FacelessTheme.info, Icons.autorenew,
-          working: true);
-    case 'detecting_beats':
-      return _SongStatusStyle(
-          l10n.homeStatusSyncingBeat, FacelessTheme.info, Icons.autorenew,
-          working: true);
-    case 'aligning':
-      return _SongStatusStyle(
-          l10n.homeStatusSyncingLyrics, FacelessTheme.info, Icons.autorenew,
-          working: true);
-    case 'assembling':
-      return _SongStatusStyle(
-          l10n.homeStatusRendering, FacelessTheme.info, Icons.autorenew,
-          working: true);
-    case 'complete':
-      return _SongStatusStyle(
-          l10n.homeStatusReady, FacelessTheme.success, Icons.check_circle);
-    case 'failed':
-      return _SongStatusStyle(
-          l10n.statusFailed, FacelessTheme.danger, Icons.error_outline);
-    default:
-      // Unknown codes are pretty-printed raw — they're debug text by definition.
-      final pretty = status.isEmpty
-          ? l10n.homeStatusPending
-          : (status[0].toUpperCase() + status.substring(1)).replaceAll('_', ' ');
-      return _SongStatusStyle(pretty, FacelessTheme.textSecondary, Icons.circle);
-  }
-}
-
-class _SongStatusPill extends StatelessWidget {
-  final _SongStatusStyle style;
-  final bool compact; // smaller chip for overlay use (e.g. recent tiles)
-  const _SongStatusPill({required this.style, this.compact = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final glyph = compact ? 11.0 : 13.0;
-    final spin = compact ? 9.0 : 11.0;
-    return Container(
-      padding: EdgeInsets.symmetric(
-          horizontal: compact ? 7 : 9, vertical: compact ? 3 : 4),
-      decoration: BoxDecoration(
-        color: style.color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (style.working)
-            SizedBox(
-              width: spin,
-              height: spin,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(style.color)),
-            )
-          else
-            Icon(style.icon, size: glyph, color: style.color),
-          SizedBox(width: compact ? 4 : 6),
-          Text(style.label,
-              style: TextStyle(
-                  color: style.color,
-                  fontSize: compact ? 11 : 12,
-                  fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-}
-
-/// Tiny "● Released" chip — mirrors the status-pill visual so it can sit
-/// beside one. Shown on song cards / discography rows when the user has
-/// marked the song live on the stores (Distribution feature).
-class _ReleasedBadge extends StatelessWidget {
-  const _ReleasedBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: FacelessTheme.accent.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '● ${context.l10n.releaseBadge}',
-        style: const TextStyle(
-            color: FacelessTheme.accent,
-            fontSize: 11,
-            fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}
-
-/// Tiny neutral "▶ YouTube" chip — shown beside the Released badge when the
-/// song is on YouTube (`youtube_url != null`). Deliberately subtle: same
-/// chip shape, textSecondary instead of a loud brand red.
-class _YoutubeBadge extends StatelessWidget {
-  const _YoutubeBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: FacelessTheme.textSecondary.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '▶ ${context.l10n.ytBadge}',
-        style: const TextStyle(
-            color: FacelessTheme.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}
-
-class _SongThumbPlaceholder extends StatelessWidget {
-  const _SongThumbPlaceholder();
-  @override
-  Widget build(BuildContext context) => Container(
-        color: FacelessTheme.surface2,
-        child: Icon(Icons.music_note,
-            color: FacelessTheme.accent.withValues(alpha: 0.7), size: 26),
-      );
-}
-
-/// Cover image loaded from the token-bearing cover-URL future, with a
-/// branded placeholder while loading / on error.
-class _SongCover extends StatelessWidget {
-  final Future<Uri> future;
-  final BoxFit fit;
-  const _SongCover({required this.future, this.fit = BoxFit.cover});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<Uri>(
-      future: future,
-      builder: (ctx, snap) {
-        if (!snap.hasData) return const _SongThumbPlaceholder();
-        return CachedNetworkImage(
-          imageUrl: snap.data!.toString(),
-          fit: fit,
-          fadeInDuration: const Duration(milliseconds: 180),
-          placeholder: (_, _) => const _SongThumbPlaceholder(),
-          errorWidget: (_, _, _) => const _SongThumbPlaceholder(),
-        );
-      },
-    );
-  }
-}
-
-class _PlayButton extends StatelessWidget {
-  final double size;
-  const _PlayButton({this.size = 44});
-  @override
-  Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(colors: [Color(0xFFF6D27A), Color(0xFFE7B53C)]),
-          boxShadow: [
-            BoxShadow(
-                color: Color(0x73E7B53C), blurRadius: 16, offset: Offset(0, 6))
-          ],
-        ),
-        child: Icon(Icons.play_arrow_rounded,
-            color: const Color(0xFF1A1205), size: size * 0.52),
-      );
-}
-
-class _EqBars extends StatelessWidget {
-  const _EqBars();
-  @override
-  Widget build(BuildContext context) {
-    const heights = [6.0, 13.0, 8.0, 15.0, 7.0, 11.0];
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final h in heights)
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 3),
-            child: Container(
-              width: 3,
-              height: h,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(2),
-                gradient: const LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Color(0xFFE7B53C), Color(0xFFF6D27A)]),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _SongSectionTitle extends StatelessWidget {
-  final String title;
-  final String trailing;
-  const _SongSectionTitle({required this.title, required this.trailing});
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    color: FacelessTheme.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700)),
-            Text(trailing,
-                style: const TextStyle(
-                    color: FacelessTheme.textSecondary, fontSize: 13)),
-          ],
-        ),
-      );
-}
 
 class _SongSearchBar extends StatefulWidget {
   final String initial;
@@ -2128,246 +1604,11 @@ class _SongSearchBarState extends State<_SongSearchBar> {
           contentPadding: const EdgeInsets.symmetric(vertical: 12),
           enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
+              borderSide: BorderSide(color: FacelessTheme.border)),
           focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide:
                   const BorderSide(color: FacelessTheme.accent, width: 1.5)),
-        ),
-      ),
-    );
-  }
-}
-
-class _SongHero extends StatelessWidget {
-  final String title;
-  final String status;
-  final Future<Uri> coverUrlFuture;
-  final VoidCallback onTap;
-  const _SongHero({
-    required this.title,
-    required this.status,
-    required this.coverUrlFuture,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final st = _songStatusStyle(context.l10n, status);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: FacelessTheme.surface,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: FacelessTheme.border),
-            boxShadow: FacelessTheme.softShadow,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: SizedBox(
-                  height: 168,
-                  width: double.infinity,
-                  child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(context.l10n.homeLatestRelease,
-                        style: const TextStyle(
-                            color: FacelessTheme.accent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.4)),
-                    const SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      color: FacelessTheme.textPrimary,
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w800)),
-                              const SizedBox(height: 9),
-                              _SongStatusPill(style: st),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const _PlayButton(size: 50),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RecentTile extends StatelessWidget {
-  final String title;
-  final String status;
-  final Future<Uri> coverUrlFuture;
-  final VoidCallback onTap;
-  const _RecentTile({
-    required this.title,
-    required this.status,
-    required this.coverUrlFuture,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final st = _songStatusStyle(context.l10n, status);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 150,
-        decoration: BoxDecoration(
-          color: FacelessTheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: FacelessTheme.border),
-          boxShadow: FacelessTheme.softShadow,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(
-                width: double.infinity,
-                height: 110,
-                child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: FacelessTheme.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 7),
-                  _SongStatusPill(style: st, compact: true),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SongCardC extends StatelessWidget {
-  final String title;
-  final String status;
-  final bool released;
-  final bool onYoutube;
-  final Future<Uri> coverUrlFuture;
-  final VoidCallback onTap;
-  const _SongCardC({
-    required this.title,
-    required this.status,
-    this.released = false,
-    this.onYoutube = false,
-    required this.coverUrlFuture,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final st = _songStatusStyle(context.l10n, status);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: FacelessTheme.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: FacelessTheme.border),
-          boxShadow: FacelessTheme.softShadow,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(13),
-                    child: SizedBox(
-                      width: 70,
-                      height: 70,
-                      child: _SongCover(future: coverUrlFuture, fit: BoxFit.cover),
-                    ),
-                  ),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: FacelessTheme.textPrimary,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 8),
-                        const _EqBars(),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: [
-                            _SongStatusPill(style: st),
-                            if (released) const _ReleasedBadge(),
-                            if (onYoutube) const _YoutubeBadge(),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const _PlayButton(size: 44),
-                ],
-              ),
-            ),
-          ),
         ),
       ),
     );
@@ -3137,63 +2378,6 @@ class _ErrorView extends StatelessWidget {
 
 
 
-class _BalanceBadge extends StatefulWidget {
-  const _BalanceBadge();
-  @override
-  State<_BalanceBadge> createState() => _BalanceBadgeState();
-}
-
-class _BalanceBadgeState extends State<_BalanceBadge> {
-  int? _balance;
-
-  @override
-  void initState() {
-    super.initState();
-    _refresh();
-  }
-
-  Future<void> _refresh() async {
-    try {
-      final b = await FacelessApiClient(FacelessSettings()).getBalance();
-      if (mounted) setState(() => _balance = b.balance);
-    } catch (_) {
-      // Silent on error — non-critical UI element, don't crash the home screen.
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_balance == null) return const SizedBox.shrink();
-    return GestureDetector(
-      onTap: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const BillingScreen()),
-        );
-        // Refresh on return — user may have just topped up.
-        _refresh();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: FacelessTheme.surface2,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.monetization_on,
-                       color: FacelessTheme.accent, size: 16),
-            const SizedBox(width: 6),
-            Text('$_balance',
-                 style: const TextStyle(fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-
 /// Localized genre label for a sample chip caption. Falls back to the raw
 /// key (should never happen — every sample key must exist in kSongGenres).
 String _genreLabel(BuildContext context, String genreKey) {
@@ -3225,6 +2409,11 @@ class _SongsEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
+      // Shown nested inside the outer song-list ListView (below the hero
+      // greeting/trends/artists) — shrink-wrap + non-scrollable so there's
+      // exactly one scroll region, not a scrollable-in-a-scrollable.
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
       children: [
         const Icon(Icons.music_note,
@@ -3388,85 +2577,6 @@ class _LoadingPlaceholderState extends State<_LoadingPlaceholder>
   }
 }
 
-// ---------------------------------------------------------------------------
-// Artist Core — home artists row tiles
-// ---------------------------------------------------------------------------
-
-/// Avatar circle + name, tap opens the artist screen.
-class _ArtistCircleTile extends StatelessWidget {
-  final Artist artist;
-  final FacelessApiClient client;
-  final VoidCallback onTap;
-  const _ArtistCircleTile({
-    required this.artist,
-    required this.client,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: SizedBox(
-        width: 64,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ArtistAvatar(artist: artist, client: client, size: 56),
-            const SizedBox(height: 4),
-            Text(
-              artist.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 11, color: FacelessTheme.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Soft "＋" circle that opens the create-artist form.
-class _NewArtistTile extends StatelessWidget {
-  final VoidCallback onTap;
-  const _NewArtistTile({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: SizedBox(
-        width: 64,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: FacelessTheme.surface,
-                shape: BoxShape.circle,
-                border: Border.all(color: FacelessTheme.border, width: 1.4),
-              ),
-              child: const Icon(Icons.add,
-                  color: FacelessTheme.textSecondary, size: 26),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              context.l10n.artistNewTile,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 11, color: FacelessTheme.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// Artist Core home-row tiles (avatar circle + "new artist" tile) now live in
+// lib/widgets/home/artists_row.dart as ArtistsRow's private _ArtistTile /
+// _NewArtistTile.

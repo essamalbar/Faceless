@@ -51,7 +51,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   Color _colorFor(int amount, BuildContext ctx) {
-    if (amount > 0) return Colors.green.shade400;
+    if (amount > 0) return FacelessTheme.success;
     return Theme.of(ctx).colorScheme.error;
   }
 

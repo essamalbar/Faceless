@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
+import '../theme.dart';
+import '../ui/brand.dart';
+import '../ui/primitives.dart';
 import '../widgets/paywall_dialog.dart';
 import 'song_detail_screen.dart';
 
@@ -290,17 +293,23 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
           ? context.l10n.approveAnalyzing
           : context.l10n.approvePreparing;
       return Scaffold(
-        appBar: AppBar(title: Text(context.l10n.approveReviewDraft)),
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          title: Text(context.l10n.approveReviewDraft),
+        ),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircularProgressIndicator(),
+              const CircularProgressIndicator(color: FacelessTheme.accent),
               const SizedBox(height: 20),
               Text(
                 label,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: const TextStyle(color: FacelessTheme.textSecondary),
               ),
             ],
           ),
@@ -309,7 +318,13 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
     }
     if (_error != null && _script == null) {
       return Scaffold(
-        appBar: AppBar(title: Text(context.l10n.approveReviewDraft)),
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          title: Text(context.l10n.approveReviewDraft),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -325,13 +340,22 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
     final s = _script!;
     final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: Text(s.title)),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
       body: Stack(children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: ListView(
-            children: [
-              _SectionCard(
+        ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            _Reveal(index: 0, child: Eyebrow(l10n.approveReviewDraft)),
+            const SizedBox(height: 16),
+            _Reveal(
+              index: 1,
+              child: _SectionCard(
                 title: l10n.approveLyricsSection,
                 body: _LyricsPreview(
                   lyrics: s.lyrics,
@@ -356,9 +380,20 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                   ),
                 ],
               ),
-              _SectionCard(
+            ),
+            const SizedBox(height: 14),
+            _Reveal(
+              index: 2,
+              child: _SectionCard(
                 title: l10n.approveStyleSection,
-                body: Text(s.stylePrompt),
+                body: Text(
+                  s.stylePrompt,
+                  style: const TextStyle(
+                    color: FacelessTheme.textSecondary,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
                 actions: [
                   TextButton.icon(
                     icon: const Icon(Icons.edit_outlined),
@@ -367,9 +402,20 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                   ),
                 ],
               ),
-              _SectionCard(
+            ),
+            const SizedBox(height: 14),
+            _Reveal(
+              index: 3,
+              child: _SectionCard(
                 title: l10n.approveCoverPromptSection,
-                body: Text(s.coverPrompt),
+                body: Text(
+                  s.coverPrompt,
+                  style: const TextStyle(
+                    color: FacelessTheme.textSecondary,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
                 actions: [
                   TextButton.icon(
                     icon: const Icon(Icons.refresh),
@@ -378,30 +424,47 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Card(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.account_balance_wallet_outlined),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          l10n.approveCost(
-                            s.costCredits,
-                            '\$${s.costUsd.toStringAsFixed(2)}',
-                          ),
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            _Reveal(index: 4, child: const Hairline()),
+            const SizedBox(height: 20),
+            // Cost disclosure — the pay-gate figure. Container/typography are
+            // restyled for the redesign; the l10n call, its arguments, and
+            // the credits/USD values themselves are untouched.
+            _Reveal(
+              index: 5,
+              child: GlassCard(
+                accentEdge: true,
+                padding: const EdgeInsets.all(18),
+                child: Row(
+                  children: [
+                    const Icon(Icons.account_balance_wallet_outlined,
+                        color: FacelessTheme.accent2),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        l10n.approveCost(
+                          s.costCredits,
+                          '\$${s.costUsd.toStringAsFixed(2)}',
+                        ),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: FacelessTheme.textPrimary,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Row(
+            ),
+            const SizedBox(height: 20),
+            // Approve/spend trigger — restyled as GradientButton, but the
+            // enable/disable condition and the call to _approve() are
+            // unchanged from the pre-redesign FilledButton.
+            _Reveal(
+              index: 6,
+              child: Row(
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
@@ -412,29 +475,26 @@ class _SongApproveScreenState extends State<SongApproveScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: FilledButton.icon(
-                      icon: _approving
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.check),
-                      label: Text(l10n.approveApproveGenerate),
+                    child: GradientButton(
+                      label: l10n.approveApproveGenerate,
+                      icon: Icons.check,
+                      loading: _approving,
+                      expand: true,
                       onPressed: _approving ? null : _approve,
                     ),
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
         if (_busy)
           Positioned.fill(
             child: ColoredBox(
               color: Colors.black.withValues(alpha: 0.15),
-              child: const Center(child: CircularProgressIndicator()),
+              child: const Center(
+                child: CircularProgressIndicator(color: FacelessTheme.accent),
+              ),
             ),
           ),
       ]),
@@ -449,32 +509,29 @@ class _SectionCard extends StatelessWidget {
   const _SectionCard({required this.title, required this.body, this.actions});
 
   @override
-  Widget build(BuildContext context) => Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              body,
-              if (actions != null) ...[
-                const SizedBox(height: 8),
-                // Wrap (not Row): the lyrics card can carry three actions
-                // (Edit / تشكيل / Re-roll) which overflow a Row on phones.
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: Wrap(
-                    spacing: 4,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: actions!,
-                  ),
+  Widget build(BuildContext context) => GlassCard(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Eyebrow(title),
+            const SizedBox(height: 12),
+            body,
+            if (actions != null) ...[
+              const SizedBox(height: 10),
+              // Wrap (not Row): the lyrics card can carry three actions
+              // (Edit / تشكيل / Re-roll) which overflow a Row on phones.
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: actions!,
                 ),
-              ],
+              ),
             ],
-          ),
+          ],
         ),
       );
 }
@@ -482,7 +539,10 @@ class _SectionCard extends StatelessWidget {
 
 /// Lyrics renderer that pulls section tags ([Verse 1], [Chorus], etc.)
 /// out into colored chip headers — matches the public share page so
-/// users approve what they'll actually see published.
+/// users approve what they'll actually see published. Lines render in the
+/// editorial serif ([FacelessTheme.display]) and fade in one-by-one — the
+/// "lyric reveal" moment — via [_Reveal], which honors
+/// `MediaQuery.disableAnimations`.
 class _LyricsPreview extends StatelessWidget {
   final String lyrics;
   final String language;
@@ -496,8 +556,8 @@ class _LyricsPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = const Color(0xFFD7B46A);
     final lines = <Widget>[];
+    var lineIndex = 0;
     for (final raw in lyrics.split('\n')) {
       final line = raw.trim();
       if (line.isEmpty) {
@@ -506,34 +566,50 @@ class _LyricsPreview extends StatelessWidget {
       }
       final m = _sectionRe.firstMatch(line);
       if (m != null) {
-        lines.add(Align(
-          alignment: _isRtl ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.only(top: 12, bottom: 4),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              m.group(1)!,
-              style: TextStyle(
-                fontSize: 11,
-                letterSpacing: 1.6,
-                fontWeight: FontWeight.w600,
-                color: accent,
+        lines.add(_Reveal(
+          index: lineIndex++,
+          stepMs: 24,
+          fadeMs: 480,
+          translateY: 6,
+          child: Align(
+            alignment: _isRtl ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: FacelessTheme.accent.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                m.group(1)!,
+                style: const TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 1.6,
+                  fontWeight: FontWeight.w600,
+                  color: FacelessTheme.accent2,
+                ),
               ),
             ),
           ),
         ));
       } else {
-        lines.add(Text(
-          line,
-          textAlign: _isRtl ? TextAlign.right : TextAlign.left,
-          style: TextStyle(
-            fontSize: _isRtl ? 17 : 15,
-            height: _isRtl ? 1.9 : 1.6,
+        lines.add(_Reveal(
+          index: lineIndex++,
+          stepMs: 24,
+          fadeMs: 480,
+          translateY: 6,
+          child: Text(
+            line,
+            textAlign: _isRtl ? TextAlign.right : TextAlign.left,
+            style: FacelessTheme.display(
+              size: _isRtl ? 18 : 17,
+              weight: FontWeight.w500,
+              height: _isRtl ? 1.9 : 1.6,
+              letterSpacing: 0,
+              color: FacelessTheme.textPrimary,
+              locale: _isRtl ? const Locale('ar') : null,
+            ),
           ),
         ));
       }
@@ -544,6 +620,57 @@ class _LyricsPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: lines,
       ),
+    );
+  }
+}
+
+/// Fades [child] in on first build, offset later in the sequence for a
+/// higher [index] — used both for the pay-gate screen's section entrance
+/// and (with a shorter [stepMs]/[fadeMs]) the line-by-line lyric reveal.
+/// Honors `MediaQuery.disableAnimations` (renders [child] instantly, with no
+/// animation, when reduced motion is requested).
+///
+/// The TOTAL animation duration grows with [index] (rather than clamping the
+/// `Interval` start against a fixed duration) so every item gets a full
+/// [fadeMs] fade window — clamping just the start would squeeze a fixed
+/// window for later items, so a long lyric (or a long beat list) would
+/// visibly "pop" in near the end instead of fading. Items past the cap
+/// start together (capped stagger) but still get the full fade.
+class _Reveal extends StatelessWidget {
+  final int index;
+  final Widget child;
+  final int stepMs;
+  final int fadeMs;
+  final double translateY;
+  const _Reveal({
+    required this.index,
+    required this.child,
+    this.stepMs = 50,
+    this.fadeMs = 640,
+    this.translateY = 14,
+  });
+
+  static const _maxIndex = 24;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) return child;
+    final startMs = index.clamp(0, _maxIndex) * stepMs;
+    final totalMs = startMs + fadeMs;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: Duration(milliseconds: totalMs),
+      curve: Interval(startMs / totalMs, 1.0, curve: Curves.easeOutCubic),
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * translateY),
+          child: child,
+        ),
+      ),
+      child: child,
     );
   }
 }

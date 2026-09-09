@@ -192,6 +192,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get homeHeroSubtitle => 'اصنع قصصك القصيرة بالذكاء الاصطناعي';
 
   @override
+  String get homeGreetingEyebrow => 'أهلاً بعودتك';
+
+  @override
+  String get homeHeroHeading => 'ماذا سيغني فنانك الليلة؟';
+
+  @override
   String get homeStartCreating => 'ابدأ الإبداع';
 
   @override
@@ -1610,6 +1616,16 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String get composingEyebrow => 'جارٍ الآن';
+
+  @override
+  String get composingHeading => 'نَنسِج أغنيتك';
+
+  @override
+  String get composingFooterEta =>
+      'عادةً أقل من ٣ دقائق — سنُعلمك عند الاكتمال';
+
+  @override
   String get runDetailStatusReady => 'جاهز للمشاهدة';
 
   @override
@@ -1789,6 +1805,9 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get editScriptVisualDescLabel => 'الوصف البصري (بالإنجليزية)';
+
+  @override
+  String get editScriptBeatsSection => 'المشاهد';
 
   @override
   String get costTitle => 'الإنفاق';
@@ -1974,6 +1993,9 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get artistEdit => 'تعديل';
+
+  @override
+  String get artistProfileEyebrow => 'الفنان';
 
   @override
   String artistNewSongCta(String name) {

@@ -428,6 +428,18 @@ abstract class AppLocalizations {
   /// **'Create your short stories with AI'**
   String get homeHeroSubtitle;
 
+  /// No description provided for @homeGreetingEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back'**
+  String get homeGreetingEyebrow;
+
+  /// No description provided for @homeHeroHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'What will your artist sing tonight?'**
+  String get homeHeroHeading;
+
   /// No description provided for @homeStartCreating.
   ///
   /// In en, this message translates to:
@@ -2882,6 +2894,24 @@ abstract class AppLocalizations {
   /// **'Rerolling clip {number} — 1 credit'**
   String runDetailRerollingClip(String number);
 
+  /// No description provided for @composingEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get composingEyebrow;
+
+  /// No description provided for @composingHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Weaving your song to sing'**
+  String get composingHeading;
+
+  /// No description provided for @composingFooterEta.
+  ///
+  /// In en, this message translates to:
+  /// **'Usually under 3 minutes — we\'ll notify you when it\'s done'**
+  String get composingFooterEta;
+
   /// No description provided for @runDetailStatusReady.
   ///
   /// In en, this message translates to:
@@ -3109,6 +3139,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Visual description (English)'**
   String get editScriptVisualDescLabel;
+
+  /// No description provided for @editScriptBeatsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Beats'**
+  String get editScriptBeatsSection;
 
   /// No description provided for @costTitle.
   ///
@@ -3415,6 +3451,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Edit'**
   String get artistEdit;
+
+  /// No description provided for @artistProfileEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Artist'**
+  String get artistProfileEyebrow;
 
   /// No description provided for @artistNewSongCta.
   ///

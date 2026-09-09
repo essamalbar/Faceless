@@ -193,6 +193,10 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
               onPressed: () => Navigator.pop(ctx, false),
               child: Text(ctx.l10n.commonCancel)),
           FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: FacelessTheme.danger,
+                foregroundColor: FacelessTheme.textPrimary,
+              ),
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(ctx.l10n.commonDelete)),
         ],
@@ -240,7 +244,8 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
         shape: BoxShape.circle,
         border: Border.all(color: FacelessTheme.border),
       ),
-      child: const Icon(Icons.person_outline, color: Colors.white, size: 32),
+      child: const Icon(Icons.person_outline,
+          color: FacelessTheme.textPrimary, size: 32),
     );
   }
 

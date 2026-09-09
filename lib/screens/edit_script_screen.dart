@@ -4,6 +4,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/primitives.dart';
 
 /// Per-beat editor — fix Claude's slips without regenerating from scratch.
 /// Only available when status=awaiting_approval (server enforces; we hide the
@@ -70,9 +71,15 @@ class _EditScriptScreenState extends State<EditScriptScreen> {
   Widget build(BuildContext context) {
     final l = context.l10n;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: Text(l.editScriptTitle),
         actions: [
+          // Save action — unchanged trigger (_save) and enable condition;
+          // only the label color/weight were already on-brand pre-redesign.
           TextButton(
             onPressed: _saving ? null : _save,
             child: Text(l.commonSave,
@@ -86,20 +93,37 @@ class _EditScriptScreenState extends State<EditScriptScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextField(
-              controller: _titleCtrl,
-              decoration: InputDecoration(
-                labelText: l.editScriptTitleLabel,
-                border: const OutlineInputBorder(),
+            _Reveal(
+              index: 0,
+              child: TextField(
+                controller: _titleCtrl,
+                decoration: InputDecoration(
+                  labelText: l.editScriptTitleLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                textDirection: TextDirection.rtl,
+                style: FacelessTheme.display(
+                  size: 18,
+                  weight: FontWeight.w600,
+                  height: 1.3,
+                  letterSpacing: 0,
+                  locale: const Locale('ar'),
+                ),
               ),
-              textDirection: TextDirection.rtl,
             ),
+            const SizedBox(height: 20),
+            _Reveal(index: 1, child: const Hairline()),
             const SizedBox(height: 16),
-            ..._beats.asMap().entries.map((e) => _BeatEditor(
-                  index: e.key + 1,
-                  beat: e.value,
-                  speakerSuggestions: _speakerSuggestions,
-                  onChanged: () => setState(() {}),
+            _Reveal(index: 2, child: Eyebrow(l.editScriptBeatsSection)),
+            const SizedBox(height: 12),
+            ..._beats.asMap().entries.map((e) => _Reveal(
+                  index: e.key + 3,
+                  child: _BeatEditor(
+                    index: e.key + 1,
+                    beat: e.value,
+                    speakerSuggestions: _speakerSuggestions,
+                    onChanged: () => setState(() {}),
+                  ),
                 )),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -249,6 +273,9 @@ class _BeatEditor extends StatelessWidget {
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 12),
+            // The dialogue line itself — the "script" this screen exists to
+            // review before it's locked in. Rendered in the editorial serif
+            // (Amiri) so it reads the way it will on the finished video.
             TextField(
               controller: beat.arabicCtrl,
               decoration: InputDecoration(
@@ -258,7 +285,14 @@ class _BeatEditor extends StatelessWidget {
               ),
               textDirection: TextDirection.rtl,
               maxLines: 3,
-              style: const TextStyle(fontSize: 16, height: 1.6),
+              style: FacelessTheme.display(
+                size: 17,
+                weight: FontWeight.w500,
+                height: 1.7,
+                letterSpacing: 0,
+                color: FacelessTheme.textPrimary,
+                locale: const Locale('ar'),
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -296,6 +330,50 @@ class _BeatEditor extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Fades [child] in on first build, offset later in the sequence for a
+/// higher [index] — the staggered entrance for the title field and each
+/// beat card as the script review loads. Honors
+/// `MediaQuery.disableAnimations` (renders [child] instantly, with no
+/// animation, when reduced motion is requested).
+///
+/// The TOTAL animation duration grows with [index] (rather than clamping
+/// the `Interval` start against a fixed duration) so every beat gets a full
+/// fade window — clamping just the start would squeeze a fixed window for
+/// later beats, so a long script (many beats) would visibly "pop" in near
+/// the end instead of fading. Beats past [_maxIndex] start together (capped
+/// stagger) but still get the full fade.
+class _Reveal extends StatelessWidget {
+  final int index;
+  final Widget child;
+  const _Reveal({required this.index, required this.child});
+
+  static const _stepMs = 34;
+  static const _fadeMs = 560;
+  static const _maxIndex = 24;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) return child;
+    final startMs = index.clamp(0, _maxIndex) * _stepMs;
+    final totalMs = startMs + _fadeMs;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: Duration(milliseconds: totalMs),
+      curve: Interval(startMs / totalMs, 1.0, curve: Curves.easeOutCubic),
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * 12),
+          child: child,
+        ),
+      ),
+      child: child,
     );
   }
 }

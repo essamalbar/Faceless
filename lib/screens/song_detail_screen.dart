@@ -13,6 +13,8 @@ import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/brand.dart';
+import '../ui/primitives.dart';
+import '../widgets/composing_view.dart';
 import '../widgets/perform_sheet.dart';
 
 class SongDetailScreen extends StatefulWidget {
@@ -60,6 +62,91 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
         'canceled' => l10n.statusCancelled,
         _ => statusLabel(l10n, status),
       };
+
+  // ─── composing (the signature "AI magic moment") ───────────────────────────
+  //
+  // Ordered post-approval generation stages a `kind=song` run actually walks
+  // through server-side (verified against pipeline/api.py + run.py, NOT
+  // guessed): writing_lyrics → [awaiting_approval, user pays] →
+  // generating_song → generating_cover → aligning → detecting_beats (only
+  // for video_mode != "static") → assembling → complete. `writing_lyrics`
+  // is included even though it precedes payment (real code writes it, and
+  // it renders as an already-"done" step once the run reaches
+  // generating_song, which is the only way it's ever actually observed
+  // here in practice). `analyzing` (YouTube-import pre-approval) is
+  // deliberately NOT a composing stage — it falls through to the plain
+  // status header below, unchanged.
+  static const _composingStatuses = {
+    'writing_lyrics',
+    'generating_song',
+    'generating_cover',
+    'aligning',
+    'detecting_beats',
+    'assembling',
+  };
+
+  /// Whether [s] is mid-generation and should show [ComposingView] instead
+  /// of the plain status header — the live counterpart of
+  /// `run_detail_screen.dart`'s `run.isRunning` branch. Deliberately
+  /// excludes `awaiting_approval` (pre-spend review — reachable here if the
+  /// user backed out of [SongApproveScreen] without approving/discarding)
+  /// even though it's non-terminal, per the recipe in Task 5's report.
+  bool _isComposing(SongSummary s) =>
+      !_terminalStatuses.contains(s.status) &&
+      s.status != 'awaiting_approval' &&
+      _composingStatuses.contains(s.status);
+
+  /// First grapheme of the song's artist/title/theme for the composing
+  /// screen's hero [ArtistBadge] — mirrors the pattern in
+  /// `run_detail_screen.dart`/`artist_screen.dart`.
+  String _composingMonogram(SongSummary s) {
+    final name = (s.artistName ?? s.title ?? s.theme ?? '').trim();
+    return name.isEmpty ? '?' : name.characters.first;
+  }
+
+  /// Maps the song's live status to an ordered [StepItem] list. Stage
+  /// order/labels reuse the existing `homeStatus*` copy this app already
+  /// shows for the exact same status codes on the home "Your songs" list
+  /// (`lib/widgets/home/home_shared.dart:songStatusStyle`) — no new
+  /// information, only a new presentation. `detecting_beats` is omitted
+  /// entirely for `video_mode == "static"` songs, matching the backend:
+  /// that stage is never written for static renders.
+  List<StepItem> _composingSteps(BuildContext context, SongSummary s) {
+    final l = context.l10n;
+    final stages = [
+      'writing_lyrics',
+      'generating_song',
+      'generating_cover',
+      'aligning',
+      if (s.videoMode != 'static') 'detecting_beats',
+      'assembling',
+    ];
+    var activeIndex = stages.indexOf(s.status);
+    if (activeIndex == -1) activeIndex = 0;
+
+    String labelFor(String stage) => switch (stage) {
+          'writing_lyrics' => l.homeStatusWritingLyrics,
+          'generating_song' => l.homeStatusComposing,
+          'generating_cover' => l.homeStatusDesigningCover,
+          'aligning' => l.homeStatusSyncingLyrics,
+          'detecting_beats' => l.homeStatusSyncingBeat,
+          'assembling' => l.homeStatusRendering,
+          _ => stage,
+        };
+
+    return [
+      for (var i = 0; i < stages.length; i++)
+        StepItem(
+          label: labelFor(stages[i]),
+          state: i < activeIndex
+              ? StepPhase.done
+              : i == activeIndex
+                  ? StepPhase.active
+                  : StepPhase.pending,
+          // Songs have no fractional per-stage progress to report.
+        ),
+    ];
+  }
 
   @override
   void initState() {
@@ -1134,7 +1221,11 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     }
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: Text(
           s.title ?? l10n.songDetailTitleFallback,
           textDirection: TextDirection.rtl,
@@ -1157,8 +1248,31 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _buildCoverOrPlaceholder(context, s),
-          const SizedBox(height: 16),
-          _buildStatusCard(context, s),
+          const SizedBox(height: 20),
+          // In-progress ("composing") is the signature AI-magic moment —
+          // the live counterpart of run_detail_screen.dart's ComposingView
+          // wiring (that screen is dead code; this is the real user-facing
+          // song generation surface). Every other state keeps the plain
+          // editorial title + status header below, untouched in spirit.
+          if (_isComposing(s)) ...[
+            ComposingView(
+              monogram: _composingMonogram(s),
+              artistName: s.artistName,
+              title: s.title ?? s.theme,
+              steps: _composingSteps(context, s),
+              // No mid-render cancel affordance exists on this screen today
+              // (the AppBar's delete button is deliberately hidden for
+              // exactly these statuses — see the condition above), so this
+              // stays behavior-preserving rather than inventing one.
+            ),
+          ] else ...[
+            EditorialHeading(
+              s.title ?? l10n.songDetailTitleFallback,
+              size: 26,
+            ),
+            const SizedBox(height: 10),
+            _buildStatusCard(context, s),
+          ],
           if (s.status == 'complete') ...[
             const SizedBox(height: 16),
             _buildVideoSection(context),
@@ -1190,7 +1304,9 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               const SizedBox(height: 8),
               _buildPerformSection(context, s),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
+            const Hairline(),
+            const SizedBox(height: 16),
             // Save this song's voice as a Persona for reuse in
             // future songs. Closest thing Suno offers to voice
             // cloning across generations.
@@ -1303,69 +1419,63 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   // ─── cover ──────────────────────────────────────────────────────────────────
 
   Widget _buildCoverOrPlaceholder(BuildContext context, SongSummary s) {
-    if (_showCover) {
-      return FutureBuilder<Uri>(
-        future: widget.client.songCoverUrl(widget.runId),
-        builder: (ctx, snap) {
-          if (!snap.hasData) {
-            return _placeholderCover(context);
-          }
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              snap.data!.toString(),
-              fit: BoxFit.cover,
-              height: 320,
-              width: double.infinity,
-              errorBuilder: (ctx2, err, stack) => _placeholderCover(ctx2),
-            ),
-          );
-        },
-      );
-    }
-    return _placeholderCover(context);
-  }
-
-  Widget _placeholderCover(BuildContext context) {
-    return Container(
-      height: 320,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        height: 320,
+        width: double.infinity,
+        child: _showCover
+            ? _MaterializingCover(client: widget.client, runId: widget.runId)
+            : _CoverPlaceholder(seed: widget.runId),
       ),
-      child: const Center(child: Icon(Icons.music_note, size: 64)),
     );
   }
 
   // ─── status card ────────────────────────────────────────────────────────────
 
+  /// Plain status header for every non-composing state (awaiting_approval,
+  /// analyzing, complete, failed, canceled). [StatusPill] only models the
+  /// ready/review "kinds" — complete and awaiting_approval get the pill,
+  /// everything else keeps the original spinner-or-icon row (now in a
+  /// [GlassCard]), preserving [_stageLabel]'s exact copy either way.
   Widget _buildStatusCard(BuildContext context, SongSummary s) {
-    final isTerminal = _terminalStatuses.contains(s.status);
-    return Card(
-      child: Padding(
+    final label = _stageLabel(context.l10n, s.status);
+    if (s.status == 'complete') {
+      return GlassCard(
         padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            if (!isTerminal)
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else if (s.status == 'complete')
-              const Icon(Icons.check_circle, color: Colors.green)
-            else
-              Icon(Icons.error,
-                  color: Theme.of(context).colorScheme.error),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _stageLabel(context.l10n, s.status),
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
+        child: StatusPill(label: label, kind: StatusKind.ready),
+      );
+    }
+    if (s.status == 'awaiting_approval') {
+      return GlassCard(
+        padding: const EdgeInsets.all(16),
+        child: StatusPill(label: label, kind: StatusKind.review),
+      );
+    }
+    final isTerminal = _terminalStatuses.contains(s.status);
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          if (!isTerminal)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: FacelessTheme.accent),
+            )
+          else
+            const Icon(Icons.error, color: FacelessTheme.danger),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: FacelessTheme.textPrimary),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1376,21 +1486,31 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final c = _videoController;
 
     if (c == null && !_videoLoading && _videoError == null) {
-      // Not started yet — show play + download buttons
-      return Row(
+      // Not started yet — a "sound made visible" waveform above the
+      // play/download row, matching the composing screen's motif now that
+      // the song is ready.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: FilledButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: Text(context.l10n.songDetailPlayVideo),
-              onPressed: _initVideo,
-            ),
-          ),
-          const SizedBox(width: 12),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.download),
-            label: Text(context.l10n.songDetailDownload),
-            onPressed: _downloadVideo,
+          const Center(child: LivingWaveform(height: 32)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: GradientButton(
+                  icon: Icons.play_arrow,
+                  label: context.l10n.songDetailPlayVideo,
+                  expand: true,
+                  onPressed: _initVideo,
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.download),
+                label: Text(context.l10n.songDetailDownload),
+                onPressed: _downloadVideo,
+              ),
+            ],
           ),
         ],
       );
@@ -1451,7 +1571,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                         c.value.isPlaying
                             ? Icons.pause_circle_filled
                             : Icons.play_circle_filled,
-                        color: Colors.white,
+                        color: FacelessTheme.textPrimary,
                       ),
                       onPressed: () => setState(() {
                         c.value.isPlaying ? c.pause() : c.play();
@@ -1502,22 +1622,24 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                       Row(
                         children: [
                           Text(_fmt(pos),
-                              style: const TextStyle(color: Colors.white)),
+                              style: const TextStyle(
+                                  color: FacelessTheme.textPrimary)),
                           IconButton(
                             icon: const Icon(Icons.replay_10,
-                                color: Colors.white),
+                                color: FacelessTheme.textPrimary),
                             onPressed: () => c.seekTo(
                                 pos - const Duration(seconds: 10)),
                           ),
                           IconButton(
                             icon: const Icon(Icons.forward_10,
-                                color: Colors.white),
+                                color: FacelessTheme.textPrimary),
                             onPressed: () => c.seekTo(
                                 pos + const Duration(seconds: 10)),
                           ),
                           const Spacer(),
                           Text(_fmt(dur),
-                              style: const TextStyle(color: Colors.white)),
+                              style: const TextStyle(
+                                  color: FacelessTheme.textPrimary)),
                         ],
                       ),
                     ],
@@ -1679,45 +1801,42 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   // ─── take swap ──────────────────────────────────────────────────────────────
 
   Widget _buildTakeSwapCard(BuildContext context, SongSummary s) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(context.l10n.songDetailActiveTake,
-                style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        _swapping || s.chosenTake == 1 ? null : () => _swap(1),
-                    child: Text(s.chosenTake == 1
-                        ? context.l10n.songDetailTakeChosen(1)
-                        : context.l10n.songDetailUseTake(1)),
-                  ),
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Eyebrow(context.l10n.songDetailActiveTake),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed:
+                      _swapping || s.chosenTake == 1 ? null : () => _swap(1),
+                  child: Text(s.chosenTake == 1
+                      ? context.l10n.songDetailTakeChosen(1)
+                      : context.l10n.songDetailUseTake(1)),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        _swapping || s.chosenTake == 2 ? null : () => _swap(2),
-                    child: Text(s.chosenTake == 2
-                        ? context.l10n.songDetailTakeChosen(2)
-                        : context.l10n.songDetailUseTake(2)),
-                  ),
-                ),
-              ],
-            ),
-            if (_swapping)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: LinearProgressIndicator(),
               ),
-          ],
-        ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed:
+                      _swapping || s.chosenTake == 2 ? null : () => _swap(2),
+                  child: Text(s.chosenTake == 2
+                      ? context.l10n.songDetailTakeChosen(2)
+                      : context.l10n.songDetailUseTake(2)),
+                ),
+              ),
+            ],
+          ),
+          if (_swapping)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: LinearProgressIndicator(),
+            ),
+        ],
       ),
     );
   }
@@ -1740,39 +1859,49 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     final info = _stageInfo(context.l10n, s.failureStage);
     final title = info?.$1 ?? context.l10n.songDetailErrorFallback;
     final hint = info?.$2;
-    final colors = Theme.of(context).colorScheme;
-    return Card(
-      color: colors.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: colors.onErrorContainer,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              s.lastError ?? context.l10n.songDetailUnknownError,
-              style: TextStyle(color: colors.onErrorContainer),
-            ),
-            if (hint != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                hint,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  color: colors.onErrorContainer.withValues(alpha: 0.85),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: FacelessTheme.danger.withValues(alpha: 0.08),
+        border: Border.all(color: FacelessTheme.danger.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.error_outline,
+                  color: FacelessTheme.danger, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: FacelessTheme.danger,
+                  ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            s.lastError ?? context.l10n.songDetailUnknownError,
+            style: const TextStyle(color: FacelessTheme.textPrimary),
+          ),
+          if (hint != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              hint,
+              style: TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: FacelessTheme.textSecondary.withValues(alpha: 0.9),
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1789,5 +1918,144 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     _performVideoController?.removeListener(_onPerformVideoTick);
     _performVideoController?.dispose();
     super.dispose();
+  }
+}
+
+// ─── cover materialising ──────────────────────────────────────────────────
+
+/// Deterministic jewel-tone wash shown while no cover exists yet (or as the
+/// base layer under [_MaterializingCover] so a slow network never flashes a
+/// plain grey box). Seeded so the same song always gets the same gradient.
+class _CoverPlaceholder extends StatelessWidget {
+  final String seed;
+  const _CoverPlaceholder({required this.seed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: coverGradient(seed),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: FacelessTheme.border),
+      ),
+      alignment: Alignment.center,
+      child: Icon(Icons.music_note,
+          size: 56, color: FacelessTheme.textPrimary.withValues(alpha: 0.55)),
+    );
+  }
+}
+
+/// Reveals the fetched cover with a champagne shimmer/fade once its image
+/// has actually painted a frame — not merely once its URL resolved, so a
+/// slow CDN never skips straight to a half-decoded image. The [_CoverPlaceholder]
+/// wash stays underneath throughout (visible instantly, and again if the
+/// image ever errors) so there's never a blank/grey gap.
+///
+/// The cover URL is fetched exactly once per State lifetime (`late final`,
+/// mirroring `_ClipThumbBoxState`/`_CharacterSheetPanelState` in
+/// run_detail_screen.dart) rather than on every parent rebuild — the parent
+/// rebuilds frequently (e.g. every video-player tick), and a fresh
+/// `Future`/`Image` on each of those would otherwise replay this reveal (or
+/// flicker back to the placeholder) constantly. This is safe because the
+/// only flow that actually changes the cover image ([_regenerateCover])
+/// already routes through a `_summary = null` intermediate state, which
+/// tears down and rebuilds this whole subtree — a fresh [_MaterializingCoverState]
+/// is created then, so the new cover's URL is fetched fresh.
+///
+/// Honors `MediaQuery.disableAnimations` (jumps straight to the fully
+/// revealed state, no fade/scale/wash).
+class _MaterializingCover extends StatefulWidget {
+  final FacelessApiClient client;
+  final String runId;
+  const _MaterializingCover({required this.client, required this.runId});
+
+  @override
+  State<_MaterializingCover> createState() => _MaterializingCoverState();
+}
+
+class _MaterializingCoverState extends State<_MaterializingCover> {
+  late final Future<Uri> _future = widget.client.songCoverUrl(widget.runId);
+  bool _loaded = false;
+
+  void _markLoaded() {
+    if (_loaded || !mounted) return;
+    setState(() => _loaded = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final revealDuration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 900);
+    return FutureBuilder<Uri>(
+      future: _future,
+      builder: (ctx, snap) {
+        if (!snap.hasData) return _CoverPlaceholder(seed: widget.runId);
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            _CoverPlaceholder(seed: widget.runId),
+            Image.network(
+              snap.data!.toString(),
+              fit: BoxFit.cover,
+              errorBuilder: (ctx2, err, stack) {
+                // A genuinely missing/broken cover: mark "loaded" so the
+                // shimmer wash clears instead of glowing forever over the
+                // plain gradient placeholder underneath.
+                WidgetsBinding.instance
+                    .addPostFrameCallback((_) => _markLoaded());
+                return const SizedBox.shrink();
+              },
+              frameBuilder: (ctx3, child, frame, wasSynchronouslyLoaded) {
+                // A cached image (e.g. re-opening a song already viewed
+                // this session) resolves synchronously — still mark it
+                // loaded so the wash clears, just skip the fade-in itself
+                // (nothing to fade from; the frame is already on screen).
+                if (frame != null || wasSynchronouslyLoaded) {
+                  WidgetsBinding.instance
+                      .addPostFrameCallback((_) => _markLoaded());
+                }
+                if (wasSynchronouslyLoaded) return child;
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: _loaded ? 1.0 : 0.0),
+                  duration: revealDuration,
+                  curve: Curves.easeOutCubic,
+                  builder: (context, t, c) => Opacity(
+                    opacity: t,
+                    child: Transform.scale(scale: 1.04 - (0.04 * t), child: c),
+                  ),
+                  child: child,
+                );
+              },
+            ),
+            // Champagne shimmer wash — bright at the moment the image
+            // starts painting, fading away as the reveal completes.
+            IgnorePointer(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 1.0, end: _loaded ? 0.0 : 1.0),
+                duration: revealDuration,
+                curve: Curves.easeOutCubic,
+                builder: (context, t, _) => Opacity(
+                  opacity: t * 0.5,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          FacelessTheme.accent2.withValues(alpha: 0.55),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

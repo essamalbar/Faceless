@@ -4,6 +4,8 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
+import '../ui/brand.dart';
+import '../ui/primitives.dart';
 
 /// Cost dashboard — shows total Kie.ai (Veo + Flux) spend across all runs,
 /// plus a sortable per-run breakdown. Doesn't include ElevenLabs or LLM
@@ -80,15 +82,7 @@ class _CostScreenState extends State<CostScreen> {
                   const SizedBox(height: 16),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(
-                      _sortByAmount ? l.costByAmount : l.costByDate,
-                      style: const TextStyle(
-                        color: FacelessTheme.textSecondary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
+                    child: Eyebrow(_sortByAmount ? l.costByAmount : l.costByDate),
                   ),
                   const SizedBox(height: 8),
                   ...rows.map((r) => _RunSpendTile(row: r, total: s.totalUsd)),
@@ -114,29 +108,23 @@ class _TotalCard extends StatelessWidget {
     final perRun = summary.runCount == 0
         ? 0.0
         : summary.totalUsd / summary.runCount;
-    return Container(
+    return GlassCard(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [FacelessTheme.accent, FacelessTheme.accent2],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
+      radius: 14,
+      accentEdge: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(l.costTotalKieSpend,
               style: const TextStyle(
-                  color: Colors.black87,
+                  color: FacelessTheme.textSecondary,
                   fontWeight: FontWeight.w700,
                   fontSize: 11,
                   letterSpacing: 1.5)),
           const SizedBox(height: 6),
           Text('\$${summary.totalUsd.toStringAsFixed(2)}',
               style: const TextStyle(
-                  color: Colors.black,
+                  color: FacelessTheme.accent2,
                   fontWeight: FontWeight.w900,
                   fontSize: 38,
                   height: 1.0)),
@@ -166,13 +154,13 @@ class _Metric extends StatelessWidget {
         children: [
           Text(label,
               style: const TextStyle(
-                  color: Colors.black54,
+                  color: FacelessTheme.textSecondary,
                   fontWeight: FontWeight.w700,
                   fontSize: 10,
                   letterSpacing: 1.2)),
           Text(value,
               style: const TextStyle(
-                  color: Colors.black,
+                  color: FacelessTheme.textPrimary,
                   fontWeight: FontWeight.w800,
                   fontSize: 18)),
         ],
