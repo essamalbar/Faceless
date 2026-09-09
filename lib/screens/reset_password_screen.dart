@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme.dart';
+import '../ui/brand.dart';
 import '../widgets/faceless_logo.dart';
 
 /// Shown when the user returns from a password-reset email link. Supabase
@@ -186,18 +187,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           const SizedBox(height: 20),
                           SizedBox(
                             height: 48,
-                            child: FilledButton(
+                            child: GradientButton(
+                              expand: true,
+                              loading: _busy,
                               onPressed: _busy ? null : _submit,
-                              child: _busy
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text('Update password'),
+                              label: 'Update password',
                             ),
                           ),
                         ],
