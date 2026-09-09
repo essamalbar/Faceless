@@ -8,8 +8,8 @@
 
 html,
 body {
-  background: #0A0E1A;
-  color: #E5E7EB;
+  background: #0C0B0E;
+  color: #EFE9DE;
 }
 
 /* Smooth scrolling for anchor links from the nav */
@@ -17,10 +17,10 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Hide the default focus ring on the gold buttons; we use a custom one */
+/* Hide the default focus ring on the champagne buttons; we use a custom one */
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid #E7B53C;
+  outline: 2px solid #C9A96E;
   outline-offset: 3px;
   border-radius: 8px;
 }

@@ -8,24 +8,27 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Mirrors lib/theme.dart so the website and the app share a palette.
-        bg: "#0A0E1A",
-        surface: "#121828",
-        surface2: "#1A2238",
-        accent: "#E7B53C",      // brand gold
-        accent2: "#8B5CF6",     // violet for variety
-        rose: "#EC8FA9",        // warm rose — the middle note of the stage-light gradient
-        ink: "#E5E7EB",
+        // Mirrors the app's "Obsidian & Champagne" theme so the website and
+        // the app share a palette.
+        bg: "#0C0B0E",
+        bgDeep: "#08070A",
+        surface: "#16151A",
+        surface2: "#1E1C22",
+        accent: "#C9A96E",      // champagne
+        accent2: "#E4CE9E",     // champagne bright
+        accentDeep: "#B4915A",  // champagne deep
+        ink: "#EFE9DE",         // warm off-white — never pure white
         // Bumped muted from #9CA3AF → #B4BAC4 to clear the WCAG AA
-        // 4.5:1 contrast threshold against bg #0A0E1A. The old value
-        // measured ~3.7:1 on its own and dropped below 3:1 once we
-        // dimmed it further with /80, /70, /60 opacity modifiers
-        // throughout page.tsx — Lighthouse a11y was flagging dozens of
-        // contrast failures on every section's body copy.
+        // 4.5:1 contrast threshold against bg. The old value measured
+        // ~3.7:1 on its own and dropped below 3:1 once we dimmed it
+        // further with /80, /70, /60 opacity modifiers throughout
+        // page.tsx — Lighthouse a11y was flagging dozens of contrast
+        // failures on every section's body copy. Re-verified against
+        // the new bg #0C0B0E: ~10:1, still comfortably clears AA.
         muted: "#B4BAC4",
-        danger: "#EF4444",
-        success: "#10B981",
-        warning: "#F59E0B",
+        danger: "#C6564E",
+        success: "#9DBB9C",
+        warning: "#D9A441",
       },
       fontFamily: {
         // `--font-inter` and `--font-arabic` are injected by next/font in
