@@ -17,6 +17,7 @@ import 'package:google_fonts/google_fonts.dart';
 class FacelessTheme {
   // --- Palette (obsidian + champagne) ------------------------------------
   static const bg = Color(0xFF0C0B0E); // warm near-black base (mesh paints wash)
+  static const bgDeep = Color(0xFF08070A); // darkest stop for the ambient mesh gradient
   static const surface = Color(0xFF16151A); // SOLID dark card / menu ground
   static const surface2 = Color(0xFF1E1C22); // slightly lighter dark
   static const accent = Color(0xFFC9A96E); // champagne (the one metallic accent)
