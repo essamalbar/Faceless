@@ -238,46 +238,50 @@ class GradientButton extends StatelessWidget {
     );
     return Opacity(
       opacity: disabled ? 0.5 : 1,
-      child: Container(
-        decoration: BoxDecoration(
-          // Dark ground lit by a faint champagne wash top-to-bottom.
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              FacelessTheme.accent.withValues(alpha: 0.15),
-              FacelessTheme.accent.withValues(alpha: 0.045),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: FacelessTheme.borderAccent),
-          boxShadow: disabled
-              ? null
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.40),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-        ),
-        // Subtle inner sheen along the top edge — an outer BoxShadow can't
-        // fake an inset highlight, so this is a fading gradient overlay.
-        foregroundDecoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(13),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.white.withValues(alpha: 0.06), Colors.transparent],
-            stops: const [0.0, 0.22],
-          ),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
+      child: Semantics(
+        button: true,
+        enabled: !disabled,
+        child: Container(
+          decoration: BoxDecoration(
+            // Dark ground lit by a faint champagne wash top-to-bottom.
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                FacelessTheme.accent.withValues(alpha: 0.15),
+                FacelessTheme.accent.withValues(alpha: 0.045),
+              ],
+            ),
             borderRadius: BorderRadius.circular(13),
-            onTap: disabled ? null : onPressed,
-            child: Padding(padding: padding, child: child),
+            border: Border.all(color: FacelessTheme.borderAccent),
+            boxShadow: disabled
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.40),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+          ),
+          // Subtle inner sheen along the top edge — an outer BoxShadow can't
+          // fake an inset highlight, so this is a fading gradient overlay.
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.white.withValues(alpha: 0.06), Colors.transparent],
+              stops: const [0.0, 0.22],
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(13),
+              onTap: disabled ? null : onPressed,
+              child: Padding(padding: padding, child: child),
+            ),
           ),
         ),
       ),

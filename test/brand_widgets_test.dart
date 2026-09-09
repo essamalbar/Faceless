@@ -51,6 +51,37 @@ void main() {
     expect(find.text('animated'), findsOneWidget);
   });
 
+  testWidgets('GradientButton exposes button semantics (enabled)', (t) async {
+    final handle = t.ensureSemantics();
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: GradientButton(
+      label: 'Go', onPressed: () {}))));
+    expect(
+      t.getSemantics(find.text('Go')),
+      isSemantics(
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        hasTapAction: true,
+      ),
+    );
+    handle.dispose();
+  });
+
+  testWidgets('GradientButton exposes button semantics (disabled)', (t) async {
+    final handle = t.ensureSemantics();
+    await t.pumpWidget(const MaterialApp(home: Scaffold(body: GradientButton(
+      label: 'Go', onPressed: null))));
+    expect(
+      t.getSemantics(find.text('Go')),
+      isSemantics(
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: false,
+      ),
+    );
+    handle.dispose();
+  });
+
   test('coverGradient uses jewel set, never violet/pink', () {
     for (final s in ['a','song','رحلة','xyz','12','artist']) {
       final g = coverGradient(s);

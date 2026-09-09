@@ -68,12 +68,17 @@ class FacelessTheme {
     Locale? locale,
   }) {
     final isArabic = locale?.languageCode == 'ar';
+    // Negative tracking (the Cormorant default) reads fine on disconnected
+    // Latin letterforms but breaks connected Arabic script — Amiri's glyphs
+    // rely on positive/zero spacing to keep letter joins intact. Never apply
+    // negative letter-spacing to the Arabic (Amiri) branch.
+    final arabicLetterSpacing = letterSpacing < 0 ? 0.0 : letterSpacing;
     final style = isArabic
         ? GoogleFonts.amiri(
             fontSize: size,
             fontWeight: weight,
             height: height,
-            letterSpacing: letterSpacing,
+            letterSpacing: arabicLetterSpacing,
             color: color ?? textPrimary,
           )
         : GoogleFonts.cormorantGaramond(

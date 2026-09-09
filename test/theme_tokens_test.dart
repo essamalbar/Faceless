@@ -26,4 +26,17 @@ void main() {
     expect(FacelessTheme.build(locale: const Locale('en')), isA<ThemeData>());
     expect(FacelessTheme.build(locale: const Locale('ar')), isA<ThemeData>());
   });
+
+  testWidgets('display() never applies negative letter-spacing to Arabic (Amiri)', (_) async {
+    // Default (-0.5) is fine on disconnected Latin letterforms (Cormorant)...
+    expect(FacelessTheme.display(locale: const Locale('en')).letterSpacing, -0.5);
+    // ...but breaks connected Arabic script (Amiri) — must be clamped to 0.
+    expect(FacelessTheme.display(locale: const Locale('ar')).letterSpacing, 0.0);
+    // A positive value is a deliberate choice and must pass through unchanged
+    // for both scripts — the guard only clamps negative tracking.
+    expect(
+      FacelessTheme.display(locale: const Locale('ar'), letterSpacing: 1.0).letterSpacing,
+      1.0,
+    );
+  });
 }

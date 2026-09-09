@@ -190,32 +190,43 @@ class _LivingWaveformState extends State<LivingWaveform>
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final animating = widget.animate && !reduceMotion;
-    final gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: widget.color != null
-          ? [widget.color!, widget.color!]
-          : [FacelessTheme.accent2, FacelessTheme.accentDeep],
-    );
+    final topColor = widget.color ?? FacelessTheme.accent2;
+    final bottomColor = widget.color ?? FacelessTheme.accentDeep;
+
+    // Multiply against each color's own alpha (not replace it) so a caller
+    // passing an already-translucent `color:` keeps that translucency — the
+    // old `Opacity(pulse)` wrapper multiplied on top of whatever the bar
+    // painted, it didn't override it.
+    BoxDecoration decorationFor(double pulse) => BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              topColor.withValues(alpha: topColor.a * pulse),
+              bottomColor.withValues(alpha: bottomColor.a * pulse),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(2),
+        );
 
     Widget bar(int i) {
       final baseFraction = _heightFractionFor(i);
       final barHeight = widget.height * baseFraction;
-      final container = Container(
-        key: ValueKey('wavebar_$i'),
-        width: 2.5,
-        height: barHeight,
-        margin: const EdgeInsetsDirectional.only(end: 3),
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(2),
-        ),
-      );
-      if (!animating) return container;
+      if (!animating) {
+        return Container(
+          key: ValueKey('wavebar_$i'),
+          width: 2.5,
+          height: barHeight,
+          margin: const EdgeInsetsDirectional.only(end: 3),
+          decoration: decorationFor(1.0),
+        );
+      }
       // Stagger: each bar's phase is offset around the shared controller.
-      // NOTE: no key on this wrapper — the bar-count test finds every
-      // widget whose key starts with 'wavebar_', so an extra keyed
-      // ancestor here would double-count each bar.
+      // The pulsing alpha is baked into the bar's own gradient color (no
+      // per-bar Opacity widget / saveLayer) inside this AnimatedBuilder;
+      // Transform.scale (a cheap transform layer) still drives the height
+      // pulse. Key stays on the Container itself — the bar-count test finds
+      // every widget whose key starts with 'wavebar_'.
       final phase = (i % 6) / 6.0;
       return AnimatedBuilder(
         animation: _controller,
@@ -224,16 +235,19 @@ class _LivingWaveformState extends State<LivingWaveform>
           // Triangle wave 0.35..1.0, matching the artboard's scaleY(0.35..1).
           final wave = 1.0 - (2 * t - 1).abs();
           final scale = 0.35 + wave * 0.65;
-          return Opacity(
-            opacity: 0.55 + wave * 0.45,
-            child: Transform.scale(
-              scaleY: scale,
-              alignment: Alignment.center,
-              child: child,
+          final alpha = 0.55 + wave * 0.45;
+          return Transform.scale(
+            scaleY: scale,
+            alignment: Alignment.center,
+            child: Container(
+              key: ValueKey('wavebar_$i'),
+              width: 2.5,
+              height: barHeight,
+              margin: const EdgeInsetsDirectional.only(end: 3),
+              decoration: decorationFor(alpha),
             ),
           );
         },
-        child: container,
       );
     }
 
