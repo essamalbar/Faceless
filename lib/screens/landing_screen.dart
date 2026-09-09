@@ -233,7 +233,7 @@ class _NowPlayingCard extends StatelessWidget {
                 height: 50,
                 decoration: const BoxDecoration(
                     gradient: FacelessTheme.brandGradient, shape: BoxShape.circle),
-                child: const Icon(Icons.play_arrow_rounded, color: Colors.white),
+                child: const Icon(Icons.play_arrow_rounded, color: FacelessTheme.ink),
               ),
             ],
           ),
@@ -440,20 +440,22 @@ class _ShowcaseItem {
 // Mix songs + short videos so visitors see both modes work — the
 // gallery shouldn't read as a one-genre product.
 List<_ShowcaseItem> _showcase(AppLocalizations l10n) => [
+      // Jewel-tone family only (matches ui/brand.dart's coverGradient
+      // palette) — no violet/plum/indigo/pink.
       _ShowcaseItem(
         title: 'نبض المدينة',
         tagline: l10n.landingShowcaseTagline1,
-        gradient: const [Color(0xFFB07F1F), Color(0xFFE7B53C)],
+        gradient: const [Color(0xFF3E2E1C), Color(0xFFA0762E)], // bronze
       ),
       _ShowcaseItem(
         title: 'رحلة العودة',
         tagline: l10n.landingShowcaseTagline2,
-        gradient: const [Color(0xFF8B5CF6), Color(0xFF5B21B6)],
+        gradient: const [Color(0xFF233A44), Color(0xFF2E7A6E)], // teal
       ),
       _ShowcaseItem(
         title: 'همس القمر',
         tagline: l10n.landingShowcaseTagline3,
-        gradient: const [Color(0xFF1E3A8A), Color(0xFF312E81)],
+        gradient: const [Color(0xFF1F3A30), Color(0xFF2E7A5C)], // emerald
       ),
     ];
 
@@ -556,7 +558,7 @@ class _ShowcaseCard extends StatelessWidget {
                     item.title,
                     textDirection: TextDirection.rtl,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: FacelessTheme.textPrimary,
                       fontWeight: FontWeight.w800,
                       fontSize: 17,
                       shadows: [Shadow(blurRadius: 6)],
@@ -566,7 +568,7 @@ class _ShowcaseCard extends StatelessWidget {
                   Text(
                     item.tagline,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.8),
+                      color: FacelessTheme.textPrimary.withValues(alpha: 0.8),
                       fontSize: 11,
                       letterSpacing: 0.3,
                     ),
@@ -656,11 +658,10 @@ class _Pricing extends StatelessWidget {
                 child: SizedBox(
                   width: 240,
                   height: 48,
-                  child: FilledButton(
+                  child: GradientButton(
+                    expand: true,
+                    label: l10n.landingStartFree,
                     onPressed: () => _goLogin(context, signUp: true),
-                    child: Text(l10n.landingStartFree,
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
                   ),
                 ),
               ),
