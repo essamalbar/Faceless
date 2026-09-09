@@ -192,6 +192,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeHeroSubtitle => 'Create your short stories with AI';
 
   @override
+  String get homeGreetingEyebrow => 'Welcome back';
+
+  @override
+  String get homeHeroHeading => 'What will your artist sing tonight?';
+
+  @override
   String get homeStartCreating => 'Start creating';
 
   @override

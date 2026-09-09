@@ -192,6 +192,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get homeHeroSubtitle => 'اصنع قصصك القصيرة بالذكاء الاصطناعي';
 
   @override
+  String get homeGreetingEyebrow => 'أهلاً بعودتك';
+
+  @override
+  String get homeHeroHeading => 'ماذا سيغني فنانك الليلة؟';
+
+  @override
   String get homeStartCreating => 'ابدأ الإبداع';
 
   @override

@@ -55,6 +55,8 @@
   "homeServerUnreachable": "تعذّر الوصول إلى الخادم.",
   "homeHeroTagline": "أغانٍ ومقاطع فيديو عربية قصيرة بالذكاء الاصطناعي",
   "homeHeroSubtitle": "اصنع قصصك القصيرة بالذكاء الاصطناعي",
+  "homeGreetingEyebrow": "أهلاً بعودتك",
+  "homeHeroHeading": "ماذا سيغني فنانك الليلة؟",
   "homeStartCreating": "ابدأ الإبداع",
   "homeFreeToWrite": "الكتابة مجانية · اشترك لإخراج الفيديو",
   "homeChooseTheme": "اختر ثيمة",

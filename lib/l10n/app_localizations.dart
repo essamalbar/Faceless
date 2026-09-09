@@ -428,6 +428,18 @@ abstract class AppLocalizations {
   /// **'Create your short stories with AI'**
   String get homeHeroSubtitle;
 
+  /// No description provided for @homeGreetingEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back'**
+  String get homeGreetingEyebrow;
+
+  /// No description provided for @homeHeroHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'What will your artist sing tonight?'**
+  String get homeHeroHeading;
+
   /// No description provided for @homeStartCreating.
   ///
   /// In en, this message translates to:

@@ -111,6 +111,8 @@
   "homeServerUnreachable": "Could not reach the server.",
   "homeHeroTagline": "AI-powered Arabic songs & short videos",
   "homeHeroSubtitle": "Create your short stories with AI",
+  "homeGreetingEyebrow": "Welcome back",
+  "homeHeroHeading": "What will your artist sing tonight?",
   "homeStartCreating": "Start creating",
   "homeFreeToWrite": "Free to write · Subscribe to render",
   "homeChooseTheme": "Choose a theme",
