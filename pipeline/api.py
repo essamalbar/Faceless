@@ -5866,9 +5866,12 @@ def youtube_auth_callback(code: str = "", state: str = "", error: str = ""):
 
     if error or not code:
         return HTMLResponse(
-            f"<html><body style='font-family:sans-serif'>"
-            f"<h3>YouTube connection cancelled</h3><p>{error or 'no code'}"
-            f"</p></body></html>", status_code=400)
+            f"<html><body style='font-family:system-ui,-apple-system,sans-serif;"
+            f"background:#0C0B0E;color:#EFE9DE;display:grid;place-items:center;"
+            f"height:100vh;margin:0;text-align:center'>"
+            f"<div><h3 style='color:#C9A96E'>YouTube connection cancelled</h3>"
+            f"<p>{error or 'no code'}</p></div>"
+            f"</body></html>", status_code=400)
     user_id = _yt_verify_state(state)
     cid, secret, redirect = _yt_oauth_config()
     tokens = yt.exchange_code(cid, secret, code, redirect)
@@ -5887,9 +5890,10 @@ def youtube_auth_callback(code: str = "", state: str = "", error: str = ""):
         "connected_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     })
     return HTMLResponse(
-        "<html><body style='font-family:sans-serif;background:#F2EFF7;"
-        "display:grid;place-items:center;height:100vh'><div>"
-        f"<h2>✅ Connected: {title}</h2>"
+        "<html><body style='font-family:system-ui,-apple-system,sans-serif;"
+        "background:#0C0B0E;color:#EFE9DE;display:grid;place-items:center;"
+        "height:100vh;margin:0;text-align:center'><div>"
+        f"<h2 style='color:#C9A96E'>✅ Connected: {title}</h2>"
         "<p>Return to the Faceless Lab app.</p></div></body></html>")
 
 
