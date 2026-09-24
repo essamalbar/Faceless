@@ -90,7 +90,7 @@ export function PromptInput({ appUrl }: { appUrl: string }) {
           className="relative w-full bg-transparent text-ink caret-accent placeholder:text-muted/80 px-5 pt-5 pb-3 text-base sm:text-lg leading-relaxed resize-none outline-none font-arabic"
         />
         <div className="relative flex items-center justify-between px-3 pb-3 pt-1">
-          <div className="flex items-center gap-2 px-2 text-[11px] text-muted/70">
+          <div className="flex items-center gap-2 px-2 text-[11px] text-muted/80">
             <Sparkles className="w-3 h-3 text-accent" />
             One line is enough
           </div>

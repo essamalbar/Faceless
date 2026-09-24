@@ -85,7 +85,7 @@ export function SiteFooter() {
           ))}
         </div>
       </div>
-      <div className="max-w-7xl mx-auto mt-10 pt-6 border-t border-ink/5 text-[12px] text-muted/70 leading-relaxed">
+      <div className="max-w-7xl mx-auto mt-10 pt-6 border-t border-ink/5 text-[12px] text-muted/80 leading-relaxed">
         Payments are securely processed by{" "}
         <a href="https://www.paddle.com" className="underline hover:text-ink" rel="noopener noreferrer" target="_blank">Paddle.com</a>{" "}
         as our Merchant of Record. Billing, invoices, and tax are handled by Paddle. © {year} Faceless Lab.

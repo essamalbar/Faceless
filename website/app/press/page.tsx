@@ -311,7 +311,7 @@ function SectionTitle({ en, ar }: { en: string; ar: string }) {
     <h2 className="font-display font-medium text-3xl sm:text-5xl lg:text-6xl tracking-[-0.03em] leading-tight">
       {en}
       <span
-        className="ml-3 text-muted/60 text-xl sm:text-2xl font-normal font-arabic"
+        className="ml-3 text-muted/80 text-xl sm:text-2xl font-normal font-arabic"
         dir="rtl"
       >
         {ar}

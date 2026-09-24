@@ -128,7 +128,7 @@ export default function PricingPage() {
             </div>
           ))}
         </div>
-        <p className="max-w-3xl mx-auto text-center text-[12px] text-muted/70 mt-8 leading-relaxed">
+        <p className="max-w-3xl mx-auto text-center text-[12px] text-muted/80 mt-8 leading-relaxed">
           Prices in USD. Payments, invoices, and any applicable taxes are processed by Paddle.com, our Merchant of Record.
           See our{" "}
           <a href="/refund" className="underline hover:text-ink">Refund &amp; Cancellation Policy</a> and{" "}

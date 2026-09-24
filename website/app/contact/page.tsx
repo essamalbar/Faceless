@@ -71,7 +71,7 @@ export default function ContactPage() {
           <div className="text-[14px] text-ink/85 leading-relaxed">
             <div className="font-semibold mb-1">Faceless Lab</div>
             Dubai, United Arab Emirates
-            <div className="text-[12px] text-muted/70 mt-2">
+            <div className="text-[12px] text-muted/80 mt-2">
               Order fulfillment and payments are provided by Paddle.com Market Ltd as our Merchant of Record.
             </div>
           </div>

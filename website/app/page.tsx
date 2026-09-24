@@ -191,7 +191,7 @@ function Hero() {
               Compose <ArrowRight className="w-3.5 h-3.5" />
             </a>
           </div>
-          <p className="text-[12px] text-muted/70 mt-3">Free to write the lyrics. Pay only when you love the song.</p>
+          <p className="text-[12px] text-muted/80 mt-3">Free to write the lyrics. Pay only when you love the song.</p>
         </motion.div>
       </div>
 
@@ -223,11 +223,11 @@ function HowItWorks() {
           <Reveal key={s.n} delay={i * 0.08}>
             <li className="h-full rounded-2xl border border-ink/10 bg-ink/[0.02] p-7 hover:border-ink/20 hover:bg-ink/[0.035] transition-colors">
               <div className="flex items-center justify-between mb-6">
-                <span className="font-display italic text-2xl text-muted/50">{s.n}</span>
+                <span className="font-display italic text-2xl text-muted/80">{s.n}</span>
                 <s.icon className="w-5 h-5 text-accent" />
               </div>
               <h3 className="text-lg font-semibold tracking-tight mb-1.5">{s.title}
-                <span className="font-arabic text-muted/60 text-sm ml-2" dir="rtl">{s.ar}</span>
+                <span className="font-arabic text-muted/80 text-sm ml-2" dir="rtl">{s.ar}</span>
               </h3>
               <p className="text-[14px] text-muted leading-relaxed">{s.body}</p>
             </li>
@@ -307,7 +307,7 @@ function Showcase() {
           </Reveal>
         ))}
       </div>
-      <p className="text-[12px] text-muted/60 mt-6">Illustrative — your songs are yours to keep and share.</p>
+      <p className="text-[12px] text-muted/80 mt-6">Illustrative — your songs are yours to keep and share.</p>
     </Section>
   );
 }
@@ -382,7 +382,9 @@ function PricingTeaser() {
 function FinalCTA() {
   return (
     <section className="relative overflow-hidden px-5 sm:px-8 py-28 sm:py-32">
-      <Aurora intensity={0.4} />
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <Aurora intensity={0.4} />
+      </div>
       <div className="max-w-2xl mx-auto text-center">
         <div className="inline-flex mb-7"><SparkleLogo size={46} /></div>
         <h2 className="font-display font-medium tracking-[-0.02em] text-4xl sm:text-6xl leading-[1.03]">
@@ -413,7 +415,7 @@ function Section({ id, eyebrow, title, ar, children }: {
           <SectionEyebrow text={eyebrow} />
           <h2 className="font-display font-medium tracking-[-0.02em] leading-tight text-3xl sm:text-5xl">
             {title}
-            <span className="font-arabic text-muted/50 text-xl sm:text-2xl font-normal ml-3" dir="rtl">{ar}</span>
+            <span className="font-arabic text-muted/80 text-xl sm:text-2xl font-normal ml-3" dir="rtl">{ar}</span>
           </h2>
         </Reveal>
         {children}
