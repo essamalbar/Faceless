@@ -5863,14 +5863,16 @@ def youtube_auth_callback(code: str = "", state: str = "", error: str = ""):
     the user identity; verify it, exchange the code, store the token."""
     from fastapi.responses import HTMLResponse
     from pipeline import youtube as yt
+    import html as _html
 
     if error or not code:
+        safe_error = _html.escape(error) if error else "no code"
         return HTMLResponse(
             f"<html><body style='font-family:system-ui,-apple-system,sans-serif;"
             f"background:#0C0B0E;color:#EFE9DE;display:grid;place-items:center;"
             f"height:100vh;margin:0;text-align:center'>"
             f"<div><h3 style='color:#C9A96E'>YouTube connection cancelled</h3>"
-            f"<p>{error or 'no code'}</p></div>"
+            f"<p>{safe_error}</p></div>"
             f"</body></html>", status_code=400)
     user_id = _yt_verify_state(state)
     cid, secret, redirect = _yt_oauth_config()
@@ -6014,9 +6016,10 @@ def public_artist_page(handle: str):
     found = _find_artist_public(handle)
     if found is None:
         return HTMLResponse(
-            "<html><body style='font-family:sans-serif;background:#F2EFF7;"
-            "color:#1B1E28;display:grid;place-items:center;height:100vh'>"
-            "<div><h2>Artist not found</h2></div></body></html>",
+            "<html><body style='font-family:system-ui,-apple-system,sans-serif;"
+            "background:#0C0B0E;color:#EFE9DE;display:grid;place-items:center;"
+            "height:100vh;margin:0;text-align:center'>"
+            "<div><h2 style='color:#C9A96E'>Artist not found</h2></div></body></html>",
             status_code=404)
     artist, user_dir = found
 
@@ -6051,28 +6054,28 @@ def public_artist_page(handle: str):
 <meta property="og:title" content="{name}">
 <meta property="og:description" content="{bio or 'AI artist on Faceless Lab'}">
 <style>
- body{{margin:0;font-family:Inter,system-ui,sans-serif;color:#1B1E28;
-   background:linear-gradient(135deg,#FBF6EE,#F2EFF7 50%,#E9EBF2);min-height:100vh}}
+ body{{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#EFE9DE;
+   background:linear-gradient(135deg,#0C0B0E,#100E15 50%,#08070A);min-height:100vh}}
  .wrap{{max-width:680px;margin:0 auto;padding:48px 20px}}
  .head{{display:flex;gap:20px;align-items:center;margin-bottom:8px}}
  .avatar{{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;
-   font-size:40px;font-weight:700;color:#fff;
-   background:linear-gradient(135deg,#34A473,#38BFA6);flex:none}}
- h1{{margin:0;font-size:32px;letter-spacing:-.02em}}
- .bio{{color:#767C8C;margin:4px 0 0}}
- .count{{color:#A2A7B4;font-size:13px;margin:24px 0 12px}}
- .song{{display:flex;align-items:center;gap:14px;background:#fff;
-   border:1px solid rgba(20,22,45,.07);border-radius:16px;padding:12px 16px;
-   margin-bottom:10px;text-decoration:none;color:#1B1E28;
-   box-shadow:0 12px 34px rgba(30,32,70,.08)}}
+   font-size:40px;font-weight:700;color:#0C0B0E;
+   background:linear-gradient(135deg,#C9A96E,#E4CE9E);flex:none}}
+ h1{{margin:0;font-size:32px;letter-spacing:-.02em;color:#EFE9DE}}
+ .bio{{color:#A39C8E;margin:4px 0 0}}
+ .count{{color:#A39C8E;font-size:13px;margin:24px 0 12px}}
+ .song{{display:flex;align-items:center;gap:14px;background:#16151A;
+   border:1px solid rgba(238,233,222,.10);border-radius:16px;padding:12px 16px;
+   margin-bottom:10px;text-decoration:none;color:#EFE9DE;
+   box-shadow:0 12px 34px rgba(0,0,0,.4)}}
  .art{{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;
-   background:linear-gradient(135deg,#E7E1F4,#DCEBE6);flex:none}}
+   background:linear-gradient(135deg,rgba(201,169,110,.22),rgba(180,145,90,.14));flex:none}}
  .t{{flex:1;font-weight:600}}
- .play{{width:36px;height:36px;border-radius:50%;background:#232636;color:#fff;
+ .play{{width:36px;height:36px;border-radius:50%;background:#C9A96E;color:#0C0B0E;
    display:grid;place-items:center;font-size:13px}}
- .empty{{color:#767C8C}}
- .foot{{margin-top:36px;color:#A2A7B4;font-size:13px;text-align:center}}
- .foot a{{color:#2FA36B;text-decoration:none;font-weight:600}}
+ .empty{{color:#A39C8E}}
+ .foot{{margin-top:36px;color:#6E685D;font-size:13px;text-align:center}}
+ .foot a{{color:#E4CE9E;text-decoration:none;font-weight:600}}
 </style></head><body><div class="wrap">
  <div class="head">
    <div class="avatar">{_html.escape(initial)}</div>

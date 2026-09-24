@@ -23,6 +23,7 @@ ADMIN_HTML: str = r"""<!doctype html>
     --card:#16151A; --ink:#EFE9DE; --muted:#A39C8E; --faint:#6E685D;
     --line:rgba(238,233,222,0.10); --line2:rgba(238,233,222,0.06);
     --green:#C9A96E; --green-ink:#E4CE9E; --green-bg:rgba(201,169,110,0.10); --green-line:rgba(201,169,110,0.30);
+    --sage:#9DBB9C; --sage-bg:rgba(157,187,156,0.12); --sage-line:rgba(157,187,156,0.32);
     --amber:#D9A441; --amber-bg:rgba(217,164,65,0.12); --amber-line:rgba(217,164,65,0.35);
     --grey:#A39C8E; --grey-bg:rgba(163,156,142,0.12); --grey-line:rgba(163,156,142,0.30);
     --charcoal:#2B2822;
@@ -145,7 +146,7 @@ ADMIN_HTML: str = r"""<!doctype html>
   /* ---- notices ---- */
   .notice{border-radius:var(--r-sm);padding:10px 13px;font-size:13px;margin:0 0 14px;border:1px solid transparent}
   .notice.err{background:var(--red-bg);color:var(--red-ink);border-color:var(--red-line)}
-  .notice.ok{background:rgba(157,187,156,.12);color:#9DBB9C;border-color:rgba(157,187,156,.32)}
+  .notice.ok{background:var(--sage-bg);color:var(--sage);border-color:var(--sage-line)}
   .notice.info{background:var(--blue-bg);color:var(--blue-ink);border-color:var(--blue-line)}
   .notice.warn{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-line)}
   .notice b{font-weight:700}
@@ -160,7 +161,7 @@ ADMIN_HTML: str = r"""<!doctype html>
   td.mono,th.mono,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
   td.mono{color:var(--muted)}
   .num{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:600}
-  .num.pos{color:#9DBB9C}
+  .num.pos{color:var(--sage)}
   .num.neg{color:var(--red-ink)}
 
   /* ---- badges / pills ---- */
@@ -168,7 +169,7 @@ ADMIN_HTML: str = r"""<!doctype html>
     display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
     font-size:11.5px;font-weight:600;line-height:1.4;white-space:nowrap;border:1px solid transparent;
   }
-  .badge.green{background:rgba(157,187,156,.12);color:#9DBB9C;border-color:rgba(157,187,156,.32)}
+  .badge.green{background:var(--sage-bg);color:var(--sage);border-color:var(--sage-line)}
   .badge.red{background:var(--red-bg);color:var(--red-ink);border-color:var(--red-line)}
   .badge.amber{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-line)}
   .badge.grey{background:var(--grey-bg);color:var(--grey);border-color:var(--grey-line)}
@@ -176,7 +177,7 @@ ADMIN_HTML: str = r"""<!doctype html>
   .kind{text-transform:capitalize}
   .chip{display:inline-block;padding:3px 9px;border-radius:7px;background:var(--grey-bg);border:1px solid var(--grey-line);font-size:11.5px;color:var(--muted);margin:0 4px 4px 0}
   .chk{font-weight:800;font-size:13px}
-  .chk.yes{color:#9DBB9C}
+  .chk.yes{color:var(--sage)}
   .chk.no{color:var(--red)}
   .chk.unk{color:var(--faint)}
 
@@ -199,7 +200,7 @@ ADMIN_HTML: str = r"""<!doctype html>
   .grant input.amt{width:66px}
   .grant input.rsn{width:130px}
   .rowmsg{font-size:12px;color:var(--muted);margin-top:6px;white-space:pre-wrap;word-break:break-word;max-width:340px}
-  .rowmsg.ok{color:#9DBB9C}
+  .rowmsg.ok{color:var(--sage)}
   .rowmsg.err{color:var(--red-ink)}
   .rowmsg:empty{display:none}
 
