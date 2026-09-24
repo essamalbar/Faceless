@@ -43,6 +43,14 @@ out/
 runs/
 .cache/
 
+# Local scratch / agent data — never part of the deployed image. Excluding
+# these also fixes a `gcloud builds submit` crash: files dropped in ai_song/
+# by WhatsApp/AirDrop carry a com.apple.macl xattr that makes them unreadable
+# to gcloud (EPERM "Operation not permitted"), aborting the whole upload.
+ai_song/
+.claude/
+.superpowers/
+
 # IDE / system
 .idea/
 .vscode/
