@@ -60,8 +60,8 @@ export default function PricingPage() {
       <section className="pt-36 pb-8 sm:pt-44 px-5 sm:px-8 text-center">
         <div className="max-w-3xl mx-auto">
           <div className="flex justify-center"><SectionEyebrow text="PRICING" /></div>
-          <h1 className="text-[40px] sm:text-6xl font-semibold tracking-[-0.035em] leading-[1.03] mb-5">
-            Simple monthly plans.
+          <h1 className="font-display font-medium text-[40px] sm:text-6xl tracking-[-0.035em] leading-[1.03] mb-5">
+            Simple monthly <span className="italic text-accent">plans.</span>
           </h1>
           <p className="text-lg text-muted max-w-xl mx-auto">
             One credit makes one song. Drafts are free — you only spend a credit when you approve a full generation.
@@ -77,7 +77,7 @@ export default function PricingPage() {
               className={`rounded-2xl p-7 flex flex-col ${
                 p.featured
                   ? "border-2 border-accent bg-gradient-to-br from-accent/[0.08] to-transparent"
-                  : "border border-white/10 bg-white/[0.02]"
+                  : "border border-ink/10 bg-ink/[0.02]"
               }`}
             >
               {p.featured && (
@@ -103,7 +103,7 @@ export default function PricingPage() {
                 className={`inline-flex items-center justify-center gap-2 font-semibold text-[14px] px-5 py-3 rounded-lg transition-colors ${
                   p.featured
                     ? "bg-accent text-bg hover:bg-accent/90"
-                    : "bg-white/[0.06] text-ink hover:bg-white/[0.1]"
+                    : "bg-ink/[0.06] text-ink hover:bg-ink/[0.1]"
                 }`}
               >
                 Choose {p.name}
@@ -121,7 +121,7 @@ export default function PricingPage() {
             ["Refund on failure", "If a song fails to generate, the credit is returned automatically."],
             ["Cancel anytime", "Manage or cancel your subscription from the app — no lock-in."],
           ].map(([h, b]) => (
-            <div key={h} className="border border-white/10 rounded-xl p-5 bg-white/[0.02]">
+            <div key={h} className="border border-ink/10 rounded-xl p-5 bg-ink/[0.02]">
               <div className="flex justify-center mb-2"><Sparkles className="w-4 h-4 text-accent" /></div>
               <div className="font-semibold text-[15px] mb-1">{h}</div>
               <p className="text-[13px] text-muted leading-relaxed">{b}</p>

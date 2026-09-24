@@ -9,6 +9,14 @@
 // ImageResponse default) renders Arabic as tofu boxes. We fetch Noto
 // Naskh Arabic from Google Fonts and pass it via the `fonts` option.
 // Fetch happens at build time so there's no runtime latency.
+//
+// Palette + type match the app's "Obsidian & Champagne" system (same
+// tokens as tailwind.config.ts: bg #0C0B0E, accent #C9A96E, accent2
+// #E4CE9E, ink #EFE9DE) so the social-share card matches the brand.
+// The headline uses Cormorant Garamond — the site's editorial display
+// serif (app/layout.tsx) — fetched as a static .ttf the same way as the
+// Inter/Tajawal weights below, since @vercel/og needs raw font bytes and
+// can't consume next/font's CSS vars at build time.
 
 import { ImageResponse } from "next/og";
 
@@ -20,10 +28,14 @@ export const alt = "Faceless Lab — AI Arabic song generator";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-// Inter for Latin (heavier weight = bigger visual presence in OG cards
-// where the image renders at small sizes in Twitter/WhatsApp feeds).
+// Inter for Latin UI text (mark, eyebrow, value props) — heavier weight
+// reads better at the small sizes OG cards render at in social feeds.
 const INTER_BOLD =
   "https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIw2boKoduKmMEVuLyfMZhrib2Bg-4.ttf";
+// Cormorant Garamond Bold — the editorial display serif for the headline,
+// matching the app/website's font-display token.
+const CORMORANT_BOLD =
+  "https://fonts.gstatic.com/s/cormorantgaramond/v21/co3umX5slCNuHLi8bLeY9MK7whWMhyjypVO7abI26QOD_hg9GnM.ttf";
 // Tajawal Bold — Latin + Arabic, designed for UI. Satori (the JSX→PNG
 // engine inside ImageResponse) can't parse some OpenType lookups in Noto
 // Naskh Arabic ("substFormat: 3 is not yet supported"). Tajawal uses a
@@ -38,8 +50,9 @@ async function loadFont(url: string): Promise<ArrayBuffer> {
 }
 
 export default async function Image() {
-  const [inter, arabic] = await Promise.all([
+  const [inter, cormorant, arabic] = await Promise.all([
     loadFont(INTER_BOLD),
+    loadFont(CORMORANT_BOLD),
     loadFont(TAJAWAL_ARABIC_BOLD),
   ]);
 
@@ -54,11 +67,11 @@ export default async function Image() {
           justifyContent: "space-between",
           padding: "72px 80px",
           background:
-            "linear-gradient(135deg, #0a0a0f 0%, #1a0f0a 60%, #0a0a0f 100%)",
+            "linear-gradient(135deg, #0C0B0E 0%, #16151A 55%, #08070A 100%)",
           position: "relative",
         }}
       >
-        {/* Accent gold blob — subtle radial glow in the top-right */}
+        {/* Champagne blob — subtle radial glow in the top-right */}
         <div
           style={{
             position: "absolute",
@@ -68,10 +81,10 @@ export default async function Image() {
             height: 600,
             borderRadius: "50%",
             background:
-              "radial-gradient(circle, rgba(231,181,60,0.32) 0%, rgba(231,181,60,0) 70%)",
+              "radial-gradient(circle, rgba(201,169,110,0.32) 0%, rgba(201,169,110,0) 70%)",
           }}
         />
-        {/* Accent at bottom-left for asymmetric balance */}
+        {/* Champagne accent at bottom-left for asymmetric balance */}
         <div
           style={{
             position: "absolute",
@@ -81,7 +94,7 @@ export default async function Image() {
             height: 550,
             borderRadius: "50%",
             background:
-              "radial-gradient(circle, rgba(231,181,60,0.18) 0%, rgba(231,181,60,0) 70%)",
+              "radial-gradient(circle, rgba(201,169,110,0.18) 0%, rgba(201,169,110,0) 70%)",
           }}
         />
 
@@ -93,13 +106,13 @@ export default async function Image() {
               height: 44,
               borderRadius: 12,
               background:
-                "linear-gradient(135deg, #e7b53c 0%, #d9961f 100%)",
+                "linear-gradient(135deg, #C9A96E 0%, #B4915A 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontSize: 28,
               fontWeight: 700,
-              color: "#0a0a0f",
+              color: "#0C0B0E",
             }}
           >
             F
@@ -108,7 +121,7 @@ export default async function Image() {
             style={{
               fontSize: 24,
               fontWeight: 600,
-              color: "#fafafa",
+              color: "#EFE9DE",
               letterSpacing: "-0.01em",
             }}
           >
@@ -119,7 +132,7 @@ export default async function Image() {
               marginLeft: "auto",
               fontSize: 14,
               fontWeight: 600,
-              color: "#e7b53c",
+              color: "#C9A96E",
               letterSpacing: "0.18em",
               textTransform: "uppercase",
             }}
@@ -141,18 +154,19 @@ export default async function Image() {
             style={{
               display: "flex",
               flexDirection: "column",
-              fontSize: 86,
+              fontFamily: "Cormorant",
+              fontSize: 92,
               fontWeight: 700,
-              letterSpacing: "-0.045em",
-              lineHeight: 0.96,
-              maxWidth: 1000,
+              letterSpacing: "-0.02em",
+              lineHeight: 1.02,
+              maxWidth: 1050,
             }}
           >
-            <div style={{ color: "#fafafa" }}>Write one line.</div>
+            <div style={{ color: "#EFE9DE" }}>Write one line.</div>
             <div
               style={{
                 background:
-                  "linear-gradient(135deg, #e7b53c 0%, #fde68a 50%, #d9961f 100%)",
+                  "linear-gradient(135deg, #C9A96E 0%, #E4CE9E 50%, #B4915A 100%)",
                 backgroundClip: "text",
                 color: "transparent",
               }}
@@ -161,13 +175,13 @@ export default async function Image() {
             </div>
           </div>
 
-          {/* Arabic subtitle — RTL, Noto Naskh font */}
+          {/* Arabic subtitle — RTL, Tajawal font */}
           <div
             style={{
               fontFamily: "NotoArabic",
               fontSize: 40,
               fontWeight: 700,
-              color: "rgba(250,250,250,0.78)",
+              color: "rgba(239,233,222,0.78)",
               direction: "rtl",
               maxWidth: 1000,
             }}
@@ -182,15 +196,15 @@ export default async function Image() {
             display: "flex",
             gap: 28,
             fontSize: 18,
-            color: "rgba(250,250,250,0.7)",
+            color: "rgba(239,233,222,0.7)",
             zIndex: 1,
             alignItems: "center",
           }}
         >
           <span>Original vocals</span>
-          <span style={{ color: "rgba(231,181,60,0.5)" }}>·</span>
+          <span style={{ color: "rgba(201,169,110,0.5)" }}>·</span>
           <span>Written lyrics</span>
-          <span style={{ color: "rgba(231,181,60,0.5)" }}>·</span>
+          <span style={{ color: "rgba(201,169,110,0.5)" }}>·</span>
           <span>Free draft first</span>
         </div>
       </div>
@@ -199,6 +213,7 @@ export default async function Image() {
       ...size,
       fonts: [
         { name: "Inter", data: inter, style: "normal", weight: 700 },
+        { name: "Cormorant", data: cormorant, style: "normal", weight: 700 },
         { name: "NotoArabic", data: arabic, style: "normal", weight: 700 },
       ],
     },

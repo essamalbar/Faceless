@@ -9,6 +9,7 @@ import {
   Mail,
 } from "lucide-react";
 import { SparkleLogo } from "@/components/sparkle-logo";
+import { SectionEyebrow } from "@/components/site-chrome";
 
 // ----------------------------------------------------------------------------
 // PRESS KIT — /press
@@ -63,7 +64,7 @@ export default function PressPage() {
 
 function SimpleNav() {
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-bg/85 border-b border-white/[0.06]">
+    <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-bg/85 border-b border-ink/10">
       <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center">
         <Link href="/" className="flex items-center gap-2.5">
           <SparkleLogo size={28} />
@@ -85,7 +86,7 @@ function SimpleNav() {
           </a>
           <a
             href={`${APP_URL}/`}
-            className="bg-accent text-bg font-semibold text-[13px] px-4 py-2 rounded-md hover:bg-accent/90 transition-colors"
+            className="border border-accent/35 text-accent font-semibold text-[13px] px-4 py-2 rounded-md hover:bg-accent/10 hover:border-accent/50 transition-colors"
           >
             Start free
           </a>
@@ -97,14 +98,12 @@ function SimpleNav() {
 
 function Hero() {
   return (
-    <section className="relative pt-40 pb-20 sm:pt-48 sm:pb-24 px-5 sm:px-8 border-b border-white/[0.05]">
+    <section className="relative pt-40 pb-20 sm:pt-48 sm:pb-24 px-5 sm:px-8 border-b border-ink/5">
       <div className="max-w-4xl mx-auto">
         <SectionEyebrow text="PRESS KIT" />
-        <h1 className="text-[44px] sm:text-6xl lg:text-7xl font-semibold tracking-[-0.04em] leading-[1.02] mb-8">
-          Resources for{" "}
-          <span className="bg-gradient-to-br from-accent via-amber-200 to-accent2 bg-clip-text text-transparent">
-            journalists &amp; creators.
-          </span>
+        <h1 className="font-display font-medium text-[44px] sm:text-6xl lg:text-7xl tracking-[-0.04em] leading-[1.02] mb-8">
+          Resources for journalists &amp;{" "}
+          <span className="italic text-accent">creators.</span>
         </h1>
         <p className="text-lg sm:text-xl text-ink/85 leading-relaxed max-w-2xl">
           Everything you need to write about Faceless Lab: boilerplate,
@@ -120,11 +119,11 @@ function Hero() {
 // ----------------------------------------------------------------------------
 function Boilerplate() {
   return (
-    <section className="relative py-24 px-5 sm:px-8 border-b border-white/[0.05]">
+    <section className="relative py-24 px-5 sm:px-8 border-b border-ink/5">
       <div className="max-w-4xl mx-auto">
         <SectionEyebrow text="ABOUT THE COMPANY" />
         <SectionTitle en="One paragraph, ready to paste." ar="فقرة جاهزة للنسخ" />
-        <div className="mt-10 bg-white/[0.02] border border-white/10 rounded-2xl p-7 sm:p-9">
+        <div className="mt-10 bg-ink/[0.02] border border-ink/10 rounded-2xl p-7 sm:p-9">
           <p className="text-[15px] sm:text-base text-ink/90 leading-relaxed">
             Faceless Lab is an Arabic-first AI song studio. From a single
             Arabic sentence — a theme, a feeling, a memory — the platform
@@ -169,7 +168,7 @@ function BrandAssets() {
     },
   ];
   return (
-    <section className="relative py-24 px-5 sm:px-8 border-b border-white/[0.05]">
+    <section className="relative py-24 px-5 sm:px-8 border-b border-ink/5">
       <div className="max-w-6xl mx-auto">
         <SectionEyebrow text="BRAND ASSETS" />
         <SectionTitle en="Logo, icon, screenshots." ar="الشعار والأيقونة ولقطات الشاشة" />
@@ -182,7 +181,7 @@ function BrandAssets() {
           {assets.map((a) => (
             <div
               key={a.title}
-              className="bg-white/[0.02] border border-white/10 rounded-2xl p-7 hover:bg-white/[0.04] hover:border-white/20 transition-colors flex flex-col"
+              className="bg-ink/[0.02] border border-ink/10 rounded-2xl p-7 hover:bg-ink/[0.04] hover:border-ink/20 transition-colors flex flex-col"
             >
               <div className="w-11 h-11 rounded-xl bg-accent/10 border border-accent/25 flex items-center justify-center mb-5">
                 <a.icon className="w-5 h-5 text-accent" />
@@ -227,11 +226,11 @@ function KeyFacts() {
     },
   ];
   return (
-    <section className="relative py-24 px-5 sm:px-8 border-b border-white/[0.05]">
+    <section className="relative py-24 px-5 sm:px-8 border-b border-ink/5">
       <div className="max-w-4xl mx-auto">
         <SectionEyebrow text="KEY FACTS" />
         <SectionTitle en="The basics." ar="المعلومات الأساسية" />
-        <dl className="mt-12 divide-y divide-white/[0.06] border-y border-white/[0.06]">
+        <dl className="mt-12 divide-y divide-ink/[0.06] border-y border-ink/[0.06]">
           {facts.map((f) => (
             <div
               key={f.label}
@@ -262,8 +261,8 @@ function PressContact() {
           <SparkleLogo size={48} />
         </div>
         <SectionEyebrow text="PRESS CONTACT" />
-        <h2 className="mt-2 text-3xl sm:text-5xl font-semibold tracking-[-0.035em] mb-3">
-          Talk to Essam directly.
+        <h2 className="mt-2 font-display font-medium text-3xl sm:text-5xl tracking-[-0.035em] mb-3">
+          Talk to <span className="italic text-accent">Essam</span> directly.
         </h2>
         <p className="text-base text-muted max-w-md mx-auto mb-9">
           Working on a story? Need a quote, an interview, or a higher-res
@@ -271,7 +270,7 @@ function PressContact() {
         </p>
         <a
           href={`mailto:${PRESS_EMAIL}?subject=Press%20inquiry%20%E2%80%94%20Faceless%20Lab`}
-          className="inline-flex items-center gap-2 bg-accent text-bg font-semibold text-base px-7 py-3.5 rounded-lg hover:bg-accent/90 transition-colors shadow-xl shadow-accent/20"
+          className="inline-flex items-center gap-2 border border-accent/40 text-accent font-semibold text-base px-7 py-3.5 rounded-lg hover:bg-accent/10 hover:border-accent/60 transition shadow-lg shadow-accent/10"
         >
           <Mail className="w-4 h-4" />
           {PRESS_EMAIL}
@@ -284,7 +283,7 @@ function PressContact() {
 
 function SimpleFooter() {
   return (
-    <footer className="border-t border-white/[0.06] py-10 px-5 sm:px-8">
+    <footer className="border-t border-ink/10 py-10 px-5 sm:px-8">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center gap-5">
         <div className="flex items-center gap-2.5">
           <SparkleLogo size={22} />
@@ -304,23 +303,12 @@ function SimpleFooter() {
 }
 
 // ----------------------------------------------------------------------------
-// PRIMITIVES — matched to /about (and visually equivalent to page.tsx,
-// minus framer-motion since both new pages are Server Components).
+// PRIMITIVES — SectionEyebrow is shared from site-chrome (Task 5 dedup);
+// SectionTitle stays local (dual-language en/ar heading, matched to /about).
 // ----------------------------------------------------------------------------
-function SectionEyebrow({ text }: { text: string }) {
-  return (
-    <div className="flex items-center gap-3 mb-4">
-      <div className="w-8 h-px bg-accent" />
-      <span className="text-[10px] font-bold text-accent tracking-[0.22em]">
-        {text}
-      </span>
-    </div>
-  );
-}
-
 function SectionTitle({ en, ar }: { en: string; ar: string }) {
   return (
-    <h2 className="text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.03em] leading-tight">
+    <h2 className="font-display font-medium text-3xl sm:text-5xl lg:text-6xl tracking-[-0.03em] leading-tight">
       {en}
       <span
         className="ml-3 text-muted/60 text-xl sm:text-2xl font-normal font-arabic"
