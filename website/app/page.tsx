@@ -13,14 +13,17 @@ import {
   Disc3, Heart, Check, ScrollText, AudioLines,
 } from "lucide-react";
 import { SparkleLogo } from "@/components/sparkle-logo";
-import { SiteFooter } from "@/components/site-chrome";
+import { SiteFooter, SectionEyebrow } from "@/components/site-chrome";
+import { Aurora } from "@/components/aurora";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://app.faceless-lab.com";
 
 // ============================================================================
 // PAGE — an AI Arabic SONG studio. No video anywhere; no third-party names.
 // Signature: a living audio waveform (sound made visible). Editorial serif
-// (Fraunces) for lyric-like headlines; warm gold→rose→violet stage-light glow.
+// (Cormorant) for lyric-like headlines; Obsidian & Champagne — a single
+// restrained champagne accent, nothing cooler or more saturated. Background
+// glow via the shared Aurora (champagne + deep teal mesh).
 // ============================================================================
 export default function Page() {
   return (
@@ -52,7 +55,7 @@ function Nav() {
   return (
     <header
       className={`fixed top-0 inset-x-0 z-50 transition-colors duration-300 ${
-        scrolled ? "backdrop-blur-xl bg-bg/80 border-b border-white/[0.06]" : "bg-transparent"
+        scrolled ? "backdrop-blur-xl bg-bg/85 border-b border-ink/10" : "bg-transparent"
       }`}
     >
       <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center">
@@ -70,7 +73,7 @@ function Nav() {
           <a href={`${APP_URL}/`} className="text-[13px] text-muted hover:text-ink px-3 py-2">Sign in</a>
           <a
             href={`${APP_URL}/`}
-            className="text-[13px] font-semibold px-4 py-2 rounded-full text-bg bg-gradient-to-r from-accent via-rose to-accent2 hover:brightness-110 transition"
+            className="text-[13px] font-semibold px-4 py-2 rounded-full border border-accent/40 text-accent hover:bg-accent/10 hover:border-accent/60 transition-colors"
           >
             Start free
           </a>
@@ -100,7 +103,7 @@ function Waveform({ bars = 56, className = "" }: { bars?: number; className?: st
       {items.map((b, i) => (
         <motion.span
           key={i}
-          className="w-[3px] sm:w-[4px] rounded-full bg-gradient-to-t from-accent2/25 via-rose to-accent"
+          className="w-[3px] sm:w-[4px] rounded-full bg-gradient-to-t from-accentDeep/30 via-accent to-accent2"
           style={{ height: "100%", transformOrigin: "center" }}
           initial={{ scaleY: b.base * 0.5 }}
           animate={reduce ? { scaleY: b.base } : { scaleY: [b.base * 0.32, b.base, b.base * 0.5, b.base * 0.88, b.base * 0.4] }}
@@ -137,16 +140,15 @@ function Hero() {
 
   return (
     <section ref={ref} id="top" className="relative overflow-hidden pt-36 pb-24 sm:pt-44 sm:pb-28 px-5 sm:px-8">
-      {/* warm stage-light glow */}
+      {/* champagne + deep-teal stage-light glow */}
       <motion.div style={{ y: glowY }} aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-1/2 -translate-x-1/2 -top-20 h-[520px] w-[820px] max-w-[120vw] rounded-full blur-[120px] opacity-40"
-             style={{ background: "radial-gradient(ellipse at center, rgba(231,181,60,0.55), rgba(236,143,169,0.35) 42%, rgba(139,92,246,0.28) 68%, transparent 75%)" }} />
+        <Aurora intensity={0.5} />
       </motion.div>
 
       <div className="max-w-3xl mx-auto text-center">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-[11px] tracking-[0.14em] text-muted mb-8">
-          <AudioLines className="w-3.5 h-3.5 text-rose" />
+          className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-ink/[0.03] px-3.5 py-1.5 text-[11px] tracking-[0.14em] text-muted mb-8">
+          <AudioLines className="w-3.5 h-3.5 text-accent" />
           AI ARABIC SONG STUDIO
         </motion.div>
 
@@ -154,8 +156,7 @@ function Hero() {
           className="font-display font-medium tracking-[-0.02em] leading-[1.02] text-[46px] sm:text-7xl">
           Turn a feeling
           <br />
-          into a{" "}
-          <span className="italic bg-gradient-to-r from-accent via-rose to-accent2 bg-clip-text text-transparent">song.</span>
+          into a <span className="italic text-accent">song.</span>
         </motion.h1>
 
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.2 }}
@@ -172,25 +173,25 @@ function Hero() {
         {/* Prompt device — the product's first move, made tangible */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.36 }}
           className="mt-9 max-w-lg mx-auto">
-          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-surface/70 p-2 pl-4 text-left shadow-2xl shadow-black/40">
+          <div className="flex items-center gap-2 rounded-2xl border border-ink/15 bg-surface2/70 p-2 pl-4 text-left shadow-2xl shadow-black/40">
             <PenLine className="w-4 h-4 text-muted shrink-0" />
             <div className="flex-1 min-w-0 text-[14px] sm:text-[15px] text-ink/90 py-1.5 truncate">
               <span className="text-muted">a song about </span>
               <span className="relative inline-block align-bottom">
                 <AnimatePresence mode="wait">
                   <motion.span key={ti} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.35 }}
-                    className="bg-gradient-to-r from-accent via-rose to-accent2 bg-clip-text text-transparent font-medium">
+                    className="text-accent font-medium">
                     {themes[ti]}
                   </motion.span>
                 </AnimatePresence>
               </span>
             </div>
             <a href={`${APP_URL}/`}
-              className="shrink-0 inline-flex items-center gap-1.5 text-[13px] font-semibold px-4 py-2.5 rounded-xl text-bg bg-gradient-to-r from-accent via-rose to-accent2 hover:brightness-110 transition">
+              className="shrink-0 inline-flex items-center gap-1.5 text-[13px] font-semibold px-4 py-2.5 rounded-xl bg-accent text-bg hover:bg-accent/90 transition">
               Compose <ArrowRight className="w-3.5 h-3.5" />
             </a>
           </div>
-          <p className="text-[12px] text-muted/70 mt-3">Free to write the lyrics. Pay only when you love the song.</p>
+          <p className="text-[12px] text-muted/80 mt-3">Free to write the lyrics. Pay only when you love the song.</p>
         </motion.div>
       </div>
 
@@ -220,13 +221,13 @@ function HowItWorks() {
       <ol className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-4">
         {steps.map((s, i) => (
           <Reveal key={s.n} delay={i * 0.08}>
-            <li className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-7 hover:border-white/20 hover:bg-white/[0.035] transition-colors">
+            <li className="h-full rounded-2xl border border-ink/10 bg-ink/[0.02] p-7 hover:border-ink/20 hover:bg-ink/[0.035] transition-colors">
               <div className="flex items-center justify-between mb-6">
-                <span className="font-display italic text-2xl text-muted/50">{s.n}</span>
-                <s.icon className="w-5 h-5 text-rose" />
+                <span className="font-display italic text-2xl text-muted/80">{s.n}</span>
+                <s.icon className="w-5 h-5 text-accent" />
               </div>
               <h3 className="text-lg font-semibold tracking-tight mb-1.5">{s.title}
-                <span className="font-arabic text-muted/60 text-sm ml-2" dir="rtl">{s.ar}</span>
+                <span className="font-arabic text-muted/80 text-sm ml-2" dir="rtl">{s.ar}</span>
               </h3>
               <p className="text-[14px] text-muted leading-relaxed">{s.body}</p>
             </li>
@@ -254,9 +255,9 @@ function WhatYouGet() {
       <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map((it, i) => (
           <Reveal key={it.title} delay={(i % 3) * 0.06}>
-            <div className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:border-white/20 transition-colors">
-              <div className="w-10 h-10 rounded-xl grid place-items-center mb-4 bg-gradient-to-br from-accent/15 via-rose/10 to-accent2/15 border border-white/10">
-                <it.icon className="w-4.5 h-4.5 text-rose" />
+            <div className="h-full rounded-2xl border border-ink/10 bg-ink/[0.02] p-6 hover:border-ink/20 transition-colors">
+              <div className="w-10 h-10 rounded-xl grid place-items-center mb-4 bg-gradient-to-br from-accent/15 to-accent2/10 border border-ink/10">
+                <it.icon className="w-4.5 h-4.5 text-accent" />
               </div>
               <h3 className="text-[15px] font-semibold tracking-tight mb-1.5">{it.title}</h3>
               <p className="text-[13px] text-muted leading-relaxed">{it.body}</p>
@@ -273,11 +274,11 @@ function WhatYouGet() {
 // ----------------------------------------------------------------------------
 function Showcase() {
   const cards = [
-    { title: "ليل بيروت", en: "Ballad", from: "from-indigo-500/40", to: "to-rose/40" },
+    { title: "ليل بيروت", en: "Ballad", from: "from-slate-700/40", to: "to-accentDeep/40" },
     { title: "طريق العودة", en: "Folk", from: "from-amber-500/40", to: "to-accent2/40" },
-    { title: "صيف الحب", en: "Pop", from: "from-rose/50", to: "to-orange-400/40" },
-    { title: "همسة قمر", en: "Lo-fi", from: "from-accent2/50", to: "to-cyan-400/30" },
-    { title: "زفة العريس", en: "Wedding", from: "from-accent/50", to: "to-rose/40" },
+    { title: "صيف الحب", en: "Pop", from: "from-accent/50", to: "to-orange-400/40" },
+    { title: "همسة قمر", en: "Lo-fi", from: "from-accentDeep/50", to: "to-cyan-400/30" },
+    { title: "زفة العريس", en: "Wedding", from: "from-accent/50", to: "to-accent2/40" },
     { title: "وطن", en: "Anthem", from: "from-emerald-500/40", to: "to-accent/40" },
   ];
   return (
@@ -288,12 +289,12 @@ function Showcase() {
       <div className="mt-12 grid grid-cols-2 md:grid-cols-3 gap-4">
         {cards.map((c, i) => (
           <Reveal key={c.title} delay={(i % 3) * 0.06}>
-            <div className="group relative aspect-square rounded-2xl overflow-hidden border border-white/10">
+            <div className="group relative aspect-square rounded-2xl overflow-hidden border border-ink/10">
               <div className={`absolute inset-0 bg-gradient-to-br ${c.from} ${c.to}`} />
               <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/40 to-transparent" />
               {/* play glyph */}
-              <div className="absolute top-3 right-3 w-9 h-9 rounded-full grid place-items-center bg-black/30 backdrop-blur border border-white/20 opacity-90 group-hover:scale-110 transition-transform">
-                <div className="w-0 h-0 ml-0.5 border-y-[6px] border-y-transparent border-l-[10px] border-l-white" />
+              <div className="absolute top-3 right-3 w-9 h-9 rounded-full grid place-items-center bg-black/30 backdrop-blur border border-ink/20 opacity-90 group-hover:scale-110 transition-transform">
+                <div className="w-0 h-0 ml-0.5 border-y-[6px] border-y-transparent border-l-[10px] border-l-ink" />
               </div>
               <div className="absolute inset-x-0 bottom-0 p-4">
                 <div className="h-8 mb-2 opacity-80"><Waveform bars={28} /></div>
@@ -306,7 +307,7 @@ function Showcase() {
           </Reveal>
         ))}
       </div>
-      <p className="text-[12px] text-muted/60 mt-6">Illustrative — your songs are yours to keep and share.</p>
+      <p className="text-[12px] text-muted/80 mt-6">Illustrative — your songs are yours to keep and share.</p>
     </Section>
   );
 }
@@ -326,8 +327,8 @@ function Why() {
       <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-4">
         {points.map((p, i) => (
           <Reveal key={p.title} delay={(i % 2) * 0.06}>
-            <div className="flex gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-              <Check className="w-5 h-5 text-rose shrink-0 mt-0.5" />
+            <div className="flex gap-4 rounded-2xl border border-ink/10 bg-ink/[0.02] p-6">
+              <Check className="w-5 h-5 text-accent shrink-0 mt-0.5" />
               <div>
                 <h3 className="text-[15px] font-semibold tracking-tight mb-1">{p.title}</h3>
                 <p className="text-[13px] text-muted leading-relaxed">{p.body}</p>
@@ -354,20 +355,20 @@ function PricingTeaser() {
       <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {tiers.map((t, i) => (
           <Reveal key={t.name} delay={i * 0.06}>
-            <div className={`h-full rounded-2xl p-6 flex flex-col ${t.featured ? "border-2 border-transparent bg-surface [background:linear-gradient(theme(colors.surface),theme(colors.surface))_padding-box,linear-gradient(to_right,#E7B53C,#EC8FA9,#8B5CF6)_border-box] border-2" : "border border-white/10 bg-white/[0.02]"}`}>
-              {t.featured && <div className="self-start text-[10px] font-bold tracking-[0.16em] mb-3 bg-gradient-to-r from-accent via-rose to-accent2 bg-clip-text text-transparent">MOST POPULAR</div>}
+            <div className={`h-full rounded-2xl p-6 flex flex-col ${t.featured ? "border-2 border-transparent bg-surface [background:linear-gradient(theme(colors.surface),theme(colors.surface))_padding-box,linear-gradient(to_right,theme(colors.accentDeep),theme(colors.accent),theme(colors.accent2))_border-box]" : "border border-ink/10 bg-ink/[0.02]"}`}>
+              {t.featured && <div className="self-start text-[10px] font-bold tracking-[0.16em] mb-3 text-accent">MOST POPULAR</div>}
               <h3 className="text-lg font-semibold tracking-tight">{t.name}</h3>
               <div className="flex items-baseline gap-1 mt-2">
                 <span className="font-display text-4xl">${t.price}</span>
                 <span className="text-muted text-sm">/mo</span>
               </div>
-              <div className="text-[13px] text-rose mt-1">{t.credits} credits / month</div>
+              <div className="text-[13px] text-accent mt-1">{t.credits} credits / month</div>
             </div>
           </Reveal>
         ))}
       </div>
       <div className="mt-8">
-        <a href="/pricing" className="inline-flex items-center gap-2 text-[14px] font-medium text-ink hover:text-rose transition-colors">
+        <a href="/pricing" className="inline-flex items-center gap-2 text-[14px] font-medium text-ink hover:text-accent transition-colors">
           See full plans <ArrowRight className="w-4 h-4" />
         </a>
       </div>
@@ -381,18 +382,19 @@ function PricingTeaser() {
 function FinalCTA() {
   return (
     <section className="relative overflow-hidden px-5 sm:px-8 py-28 sm:py-32">
-      <div aria-hidden className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 h-[380px] w-[720px] max-w-[120vw] rounded-full blur-[120px] opacity-30"
-           style={{ background: "radial-gradient(ellipse at center, rgba(236,143,169,0.5), rgba(139,92,246,0.3) 55%, transparent 72%)" }} />
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <Aurora intensity={0.4} />
+      </div>
       <div className="max-w-2xl mx-auto text-center">
         <div className="inline-flex mb-7"><SparkleLogo size={46} /></div>
         <h2 className="font-display font-medium tracking-[-0.02em] text-4xl sm:text-6xl leading-[1.03]">
-          Your first song is <span className="italic bg-gradient-to-r from-accent via-rose to-accent2 bg-clip-text text-transparent">free.</span>
+          Your first song is <span className="italic text-accent">free.</span>
         </h2>
         <p className="text-muted max-w-md mx-auto mt-5">
           Write one line and hear the lyrics come back. Sing the full song whenever you're ready.
         </p>
         <a href={`${APP_URL}/`}
-          className="mt-9 inline-flex items-center gap-2 text-base font-semibold px-7 py-3.5 rounded-full text-bg bg-gradient-to-r from-accent via-rose to-accent2 hover:brightness-110 transition shadow-xl shadow-rose/20">
+          className="mt-9 inline-flex items-center gap-2 text-base font-semibold px-7 py-3.5 rounded-full border border-accent/40 text-accent hover:bg-accent/10 hover:border-accent/60 transition shadow-lg shadow-accent/10">
           <Sparkles className="w-4 h-4" /> Start free <ArrowRight className="w-4 h-4" />
         </a>
       </div>
@@ -407,16 +409,13 @@ function Section({ id, eyebrow, title, ar, children }: {
   id?: string; eyebrow: string; title: string; ar: string; children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="relative py-24 px-5 sm:px-8 border-t border-white/[0.05]">
+    <section id={id} className="relative py-24 px-5 sm:px-8 border-t border-ink/5">
       <div className="max-w-5xl mx-auto">
         <Reveal>
-          <div className="flex items-center gap-3 mb-4">
-            <span className="w-8 h-px bg-gradient-to-r from-accent to-rose" />
-            <span className="text-[10px] font-bold tracking-[0.22em] text-rose">{eyebrow}</span>
-          </div>
+          <SectionEyebrow text={eyebrow} />
           <h2 className="font-display font-medium tracking-[-0.02em] leading-tight text-3xl sm:text-5xl">
             {title}
-            <span className="font-arabic text-muted/50 text-xl sm:text-2xl font-normal ml-3" dir="rtl">{ar}</span>
+            <span className="font-arabic text-muted/80 text-xl sm:text-2xl font-normal ml-3" dir="rtl">{ar}</span>
           </h2>
         </Reveal>
         {children}

@@ -23,7 +23,7 @@ const NAV = [
 
 export function SiteNav({ active }: { active?: string }) {
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-bg/85 border-b border-white/[0.06]">
+    <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-bg/85 border-b border-ink/10">
       <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center">
         <Link href="/" className="flex items-center gap-2.5">
           <SparkleLogo size={28} />
@@ -44,7 +44,7 @@ export function SiteNav({ active }: { active?: string }) {
           <a href={`${APP_URL}/`} className="text-[13px] text-muted hover:text-ink px-3 py-2">Sign in</a>
           <a
             href={`${APP_URL}/`}
-            className="bg-accent text-bg font-semibold text-[13px] px-4 py-2 rounded-md hover:bg-accent/90 transition-colors"
+            className="border border-accent/35 text-accent font-semibold text-[13px] px-4 py-2 rounded-md hover:bg-accent/10 hover:border-accent/50 transition-colors"
           >
             Start free
           </a>
@@ -61,7 +61,7 @@ export function SiteFooter() {
     { h: "Legal", links: [["/terms", "Terms of Service"], ["/privacy", "Privacy Policy"], ["/refund", "Refund & Cancellation"], ["/contact", "Contact"]] },
   ];
   return (
-    <footer className="border-t border-white/[0.06] py-12 px-5 sm:px-8">
+    <footer className="border-t border-ink/10 py-12 px-5 sm:px-8">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row gap-10 sm:gap-16">
         <div className="flex items-start gap-2.5">
           <SparkleLogo size={22} />
@@ -85,7 +85,7 @@ export function SiteFooter() {
           ))}
         </div>
       </div>
-      <div className="max-w-7xl mx-auto mt-10 pt-6 border-t border-white/[0.04] text-[12px] text-muted/70 leading-relaxed">
+      <div className="max-w-7xl mx-auto mt-10 pt-6 border-t border-ink/5 text-[12px] text-muted/80 leading-relaxed">
         Payments are securely processed by{" "}
         <a href="https://www.paddle.com" className="underline hover:text-ink" rel="noopener noreferrer" target="_blank">Paddle.com</a>{" "}
         as our Merchant of Record. Billing, invoices, and tax are handled by Paddle. © {year} Faceless Lab.
@@ -104,8 +104,8 @@ export function SectionEyebrow({ text }: { text: string }) {
 }
 
 // Wrapper for the text-heavy legal pages: nav, a titled hero with a
-// "last updated" line + a plain-language review banner, a readable prose
-// column, and the shared footer.
+// "last updated" line + a plain-language review banner, a readable
+// text column, and the shared footer.
 export function LegalShell({
   eyebrow,
   title,
@@ -120,7 +120,7 @@ export function LegalShell({
   return (
     <main className="min-h-screen bg-bg text-ink overflow-x-clip">
       <SiteNav />
-      <section className="pt-36 pb-10 sm:pt-44 px-5 sm:px-8 border-b border-white/[0.05]">
+      <section className="pt-36 pb-10 sm:pt-44 px-5 sm:px-8 border-b border-ink/5">
         <div className="max-w-3xl mx-auto">
           <SectionEyebrow text={eyebrow} />
           <h1 className="text-[38px] sm:text-5xl font-semibold tracking-[-0.03em] leading-[1.05] mb-4">{title}</h1>
@@ -137,7 +137,7 @@ export function LegalShell({
   );
 }
 
-// Small building blocks for legal prose.
+// Small building blocks for legal copy.
 export function H2({ children }: { children: React.ReactNode }) {
   return <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-ink mb-3 mt-2">{children}</h2>;
 }

@@ -41,8 +41,8 @@ export default function ContactPage() {
       <section className="pt-36 pb-8 sm:pt-44 px-5 sm:px-8">
         <div className="max-w-3xl mx-auto">
           <SectionEyebrow text="CONTACT" />
-          <h1 className="text-[40px] sm:text-6xl font-semibold tracking-[-0.035em] leading-[1.03] mb-5">
-            Get in touch.
+          <h1 className="font-display font-medium text-[40px] sm:text-6xl tracking-[-0.035em] leading-[1.03] mb-5">
+            Get in <span className="italic text-accent">touch.</span>
           </h1>
           <p className="text-lg text-muted max-w-xl">
             We&apos;re a small team and read every message. We aim to reply within two business days.
@@ -53,7 +53,7 @@ export default function ContactPage() {
       <section className="px-5 sm:px-8 pb-6">
         <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4">
           {cards.map((c) => (
-            <div key={c.title} className="border border-white/10 rounded-xl p-6 bg-white/[0.02] flex flex-col">
+            <div key={c.title} className="border border-ink/10 rounded-xl p-6 bg-ink/[0.02] flex flex-col">
               <c.icon className="w-5 h-5 text-accent mb-3" />
               <div className="font-semibold text-[15px] mb-1.5">{c.title}</div>
               <p className="text-[13px] text-muted leading-relaxed flex-1">{c.body}</p>
@@ -66,12 +66,12 @@ export default function ContactPage() {
       </section>
 
       <section className="px-5 sm:px-8 py-10">
-        <div className="max-w-3xl mx-auto border border-white/10 rounded-xl p-6 bg-white/[0.02] flex items-start gap-3">
+        <div className="max-w-3xl mx-auto border border-ink/10 rounded-xl p-6 bg-ink/[0.02] flex items-start gap-3">
           <MapPin className="w-5 h-5 text-accent mt-0.5 shrink-0" />
           <div className="text-[14px] text-ink/85 leading-relaxed">
             <div className="font-semibold mb-1">Faceless Lab</div>
             Dubai, United Arab Emirates
-            <div className="text-[12px] text-muted/70 mt-2">
+            <div className="text-[12px] text-muted/80 mt-2">
               Order fulfillment and payments are provided by Paddle.com Market Ltd as our Merchant of Record.
             </div>
           </div>
