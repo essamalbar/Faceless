@@ -19,18 +19,19 @@ ADMIN_HTML: str = r"""<!doctype html>
 <title>Faceless Lab — Control Panel</title>
 <style>
   :root{
-    --bg1:#f6f7fb; --bg2:#eef1f8; --bg3:#e8ecf6;
-    --card:#ffffff; --ink:#1b1e28; --muted:#616780; --faint:#8b91a6;
-    --line:#e6e8f1; --line2:#eef0f6;
-    --green:#1f9d63; --green-ink:#137a4a; --green-bg:#e9f7ef; --green-line:#c4e8d3;
-    --amber:#b7791f; --amber-bg:#fbf1dd; --amber-line:#eed9ac;
-    --grey:#5b6070; --grey-bg:#eef0f6; --grey-line:#dfe2ec;
-    --charcoal:#272b36;
-    --red:#c23b3b; --red-ink:#a52f2f; --red-bg:#fbeceb; --red-line:#eecaca;
-    --blue-bg:#eaf1fc; --blue-line:#c9dcf6; --blue-ink:#2b5aa8;
-    --shadow-sm:0 1px 2px rgba(20,22,35,.06);
-    --shadow:0 1px 3px rgba(20,22,35,.07),0 8px 24px rgba(20,22,35,.06);
-    --shadow-lg:0 10px 40px rgba(20,22,35,.14);
+    --bg1:#0C0B0E; --bg2:#100E15; --bg3:#08070A;
+    --card:#16151A; --ink:#EFE9DE; --muted:#A39C8E; --faint:#6E685D;
+    --line:rgba(238,233,222,0.10); --line2:rgba(238,233,222,0.06);
+    --green:#C9A96E; --green-ink:#E4CE9E; --green-bg:rgba(201,169,110,0.10); --green-line:rgba(201,169,110,0.30);
+    --sage:#9DBB9C; --sage-bg:rgba(157,187,156,0.12); --sage-line:rgba(157,187,156,0.32);
+    --amber:#D9A441; --amber-bg:rgba(217,164,65,0.12); --amber-line:rgba(217,164,65,0.35);
+    --grey:#A39C8E; --grey-bg:rgba(163,156,142,0.12); --grey-line:rgba(163,156,142,0.30);
+    --charcoal:#2B2822;
+    --red:#C6564E; --red-ink:#E0847C; --red-bg:rgba(198,86,78,0.12); --red-line:rgba(198,86,78,0.35);
+    --blue-bg:rgba(110,139,166,0.12); --blue-line:rgba(110,139,166,0.30); --blue-ink:#6E8BA6;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow:0 2px 6px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.35);
+    --shadow-lg:0 16px 48px rgba(0,0,0,.55);
     --r-sm:8px; --r:12px; --r-lg:16px; --r-xl:20px;
   }
   *{box-sizing:border-box}
@@ -39,7 +40,7 @@ ADMIN_HTML: str = r"""<!doctype html>
     margin:0; color:var(--ink);
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     background:
-      radial-gradient(1200px 700px at 15% -10%, #ffffff 0%, rgba(255,255,255,0) 55%),
+      radial-gradient(1200px 700px at 15% -10%, rgba(201,169,110,.06) 0%, rgba(12,11,14,0) 55%),
       linear-gradient(135deg,var(--bg1),var(--bg2) 50%,var(--bg3));
     background-attachment:fixed;
     min-height:100vh; line-height:1.5; font-size:14px;
@@ -52,22 +53,22 @@ ADMIN_HTML: str = r"""<!doctype html>
   input,button,select{font:inherit}
   input[type=text],input[type=email],input[type=password],input[type=number]{
     padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-sm);
-    background:#fff;color:var(--ink);min-width:0;transition:border-color .15s,box-shadow .15s;
+    background:#1E1C22;color:var(--ink);min-width:0;transition:border-color .15s,box-shadow .15s;
   }
-  input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(31,157,99,.15)}
+  input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(201,169,110,.15)}
   input::placeholder{color:var(--faint)}
   label{font-size:12.5px;color:var(--muted)}
   button{
     font-weight:600;cursor:pointer;border:1px solid transparent;border-radius:var(--r-sm);
-    padding:9px 15px;background:var(--charcoal);color:#fff;transition:filter .15s,opacity .15s,background .15s;
+    padding:9px 15px;background:var(--charcoal);color:var(--ink);transition:filter .15s,opacity .15s,background .15s;
   }
   button:hover{filter:brightness(1.12)}
   button:active{filter:brightness(.95)}
   button:disabled{opacity:.55;cursor:default;filter:none}
-  button.primary{background:var(--green)}
+  button.primary{background:var(--green);color:#0C0B0E}
   button.danger{background:var(--red)}
-  button.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
-  button.ghost:hover{background:#f7f8fc;filter:none}
+  button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:rgba(238,233,222,.06);filter:none}
   button.sm{padding:5px 10px;font-size:12px;border-radius:7px}
   button.block{width:100%;padding:11px 15px}
 
@@ -80,16 +81,16 @@ ADMIN_HTML: str = r"""<!doctype html>
   .brand{display:flex;align-items:center;gap:11px;margin-bottom:22px}
   .brand .dot{
     width:38px;height:38px;border-radius:11px;flex:none;
-    background:linear-gradient(140deg,var(--green),#15c07a);
-    box-shadow:0 4px 12px rgba(31,157,99,.35);position:relative;
+    background:linear-gradient(140deg,var(--green),var(--green-ink));
+    box-shadow:0 4px 12px rgba(201,169,110,.35);position:relative;
   }
-  .brand .dot::after{content:"";position:absolute;inset:11px;border-radius:5px;background:rgba(255,255,255,.9)}
+  .brand .dot::after{content:"";position:absolute;inset:11px;border-radius:5px;background:rgba(12,11,14,.92)}
   .brand .bt{font-size:16px;font-weight:700;letter-spacing:-.01em}
   .brand .bs{font-size:12px;color:var(--muted)}
   .login-card h1{font-size:19px;margin:0 0 4px;letter-spacing:-.01em}
   .login-card .lead{color:var(--muted);font-size:13px;margin:0 0 22px}
   .field{margin-bottom:14px}
-  .field label{display:block;margin-bottom:6px;font-weight:600;color:#3a3f52}
+  .field label{display:block;margin-bottom:6px;font-weight:600;color:var(--ink)}
   .field input{width:100%}
   .login-err{
     background:var(--red-bg);border:1px solid var(--red-line);color:var(--red-ink);
@@ -100,7 +101,7 @@ ADMIN_HTML: str = r"""<!doctype html>
   /* ---- app bar ---- */
   .appbar{
     position:sticky;top:0;z-index:20;
-    background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(10px);
+    background:rgba(12,11,14,.82);backdrop-filter:saturate(180%) blur(10px);
     border-bottom:1px solid var(--line);
   }
   .appbar-in{
@@ -145,7 +146,7 @@ ADMIN_HTML: str = r"""<!doctype html>
   /* ---- notices ---- */
   .notice{border-radius:var(--r-sm);padding:10px 13px;font-size:13px;margin:0 0 14px;border:1px solid transparent}
   .notice.err{background:var(--red-bg);color:var(--red-ink);border-color:var(--red-line)}
-  .notice.ok{background:var(--green-bg);color:var(--green-ink);border-color:var(--green-line)}
+  .notice.ok{background:var(--sage-bg);color:var(--sage);border-color:var(--sage-line)}
   .notice.info{background:var(--blue-bg);color:var(--blue-ink);border-color:var(--blue-line)}
   .notice.warn{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-line)}
   .notice b{font-weight:700}
@@ -155,12 +156,12 @@ ADMIN_HTML: str = r"""<!doctype html>
   table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
   th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line2);vertical-align:middle}
   tbody tr:last-child td{border-bottom:0}
-  tbody tr:hover{background:#fafbfe}
-  th{color:var(--muted);font-weight:600;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:#fbfcfe}
+  tbody tr:hover{background:rgba(201,169,110,.05)}
+  th{color:var(--muted);font-weight:600;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:var(--bg3)}
   td.mono,th.mono,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
   td.mono{color:var(--muted)}
   .num{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:600}
-  .num.pos{color:var(--green-ink)}
+  .num.pos{color:var(--sage)}
   .num.neg{color:var(--red-ink)}
 
   /* ---- badges / pills ---- */
@@ -168,7 +169,7 @@ ADMIN_HTML: str = r"""<!doctype html>
     display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
     font-size:11.5px;font-weight:600;line-height:1.4;white-space:nowrap;border:1px solid transparent;
   }
-  .badge.green{background:var(--green-bg);color:var(--green-ink);border-color:var(--green-line)}
+  .badge.green{background:var(--sage-bg);color:var(--sage);border-color:var(--sage-line)}
   .badge.red{background:var(--red-bg);color:var(--red-ink);border-color:var(--red-line)}
   .badge.amber{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-line)}
   .badge.grey{background:var(--grey-bg);color:var(--grey);border-color:var(--grey-line)}
@@ -176,13 +177,13 @@ ADMIN_HTML: str = r"""<!doctype html>
   .kind{text-transform:capitalize}
   .chip{display:inline-block;padding:3px 9px;border-radius:7px;background:var(--grey-bg);border:1px solid var(--grey-line);font-size:11.5px;color:var(--muted);margin:0 4px 4px 0}
   .chk{font-weight:800;font-size:13px}
-  .chk.yes{color:var(--green)}
+  .chk.yes{color:var(--sage)}
   .chk.no{color:var(--red)}
   .chk.unk{color:var(--faint)}
 
   /* ---- overview grid ---- */
   .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
-  .stat{border:1px solid var(--line2);border-radius:var(--r);padding:13px 14px;background:#fcfdff}
+  .stat{border:1px solid var(--line2);border-radius:var(--r);padding:13px 14px;background:#1E1C22}
   .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px}
   .stat .v{font-size:18px;font-weight:700}
   .sub-panel{border:1px solid var(--line2);border-radius:var(--r);padding:14px}
@@ -199,15 +200,15 @@ ADMIN_HTML: str = r"""<!doctype html>
   .grant input.amt{width:66px}
   .grant input.rsn{width:130px}
   .rowmsg{font-size:12px;color:var(--muted);margin-top:6px;white-space:pre-wrap;word-break:break-word;max-width:340px}
-  .rowmsg.ok{color:var(--green-ink)}
+  .rowmsg.ok{color:var(--sage)}
   .rowmsg.err{color:var(--red-ink)}
   .rowmsg:empty{display:none}
 
   .state{color:var(--muted);font-size:13px;padding:18px 4px;text-align:center}
   .state .big{font-size:14px;color:var(--ink);font-weight:600;margin-bottom:3px}
   .stamp{color:var(--muted);font-size:12px;white-space:nowrap}
-  .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite;vertical-align:-2px;margin-right:6px}
-  .spin.dark{border-color:rgba(31,157,99,.25);border-top-color:var(--green)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(12,11,14,.35);border-top-color:#0C0B0E;border-radius:50%;animation:sp .6s linear infinite;vertical-align:-2px;margin-right:6px}
+  .spin.dark{border-color:rgba(201,169,110,.25);border-top-color:var(--green)}
   @keyframes sp{to{transform:rotate(360deg)}}
 
   /* ---- KPI header ---- */
@@ -225,7 +226,7 @@ ADMIN_HTML: str = r"""<!doctype html>
 
   /* ---- plan tiles + inline metrics ---- */
   .plan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:14px}
-  .plan{border:1px solid var(--line2);border-radius:var(--r);padding:12px 14px;background:#fcfdff}
+  .plan{border:1px solid var(--line2);border-radius:var(--r);padding:12px 14px;background:#1E1C22}
   .plan .pn{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
   .plan .pv{font-size:20px;font-weight:800}
   .badge-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
