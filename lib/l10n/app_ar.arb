@@ -621,6 +621,8 @@
   "trendGenerating": "جارٍ قراءة اتجاهات اليوم…",
   "draftMorningLabel": "مسودات الصباح",
   "draftMorningSubtitle": "مسودة مجانية كل صباح من اتجاهات اليوم — لا تدفع إلا عند الموافقة.",
+  "agentEnabledLabel": "الوكيل الفني المستقل",
+  "agentEnabledSubtitle": "يقترح الوكيل أغاني جديدة لهذا الفنان تلقائيًا حسب جدوله الخاص — تبقى الموافقة أو الرفض بيدك قبل أي إنفاق.",
   "draftSectionTitle": "مسودات الصباح",
   "draftReviewButton": "مراجعة",
   "qualityEditStyle": "تعديل الأسلوب",

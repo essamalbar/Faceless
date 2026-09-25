@@ -2215,6 +2215,13 @@ class AppLocalizationsAr extends AppLocalizations {
       'مسودة مجانية كل صباح من اتجاهات اليوم — لا تدفع إلا عند الموافقة.';
 
   @override
+  String get agentEnabledLabel => 'الوكيل الفني المستقل';
+
+  @override
+  String get agentEnabledSubtitle =>
+      'يقترح الوكيل أغاني جديدة لهذا الفنان تلقائيًا حسب جدوله الخاص — تبقى الموافقة أو الرفض بيدك قبل أي إنفاق.';
+
+  @override
   String get draftSectionTitle => 'مسودات الصباح';
 
   @override

@@ -35,6 +35,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
   String? _defaultDialect; // null = unset/auto ('' on the wire)
   late bool _autoPublishYoutube;
   late bool _morningDrafts;
+  late bool _agentEnabled;
   Uint8List? _avatarBytes; // picked but not yet uploaded (uploads on save)
   String? _avatarName;
   bool _saving = false;
@@ -57,6 +58,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
         (a == null || a.defaultDialect.isEmpty) ? null : a.defaultDialect;
     _autoPublishYoutube = a?.autoPublishYoutube ?? false; // create: OFF
     _morningDrafts = a?.morningDrafts ?? false; // create: OFF
+    _agentEnabled = a?.agentEnabled ?? false; // create: OFF
   }
 
   @override
@@ -117,6 +119,7 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
           'default_dialect': _defaultDialect ?? '',
           'auto_publish_youtube': _autoPublishYoutube,
           'morning_drafts': _morningDrafts,
+          'agent_enabled': _agentEnabled,
         });
       } else {
         artist = await widget.client.createArtist(
@@ -131,11 +134,15 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
         // — patch them on right after create, but only when the user
         // actually set them (defaults are OFF / unset). A failed patch
         // shouldn't lose the artist.
-        if (_autoPublishYoutube || _morningDrafts || _defaultDialect != null) {
+        if (_autoPublishYoutube ||
+            _morningDrafts ||
+            _agentEnabled ||
+            _defaultDialect != null) {
           try {
             artist = await widget.client.patchArtist(artist.id, {
               if (_autoPublishYoutube) 'auto_publish_youtube': true,
               if (_morningDrafts) 'morning_drafts': true,
+              if (_agentEnabled) 'agent_enabled': true,
               if (_defaultDialect != null)
                 'default_dialect': _defaultDialect!,
             });
@@ -404,6 +411,23 @@ class _ArtistEditScreenState extends State<ArtistEditScreen> {
               onChanged: _saving
                   ? null
                   : (v) => setState(() => _morningDrafts = v),
+            ),
+            // Autonomous Artist Agent: let the agent propose new songs for
+            // this artist on its own cycle. Every proposal still lands as
+            // an awaiting_approval run — the human approve/reject gate and
+            // billing are untouched.
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.agentEnabledLabel),
+              subtitle: Text(
+                l10n.agentEnabledSubtitle,
+                style: const TextStyle(
+                    fontSize: 12, color: FacelessTheme.textSecondary),
+              ),
+              value: _agentEnabled,
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _agentEnabled = v),
             ),
             const SizedBox(height: 20),
             if (_error != null)

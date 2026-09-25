@@ -1114,6 +1114,40 @@ class FacelessApiClient {
     _checkOk(r);
   }
 
+  /// Marks an `awaiting_approval` proposal rejected — a terminal state
+  /// distinct from cancel. When the run is an agent proposal
+  /// (`source == "agent"`), the server also records the rejection as a
+  /// learning signal keyed to the optional [reason].
+  Future<void> rejectSong(String id, {String reason = ''}) async {
+    final r = await _http.post(
+      await _uri('/songs/$id/reject'),
+      headers: {...await _headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'reason': reason}),
+    );
+    _checkOk(r);
+  }
+
+  // --- Autonomous Artist Agent (A&R feed) --------------------------------
+
+  /// The A&R feed: the user's agent-authored song proposals still awaiting
+  /// a human decision (Approve/Reject/Edit).
+  Future<List<AgentProposal>> listAgentProposals() async {
+    final r =
+        await _http.get(await _uri('/agent/proposals'), headers: await _headers());
+    return _parse(r, (j) => (j as List)
+        .map((x) => AgentProposal.fromJson(x as Map<String, dynamic>))
+        .toList());
+  }
+
+  /// The stored reasoning trace for an agent proposal — `{available, trace}`.
+  /// `available` is false (not an error) when the run is an agent proposal
+  /// but the worker never wrote its trace to disk.
+  Future<Map<String, dynamic>> agentTrace(String id) async {
+    final r = await _http.get(await _uri('/songs/$id/agent-trace'),
+        headers: await _headers());
+    return _parse(r, (j) => j as Map<String, dynamic>);
+  }
+
   /// Video URL with the bearer token in the query string — same browser-
   /// header-restriction workaround as `videoUrl(runId)` above.
   Future<Uri> songVideoUrl(String id) async {

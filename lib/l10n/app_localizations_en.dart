@@ -2177,6 +2177,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'A free draft every morning from the day\'s trends — you only pay when you approve.';
 
   @override
+  String get agentEnabledLabel => 'Autonomous A&R';
+
+  @override
+  String get agentEnabledSubtitle =>
+      'The agent proposes new songs for this artist on its own schedule — you still approve or reject each one before anything is spent.';
+
+  @override
   String get draftSectionTitle => 'Morning drafts';
 
   @override

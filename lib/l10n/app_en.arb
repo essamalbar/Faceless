@@ -1205,6 +1205,8 @@
   "trendGenerating": "Reading today's trends…",
   "draftMorningLabel": "Morning drafts",
   "draftMorningSubtitle": "A free draft every morning from the day's trends — you only pay when you approve.",
+  "agentEnabledLabel": "Autonomous A&R",
+  "agentEnabledSubtitle": "The agent proposes new songs for this artist on its own schedule — you still approve or reject each one before anything is spent.",
   "draftSectionTitle": "Morning drafts",
   "draftReviewButton": "Review",
   "qualityEditStyle": "Edit style",

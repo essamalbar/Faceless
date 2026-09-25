@@ -478,6 +478,11 @@ class Artist {
   // the connected channel automatically.
   final bool autoPublishYoutube;
   final bool morningDrafts;
+  // Autonomous Artist Agent: per-artist opt-in (also gated server-side by
+  // FACELESS_AGENT_ENABLED + config.agent.enabled). When on, the agent may
+  // propose new songs for this artist on its own cycle — proposals still
+  // land as `awaiting_approval` runs, never auto-spend.
+  final bool agentEnabled;
 
   Artist({
     required this.id,
@@ -495,6 +500,7 @@ class Artist {
     this.songCount = 0,
     this.autoPublishYoutube = false,
     this.morningDrafts = false,
+    this.agentEnabled = false,
   });
 
   bool get hasAvatar => avatarUpload != null || avatarRunId != null;
@@ -515,6 +521,7 @@ class Artist {
         songCount: (j['song_count'] as int?) ?? 0,
         autoPublishYoutube: (j['auto_publish_youtube'] as bool?) ?? false,
         morningDrafts: (j['morning_drafts'] as bool?) ?? false,
+        agentEnabled: (j['agent_enabled'] as bool?) ?? false,
       );
 }
 
@@ -615,5 +622,41 @@ class TrendBrief {
         styleHint: (j['style_hint'] as String?) ?? '',
         language: (j['language'] as String?) ?? 'ar',
         rationale: (j['rationale'] as String?) ?? '',
+      );
+}
+
+/// Autonomous Artist Agent: one card in the A&R feed — a song the agent
+/// proposed on its own, still sitting `awaiting_approval` until a human
+/// taps Approve/Reject. Mirrors `pipeline.api.AgentProposalSummary`.
+class AgentProposal {
+  final String runId;
+  final String artistId;
+  final String title;
+  final String rationale;
+  final double selfScore;
+  final int costCredits;
+  final double costUsd;
+  final String createdAt;
+
+  AgentProposal({
+    required this.runId,
+    required this.artistId,
+    required this.title,
+    required this.rationale,
+    required this.selfScore,
+    required this.costCredits,
+    required this.costUsd,
+    required this.createdAt,
+  });
+
+  factory AgentProposal.fromJson(Map<String, dynamic> j) => AgentProposal(
+        runId: j['run_id'] as String,
+        artistId: (j['artist_id'] as String?) ?? '',
+        title: (j['title'] as String?) ?? '',
+        rationale: (j['rationale'] as String?) ?? '',
+        selfScore: (j['self_score'] as num?)?.toDouble() ?? 0.0,
+        costCredits: j['cost_credits'] as int,
+        costUsd: (j['cost_usd'] as num).toDouble(),
+        createdAt: (j['created_at'] as String?) ?? '',
       );
 }

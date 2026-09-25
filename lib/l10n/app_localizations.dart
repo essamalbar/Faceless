@@ -3824,6 +3824,18 @@ abstract class AppLocalizations {
   /// **'A free draft every morning from the day\'s trends — you only pay when you approve.'**
   String get draftMorningSubtitle;
 
+  /// No description provided for @agentEnabledLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Autonomous A&R'**
+  String get agentEnabledLabel;
+
+  /// No description provided for @agentEnabledSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The agent proposes new songs for this artist on its own schedule — you still approve or reject each one before anything is spent.'**
+  String get agentEnabledSubtitle;
+
   /// No description provided for @draftSectionTitle.
   ///
   /// In en, this message translates to:
