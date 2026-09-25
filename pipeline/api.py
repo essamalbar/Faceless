@@ -4705,6 +4705,124 @@ def reject_song(
     return {"run_id": run_id, "status": "rejected"}
 
 
+class AgentProposalSummary(BaseModel):
+    """One card in the A&R feed (spec §7, §9)."""
+    run_id: str
+    artist_id: str | None = None
+    title: str | None = None
+    rationale: str = ""
+    self_score: float | None = None
+    created_at: str = ""
+    # Same figures the approve gate will charge — computed via
+    # _song_credit_amount, never a separate estimate.
+    cost_credits: int
+    cost_usd: float
+
+
+def _song_cost_fields(run_dir: Path, state: dict, cfg) -> tuple[int, float]:
+    """(cost_credits, cost_usd) for a song run, reading video_mode/quality_tier
+    from song.json when present (falling back to state/defaults for a run
+    whose song.json hasn't landed yet — shouldn't happen for an
+    awaiting_approval run, but never crash the feed over it).
+
+    Mirrors get_song_script's cost computation (api.py) exactly, so the A&R
+    feed always shows the same number the approve gate will actually charge.
+    """
+    video_mode = state.get("video_mode", "static")
+    quality_tier = "standard"
+    script_path = run_dir / "song.json"
+    if script_path.exists():
+        try:
+            script = json.loads(script_path.read_text(encoding="utf-8"))
+            video_mode = script.get("video_mode", video_mode)
+            quality_tier = script.get("quality_tier", quality_tier)
+        except (json.JSONDecodeError, OSError):
+            pass
+    credits = _song_credit_amount(video_mode, quality_tier, cfg)
+    if cfg.song and video_mode == "cinematic":
+        usd = cfg.song.suno_cost_usd + cfg.song.cinematic_pool_size * cfg.song.cover_cost_usd
+    elif cfg.song:
+        usd = cfg.song.suno_cost_usd + cfg.song.cover_cost_usd
+    else:
+        usd = 0.08
+    return credits, usd
+
+
+@app.get("/agent/proposals", response_model=list[AgentProposalSummary])
+def list_agent_proposals(user: User = Depends(require_user)):
+    """The A&R feed (spec §7, §9): the user's agent-authored song proposals
+    still awaiting a human decision. Scoped to source=="agent" AND
+    status=="awaiting_approval" only — never a plain human-authored draft, a
+    decided (approved/rejected/complete/failed) run, or the
+    `_agent_dispatch/` scheduler-bookkeeping subtree (that directory has no
+    top-level api_state.json, so `_read_state` returns {} and the `kind`
+    check below skips it without erroring)."""
+    from pipeline.config import load_config
+    cfg_path = Path(os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml")))
+    cfg = load_config(cfg_path)
+
+    out: list[AgentProposalSummary] = []
+    user_root = _user_runs_root(user)
+    if not user_root.exists():
+        return out
+    for d in user_root.iterdir():
+        if not d.is_dir():
+            continue
+        state = _read_state(d)
+        if state.get("kind") != "song":
+            continue
+        if state.get("source") != "agent":
+            continue
+        if state.get("status") != "awaiting_approval":
+            continue
+        credits, usd = _song_cost_fields(d, state, cfg)
+        out.append(AgentProposalSummary(
+            run_id=d.name,
+            artist_id=state.get("artist_id"),
+            title=state.get("title"),
+            rationale=state.get("agent_rationale") or "",
+            self_score=state.get("agent_self_score"),
+            created_at=state.get("created_at", ""),
+            cost_credits=credits,
+            cost_usd=usd,
+        ))
+    out.sort(key=lambda p: p.created_at, reverse=True)
+    return out
+
+
+@app.get("/songs/{run_id}/agent-trace")
+def get_agent_trace(run_id: str, user: User = Depends(require_user)):
+    """The stored reasoning trace for an agent proposal (spec §7, §9,
+    observability). 404 when the run isn't an agent proposal at all (wrong
+    resource — there is no trace concept for it); a 200 with
+    `available: false` when it IS an agent run but the trace file never made
+    it to disk (the worker was hard-killed mid-cycle before writing it) —
+    that's an expected, non-error state, never a 500."""
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song" or state.get("source") != "agent":
+        raise HTTPException(404, "not an agent proposal")
+
+    trace_rel = state.get("agent_trace_path")
+    if not trace_rel:
+        return {"available": False, "trace": None}
+
+    trace_file = (run_dir / trace_rel).resolve()
+    try:
+        trace_file.relative_to(run_dir.resolve())
+    except ValueError:
+        # Defensive: agent_trace_path is server-written today (never user
+        # input), but never let a future caller escape run_dir.
+        return {"available": False, "trace": None}
+    if not trace_file.exists():
+        return {"available": False, "trace": None}
+    try:
+        trace = json.loads(trace_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"available": False, "trace": None}
+    return {"available": True, "trace": trace}
+
+
 # Fixed sentinel UUID for the cross-user global approval rate cap. The
 # rate_events.user_id column is a uuid, so "__global__" would violate the
 # type — this all-zero uuid is a valid-shaped value reserved for the global
