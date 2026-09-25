@@ -65,6 +65,7 @@ dependencies = [
     "python-bidi>=0.4",
     # matchering: reference-based mastering of the winning take (A&R pipeline).
     "matchering>=2.0",
+    "anthropic>=1.8.0",
 ]
 
 [dependency-groups]

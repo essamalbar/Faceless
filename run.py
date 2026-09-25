@@ -698,7 +698,23 @@ def main_with_args(argv: list[str]) -> int:
     p.add_argument("--ff-per-beat-seconds", type=int, default=8)
     p.add_argument("--ff-narration-style", default="cinematic",
                    choices=["cinematic", "first_person_monologue", "ai_choose"])
+    # Autonomous Artist Agent worker mode (Task 5) ------------------------
+    p.add_argument("--agent", action="store_true",
+                   help="Run ONE bounded autonomous-agent cycle for ONE "
+                        "artist (spec docs/superpowers/specs/"
+                        "2026-09-25-autonomous-artist-agent-design.md §3). "
+                        "Requires --user and --artist. Gated by "
+                        "FACELESS_AGENT_ENABLED=1 + config.agent.enabled + "
+                        "the artist's agent_enabled + ANTHROPIC_API_KEY — "
+                        "no-ops (logged) if any is missing, and never "
+                        "raises (fail-safe).")
+    p.add_argument("--user", help="User id owning the artist (--agent mode)")
+    p.add_argument("--artist", help="Artist id to run one agent cycle for "
+                                     "(--agent mode)")
     args = p.parse_args(argv)
+
+    if args.agent:
+        return _run_agent_cycle(args)
 
     # When resuming a run, look for freeform_controls.json next to script.json
     # and replay the chosen controls. This makes freeform mode survive
@@ -1612,6 +1628,105 @@ def _run_song_post_approve(args) -> int:
         # Auto-refunding here would make songs free on the retry-success
         # path (fail once, refund, resume, succeed on the same paid job).
         return 1
+
+
+def _run_agent_cycle(args) -> int:
+    """Autonomous Artist Agent worker entry (spec §3, task-5-brief.md).
+
+    ``run.py --agent --user <id> --artist <id>`` runs ONE bounded agent
+    cycle for ONE artist: resolve the artist, evaluate the kill-switch +
+    config + per-artist gates + the Anthropic key (in that order), and only
+    if every one of them passes, construct the real ``anthropic.Anthropic()``
+    client and call ``AgentRunner().run_cycle(...)``.
+
+    Fail-safe end to end, matching the morning-drafts sweep's per-artist
+    isolation (spec §10): a missing user/artist, any gate being off, or ANY
+    exception (bad config, a raising run_cycle, a client-construction
+    hiccup) all LOG and return 0 — never raise. This worker is dispatched
+    per-artist by the (future) ``/admin/run-agent`` sweep and must never
+    turn one artist's agent bug into a crash-looping Cloud Run Job retry.
+    """
+    log = get_logger()
+    user = getattr(args, "user", None)
+    artist_id = getattr(args, "artist", None)
+    try:
+        if not user or not artist_id:
+            log.warning("[agent] --agent requires --user and --artist; no-op")
+            return 0
+
+        from pipeline import artists as artists_mod
+        from pipeline.agent import AgentRunner
+
+        # CRITICAL: user_root MUST be the per-user runs dir (out_root/<user>),
+        # not the global out_root — AgentRunner's tools (queue_proposal,
+        # get_artist_context's discography scan) derive user_id from
+        # user_root.name. Mirrors pipeline/api.py's _user_runs_root(user) =
+        # _out_root() / user.id (api.py:792-796), reusing _resolve_out_root
+        # so --out-root / FACELESS_OUT_ROOT resolution stays identical
+        # between the API and this worker.
+        out_root = _resolve_out_root(args)
+        user_root = out_root / user
+
+        artist = artists_mod.find_by_id(artists_mod.load_artists(user_root), artist_id)
+        if artist is None:
+            log.warning(
+                f"[agent] artist {artist_id!r} not found for user {user!r} "
+                f"under {user_root}; no-op")
+            return 0
+
+        # Three gates + the Anthropic key — ANY false → no-op (spec §8, the
+        # FACELESS_PERFORM_ENABLED dormant-feature pattern). Cheapest checks
+        # first so an off kill-switch never even loads config.yaml.
+        if os.environ.get("FACELESS_AGENT_ENABLED") != "1":
+            log.info(f"[agent] FACELESS_AGENT_ENABLED != '1'; no-op "
+                      f"(user={user} artist={artist_id})")
+            return 0
+
+        # Same config-path resolution the API uses (pipeline/api.py:222-227
+        # _active_video_model): FACELESS_CONFIG env if set, else the repo's
+        # config.yaml. Deliberately independent of --config (which defaults
+        # to the same file) so this worker behaves identically whether the
+        # (future) sweep spawns it with no --config flag at all, exactly
+        # like the Cloud Run Job path today.
+        cfg_path_str = os.environ.get("FACELESS_CONFIG", str(REPO_ROOT / "config.yaml"))
+        config = load_config(Path(cfg_path_str))
+        if not config.agent.enabled:
+            log.info(f"[agent] config.agent.enabled is false; no-op "
+                      f"(user={user} artist={artist_id})")
+            return 0
+
+        # Pre-existing artist rows may lack this key (added alongside the
+        # agent feature) — always .get() with a default, never index.
+        if not artist.get("agent_enabled", False):
+            log.info(f"[agent] artist {artist_id} agent_enabled is false; no-op")
+            return 0
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            log.info(f"[agent] ANTHROPIC_API_KEY not set; no-op "
+                      f"(user={user} artist={artist_id})")
+            return 0
+
+        import anthropic
+        base_url = os.environ.get("ANTHROPIC_BASE_URL")
+        client = (anthropic.Anthropic(base_url=base_url) if base_url
+                  else anthropic.Anthropic())
+
+        result = AgentRunner().run_cycle(
+            user_root, artist, anthropic_client=client, config=config,
+        )
+        log.info(
+            f"[agent] cycle complete user={user} artist={artist_id} "
+            f"queued={result.get('queued')} iterations={result.get('iterations')} "
+            f"stopped={result.get('stopped')}")
+        return 0
+    except Exception as e:
+        # Fail safe: an agent bug must never crash-loop the worker/sweep.
+        log.error(
+            f"[agent] cycle failed safe (user={user} artist={artist_id}): {e}",
+            exc_info=True,
+        )
+        return 0
 
 
 def _run_perform(args) -> int:
