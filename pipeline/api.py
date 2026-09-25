@@ -1306,6 +1306,111 @@ def run_morning_drafts(user: User = Depends(require_user)):
             "details": details}
 
 
+def _has_agent_run_today(user_root: Path, artist_id: str) -> bool:
+    """Idempotency: a NON-FAILED source="agent" run for this artist created
+    today already exists. Mirrors `_has_morning_draft_today` — an agent
+    proposal run can currently sit in `writing_lyrics` (transient),
+    `awaiting_approval`, or `rejected`; all three count as "already ran
+    today" (the daily cycle happened). Only `failed` doesn't block — the
+    next sweep retries it, same as a failed morning draft."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    if not user_root.exists():
+        return False
+    for d in user_root.iterdir():
+        if not d.is_dir():
+            continue
+        st = _read_state(d)
+        if (st.get("source") == "agent"
+                and st.get("artist_id") == artist_id
+                and str(st.get("created_at", "")).startswith(today)
+                and st.get("status") != "failed"):
+            return True
+    return False
+
+
+def _agent_runs_today_count(root: Path) -> int:
+    """Global count of NON-FAILED source="agent" runs created today, across
+    every user under `root`. This is the running total
+    `config.agent.daily_global_run_cap` bounds — it persists across sweep
+    calls (a second same-day sweep must still respect what already ran, not
+    reset the budget to zero), and counts a run regardless of whether its
+    artist is still opted in (cost already spent is cost already spent)."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    count = 0
+    if not root.exists():
+        return 0
+    for user_dir in root.iterdir():
+        if not user_dir.is_dir():
+            continue
+        for d in user_dir.iterdir():
+            if not d.is_dir():
+                continue
+            st = _read_state(d)
+            if (st.get("source") == "agent"
+                    and str(st.get("created_at", "")).startswith(today)
+                    and st.get("status") != "failed"):
+                count += 1
+    return count
+
+
+@app.post("/admin/run-agent")
+def run_agent(user: User = Depends(require_user)):
+    """Service-token only (Cloud Scheduler). Sweeps every user; each artist
+    with agent_enabled=true gets ONE bounded agent worker cycle dispatched
+    in the background (`run.py --agent --user <id> --artist <id>`) — never
+    run inline, since an agent loop is minutes of LLM turns and must not
+    block this request or share failure across artists (spec §3).
+
+    Idempotent per artist per day (`_has_agent_run_today`); bounded overall
+    by `config.agent.daily_global_run_cap` (a running total across the whole
+    day, not just this call); per-artist dispatch failures are caught and
+    collected so one artist's error never aborts the sweep for the rest."""
+    from pipeline import artists as artists_mod
+    from pipeline.config import load_config
+
+    _require_admin(user)
+
+    root = _out_root()
+    if not root.exists():
+        return {"dispatched": 0, "skipped": 0, "capped": 0, "details": []}
+
+    cfg = load_config(Path(_config_path()))
+    cap = cfg.agent.daily_global_run_cap
+    total_today = _agent_runs_today_count(root)
+
+    dispatched = skipped = capped = 0
+    details: list[dict] = []
+
+    for user_dir in sorted(root.iterdir()):
+        if not user_dir.is_dir():
+            continue
+        uid = user_dir.name
+        opted_in = [a for a in artists_mod.load_artists(user_dir)
+                    if a.get("agent_enabled", False)]
+        for artist in opted_in:
+            if _has_agent_run_today(user_dir, artist["id"]):
+                skipped += 1
+                continue
+            if total_today >= cap:
+                capped += 1
+                details.append({"user": uid, "artist": artist["name"],
+                                "artist_id": artist["id"], "capped": True})
+                continue
+            try:
+                _spawn(["--agent", "--user", uid, "--artist", artist["id"]],
+                       run_dir=user_dir)
+                dispatched += 1
+                total_today += 1
+                details.append({"user": uid, "artist": artist["name"],
+                                "artist_id": artist["id"]})
+            except Exception as e:
+                details.append({"user": uid, "artist": artist["name"],
+                                "artist_id": artist["id"],
+                                "error": str(e)[:200]})
+    return {"dispatched": dispatched, "skipped": skipped, "capped": capped,
+            "details": details}
+
+
 def _generate_script_inline(
     *,
     run_dir: Path,
