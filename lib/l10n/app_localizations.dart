@@ -212,6 +212,12 @@ abstract class AppLocalizations {
   /// **'Cancelled'**
   String get statusCancelled;
 
+  /// No description provided for @statusRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get statusRejected;
+
   /// No description provided for @homeCleanupFailedTitle.
   ///
   /// In en, this message translates to:

@@ -66,6 +66,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusCancelled => 'Cancelled';
 
   @override
+  String get statusRejected => 'Rejected';
+
+  @override
   String get homeCleanupFailedTitle => 'Clean up failed runs?';
 
   @override

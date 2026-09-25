@@ -766,8 +766,18 @@ class AgentRunner:
                     system=system,
                     tools=TOOLS,
                     messages=messages,
-                    thinking={"type": "adaptive"},
+                    thinking={"type": "adaptive", "display": "summarized"},
                     output_config={"effort": "high"},
+                    # Prompt caching (spec §4): system + TOOLS are byte-stable
+                    # across every iteration of this loop (no timestamps or
+                    # per-iteration data anywhere in them). Top-level
+                    # auto-caching places the cache breakpoint at the end of
+                    # the request, so each call caches the full prefix sent
+                    # so far (system + TOOLS + conversation history) and the
+                    # NEXT iteration reads that whole prefix back at ~10%
+                    # cost — the growing history is cached too, which is the
+                    # right outcome for an agentic loop like this one.
+                    cache_control={"type": "ephemeral"},
                 )
 
                 usage = getattr(response, "usage", None)

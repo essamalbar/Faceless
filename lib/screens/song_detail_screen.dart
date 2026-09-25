@@ -47,7 +47,9 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   String? _performVideoError;
   bool _performPolling = false;
 
-  static const _terminalStatuses = {'complete', 'failed', 'canceled'};
+  static const _terminalStatuses = {
+    'complete', 'failed', 'canceled', 'rejected',
+  };
 
   /// Localized progress label per backend status. Richer than the generic
   /// [statusLabel] wording where the extra context (timings) helps; falls

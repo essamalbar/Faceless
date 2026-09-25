@@ -62,5 +62,6 @@ String statusLabel(AppLocalizations l10n, String status) => switch (status) {
       'failed' => l10n.statusFailed,
       'running' => l10n.statusRunning,
       'cancelled' => l10n.statusCancelled,
+      'rejected' => l10n.statusRejected,
       _ => status,
     };

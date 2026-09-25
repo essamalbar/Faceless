@@ -19,6 +19,7 @@
   "statusFailed": "Failed",
   "statusRunning": "Running",
   "statusCancelled": "Cancelled",
+  "statusRejected": "Rejected",
   "homeCleanupFailedTitle": "Clean up failed runs?",
   "homeCleanupFailedBody": "This permanently deletes every run currently in Failed status. Running and complete runs are not touched.",
   "homeDeleteAllFailed": "Delete all failed",

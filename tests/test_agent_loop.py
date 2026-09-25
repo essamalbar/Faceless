@@ -182,6 +182,57 @@ def test_loop_runs_tools_then_finishes(tmp_path):
         "get_trends", "draft_lyrics", "critique_draft", "queue_proposal", "finish"]
 
 
+def test_loop_captures_thinking_trace_and_requests_summarized_display(tmp_path):
+    """Regression for the prod bug where `thinking` was requested with the
+    default `display` ("omitted" on claude-opus-5), which returns `thinking`
+    blocks with EMPTY `.thinking` text — so the stored reasoning trace's
+    "thinking" steps were blank. The loop must (a) ask for a readable
+    summary via `display: "summarized"`, and (b) still parse `thinking`
+    blocks and store their non-empty `.thinking` text into the trace."""
+    script = [
+        _turn([_thinking("weighing two concepts before drafting"),
+               _tool_use("get_trends", {})]),
+        _turn([_tool_use("queue_proposal", _queue_input())]),
+        _turn([_tool_use("finish", {"summary": "queued one"})]),
+    ]
+    client = ScriptedAnthropic(script)
+    r = agent.AgentRunner().run_cycle(
+        tmp_path, _artist(), anthropic_client=client, config=_cfg())
+
+    assert r["stopped"] == "finished"
+
+    # the request asked for a readable thinking summary, not the default
+    # (empty-text) "omitted" display
+    assert client.calls[0]["thinking"] == {
+        "type": "adaptive", "display": "summarized"}
+
+    # the trace captured the thinking block's actual (non-empty) text
+    state = _read_run_state(tmp_path, r["queued"][0])
+    trace_path = tmp_path / r["queued"][0] / state["agent_trace_path"]
+    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    thinking_steps = [s for s in trace["steps"] if s.get("type") == "thinking"]
+    assert len(thinking_steps) == 1
+    assert thinking_steps[0]["text"] == "weighing two concepts before drafting"
+
+
+def test_loop_requests_prompt_cache_on_stable_prefix(tmp_path):
+    """spec §4: the system prompt + TOOLS are byte-stable across iterations,
+    so the loop should opt into top-level auto prompt-caching so the
+    re-sent prefix is cheaper on iterations 2+. Behavior is unaffected —
+    this only checks the request shape."""
+    script = [
+        _turn([_tool_use("get_trends", {})]),
+        _turn([_tool_use("queue_proposal", _queue_input())]),
+        _turn([_tool_use("finish", {"summary": "queued one"})]),
+    ]
+    client = ScriptedAnthropic(script)
+    agent.AgentRunner().run_cycle(
+        tmp_path, _artist(), anthropic_client=client, config=_cfg())
+
+    for call in client.calls:
+        assert call["cache_control"] == {"type": "ephemeral"}
+
+
 # ---------------------------------------------------------------------------
 # Bounds
 # ---------------------------------------------------------------------------

@@ -66,6 +66,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get statusCancelled => 'أُلغيت';
 
   @override
+  String get statusRejected => 'مرفوضة';
+
+  @override
   String get homeCleanupFailedTitle => 'حذف العمليات الفاشلة؟';
 
   @override

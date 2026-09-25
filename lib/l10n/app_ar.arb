@@ -19,6 +19,7 @@
   "statusFailed": "فشلت",
   "statusRunning": "قيد التشغيل",
   "statusCancelled": "أُلغيت",
+  "statusRejected": "مرفوضة",
   "homeCleanupFailedTitle": "حذف العمليات الفاشلة؟",
   "homeCleanupFailedBody": "سيؤدي هذا إلى الحذف النهائي لكل عملية في حالة الفشل حاليًا. لن تتأثر العمليات الجارية والمكتملة.",
   "homeDeleteAllFailed": "حذف كل الفاشلة",
