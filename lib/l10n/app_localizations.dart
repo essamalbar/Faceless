@@ -4015,6 +4015,198 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Write my own lyrics'**
   String get addMyLyrics;
+
+  /// No description provided for @agentFeedSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A&R'**
+  String get agentFeedSectionTitle;
+
+  /// No description provided for @agentFeedSectionSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New concepts from your artists, ready for your ear.'**
+  String get agentFeedSectionSubtitle;
+
+  /// No description provided for @agentFeedSeeAll.
+  ///
+  /// In en, this message translates to:
+  /// **'See all'**
+  String get agentFeedSeeAll;
+
+  /// No description provided for @agentFeedScreenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A&R Feed'**
+  String get agentFeedScreenTitle;
+
+  /// No description provided for @agentFeedEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your A&R is composing…'**
+  String get agentFeedEmptyTitle;
+
+  /// No description provided for @agentFeedEmptySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Proposals will appear here as soon as your agent-enabled artists have something ready to share.'**
+  String get agentFeedEmptySubtitle;
+
+  /// No description provided for @agentFeedLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load proposals: {error}'**
+  String agentFeedLoadError(String error);
+
+  /// No description provided for @agentFeedWhyNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Why now'**
+  String get agentFeedWhyNow;
+
+  /// No description provided for @agentFeedWhyButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Why?'**
+  String get agentFeedWhyButton;
+
+  /// No description provided for @agentFeedUnscored.
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet scored'**
+  String get agentFeedUnscored;
+
+  /// No description provided for @agentFeedApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get agentFeedApprove;
+
+  /// No description provided for @agentFeedReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get agentFeedReject;
+
+  /// No description provided for @agentFeedArtistFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown artist'**
+  String get agentFeedArtistFallback;
+
+  /// No description provided for @agentFeedRejectSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject this proposal?'**
+  String get agentFeedRejectSheetTitle;
+
+  /// No description provided for @agentFeedRejectReasonHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional — helps the agent learn (e.g. \"off-brand\", \"weak hook\").'**
+  String get agentFeedRejectReasonHint;
+
+  /// No description provided for @agentFeedRejectConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject proposal'**
+  String get agentFeedRejectConfirm;
+
+  /// No description provided for @agentFeedRejectedSnackbar.
+  ///
+  /// In en, this message translates to:
+  /// **'Proposal rejected'**
+  String get agentFeedRejectedSnackbar;
+
+  /// No description provided for @agentFeedRejectError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reject: {error}'**
+  String agentFeedRejectError(String error);
+
+  /// No description provided for @agentFeedTraceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How the agent reasoned'**
+  String get agentFeedTraceTitle;
+
+  /// No description provided for @agentFeedTraceUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No trace yet'**
+  String get agentFeedTraceUnavailableTitle;
+
+  /// No description provided for @agentFeedTraceUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This proposal doesn\'t have a stored reasoning trace.'**
+  String get agentFeedTraceUnavailableBody;
+
+  /// No description provided for @agentFeedTraceLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the trace: {error}'**
+  String agentFeedTraceLoadError(String error);
+
+  /// No description provided for @agentFeedTraceStoppedFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished naturally'**
+  String get agentFeedTraceStoppedFinished;
+
+  /// No description provided for @agentFeedTraceStoppedBudget.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped — token budget reached'**
+  String get agentFeedTraceStoppedBudget;
+
+  /// No description provided for @agentFeedTraceStoppedMaxIterations.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped — iteration limit reached'**
+  String get agentFeedTraceStoppedMaxIterations;
+
+  /// No description provided for @agentFeedTraceStoppedError.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped — an error occurred'**
+  String get agentFeedTraceStoppedError;
+
+  /// No description provided for @agentFeedTraceIterations.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} rounds'**
+  String agentFeedTraceIterations(int count);
+
+  /// No description provided for @agentFeedTraceStepThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking'**
+  String get agentFeedTraceStepThinking;
+
+  /// No description provided for @agentFeedTraceStepMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Message'**
+  String get agentFeedTraceStepMessage;
+
+  /// No description provided for @agentFeedTraceStepRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Request'**
+  String get agentFeedTraceStepRequest;
+
+  /// No description provided for @agentFeedTraceStepResult.
+  ///
+  /// In en, this message translates to:
+  /// **'Result'**
+  String get agentFeedTraceStepResult;
+
+  /// No description provided for @agentFeedTraceStepError.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get agentFeedTraceStepError;
 }
 
 class _AppLocalizationsDelegate

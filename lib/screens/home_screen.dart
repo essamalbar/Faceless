@@ -12,6 +12,7 @@ import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/song_genres.dart';
 import '../widgets/faceless_logo.dart';
+import '../widgets/home/agent_feed_section.dart';
 import '../widgets/home/artists_row.dart';
 import '../widgets/home/compose_cta.dart';
 import '../widgets/home/hero_greeting.dart';
@@ -22,6 +23,7 @@ import '../widgets/home/llm_banner.dart';
 import '../widgets/home/morning_drafts_section.dart';
 import '../widgets/home/song_row.dart';
 import '../widgets/home/trending_section.dart';
+import 'agent_feed_screen.dart';
 import 'artist_edit_screen.dart';
 import 'artist_screen.dart';
 import 'billing_screen.dart';
@@ -56,6 +58,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<List<SongSummary>>? _songsFuture;
   Future<List<Artist>>? _artistsFuture; // Artist Core: home artists row
   Future<List<TrendBrief>>? _trendsFuture; // Trend Engine: timely briefs
+  // Autonomous Artist Agent: A&R feed teaser (home section hides itself
+  // when there are no proposals — see AgentFeedSection).
+  Future<List<AgentProposal>>? _agentProposalsFuture;
   bool _trendsRefreshing = false;
   String _songQuery = '';   // live search filter for the song list
   bool _llmDegraded = false; // lyric-quality alarm (primary LLM fell back)
@@ -105,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _songsFuture = _client.listSongs();
         _artistsFuture = _client.listArtists();
         _trendsFuture = _client.trendBriefs();
+        _agentProposalsFuture = _client.listAgentProposals();
       });
     }
     _fetchSpend();
@@ -154,6 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _runsFuture = _client.listRuns();
       _songsFuture = _client.listSongs();
       _artistsFuture = _client.listArtists();
+      _agentProposalsFuture = _client.listAgentProposals();
     });
     await _runsFuture;
     _fetchSpend();
@@ -553,6 +560,22 @@ class _HomeScreenState extends State<HomeScreen> {
     _refreshArtistsAndSongs();
   }
 
+  // ─── Autonomous Artist Agent: A&R feed entry point ─────────────────────────
+
+  void _openAgentFeed() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => AgentFeedScreen(client: _client),
+        ))
+        .then((_) {
+      if (!mounted) return;
+      setState(() {
+        _agentProposalsFuture = _client.listAgentProposals();
+        _songsFuture = _client.listSongs();
+      });
+    });
+  }
+
   Future<void> _refreshTrends() async {
     setState(() {
       _trendsRefreshing = true;
@@ -650,6 +673,10 @@ class _HomeScreenState extends State<HomeScreen> {
               const HeroGreeting(),
               ComposeCta(onPressed: _openNewSong),
               MorningDraftsSection(songs: all, onOpen: _openSong),
+              AgentFeedSection(
+                proposalsFuture: _agentProposalsFuture,
+                onOpen: _openAgentFeed,
+              ),
               TrendingSection(
                 trendsFuture: _trendsFuture,
                 refreshing: _trendsRefreshing,

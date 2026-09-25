@@ -2274,4 +2274,113 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addMyLyrics => 'Write my own lyrics';
+
+  @override
+  String get agentFeedSectionTitle => 'A&R';
+
+  @override
+  String get agentFeedSectionSubtitle =>
+      'New concepts from your artists, ready for your ear.';
+
+  @override
+  String get agentFeedSeeAll => 'See all';
+
+  @override
+  String get agentFeedScreenTitle => 'A&R Feed';
+
+  @override
+  String get agentFeedEmptyTitle => 'Your A&R is composing…';
+
+  @override
+  String get agentFeedEmptySubtitle =>
+      'Proposals will appear here as soon as your agent-enabled artists have something ready to share.';
+
+  @override
+  String agentFeedLoadError(String error) {
+    return 'Couldn\'t load proposals: $error';
+  }
+
+  @override
+  String get agentFeedWhyNow => 'Why now';
+
+  @override
+  String get agentFeedWhyButton => 'Why?';
+
+  @override
+  String get agentFeedUnscored => 'Not yet scored';
+
+  @override
+  String get agentFeedApprove => 'Approve';
+
+  @override
+  String get agentFeedReject => 'Reject';
+
+  @override
+  String get agentFeedArtistFallback => 'Unknown artist';
+
+  @override
+  String get agentFeedRejectSheetTitle => 'Reject this proposal?';
+
+  @override
+  String get agentFeedRejectReasonHint =>
+      'Optional — helps the agent learn (e.g. \"off-brand\", \"weak hook\").';
+
+  @override
+  String get agentFeedRejectConfirm => 'Reject proposal';
+
+  @override
+  String get agentFeedRejectedSnackbar => 'Proposal rejected';
+
+  @override
+  String agentFeedRejectError(String error) {
+    return 'Couldn\'t reject: $error';
+  }
+
+  @override
+  String get agentFeedTraceTitle => 'How the agent reasoned';
+
+  @override
+  String get agentFeedTraceUnavailableTitle => 'No trace yet';
+
+  @override
+  String get agentFeedTraceUnavailableBody =>
+      'This proposal doesn\'t have a stored reasoning trace.';
+
+  @override
+  String agentFeedTraceLoadError(String error) {
+    return 'Couldn\'t load the trace: $error';
+  }
+
+  @override
+  String get agentFeedTraceStoppedFinished => 'Finished naturally';
+
+  @override
+  String get agentFeedTraceStoppedBudget => 'Stopped — token budget reached';
+
+  @override
+  String get agentFeedTraceStoppedMaxIterations =>
+      'Stopped — iteration limit reached';
+
+  @override
+  String get agentFeedTraceStoppedError => 'Stopped — an error occurred';
+
+  @override
+  String agentFeedTraceIterations(int count) {
+    return '$count rounds';
+  }
+
+  @override
+  String get agentFeedTraceStepThinking => 'Thinking';
+
+  @override
+  String get agentFeedTraceStepMessage => 'Message';
+
+  @override
+  String get agentFeedTraceStepRequest => 'Request';
+
+  @override
+  String get agentFeedTraceStepResult => 'Result';
+
+  @override
+  String get agentFeedTraceStepError => 'Error';
 }

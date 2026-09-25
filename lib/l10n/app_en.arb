@@ -1243,5 +1243,65 @@
   "genreEdm": "EDM",
   "genreCinematic": "Cinematic",
   "advancedOptions": "Advanced options",
-  "addMyLyrics": "Write my own lyrics"
+  "addMyLyrics": "Write my own lyrics",
+  "agentFeedSectionTitle": "A&R",
+  "agentFeedSectionSubtitle": "New concepts from your artists, ready for your ear.",
+  "agentFeedSeeAll": "See all",
+  "agentFeedScreenTitle": "A&R Feed",
+  "agentFeedEmptyTitle": "Your A&R is composing…",
+  "agentFeedEmptySubtitle": "Proposals will appear here as soon as your agent-enabled artists have something ready to share.",
+  "agentFeedLoadError": "Couldn't load proposals: {error}",
+  "@agentFeedLoadError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "agentFeedWhyNow": "Why now",
+  "agentFeedWhyButton": "Why?",
+  "agentFeedUnscored": "Not yet scored",
+  "agentFeedApprove": "Approve",
+  "agentFeedReject": "Reject",
+  "agentFeedArtistFallback": "Unknown artist",
+  "agentFeedRejectSheetTitle": "Reject this proposal?",
+  "agentFeedRejectReasonHint": "Optional — helps the agent learn (e.g. \"off-brand\", \"weak hook\").",
+  "agentFeedRejectConfirm": "Reject proposal",
+  "agentFeedRejectedSnackbar": "Proposal rejected",
+  "agentFeedRejectError": "Couldn't reject: {error}",
+  "@agentFeedRejectError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "agentFeedTraceTitle": "How the agent reasoned",
+  "agentFeedTraceUnavailableTitle": "No trace yet",
+  "agentFeedTraceUnavailableBody": "This proposal doesn't have a stored reasoning trace.",
+  "agentFeedTraceLoadError": "Couldn't load the trace: {error}",
+  "@agentFeedTraceLoadError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "agentFeedTraceStoppedFinished": "Finished naturally",
+  "agentFeedTraceStoppedBudget": "Stopped — token budget reached",
+  "agentFeedTraceStoppedMaxIterations": "Stopped — iteration limit reached",
+  "agentFeedTraceStoppedError": "Stopped — an error occurred",
+  "agentFeedTraceIterations": "{count} rounds",
+  "@agentFeedTraceIterations": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "agentFeedTraceStepThinking": "Thinking",
+  "agentFeedTraceStepMessage": "Message",
+  "agentFeedTraceStepRequest": "Request",
+  "agentFeedTraceStepResult": "Result",
+  "agentFeedTraceStepError": "Error"
 }

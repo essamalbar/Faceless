@@ -652,5 +652,65 @@
   "genreEdm": "إلكترونيك",
   "genreCinematic": "سينمائي",
   "advancedOptions": "خيارات متقدمة",
-  "addMyLyrics": "اكتب كلماتي"
+  "addMyLyrics": "اكتب كلماتي",
+  "agentFeedSectionTitle": "الوكيل الفني",
+  "agentFeedSectionSubtitle": "أفكار جديدة من فنانيك، جاهزة لتستمع إليها.",
+  "agentFeedSeeAll": "عرض الكل",
+  "agentFeedScreenTitle": "قائمة الوكيل الفني",
+  "agentFeedEmptyTitle": "الوكيل الفني يؤلف الآن…",
+  "agentFeedEmptySubtitle": "ستظهر المقترحات هنا فور أن يجهّز فنانوك الذين فعّلت لهم الوكيل شيئًا جديدًا.",
+  "agentFeedLoadError": "تعذّر تحميل المقترحات: {error}",
+  "@agentFeedLoadError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "agentFeedWhyNow": "لماذا الآن",
+  "agentFeedWhyButton": "لماذا؟",
+  "agentFeedUnscored": "لم يُقيَّم بعد",
+  "agentFeedApprove": "موافقة",
+  "agentFeedReject": "رفض",
+  "agentFeedArtistFallback": "فنان غير معروف",
+  "agentFeedRejectSheetTitle": "رفض هذا المقترح؟",
+  "agentFeedRejectReasonHint": "اختياري — يساعد الوكيل على التعلّم (مثال: \"بعيد عن الهوية\"، \"لازمة ضعيفة\").",
+  "agentFeedRejectConfirm": "رفض المقترح",
+  "agentFeedRejectedSnackbar": "تم رفض المقترح",
+  "agentFeedRejectError": "تعذّر الرفض: {error}",
+  "@agentFeedRejectError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "agentFeedTraceTitle": "كيف فكّر الوكيل",
+  "agentFeedTraceUnavailableTitle": "لا يوجد سجل بعد",
+  "agentFeedTraceUnavailableBody": "لا يحتوي هذا المقترح على سجل تفكير محفوظ.",
+  "agentFeedTraceLoadError": "تعذّر تحميل السجل: {error}",
+  "@agentFeedTraceLoadError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "agentFeedTraceStoppedFinished": "انتهى بشكل طبيعي",
+  "agentFeedTraceStoppedBudget": "توقّف — بلغ حد الرموز",
+  "agentFeedTraceStoppedMaxIterations": "توقّف — بلغ حد التكرارات",
+  "agentFeedTraceStoppedError": "توقّف — حدث خطأ",
+  "agentFeedTraceIterations": "{count} جولة",
+  "@agentFeedTraceIterations": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "agentFeedTraceStepThinking": "تفكير",
+  "agentFeedTraceStepMessage": "رسالة",
+  "agentFeedTraceStepRequest": "الطلب",
+  "agentFeedTraceStepResult": "النتيجة",
+  "agentFeedTraceStepError": "خطأ"
 }

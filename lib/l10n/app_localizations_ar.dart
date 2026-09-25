@@ -2312,4 +2312,112 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get addMyLyrics => 'اكتب كلماتي';
+
+  @override
+  String get agentFeedSectionTitle => 'الوكيل الفني';
+
+  @override
+  String get agentFeedSectionSubtitle =>
+      'أفكار جديدة من فنانيك، جاهزة لتستمع إليها.';
+
+  @override
+  String get agentFeedSeeAll => 'عرض الكل';
+
+  @override
+  String get agentFeedScreenTitle => 'قائمة الوكيل الفني';
+
+  @override
+  String get agentFeedEmptyTitle => 'الوكيل الفني يؤلف الآن…';
+
+  @override
+  String get agentFeedEmptySubtitle =>
+      'ستظهر المقترحات هنا فور أن يجهّز فنانوك الذين فعّلت لهم الوكيل شيئًا جديدًا.';
+
+  @override
+  String agentFeedLoadError(String error) {
+    return 'تعذّر تحميل المقترحات: $error';
+  }
+
+  @override
+  String get agentFeedWhyNow => 'لماذا الآن';
+
+  @override
+  String get agentFeedWhyButton => 'لماذا؟';
+
+  @override
+  String get agentFeedUnscored => 'لم يُقيَّم بعد';
+
+  @override
+  String get agentFeedApprove => 'موافقة';
+
+  @override
+  String get agentFeedReject => 'رفض';
+
+  @override
+  String get agentFeedArtistFallback => 'فنان غير معروف';
+
+  @override
+  String get agentFeedRejectSheetTitle => 'رفض هذا المقترح؟';
+
+  @override
+  String get agentFeedRejectReasonHint =>
+      'اختياري — يساعد الوكيل على التعلّم (مثال: \"بعيد عن الهوية\"، \"لازمة ضعيفة\").';
+
+  @override
+  String get agentFeedRejectConfirm => 'رفض المقترح';
+
+  @override
+  String get agentFeedRejectedSnackbar => 'تم رفض المقترح';
+
+  @override
+  String agentFeedRejectError(String error) {
+    return 'تعذّر الرفض: $error';
+  }
+
+  @override
+  String get agentFeedTraceTitle => 'كيف فكّر الوكيل';
+
+  @override
+  String get agentFeedTraceUnavailableTitle => 'لا يوجد سجل بعد';
+
+  @override
+  String get agentFeedTraceUnavailableBody =>
+      'لا يحتوي هذا المقترح على سجل تفكير محفوظ.';
+
+  @override
+  String agentFeedTraceLoadError(String error) {
+    return 'تعذّر تحميل السجل: $error';
+  }
+
+  @override
+  String get agentFeedTraceStoppedFinished => 'انتهى بشكل طبيعي';
+
+  @override
+  String get agentFeedTraceStoppedBudget => 'توقّف — بلغ حد الرموز';
+
+  @override
+  String get agentFeedTraceStoppedMaxIterations => 'توقّف — بلغ حد التكرارات';
+
+  @override
+  String get agentFeedTraceStoppedError => 'توقّف — حدث خطأ';
+
+  @override
+  String agentFeedTraceIterations(int count) {
+    return '$count جولة';
+  }
+
+  @override
+  String get agentFeedTraceStepThinking => 'تفكير';
+
+  @override
+  String get agentFeedTraceStepMessage => 'رسالة';
+
+  @override
+  String get agentFeedTraceStepRequest => 'الطلب';
+
+  @override
+  String get agentFeedTraceStepResult => 'النتيجة';
+
+  @override
+  String get agentFeedTraceStepError => 'خطأ';
 }
