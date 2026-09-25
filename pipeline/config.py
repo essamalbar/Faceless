@@ -120,6 +120,24 @@ class SongConfig:
 
 
 @dataclass(frozen=True)
+class AgentConfig:
+    """Autonomous Artist Agent config — bounded-cost brain-first loop.
+
+    Gated by three ANDed switches: FACELESS_AGENT_ENABLED env, this
+    `enabled` flag, and the per-artist `agent_enabled` toggle (artists.py).
+    Any one false → the agent never runs.
+    """
+    enabled: bool = False
+    model: str = "claude-opus-5"           # the agent brain
+    worker_model: str = "claude-sonnet-5"  # draft + critique sub-calls
+    max_iterations: int = 12
+    token_budget: int = 60000              # per-artist per-cycle task budget
+    proposals_per_cycle: int = 2
+    daily_global_run_cap: int = 50         # hard ceiling on agent worker runs/day
+    critique_threshold: float = 0.6        # queue only proposals scoring >= this
+
+
+@dataclass(frozen=True)
 class Config:
     voice: VoiceConfig
     script: ScriptConfig
@@ -128,6 +146,7 @@ class Config:
     captions: CaptionsConfig
     kie: KieConfig
     song: SongConfig | None = None
+    agent: AgentConfig = field(default_factory=AgentConfig)
     # Phase C "Make me sing this": fixed credit price + hook length for the
     # photo → 30s singing-avatar render. Top-level (not under kie/song) so it
     # reads straight off config.yaml. Defaulted so older configs keep loading.
@@ -152,6 +171,7 @@ def load_config(path: Path) -> Config:
         captions=CaptionsConfig(**raw["captions"]),
         kie=KieConfig(**raw["kie"]),
         song=SongConfig(**raw["song"]) if "song" in raw else None,
+        agent=AgentConfig(**raw["agent"]) if "agent" in raw else AgentConfig(),
         perform_credits_per_video=int(
             raw.get("perform_credits_per_video", 3)),
         perform_hook_seconds=int(raw.get("perform_hook_seconds", 30)),

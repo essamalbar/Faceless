@@ -132,3 +132,18 @@ song:
 perform_credits_per_video: 3     # ~$2.40 Kie spend (30s x ~$0.08/s) — matches cinematic tier
 perform_hook_seconds: 30         # length of the highest-energy hook we render
 perform_enabled: false           # OFF (2026-08-17): pulled from the app — too expensive (~$2.40/render) + poor avatar quality. Guard + model stay wired if ever revisited.
+
+# Autonomous Artist Agent (v1, brain-first). Gated by three ANDed switches:
+# FACELESS_AGENT_ENABLED env, agent.enabled below, and the per-artist
+# agent_enabled toggle. Any one false → the agent never runs. Only spend is
+# its own bounded LLM tokens (opus reasoning + sonnet sub-calls) — zero
+# Kie/render/credit spend without a human approve tap.
+agent:
+  enabled: false
+  model: claude-opus-5
+  worker_model: claude-sonnet-5
+  max_iterations: 12
+  token_budget: 60000
+  proposals_per_cycle: 2
+  daily_global_run_cap: 50
+  critique_threshold: 0.6

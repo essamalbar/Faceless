@@ -68,6 +68,9 @@ def new_artist(
         "auto_publish_youtube": False,
         # Channel Autopilot: a free draft each morning from the day's trends.
         "morning_drafts": False,
+        # Autonomous Artist Agent: per-artist opt-in (also gated by
+        # FACELESS_AGENT_ENABLED env + config.agent.enabled).
+        "agent_enabled": False,
         # Arabic dialect identity for the artist's lyrics ("" = unset).
         "default_dialect": "",
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

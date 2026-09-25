@@ -540,6 +540,9 @@ class ArtistSummary(BaseModel):
     auto_publish_youtube: bool = False
     # Channel Autopilot: a free draft each morning from the day's trends.
     morning_drafts: bool = False
+    # Autonomous Artist Agent: per-artist opt-in (also gated by
+    # FACELESS_AGENT_ENABLED env + config.agent.enabled).
+    agent_enabled: bool = False
     # Arabic dialect identity (msa/egyptian/khaleeji/levantine/iraqi, "" = unset).
     default_dialect: str = ""
     created_at: str
@@ -566,6 +569,7 @@ class PatchArtistRequest(BaseModel):
     default_vocal_gender: str | None = None
     auto_publish_youtube: bool | None = None
     morning_drafts: bool | None = None
+    agent_enabled: bool | None = None
     default_dialect: str | None = None
 
 
@@ -5648,7 +5652,7 @@ def patch_artist(
             artists=artists, exclude_id=artist_id)
     for field in ("bio", "persona_id", "avatar_run_id", "default_style",
                   "default_language", "default_vocal_gender",
-                  "auto_publish_youtube", "morning_drafts",
+                  "auto_publish_youtube", "morning_drafts", "agent_enabled",
                   "default_dialect"):
         val = getattr(req, field)
         if val is not None:
