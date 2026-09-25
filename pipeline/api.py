@@ -1397,8 +1397,26 @@ def run_agent(user: User = Depends(require_user)):
                                 "artist_id": artist["id"], "capped": True})
                 continue
             try:
-                _spawn(["--agent", "--user", uid, "--artist", artist["id"]],
-                       run_dir=user_dir)
+                # A dedicated per-dispatch directory, NOT user_dir itself —
+                # both backends WRITE to run_dir (LocalSubprocessBackend's
+                # api_subprocess.log; CloudRunJobsBackend's stashed
+                # api_state.json). user_dir is loop-invariant across a
+                # user's opted-in artists, so reusing it would let a second
+                # artist's dispatch clobber the first's bookkeeping and
+                # drop a stray api_state.json at the user root (violates
+                # "all artifacts go through out/<run>/"). Kept under
+                # _agent_dispatch/ (not a timestamp run dir) so it never
+                # pollutes /runs or /songs listings, and is distinct from
+                # Task 6's user_dir/agent/<artist_id>.json memory path. The
+                # worker (run.py --agent) resolves user_root independently
+                # from --user, so it never reads this dir — it's purely
+                # the spawn backend's own bookkeeping.
+                dispatch_root = user_dir / "_agent_dispatch"
+                dispatch_dir = (dispatch_root
+                                / f"{artist['id']}-{_make_run_id(dispatch_root)}")
+                dispatch_dir.mkdir(parents=True, exist_ok=True)
+                _SPAWN_FN(["--agent", "--user", uid, "--artist", artist["id"]],
+                          dispatch_dir)
                 dispatched += 1
                 total_today += 1
                 details.append({"user": uid, "artist": artist["name"],

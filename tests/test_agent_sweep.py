@@ -7,12 +7,14 @@ sweeps every user dir under `_out_root()`, filters opted-in artists, is
 idempotent per artist per day, and isolates per-artist errors. The extra
 wrinkle here is the `daily_global_run_cap` (config.agent) and the dispatch
 mechanism — a background worker (`run.py --agent --user <id> --artist <id>`)
-via `_spawn`, never run inline.
+via `_SPAWN_FN`, never run inline.
 
-`_spawn` is monkeypatched directly (not `set_spawn_fn`/`_SPAWN_FN`) in every
-test — external services (here: a subprocess/Cloud-Run-Job dispatch) are
-mocked per the CLAUDE.md invariant, and a real spawn must never happen from
-this test module.
+Dispatch is mocked via `pipeline.api.set_spawn_fn` — the SAME seam every
+other dispatch site (`_spawn_paid_or_refund`, approve, etc.) uses, not a
+bare monkeypatch of `_spawn` (which `_SPAWN_FN` does NOT route through,
+since `_SPAWN_FN = _spawn` binds once at import time). `_restore_spawn_fn`
+below is autouse and restores the real `_spawn` after every test in this
+module so a stub never leaks into another test file.
 """
 from __future__ import annotations
 
@@ -20,7 +22,20 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
+import pipeline.api as api_mod
 from pipeline import artists as artists_mod
+
+
+@pytest.fixture(autouse=True)
+def _restore_spawn_fn():
+    """Every test in this module replaces `_SPAWN_FN` via `set_spawn_fn` —
+    restore the real `_spawn` afterward so a leftover stub can never
+    intercept a real dispatch in a later test/module (CLAUDE.md: external
+    services are mocked in tests, never left mocked past the test)."""
+    yield
+    api_mod.set_spawn_fn(api_mod._spawn)
 
 
 def _user_dir(tmp_path: Path, user_id: str) -> Path:
@@ -78,6 +93,15 @@ def _patch_cap(monkeypatch, cap: int) -> None:
                          lambda path: _FakeConfig(cap))
 
 
+def _record_spawns(dispatches: list[tuple[list[str], Path]]) -> None:
+    """Installs a recording stub via the real `set_spawn_fn` seam —
+    `_SPAWN_FN(args, run_dir)`, matching the codebase's one call
+    convention (positional args + run_dir; see `_spawn_paid_or_refund`)."""
+    def stub(args, run_dir):
+        dispatches.append((list(args), Path(run_dir)))
+    api_mod.set_spawn_fn(stub)
+
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
@@ -94,9 +118,8 @@ def test_sweep_requires_service_auth(client_factory, monkeypatch, tmp_path):
 
 def test_sweep_dispatches_only_agent_enabled_artists(client_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     user_dir = _user_dir(tmp_path, "alice")
     on = _make_artist(user_dir, name="On", agent_enabled=True)
@@ -107,11 +130,12 @@ def test_sweep_dispatches_only_agent_enabled_artists(client_factory, monkeypatch
     assert r.status_code == 200, r.text
     body = r.json()
 
-    assert len(spawns) == 1
-    assert "--agent" in spawns[0] and "--artist" in spawns[0]
-    assert "--user" in spawns[0]
-    assert spawns[0][spawns[0].index("--user") + 1] == "alice"
-    assert spawns[0][spawns[0].index("--artist") + 1] == on["id"]
+    assert len(dispatches) == 1
+    args, run_dir = dispatches[0]
+    assert "--agent" in args and "--artist" in args
+    assert "--user" in args
+    assert args[args.index("--user") + 1] == "alice"
+    assert args[args.index("--artist") + 1] == on["id"]
 
     assert body["dispatched"] == 1
     assert body["skipped"] == 0
@@ -120,14 +144,50 @@ def test_sweep_dispatches_only_agent_enabled_artists(client_factory, monkeypatch
 
 def test_sweep_no_users_returns_zeroed_summary(client_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path / "does-not-exist"))
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
     c = client_factory(user_id="admin", role="service")
     r = c.post("/admin/run-agent")
     assert r.status_code == 200
     assert r.json() == {"dispatched": 0, "skipped": 0, "capped": 0, "details": []}
-    assert spawns == []
+    assert dispatches == []
+
+
+# ---------------------------------------------------------------------------
+# Dispatch dir: dedicated per artist, never the shared user root
+# ---------------------------------------------------------------------------
+
+def test_sweep_uses_a_dedicated_dispatch_dir_not_the_shared_user_root(
+        client_factory, monkeypatch, tmp_path):
+    """Both spawn backends WRITE to run_dir (api_subprocess.log /
+    api_state.json). Passing the loop-invariant user_dir would let two
+    artists' dispatches clobber each other and drop a stray api_state.json
+    at the user root. Each dispatch must get its own directory, distinct
+    from user_dir itself and from the other artist's."""
+    monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
+
+    user_dir = _user_dir(tmp_path, "alice")
+    _make_artist(user_dir, name="A1", agent_enabled=True)
+    _make_artist(user_dir, name="A2", agent_enabled=True)
+
+    c = client_factory(user_id="admin", role="service")
+    r = c.post("/admin/run-agent")
+    assert r.status_code == 200, r.text
+    assert len(dispatches) == 2
+
+    dirs = [run_dir for _args, run_dir in dispatches]
+    assert len(set(dirs)) == 2, "each artist must get its own dispatch dir"
+    for d in dirs:
+        assert d != user_dir
+        assert d.parent.parent == user_dir
+        assert d.parent.name == "_agent_dispatch"
+        assert d.exists() and d.is_dir()
+
+    # No stray api_state.json/api_subprocess.log dropped at the user root
+    # itself (only artists.json belongs there).
+    assert not (user_dir / "api_state.json").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +196,8 @@ def test_sweep_no_users_returns_zeroed_summary(client_factory, monkeypatch, tmp_
 
 def test_sweep_idempotent_skips_already_run_today(client_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     user_dir = _user_dir(tmp_path, "alice")
     a = _make_artist(user_dir, name="Layl", agent_enabled=True)
@@ -148,7 +207,7 @@ def test_sweep_idempotent_skips_already_run_today(client_factory, monkeypatch, t
     c = client_factory(user_id="admin", role="service")
     body = c.post("/admin/run-agent").json()
 
-    assert spawns == []
+    assert dispatches == []
     assert body["dispatched"] == 0
     assert body["skipped"] == 1
     assert body["capped"] == 0
@@ -159,9 +218,8 @@ def test_sweep_treats_writing_lyrics_and_rejected_as_already_ran(
     """Transient (writing_lyrics) and terminal-but-non-failed (rejected)
     states both count as "already ran today" — only `failed` doesn't."""
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     user_dir = _user_dir(tmp_path, "alice")
     a1 = _make_artist(user_dir, name="A1", agent_enabled=True)
@@ -174,7 +232,7 @@ def test_sweep_treats_writing_lyrics_and_rejected_as_already_ran(
     c = client_factory(user_id="admin", role="service")
     body = c.post("/admin/run-agent").json()
 
-    assert spawns == []
+    assert dispatches == []
     assert body["dispatched"] == 0
     assert body["skipped"] == 2
 
@@ -182,9 +240,8 @@ def test_sweep_treats_writing_lyrics_and_rejected_as_already_ran(
 def test_sweep_retries_when_todays_agent_run_failed(client_factory, monkeypatch, tmp_path):
     """A `failed` run today does NOT block a retry."""
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     user_dir = _user_dir(tmp_path, "alice")
     a = _make_artist(user_dir, name="Layl", agent_enabled=True)
@@ -194,16 +251,15 @@ def test_sweep_retries_when_todays_agent_run_failed(client_factory, monkeypatch,
     c = client_factory(user_id="admin", role="service")
     body = c.post("/admin/run-agent").json()
 
-    assert len(spawns) == 1
+    assert len(dispatches) == 1
     assert body["dispatched"] == 1
     assert body["skipped"] == 0
 
 
 def test_sweep_ignores_stale_runs_from_a_previous_day(client_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     user_dir = _user_dir(tmp_path, "alice")
     a = _make_artist(user_dir, name="Layl", agent_enabled=True)
@@ -215,7 +271,7 @@ def test_sweep_ignores_stale_runs_from_a_previous_day(client_factory, monkeypatc
     c = client_factory(user_id="admin", role="service")
     body = c.post("/admin/run-agent").json()
 
-    assert len(spawns) == 1
+    assert len(dispatches) == 1
     assert body["dispatched"] == 1
     assert body["skipped"] == 0
 
@@ -227,9 +283,8 @@ def test_sweep_ignores_stale_runs_from_a_previous_day(client_factory, monkeypatc
 def test_sweep_respects_daily_global_cap(client_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
     _patch_cap(monkeypatch, 2)
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     user_dir = _user_dir(tmp_path, "alice")
     for i in range(4):
@@ -238,7 +293,7 @@ def test_sweep_respects_daily_global_cap(client_factory, monkeypatch, tmp_path):
     c = client_factory(user_id="admin", role="service")
     body = c.post("/admin/run-agent").json()
 
-    assert len(spawns) == 2
+    assert len(dispatches) == 2
     assert body["dispatched"] == 2
     assert body["capped"] == 2
     assert body["skipped"] == 0
@@ -251,9 +306,8 @@ def test_sweep_cap_counts_runs_already_dispatched_earlier_today(
     has since been toggled off) still counts against today's budget."""
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
     _patch_cap(monkeypatch, 2)
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     user_dir = _user_dir(tmp_path, "alice")
     already_ran = _make_artist(user_dir, name="AlreadyRan", agent_enabled=False)
@@ -266,7 +320,7 @@ def test_sweep_cap_counts_runs_already_dispatched_earlier_today(
     body = c.post("/admin/run-agent").json()
 
     # cap=2, 1 already spent today -> only 1 more dispatch allowed.
-    assert len(spawns) == 1
+    assert len(dispatches) == 1
     assert body["dispatched"] == 1
     assert body["capped"] == 1
 
@@ -282,12 +336,12 @@ def test_sweep_isolates_per_artist_error(client_factory, monkeypatch, tmp_path):
     boom = _make_artist(user_dir, name="Boom", agent_enabled=True)
     ok = _make_artist(user_dir, name="Ok", agent_enabled=True)
 
-    def flaky_spawn(args, **k):
+    def flaky_spawn(args, run_dir):
         if boom["id"] in args:
             raise RuntimeError("cloud run jobs API hiccup")
         return 424242
 
-    monkeypatch.setattr("pipeline.api._spawn", flaky_spawn)
+    api_mod.set_spawn_fn(flaky_spawn)
 
     c = client_factory(user_id="admin", role="service")
     r = c.post("/admin/run-agent")
@@ -307,9 +361,8 @@ def test_sweep_ignores_non_run_subdirs_like_agent_memory_store(
     same user root the sweep scans. It must be silently skipped, not crash
     the sweep (`_read_state` on a dir with no api_state.json returns {})."""
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     user_dir = _user_dir(tmp_path, "alice")
     a = _make_artist(user_dir, name="Layl", agent_enabled=True)
@@ -321,15 +374,14 @@ def test_sweep_ignores_non_run_subdirs_like_agent_memory_store(
     c = client_factory(user_id="admin", role="service")
     r = c.post("/admin/run-agent")
     assert r.status_code == 200, r.text
-    assert len(spawns) == 1
+    assert len(dispatches) == 1
     assert r.json()["dispatched"] == 1
 
 
 def test_sweep_dispatches_per_user_across_multiple_users(client_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("FACELESS_OUT_ROOT", str(tmp_path))
-    spawns: list[list[str]] = []
-    monkeypatch.setattr("pipeline.api._spawn",
-                         lambda args, **k: spawns.append(list(args)))
+    dispatches: list[tuple[list[str], Path]] = []
+    _record_spawns(dispatches)
 
     _make_artist(_user_dir(tmp_path, "alice"), name="A", agent_enabled=True)
     _make_artist(_user_dir(tmp_path, "bob"), name="B", agent_enabled=True)
@@ -338,5 +390,5 @@ def test_sweep_dispatches_per_user_across_multiple_users(client_factory, monkeyp
     body = c.post("/admin/run-agent").json()
 
     assert body["dispatched"] == 2
-    users_dispatched = {s[s.index("--user") + 1] for s in spawns}
+    users_dispatched = {args[args.index("--user") + 1] for args, _run_dir in dispatches}
     assert users_dispatched == {"alice", "bob"}
