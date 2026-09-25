@@ -75,6 +75,8 @@ def test_tool_list_is_exactly_the_six_readqueue_tools():
     names = {t["name"] for t in agent.TOOLS}
     assert names == {"get_trends", "get_artist_context", "draft_lyrics",
                       "critique_draft", "queue_proposal", "finish"}
+    # no duplicate tool names hiding behind an equal name set
+    assert len(agent.TOOLS) == 6
     forbidden = {"approve", "spend", "render", "publish", "post",
                  "deduct", "delete", "charge"}
     assert not (names & forbidden)
@@ -88,6 +90,13 @@ def test_tool_list_is_exactly_the_six_readqueue_tools():
         # every required field must be a declared property
         for req in schema["required"]:
             assert req in schema["properties"]
+
+
+def test_dispatch_handlers_are_exactly_the_declared_tools():
+    """dispatch_tool executes off _HANDLERS, not TOOLS — pin them in
+    lockstep so a handler added without a matching schema (or vice versa)
+    is caught, not just the TOOLS name set."""
+    assert set(agent._HANDLERS) == {t["name"] for t in agent.TOOLS}
 
 
 def test_tool_schemas_have_required_inputs():
@@ -269,15 +278,54 @@ def test_queue_proposal_writes_awaiting_approval_agent_run(tmp_path):
     assert state["agent_rationale"] == "trending + on brand"
     assert "agent_trace_path" in state
     assert "created_at" in state
-    # the agent never chooses the paid tier
+    # api_state.json itself never carries a paid tier
     assert "quality_tier" not in state
 
     song_json = json.loads((tmp_path / run_id / "song.json").read_text(encoding="utf-8"))
     assert song_json["title"] == "وعد الليل"
     assert song_json["lyrics"] == "L"
     assert song_json["language"] == "ar"
+    # THE load-bearing tier-bypass check: approve_song reads quality_tier/
+    # video_mode from song.json (api.py:4605-4608), not api_state.json — a
+    # regression that smuggled a paid tier in here would be invisible to
+    # an api_state.json-only assertion.
+    assert "quality_tier" not in song_json
+    assert song_json["video_mode"] == "static"
 
     assert (tmp_path / run_id / "lyrics.txt").read_text(encoding="utf-8") == "L"
+
+
+def test_queue_proposal_never_leaves_awaiting_approval_without_song_json(
+        tmp_path, monkeypatch):
+    """Orphan guard: approve_song does `json.loads((run_dir/"song.json")
+    .read_text())` unconditionally for an awaiting_approval run
+    (api.py:4605) — a process death between the state flip and the
+    song.json write would 500 on Approve. Pin the write order: if
+    song.json can't be written, the run must never reach
+    awaiting_approval, and must be marked failed (not stuck at a
+    transient status) so a same-day retry isn't blocked."""
+    real_write_text = Path.write_text
+
+    def boom(self, *a, **kw):
+        if self.name == "song.json":
+            raise OSError("disk full")
+        return real_write_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "write_text", boom)
+    ctx = _ctx(tmp_path)
+    out = agent.dispatch_tool("queue_proposal", {
+        "title": "وعد الليل", "concept": "c", "lyrics": "L", "style": "khaleeji",
+        "dialect": "khaleeji", "language": "ar",
+        "rationale": "trending + on brand", "self_score": 0.82}, ctx)
+
+    assert "error" in out
+    assert ctx.queued == []  # a broken run is never advertised as queued
+
+    run_dirs = [d for d in tmp_path.iterdir() if d.is_dir()]
+    assert len(run_dirs) == 1
+    state = json.loads((run_dirs[0] / "api_state.json").read_text(encoding="utf-8"))
+    assert state["status"] == "failed"
+    assert state["status"] != "awaiting_approval"
 
 
 def test_queue_proposal_multiple_calls_each_append_to_queued(tmp_path):

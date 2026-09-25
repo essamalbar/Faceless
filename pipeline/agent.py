@@ -37,7 +37,9 @@ TOOLS: list[dict] = [
         "description": (
             "Get current trend briefs (mood/cultural-calendar context ideas "
             "for a song — never covers or soundalikes) for the artist's "
-            "target language. Read-only; $0."
+            "target language. Returns a fresh cached set when available, "
+            "else generates and caches new ones. $0 — never spends money "
+            "or queues/publishes anything."
         ),
         "input_schema": {
             "type": "object",
@@ -158,6 +160,8 @@ TOOLS: list[dict] = [
                 },
                 "self_score": {
                     "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
                     "description": "This agent's own critique score, 0-1.",
                 },
             },
@@ -459,41 +463,63 @@ def _queue_proposal(tool_input: dict, ctx: ToolContext) -> dict:
     # drafted through this cycle's draft_lyrics tool.
     draft = ctx.drafts.get(lyrics.strip())
 
-    # Deliberately NOT setting a paid tier (video_mode/quality_tier): those
-    # follow the artist's/config defaults exactly like a manual song, same
-    # as `_write_song_draft`. The agent proposes the art, never the price.
+    # Write the run dir + an initial transient state FIRST — mirrors
+    # `_write_song_draft` (api.py:1162-1202): song.json/lyrics.txt land
+    # before the state ever says "awaiting_approval", so a process death
+    # mid-write never leaves an awaiting_approval run with no song.json
+    # (which would 500 on Approve — api.py:4605 does
+    # `json.loads((run_dir/"song.json").read_text())` unconditionally for
+    # that status). NOT setting a paid tier here (video_mode/quality_tier):
+    # those follow the artist's/config defaults exactly like a manual song.
+    # The agent proposes the art, never the price.
     _write_state(
         run_dir,
         kind="song",
-        status="awaiting_approval",
+        status="writing_lyrics",
         user_id=ctx.user_root.name,
         theme=concept,
         video_mode="static",
         artist_id=artist.get("id"),
         source="agent",
-        title=title,
         created_at=created_at,
+    )
+    try:
+        (run_dir / "song.json").write_text(json.dumps({
+            "title": title,
+            "lyrics": lyrics,
+            "style_prompt": draft.style_prompt if draft else style,
+            "cover_prompt": draft.cover_prompt if draft else "",
+            "language": language,
+            "vocal_gender": artist.get("default_vocal_gender") or "m",
+            "persona_id": artist.get("persona_id"),
+            "suno_model": None,
+            "video_mode": "static",
+            "art_direction": draft.art_direction if draft else "",
+            "scene_prompts": draft.scene_prompts if draft else [],
+            "negative_tags": draft.negative_tags if draft else "",
+            "style_source": draft.style_source if draft else "agent",
+            "writer_tier": draft.writer_tier if draft else "",
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        (run_dir / "lyrics.txt").write_text(lyrics, encoding="utf-8")
+    except Exception as e:
+        # Mirrors `_write_song_draft`'s failure handling (api.py:1179-1182):
+        # never leave the run stuck at a transient status — mark it failed
+        # so `_has_agent_run_today`-style idempotency guards (status !=
+        # "failed" counts as "already ran today") don't block a same-day
+        # retry for this artist.
+        _write_state(run_dir, status="failed",
+                     last_error=f"queue_proposal write failed: {e}")
+        raise
+    # Only now flip to awaiting_approval — song.json/lyrics.txt are
+    # guaranteed to exist by the time a human can see this run to approve it.
+    _write_state(
+        run_dir,
+        status="awaiting_approval",
+        title=title,
         agent_rationale=rationale,
         agent_self_score=self_score,
         agent_trace_path=trace_path,
     )
-    (run_dir / "song.json").write_text(json.dumps({
-        "title": title,
-        "lyrics": lyrics,
-        "style_prompt": draft.style_prompt if draft else style,
-        "cover_prompt": draft.cover_prompt if draft else "",
-        "language": language,
-        "vocal_gender": artist.get("default_vocal_gender") or "m",
-        "persona_id": artist.get("persona_id"),
-        "suno_model": None,
-        "video_mode": "static",
-        "art_direction": draft.art_direction if draft else "",
-        "scene_prompts": draft.scene_prompts if draft else [],
-        "negative_tags": draft.negative_tags if draft else "",
-        "style_source": draft.style_source if draft else "agent",
-        "writer_tier": draft.writer_tier if draft else "",
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
-    (run_dir / "lyrics.txt").write_text(lyrics, encoding="utf-8")
 
     ctx.queued.append(run_id)
     return {"run_id": run_id}
