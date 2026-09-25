@@ -557,3 +557,326 @@ def dispatch_tool(name: str, tool_input: dict, ctx: ToolContext) -> dict:
         return handler(tool_input, ctx)
     except Exception as e:  # a tool must never crash the loop
         return {"error": f"{name} failed: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# AgentRunner — the bounded Claude tool-use loop (spec §4).
+#
+# A MANUAL loop over the Anthropic SDK's `messages.create(tools=...)`
+# protocol — deliberately NOT the beta Tool Runner — chosen for determinism,
+# testability, and no beta dependency (spec §4, "external services mocked in
+# tests" invariant). `anthropic_client` is always dependency-injected: a
+# `ScriptedAnthropic` stub in tests, `anthropic.Anthropic()` in production
+# (Task 5's `run.py --agent` worker). Every bound (max_iterations, token
+# budget, critique_threshold, proposals_per_cycle) is enforced by THIS loop,
+# never left to the model's own judgement or to prompt wording alone.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_MAX_TOKENS = 8192
+
+
+class _NoLLMAvailable:
+    """A `.complete()`-shaped sentinel used when no LLM provider key is
+    configured. Raises only when actually CALLED, never at construction
+    time — so building a ToolContext never explodes in an environment with
+    no ANTHROPIC/GEMINI/GROQ key (e.g. a test env). The resulting error is
+    caught by `dispatch_tool`'s own per-tool try/except and surfaces as a
+    normal tool_result, never a loop crash."""
+
+    def complete(self, prompt: str, system: str | None = None) -> str:
+        raise RuntimeError(
+            "no LLM provider configured (ANTHROPIC_API_KEY / GEMINI_API_KEY "
+            "/ GROQ_API_KEY) -- draft_lyrics/critique_draft unavailable "
+            "this cycle")
+
+
+def _build_llm_router() -> Any:
+    """Anthropic -> Gemini -> Groq, best-available-first — mirrors
+    `pipeline.api._build_llm()`. Reimplemented here (not imported from
+    pipeline.api) to avoid pulling that heavy module into pipeline.agent
+    (see the module docstring's circular-import note). Every provider
+    import is function-local, and this never raises at construction time —
+    only a real `.complete()` call can fail, and dispatch_tool always
+    catches that."""
+    providers: list[Any] = []
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        from pipeline.llm_anthropic import AnthropicClient
+        providers.append(AnthropicClient())
+    if os.environ.get("GEMINI_API_KEY"):
+        from pipeline.llm import GeminiClient
+        providers.append(GeminiClient())
+    if os.environ.get("GROQ_API_KEY"):
+        from pipeline.llm_groq import GroqClient
+        providers.append(GroqClient())
+    if not providers:
+        return _NoLLMAvailable()
+    from pipeline.llm import FallbackLLM
+    chain = providers[-1]
+    for provider in reversed(providers[:-1]):
+        chain = FallbackLLM(provider, chain)
+    return chain
+
+
+def _build_worker_llm(agent_cfg: Any) -> Any:
+    """The cheaper sub-call model (spec §4: `worker_model`, default
+    claude-sonnet-5) that backs draft_lyrics/critique_draft. Pins the
+    configured worker model when Anthropic is available; otherwise falls
+    back to the same best-available router as the main brain."""
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        from pipeline.llm_anthropic import AnthropicClient
+        worker_model = getattr(agent_cfg, "worker_model", None) or "claude-sonnet-4-6"
+        try:
+            return AnthropicClient(model=worker_model)
+        except Exception:
+            pass  # fall through to the general router below
+    return _build_llm_router()
+
+
+def _system_prompt(artist: dict, agent_cfg: Any) -> str:
+    """Casts the model as the artist's A&R manager + creative partner
+    (spec §4): artist identity, the label's originality rule (trends are
+    mood-context only — never covers/soundalikes), the full-tashkeel +
+    singability contract, and the approve-before-spend framing. The tool
+    list IS the actual security boundary — this just tells the model the
+    truth about it, so it doesn't waste turns trying tools that don't
+    exist."""
+    name = artist.get("name") or "this artist"
+    bio = artist.get("bio") or "(no bio on file)"
+    persona_id = artist.get("persona_id")
+    persona_note = f" (persona id: {persona_id})" if persona_id else ""
+    style = artist.get("default_style") or "commercial pop"
+    dialect = artist.get("default_dialect") or ""
+    language = artist.get("default_language") or "ar"
+    quota = getattr(agent_cfg, "proposals_per_cycle", 2)
+    threshold = getattr(agent_cfg, "critique_threshold", 0.6)
+    dialect_line = (
+        f"- Default dialect: {dialect} — write fully diacritized {dialect} "
+        f"Arabic unless the concept genuinely calls for another."
+        if dialect else ""
+    )
+
+    return f"""You are the A&R manager and creative partner for the AI recording artist "{name}".
+
+ARTIST IDENTITY
+- Name: {name}
+- Bio / persona: {bio}{persona_note}
+- Default style: {style}
+- Default language: {language}
+{dialect_line}
+
+YOUR JOB THIS CYCLE
+Reason about what this artist should release next: ground yourself in
+current trends and this artist's identity, memory, and discography, draft a
+concept and full lyrics, critique your own draft honestly, and queue up to
+{quota} strong proposals for a human to review.
+
+ORIGINALITY RULE (non-negotiable)
+Trends are mood/cultural-calendar context ONLY. Never write a cover,
+soundalike, or lyrical paraphrase of a specific existing song or artist.
+Every proposal must be an original composition with original lyrics.
+
+QUALITY BAR
+- Lyrics must be fully diacritized (tashkeel) and genuinely singable —
+  natural meter and phrasing, not just grammatically correct prose.
+- Only queue a proposal you would honestly score at {threshold} or higher.
+  A weaker draft should be revised or dropped, not queued anyway.
+- Queue at most {quota} proposals this cycle, then call finish.
+
+YOU PROPOSE — YOU CANNOT SPEND
+Your entire toolbox is read-and-queue only. You have NO tool that can
+deduct a credit, start a paid render, or publish anything — there is no
+code path from you to a charge or a public post. A human reviews every
+proposal you queue and taps Approve before any money moves, so be genuinely
+specific and ambitious; the human, not you, carries the spend risk.
+
+Use get_trends and get_artist_context first to ground your proposal in real
+context, then draft_lyrics and critique_draft before you queue_proposal.
+Call finish when you are done for this cycle (including if you decide
+nothing this cycle is worth proposing)."""
+
+
+def _write_trace_for_queued(user_root: Path, run_ids: list[str], trace: dict) -> None:
+    """Persist the cycle's reasoning trace to each queued proposal's
+    `agent_trace_path` (spec §4, §6) — a path `_queue_proposal` stores
+    RELATIVE to the run dir, resolved here against `run_dir`. Best-effort:
+    a trace-write failure must never turn an already-queued,
+    already-awaiting_approval proposal into a broken one."""
+    for run_id in run_ids:
+        run_dir = user_root / run_id
+        try:
+            state = _read_state(run_dir)
+            rel = state.get("agent_trace_path") or "agent_trace.json"
+            path = run_dir / rel
+            path.write_text(
+                json.dumps(trace, ensure_ascii=False, indent=2, default=str),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            print(f"[agent] failed to write trace for run {run_id}: {e}")
+
+
+class AgentRunner:
+    """Runs one bounded tool-use cycle for one artist. Stateless across
+    calls — `run_cycle` builds and owns everything for a single cycle (one
+    ToolContext, one reasoning trace); nothing is shared or cached on
+    `self`, so a fresh `AgentRunner()` per cycle (or one reused across many)
+    behaves identically."""
+
+    def run_cycle(
+        self,
+        user_root: Path,
+        artist: dict,
+        *,
+        anthropic_client: Any,
+        config: Any,
+    ) -> dict:
+        agent_cfg = config.agent
+        ctx = ToolContext(
+            user_root=user_root,
+            artist=artist,
+            llm=_build_llm_router(),
+            worker_llm=_build_worker_llm(agent_cfg),
+            config=agent_cfg,
+        )
+        system = _system_prompt(artist, agent_cfg)
+        artist_name = artist.get("name") or "this artist"
+        messages: list[dict] = [{
+            "role": "user",
+            "content": (
+                f'Begin this cycle for "{artist_name}". Start with '
+                "get_trends and get_artist_context."
+            ),
+        }]
+
+        trace: dict[str, Any] = {
+            "artist_id": artist.get("id"),
+            "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "steps": [],
+        }
+        iterations = 0
+        output_tokens_used = 0
+        stopped = "max_iterations"  # the default outcome if the bound is hit
+
+        try:
+            while iterations < agent_cfg.max_iterations:
+                iterations += 1
+                response = anthropic_client.messages.create(
+                    model=agent_cfg.model,
+                    max_tokens=_DEFAULT_MAX_TOKENS,
+                    system=system,
+                    tools=TOOLS,
+                    messages=messages,
+                    thinking={"type": "adaptive"},
+                    output_config={"effort": "high"},
+                )
+
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    output_tokens_used += getattr(usage, "output_tokens", 0) or 0
+
+                content = list(response.content or [])
+                messages.append({"role": "assistant", "content": content})
+
+                for block in content:
+                    btype = getattr(block, "type", None)
+                    if btype in ("thinking", "redacted_thinking"):
+                        trace["steps"].append({
+                            "type": "thinking",
+                            "text": (getattr(block, "thinking", None)
+                                     or getattr(block, "data", None) or ""),
+                        })
+                    elif btype == "text":
+                        trace["steps"].append({
+                            "type": "text",
+                            "text": getattr(block, "text", "") or "",
+                        })
+
+                if output_tokens_used > agent_cfg.token_budget:
+                    stopped = "budget"
+                    break
+
+                if getattr(response, "stop_reason", None) != "tool_use":
+                    # The model ended its turn without invoking a tool (e.g.
+                    # a plain text reply) — nothing more for this cycle to do.
+                    stopped = "finished"
+                    break
+
+                tool_results: list[dict] = []
+                finished = False
+                for block in content:
+                    if getattr(block, "type", None) != "tool_use":
+                        continue
+                    name = getattr(block, "name", "")
+                    tool_input = getattr(block, "input", None) or {}
+                    tool_id = getattr(block, "id", "")
+
+                    trace["steps"].append({
+                        "type": "tool_call", "name": name, "input": tool_input,
+                    })
+
+                    result = self._handle_tool_call(name, tool_input, ctx, agent_cfg)
+                    if name == "finish":
+                        finished = True
+
+                    trace["steps"].append({
+                        "type": "tool_result", "name": name, "result": result,
+                    })
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_id,
+                        "content": json.dumps(result, ensure_ascii=False, default=str),
+                    })
+
+                messages.append({"role": "user", "content": tool_results})
+
+                if finished:
+                    stopped = "finished"
+                    break
+        except Exception as e:  # fail safe: never let a cycle crash the sweep
+            stopped = "error"
+            trace["steps"].append({"type": "error", "text": str(e)})
+            print(f"[agent] cycle for artist={artist.get('id')} failed safe: {e}")
+
+        trace["stopped"] = stopped
+        trace["iterations"] = iterations
+        _write_trace_for_queued(user_root, ctx.queued, trace)
+
+        return {
+            "queued": list(ctx.queued),
+            "iterations": iterations,
+            "stopped": stopped,
+        }
+
+    @staticmethod
+    def _handle_tool_call(
+        name: str, tool_input: dict, ctx: ToolContext, agent_cfg: Any,
+    ) -> dict:
+        """The loop's own hard-gate policies (spec §4): `critique_threshold`
+        and `proposals_per_cycle` are enforced HERE, before a queue_proposal
+        call ever reaches `dispatch_tool` — a rejected proposal never
+        creates a run dir at all, and the gate can't be talked around by
+        prompt wording alone."""
+        if name == "queue_proposal":
+            quota = getattr(agent_cfg, "proposals_per_cycle", 2)
+            if len(ctx.queued) >= quota:
+                return {
+                    "error": (
+                        f"quota reached ({len(ctx.queued)}/{quota} proposals "
+                        "already queued this cycle) -- do not queue another; "
+                        "call finish now."
+                    ),
+                }
+            threshold = getattr(agent_cfg, "critique_threshold", 0.6)
+            try:
+                self_score = float(tool_input.get("self_score", 0.0))
+            except (TypeError, ValueError):
+                self_score = 0.0
+            if self_score < threshold:
+                return {
+                    "error": (
+                        f"self_score {self_score} is below the quality bar "
+                        f"({threshold}) -- not queued. Improve the draft "
+                        "and try again, or finish without proposing it."
+                    ),
+                }
+        return dispatch_tool(name, tool_input, ctx)
