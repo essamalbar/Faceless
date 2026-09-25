@@ -139,7 +139,7 @@ perform_enabled: false           # OFF (2026-08-17): pulled from the app — too
 # its own bounded LLM tokens (opus reasoning + sonnet sub-calls) — zero
 # Kie/render/credit spend without a human approve tap.
 agent:
-  enabled: false
+  enabled: true
   model: claude-opus-5
   worker_model: claude-sonnet-5
   max_iterations: 12

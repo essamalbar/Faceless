@@ -24,6 +24,10 @@ spec:
                   value: worker
                 - name: FACELESS_OUT_ROOT
                   value: /mnt/runs
+                # Autonomous Artist Agent hard gate (worker no-ops without it).
+                # Also gated by config.agent.enabled + per-artist agent_enabled.
+                - name: FACELESS_AGENT_ENABLED
+                  value: "1"
                 # FACELESS_RUN_ARGS is injected at execute-time via
                 # gcloud run jobs execute --update-env-vars
                 # (handled by pipeline.spawn_backends.CloudRunJobsBackend).
