@@ -45,11 +45,17 @@ class ProposalCard extends StatelessWidget {
         ? l10n.homeUntitled
         : proposal.title.trim();
     final rationale = proposal.rationale.trim();
-    final isRtl = _looksArabic(title) || _looksArabic(rationale);
+    // Only the rationale paragraph below is wrapped in the resulting
+    // Directionality/textAlign — derive the flag from that string alone,
+    // not the title too, or an Arabic title + English rationale would
+    // wrongly force the English paragraph to RTL/right-align.
+    final isRtl = _looksArabic(rationale);
     final score = proposal.selfScore;
     final scoreDotColor = score <= 0
         ? null
-        : (score >= 0.6 ? FacelessTheme.success : FacelessTheme.warning);
+        : (score >= _scoreGoodThreshold
+            ? FacelessTheme.success
+            : FacelessTheme.warning);
 
     return GlassCard(
       child: Column(
@@ -188,6 +194,14 @@ class ProposalCard extends StatelessWidget {
     );
   }
 }
+
+/// Score-dot color threshold — mirrors `config.yaml > agent.critique_threshold`
+/// (spec §8: "queue only proposals scoring >= this"), so a card's dot only
+/// reads "warning" for a proposal that would sit right at the backend's own
+/// queue-admission line. Not fetched from the API (the agent config isn't
+/// exposed to the client) — kept as a documented constant instead so the
+/// coupling stays visible/greppable if the backend threshold ever moves.
+const double _scoreGoodThreshold = 0.6;
 
 /// True when [s] contains at least one Arabic-script codepoint — mirrors the
 /// same heuristic `home_screen.dart`'s `_PosterTile._isArabic` uses to pick

@@ -58,8 +58,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<List<SongSummary>>? _songsFuture;
   Future<List<Artist>>? _artistsFuture; // Artist Core: home artists row
   Future<List<TrendBrief>>? _trendsFuture; // Trend Engine: timely briefs
-  // Autonomous Artist Agent: A&R feed teaser (home section hides itself
-  // when there are no proposals — see AgentFeedSection).
+  // Autonomous Artist Agent: A&R feed teaser. Stays visible even with zero
+  // proposals (only a fetch error hides it) so the feed's own "composing…"
+  // empty state is always reachable — see AgentFeedSection.
   Future<List<AgentProposal>>? _agentProposalsFuture;
   bool _trendsRefreshing = false;
   String _songQuery = '';   // live search filter for the song list

@@ -297,7 +297,9 @@ class _RejectSheetState extends State<_RejectSheet> {
                     child: FilledButton(
                       style: FilledButton.styleFrom(
                         backgroundColor: FacelessTheme.danger,
-                        foregroundColor: Colors.white,
+                        // Obsidian & Champagne forbids pure white text —
+                        // warm off-white even on the danger fill.
+                        foregroundColor: FacelessTheme.textPrimary,
                       ),
                       onPressed: () =>
                           Navigator.of(context).pop(_ctrl.text.trim()),
