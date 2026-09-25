@@ -4507,6 +4507,81 @@ def cancel_song(run_id: str, user: User = Depends(require_user)):
     return _cancel_song_impl(user, run_id)
 
 
+class RejectSongRequest(BaseModel):
+    reason: str = Field("", max_length=1000)
+
+
+def _record_agent_decision_best_effort(
+    user: "User",
+    state: dict,
+    *,
+    run_id: str,
+    decision: str,
+    reason: str = "",
+    self_score: float | None = None,
+) -> None:
+    """Append an approve/reject/edit learning signal to the artist's agent
+    memory (spec §5) — but ONLY for `source=="agent"` runs, and NEVER let a
+    memory-write failure surface to the caller. This is a pure additive
+    side effect bolted onto endpoints that already have their own contract
+    (money for approve, a terminal-state write for reject); it must never
+    change their behavior or their response.
+    """
+    if state.get("source") != "agent":
+        return
+    artist_id = state.get("artist_id")
+    if not artist_id:
+        return
+    try:
+        from pipeline import agent_memory
+        agent_memory.record_decision(
+            _user_runs_root(user), artist_id,
+            run_id=run_id, decision=decision, reason=reason,
+            self_score=self_score,
+        )
+    except Exception as e:
+        get_logger().error(
+            "[agent] failed to record decision",
+            exc_info=e,
+            extra={"where": "record_agent_decision", "run_id": run_id,
+                   "decision": decision},
+        )
+
+
+@app.post("/songs/{run_id}/reject")
+def reject_song(
+    run_id: str,
+    req: RejectSongRequest | None = None,
+    user: User = Depends(require_user),
+):
+    """Mark an `awaiting_approval` proposal rejected (spec §5, §7) — a
+    terminal state distinct from cancel (which only applies to runs already
+    in flight / paid). Records the learning-signal decision when the run is
+    an agent proposal (`source=="agent"`); a plain human-authored draft is
+    just marked rejected with no memory write. Body is optional — a bare
+    POST with no JSON at all rejects with reason=""."""
+    reason = req.reason if req is not None else ""
+    run_dir = _resolve_song_dir(run_id, user)
+    state = _read_state(run_dir)
+    if state.get("kind") != "song":
+        raise HTTPException(404, "not a song run")
+
+    # Idempotency / already-decided guard — same convention as approve_song:
+    # a call on a run that already moved past awaiting_approval returns the
+    # current state rather than erroring.
+    if state.get("status") != "awaiting_approval":
+        return {"run_id": run_id, "status": state.get("status")}
+
+    _write_state(run_dir, status="rejected")
+
+    _record_agent_decision_best_effort(
+        user, state, run_id=run_id, decision="rejected", reason=reason,
+        self_score=state.get("agent_self_score"),
+    )
+
+    return {"run_id": run_id, "status": "rejected"}
+
+
 # Fixed sentinel UUID for the cross-user global approval rate cap. The
 # rate_events.user_id column is a uuid, so "__global__" would violate the
 # type — this all-zero uuid is a valid-shaped value reserved for the global
@@ -4643,6 +4718,23 @@ def approve_song(run_id: str, user: User = Depends(require_user)):
         # Worker already advanced past generating_song. Record pid without
         # touching status.
         _write_state(run_dir, pid=pid)
+
+    # Learning-signal hook (spec §5) — additive only, placed AFTER the spend
+    # + spawn are both done so it can never affect them. `state` here is the
+    # snapshot read at the top of this function, before any deduction; its
+    # source/artist_id/agent_self_score fields are set once at proposal time
+    # (pipeline/agent.py:_queue_proposal) and are not touched by approve, so
+    # reading from it (rather than `current`) is safe and best-effort by
+    # construction (`_record_agent_decision_best_effort` never raises).
+    #
+    # "edited" detection is deferred: edit_song (api.py) writes no cheap
+    # edited/lyrics_edited flag to state today, so there is nothing to key
+    # off without building new edit-tracking machinery (out of scope here —
+    # every agent-run approval currently records "approved").
+    _record_agent_decision_best_effort(
+        user, state, run_id=run_id, decision="approved",
+        self_score=state.get("agent_self_score"),
+    )
 
     return {"run_id": run_id, "balance_after": new_balance,
             "status": current.get("status") or "generating_song"}
@@ -5161,7 +5253,7 @@ async def song_events(
     if _read_state(run_dir).get("kind") != "song":
         raise HTTPException(404, "not a song run")
 
-    _TERMINAL = frozenset({"complete", "failed", "canceled"})
+    _TERMINAL = frozenset({"complete", "failed", "canceled", "rejected"})
 
     async def generator():
         last_serialized: str | None = None
