@@ -12,6 +12,7 @@ import '../../theme.dart';
 import '../../ui/brand.dart';
 import '../../ui/motion.dart';
 import '../../ui/primitives.dart';
+import '../../ui/tilt.dart';
 import 'home_shared.dart';
 
 class LatestReleaseCard extends StatelessWidget {
@@ -36,7 +37,10 @@ class LatestReleaseCard extends StatelessWidget {
       delayMs: 200,
       child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
-      child: GlassCard(
+      child: TiltCard(
+        idle: true,
+        maxTilt: 11,
+        child: GlassCard(
         padding: EdgeInsets.zero,
         radius: 22,
         onTap: onTap,
@@ -120,6 +124,7 @@ class LatestReleaseCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
       ),
     );
