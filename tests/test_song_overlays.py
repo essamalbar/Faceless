@@ -56,6 +56,20 @@ def test_build_overlay_cmd_covers_every_kind_with_a_distinct_graph():
     assert len(graphs) == len(kinds)
 
 
+def test_every_overlay_kind_is_semi_transparent_not_opaque():
+    # Regression: the geometric loop shipped WITHOUT a colorchannelmixer=aa
+    # opacity reduction (unlike particles/bokeh/light_sweep), so wherever it
+    # wasn't black-keyed it composited nearly OPAQUE and drowned the backdrop
+    # (a real render showed the whole frame filled by the geometric gradient).
+    # Every kind must damp its alpha so overlays read as a soft layer on top,
+    # never a solid fill.
+    for kind in ("particles", "bokeh", "light_sweep", "geometric"):
+        cmd = build_overlay_cmd(kind, Path(f"/tmp/{kind}.webm"), (640, 360), 4)
+        graph = cmd[cmd.index("-filter_complex") + 1]
+        assert "colorchannelmixer=aa=" in graph, \
+            f"{kind} overlay is not alpha-damped -> composites opaque"
+
+
 def test_build_overlay_cmd_unknown_kind_raises():
     with pytest.raises(KeyError):
         build_overlay_cmd("not-a-real-kind", Path("/tmp/x.webm"), (640, 360), 4)

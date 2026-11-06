@@ -73,6 +73,17 @@ def test_beat_env_expr_is_none_without_beats():
     assert sa._beat_env_expr({"beat_times": []}, decay=0.1) is None
 
 
+def test_grade_neon_bloom_is_damped_not_full_strength():
+    # Regression: grade_neon's FULL-strength screen-blend bloom (+1.4/1.5
+    # saturation) blew bright frames into garish, washed-out magenta (a real
+    # render of a sunset still was unusable). The bloom must be PARTIAL
+    # (all_opacity < 1) so it adds a neon glow without blowing highlights.
+    fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
+                              beats={"beat_times": [0.5]}, has_overlay=False,
+                              size=(1080, 1920))
+    assert "blend=all_mode=screen:all_opacity=" in fg   # bloom is damped, not full
+
+
 def test_camera_is_beat_synced_center_anchored_and_bounded_for_every_genre():
     # P1: the camera is ALWAYS on (not gated on a push_in token) and PUNCHES on
     # the beat via the on-based envelope, center-anchored and bounded. Even trap

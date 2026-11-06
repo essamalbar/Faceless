@@ -189,11 +189,16 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
     cur = nxt
 
     if "grade_neon" in fx:
+        # Neon = a saturated base + a soft bloom screen-blended back. The bloom
+        # is DAMPED (all_opacity=0.40) and saturation kept moderate so bright
+        # frames get a neon glow instead of blowing out to garish magenta (a
+        # full-strength screen blend of a sunset still was unusable -- see the
+        # grade_neon_bloom regression test).
         a, b, nxt = f"{cur}_a", f"{cur}_b", f"{cur}_grade"
         stmts.append(f"[{cur}]split=2[{a}][{b}]")
-        stmts.append(f"[{a}]eq=contrast=1.18:saturation=1.4[{a}g]")
-        stmts.append(f"[{b}]gblur=sigma=14,eq=brightness=0.08:saturation=1.5[{b}g]")
-        stmts.append(f"[{a}g][{b}g]blend=all_mode=screen[{nxt}]")
+        stmts.append(f"[{a}]eq=contrast=1.10:saturation=1.22[{a}g]")
+        stmts.append(f"[{b}]gblur=sigma=16,eq=brightness=0.03:saturation=1.12[{b}g]")
+        stmts.append(f"[{a}g][{b}g]blend=all_mode=screen:all_opacity=0.40[{nxt}]")
         cur = nxt
     elif "grade_warm" in fx:
         nxt = f"{cur}_grade"

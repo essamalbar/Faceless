@@ -77,6 +77,10 @@ def _geometric(w: int, h: int, seconds: int) -> str:
         f"gradients=size={w}x{h}:rate=25:duration={seconds}:type=square:"
         f"nb_colors=4:speed=0.03,"
         f"colorkey=color=black:similarity=0.12:blend=0,"
+        # Damp the alpha like particles/bokeh/light_sweep do. Without this the
+        # keyed (non-black) regions composited nearly OPAQUE and drowned the
+        # backdrop -- geometric is a bold shape, so keep it low (soft accent).
+        f"format=rgba,colorchannelmixer=aa=0.30,"
         f"format=yuva420p"
     )
 
