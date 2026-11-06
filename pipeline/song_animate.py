@@ -104,14 +104,15 @@ def _rgb_glitch(beats: dict) -> str:
 
 
 def build_filtergraph(*, template: VisualTemplate, beats: dict,
-                      has_overlay: bool, size: tuple[int, int]) -> str:
+                      has_overlay: bool, size: tuple[int, int],
+                      overlay_count: int = 1) -> str:
     """Pure: the `-filter_complex` string for one animated render. No I/O.
 
     Layered bottom -> top, per the design spec's architecture:
       1. backdrop normalized to `size` (input [0:v])
       2. procedural FX from `template.fx_set` (grade / beat-flash /
          rgb-glitch / grain / light-sweep / vignette / push-in)
-      3. overlay loop blended on top, iff `has_overlay` (input [1:v])
+      3. genre overlay loops blended on top, iff `has_overlay` (inputs [1:v]...)
       4. kinetic ASS burned last, on top -- via a `{ASS}` placeholder the
          caller substitutes with the escaped `ass_path` (this function has
          no `ass_path` param by design: the interface only asks for a bool
@@ -206,12 +207,18 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
         cur = nxt
 
     if has_overlay:
-        stmts.append(
-            f"[1:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
-            f"crop={w}:{h},format=yuva420p[ov]"
-        )
-        stmts.append(f"[{cur}][ov]overlay=shortest=0[bg_ov]")
-        cur = "bg_ov"
+        # Blend every available genre loop (e.g. Trap particles + geometry),
+        # rather than silently discarding all but the first sorted asset.
+        # Inputs are decoded from alpha VP9 by the caller and remain bounded
+        # by the song audio via -shortest.
+        for i in range(max(1, overlay_count)):
+            ov, nxt = f"ov{i}", f"bg_ov{i}"
+            stmts.append(
+                f"[{i + 1}:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
+                f"crop={w}:{h},format=yuva420p[{ov}]"
+            )
+            stmts.append(f"[{cur}][{ov}]overlay=shortest=0[{nxt}]")
+            cur = nxt
 
     stmts.append(f"[{cur}]ass={{ASS}}:fontsdir='{_FONTS_DIR_ESCAPED}'[v]")
 
@@ -331,7 +338,8 @@ def build_animated_video(
     has_overlay = bool(clips)
 
     fg = build_filtergraph(
-        template=template, beats=beats, has_overlay=has_overlay, size=size
+        template=template, beats=beats, has_overlay=has_overlay, size=size,
+        overlay_count=len(clips),
     ).replace("{ASS}", _escape_ffmpeg_filter_path(ass_path))
 
     if isinstance(backdrop, Path):
@@ -362,10 +370,11 @@ def build_animated_video(
             # decoder silently drops WebM alpha -- without this the overlay
             # composites as an OPAQUE rectangle (ffprobe shows yuv420p
             # either way; only a real render reveals the bug).
-            cmd += ["-stream_loop", "-1", "-c:v", "libvpx-vp9", "-i", str(clips[0])]
+            for clip in clips:
+                cmd += ["-stream_loop", "-1", "-c:v", "libvpx-vp9", "-i", str(clip)]
         cmd += ["-i", str(song_mp3)]
 
-        audio_idx = 2 if has_overlay else 1
+        audio_idx = 1 + len(clips)
         local_out = work / "final.mp4"
         cmd += [
             "-filter_complex", fg,
