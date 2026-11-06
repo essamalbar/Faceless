@@ -67,6 +67,8 @@ _STILL_FPS = 25
 _STILL_UPSCALE_FACTOR = 2  # pre-zoompan upscale to avoid resampling blur
 _STILL_ZOOM_END = 1.13
 _BACKDROP_ZOOM_CEILING = 1.60  # safe within the 2x upscale (base+KenBurns+punch)
+_SEAM_FADE = 0.18      # seconds of dip-to-black at a framing seam (transition="dip")
+_SEAM_GLITCH = 0.12    # seconds of rgb-split at a framing seam (transition="glitch")
 
 
 @dataclass(frozen=True)
@@ -344,7 +346,8 @@ def _run(cmd: list[str]) -> None:
 
 def _backdrop_segment_vf(seg: Segment, framing: Framing, frames: int,
                          w: int, h: int, beats: dict,
-                         motion: MotionProfile) -> str:
+                         motion: MotionProfile,
+                         transition: str = "hardcut") -> str:
     """Pure: the -vf chain turning one still into a bounded, constant-frame-rate
     clip at w x h for ONE beat-cut segment. Combines three motions:
 
@@ -372,7 +375,7 @@ def _backdrop_segment_vf(seg: Segment, framing: Framing, frames: int,
     z = (f"min({kb}+{motion.punch_amp:.3f}*({env}),{_BACKDROP_ZOOM_CEILING:.2f})"
          if env else f"min({kb},{_BACKDROP_ZOOM_CEILING:.2f})")
     uw, uh = w * _STILL_UPSCALE_FACTOR, h * _STILL_UPSCALE_FACTOR
-    return (
+    vf = (
         f"scale={uw}:{uh}:force_original_aspect_ratio=increase,"
         # Pan the crop window to the framing's anchor (clamped by the available
         # over-scan: (iw-ow)*anchor_x). A square cover has horizontal room; the
@@ -383,12 +386,24 @@ def _backdrop_segment_vf(seg: Segment, framing: Framing, frames: int,
         f"d={frames}:s={w}x{h}:fps={_STILL_FPS},"
         f"setsar=1,format=yuv420p"
     )
+    # Seam transition between framings, baked INSIDE the bounded clip (no
+    # cross-clip xfade -- that broke prod 5.1.x on looped stills). "dip" dips
+    # to/from black at both ends; "glitch" rgb-splits briefly on the cut in.
+    dur = frames / _STILL_FPS
+    if transition == "dip":
+        fd = min(_SEAM_FADE, dur / 3.0)
+        vf += (f",fade=t=in:st=0:d={fd:.3f},"
+               f"fade=t=out:st={dur - fd:.3f}:d={fd:.3f}")
+    elif transition == "glitch":
+        vf += f",rgbashift=rh=6:bh=-6:enable='lt(t,{_SEAM_GLITCH:.2f})'"
+    return vf
 
 
 def _render_still_backdrop(
     stills: list[Path], beats: dict, size: tuple[int, int],
     motion: MotionProfile, work: Path,
     framings: list[Framing] | None = None,
+    transition: str = "hardcut",
 ) -> Path:
     """Beat-cut concat of N stills into ONE bounded, constant-frame-rate
     backdrop clip. Two modes:
@@ -428,7 +443,8 @@ def _render_still_backdrop(
         framing = framings[i % len(framings)] if framings else Framing(0.5, 0.5, 1.0)
         _run([
             "ffmpeg", "-y", "-loop", "1", "-i", str(image),
-            "-vf", _backdrop_segment_vf(seg, framing, frames, w, h, beats, motion),
+            "-vf", _backdrop_segment_vf(seg, framing, frames, w, h, beats,
+                                        motion, transition),
             "-t", f"{dur:.3f}", "-r", str(_STILL_FPS),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
             "-pix_fmt", "yuv420p", "-f", "mp4", str(clip),
@@ -503,12 +519,13 @@ def build_animated_video(
     try:
         if multi_still:
             bg_video = _render_still_backdrop(
-                stills, beats, size, template.motion, work)
+                stills, beats, size, template.motion, work,
+                transition=template.transition)
             input0 = ["-stream_loop", "-1", "-i", str(bg_video)]
         elif use_framing:
             bg_video = _render_still_backdrop(
                 [cover], beats, size, template.motion, work,
-                framings=_framing_plan())
+                framings=_framing_plan(), transition=template.transition)
             input0 = ["-stream_loop", "-1", "-i", str(bg_video)]
         else:
             input0 = ["-loop", "1", "-i", str(cover)]

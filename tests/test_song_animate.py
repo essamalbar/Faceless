@@ -187,6 +187,37 @@ def test_backdrop_segment_vf_pans_to_framing_and_punches_on_the_global_beat():
     assert "1.100" in vf                         # base zoom folded into z
 
 
+def test_backdrop_segment_vf_dip_transition_fades_at_the_seam():
+    from pipeline.song_scenes import Segment
+    seg = Segment(0, 2.0, 4.0, "in")
+    vf = sa._backdrop_segment_vf(
+        seg, sa.Framing(0.5, 0.5, 1.0), frames=50, w=1080, h=1920,
+        beats={"beat_times": [0.5], "tempo_bpm": 120},
+        motion=visual_template_for("arabic_ballad").motion, transition="dip")
+    assert "fade=t=in" in vf and "fade=t=out" in vf   # dip to/from black at seams
+
+
+def test_backdrop_segment_vf_glitch_transition_kicks_at_the_seam_only():
+    from pipeline.song_scenes import Segment
+    seg = Segment(0, 2.0, 4.0, "in")
+    vf = sa._backdrop_segment_vf(
+        seg, sa.Framing(0.5, 0.5, 1.0), frames=50, w=1080, h=1920,
+        beats={"beat_times": [0.5], "tempo_bpm": 120},
+        motion=visual_template_for("arabic_trap").motion, transition="glitch")
+    assert "rgbashift" in vf
+    assert "enable='lt(t," in vf                       # only in the seam window
+
+
+def test_backdrop_segment_vf_hardcut_adds_no_transition_fx():
+    from pipeline.song_scenes import Segment
+    seg = Segment(0, 2.0, 4.0, "in")
+    vf = sa._backdrop_segment_vf(
+        seg, sa.Framing(0.5, 0.5, 1.0), frames=50, w=1080, h=1920,
+        beats={"beat_times": [0.5]},
+        motion=visual_template_for("hiphop_rap").motion, transition="hardcut")
+    assert "fade=" not in vf and "rgbashift" not in vf
+
+
 def test_build_animated_video_invokes_ffmpeg_and_writes_output(monkeypatch, tmp_path):
     calls = {}
     def fake_run(cmd, **kw):
