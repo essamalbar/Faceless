@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+import pipeline.song_kinetic_ass as ska
 from pipeline.song_visual_style import visual_template_for
 from pipeline.song_kinetic_ass import build_kinetic_ass, pick_hook_word
 
@@ -55,6 +56,41 @@ def test_low_confidence_line_falls_back_to_line_snap(tmp_path):
             if ln.startswith("Dialogue:") and "مضبوط" in ln][0]
     assert "\\k" not in snap          # no karaoke on a fallback line
     assert "\\fad" in snap or "\\t(" in snap  # a snap/fade-in transform instead
+
+
+def test_kinetic_style_is_hero_sized_with_heavy_outline():
+    # P3: lyrics are the STAR, not a subtitle. Hero font (>= ~7% of 1920) and a
+    # heavy outline (the real legibility lever over busy/neon backdrops).
+    hdr = ska._ass_header(visual_template_for("arabic_trap"))
+    style = [l for l in hdr.splitlines() if l.startswith("Style: Kinetic,")][0]
+    f = style[len("Style: "):].split(",")
+    assert int(f[2]) >= 120     # Fontsize (was 84 ~= 4.4% of 1920)
+    assert int(f[16]) >= 5      # Outline width (was 3)
+
+
+def test_every_lyric_line_has_a_fade_entrance(tmp_path):
+    # P3: every line eases in (fade) instead of a hard pop -- karaoke, hook and
+    # snap lines alike.
+    out = build_kinetic_ass(lyrics_timing=_timing(),
+                            template=visual_template_for("arabic_trap"),
+                            out_path=tmp_path / "k.ass")
+    dialogues = [l for l in out.read_text(encoding="utf-8").splitlines()
+                 if l.startswith("Dialogue:")]
+    assert dialogues
+    for d in dialogues:
+        assert "\\fad(" in d
+
+
+def test_hook_line_uses_no_reset_tag_so_the_entrance_survives(tmp_path):
+    # P3 gotcha: a bare \r resets to the style default and would cancel the
+    # line-level entrance for every word AFTER the hook. The hook renderer must
+    # restore styling explicitly, never with \r.
+    out = build_kinetic_ass(lyrics_timing=_timing(),
+                            template=visual_template_for("arabic_trap"),
+                            out_path=tmp_path / "k.ass")
+    chorus = [l for l in out.read_text(encoding="utf-8").splitlines()
+              if l.startswith("Dialogue:") and "قمر" in l][0]
+    assert "\\r}" not in chorus          # no {\r} reset
 
 
 def test_pick_hook_word_prefers_long_content_word():
