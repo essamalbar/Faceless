@@ -22,6 +22,14 @@ from pipeline.song_visual_style import VisualTemplate
 # Short stopwords excluded from hook-word selection (Arabic + English).
 _STOP = {"يا", "في", "من", "على", "the", "a", "and", "of", "to", "في"}
 
+# P3 hero typography. Lyrics are the STAR of the animated video, not a caption.
+_FONTSIZE = 134    # ~7% of the 1920 frame height (was 84 ~= 4.4%, read as a subtitle)
+_OUTLINE = 6       # heavy outline = the real legibility lever over busy/neon backdrops
+_MARGIN_V = 240    # clear of the share-page progress bar / OS chrome, bigger type
+# Per-line entrance shared by karaoke + snap lines: fade in/out + a subtle
+# scale SETTLE (108% -> 100%) so each line eases in instead of a hard pop.
+_ENTRANCE = r"\fad(150,120)\fscx108\fscy108\t(0,220,\fscx100\fscy100)"
+
 # Style-suffix strip so a font FILENAME (e.g. "Amiri-Regular.ttf") resolves
 # to the actual font-family NAME libass/fontconfig matches by ("Amiri").
 # ASS's Fontname field is a family name, not a path — the existing
@@ -78,7 +86,7 @@ def _karaoke_text(words: list[dict]) -> str:
     absorbed into the preceding word's highlight and each highlight still
     STARTS at the word's real start time); the last word falls back to its
     own duration since there's no next start to measure to."""
-    parts = []
+    parts = [f"{{{_ENTRANCE}}}"]   # line entrance (fade + settle); fill timing unchanged
     for i, w in enumerate(words):
         if i + 1 < len(words):
             cs = round((words[i + 1]["start"] - w["start"]) * 100)
@@ -90,22 +98,31 @@ def _karaoke_text(words: list[dict]) -> str:
 
 
 def _hook_line_text(text: str, template: VisualTemplate) -> str:
-    """Chorus rendering: the picked hook word is scaled up and pulses via a
-    \\t(...) transform in the chorus hook color; every other word is plain."""
+    """Chorus rendering: the whole line fades in; the picked hook word is scaled
+    up and pulses via a \\t(...) transform in the chorus hook color. Styling
+    after the hook is restored EXPLICITLY (\\fscx100\\fscy100 + base fill color),
+    never with \\r -- a bare \\r would reset to the style default and cancel the
+    line-level fade entrance for every word after the hook."""
     hook = pick_hook_word(text)
-    return " ".join(
-        (f"{{\\fscx160\\fscy160\\1c{template.lyric.hook_color}"
-         f"\\t(0,300,\\fscx185\\fscy185)}}{_ass_escape(w)}{{\\r}}"
-         if w == hook else _ass_escape(w))
-        for w in text.split()
-    )
+    fill = template.lyric.karaoke_fill
+    parts = []
+    for w in text.split():
+        if w == hook:
+            parts.append(
+                f"{{\\fscx170\\fscy170\\1c{template.lyric.hook_color}"
+                f"\\t(0,300,\\fscx192\\fscy192)}}{_ass_escape(w)}"
+                f"{{\\fscx100\\fscy100\\1c{fill}}}"
+            )
+        else:
+            parts.append(_ass_escape(w))
+    return f"{{\\fad(150,120)}}" + " ".join(parts)
 
 
 def _snap_line_text(text: str) -> str:
-    """Line-snap fallback: whole line scales+fades in at line start rather
-    than sweeping word-by-word (used when we don't trust the word-level
+    """Line-snap fallback: the whole line fades + settles in at line start
+    rather than sweeping word-by-word (used when we don't trust the word-level
     timing enough for karaoke)."""
-    return f"{{\\fad(120,120)\\t(0,180,\\fscx112\\fscy112)}}{_ass_escape(text)}"
+    return f"{{{_ENTRANCE}}}{_ass_escape(text)}"
 
 
 def build_kinetic_ass(*, lyrics_timing: dict, template: VisualTemplate,
@@ -154,8 +171,8 @@ def _ass_header(t: VisualTemplate) -> str:
     PrimaryColour.
     """
     lyric = t.lyric
-    fontsize = 84  # bigger canvas (1920 tall) + kinetic type needs to read as the star, not a caption
-    margin_v = 220  # clear of the share-page progress bar / OS chrome on the taller vertical frame
+    fontsize = _FONTSIZE   # hero-sized: kinetic type reads as the star, not a caption
+    margin_v = _MARGIN_V   # clear of the share-page progress bar / OS chrome
     return (
         "[Script Info]\n"
         "ScriptType: v4.00+\n"
@@ -172,7 +189,7 @@ def _ass_header(t: VisualTemplate) -> str:
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Kinetic,{_font_family(lyric.font_file)},{fontsize},"
         f"{lyric.karaoke_fill},{lyric.karaoke_base},{lyric.outline},"
-        f"&H80000000&,-1,0,0,0,100,100,0,0,1,{lyric.outline_w},2,2,"
+        f"&H80000000&,-1,0,0,0,100,100,0,0,1,{_OUTLINE},2,2,"
         f"60,60,{margin_v},178\n"
         "\n"
         "[Events]\n"
