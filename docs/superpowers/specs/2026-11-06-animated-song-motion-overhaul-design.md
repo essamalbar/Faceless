@@ -1,9 +1,22 @@
 # Animated Song-Video Motion & Animation Overhaul — Design
 
-> **Status:** proposed (awaiting review)
+> **Status:** P1 + P2 shipped (branch `feat/animated-motion-overhaul`); P3 pending
 > **Date:** 2026-11-06
 > **Scope owner:** song animated ($0) path
 > **Supersedes nothing** — extends `docs/superpowers/specs/2026-08-20-animated-genre-song-video-design.md`.
+
+> **Implementation status (2026-11-06):**
+> - **P1 shipped** — §5.0 eased envelope, §5.1 MotionProfile, §5.2 beat camera,
+>   §5.4 eased flash; plus acceptance fixes (overlay opacity, tamed neon grade).
+>   Verified on prod ffmpeg 5.1.9.
+> - **P2 shipped** — §5.3 multi-framing backdrop (framing on by default, no
+>   run.py change), §5.5 reactive overlays (per-overlay eq pulse; alpha
+>   preserved, verified on 5.1.9), §5.6 dip/glitch seam transitions (in-clip,
+>   no xfade). The §5.0 **piecewise drift-fix is SUPERSEDED**: the main path is
+>   now the framing/concat backdrop whose per-clip punch is re-anchored to the
+>   global grid via `t0=seg.start`, so drift is bounded per short clip; the
+>   single-still fallback (`framing=False`) keeps the one-period envelope.
+> - **P3 pending** — §5.7 hero kinetic lyrics + the stray-glyph-box fix.
 
 ## 1. Goal
 
