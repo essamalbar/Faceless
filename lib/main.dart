@@ -9,6 +9,7 @@ import 'screens/landing_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'theme.dart';
 import 'ui/brand.dart';
+import 'ui/device_tilt.dart';
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
@@ -42,6 +43,8 @@ class _FacelessAppState extends State<FacelessApp> {
   @override
   void initState() {
     super.initState();
+    // Feed the phone's physical tilt into the 3D cards (web; no-op elsewhere).
+    initDeviceTilt();
     // Password-reset return: Supabase emits `passwordRecovery` after the user
     // follows the emailed reset link, establishing a temporary recovery
     // session. Route to ResetPasswordScreen so they can set a new password.

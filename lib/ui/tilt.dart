@@ -13,6 +13,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'device_tilt.dart';
+
 class TiltCard extends StatefulWidget {
   final Widget child;
 
@@ -25,12 +27,16 @@ class TiltCard extends StatefulWidget {
   /// Gentle always-on 3D sway when not hovered — reserve for ONE hero element.
   final bool idle;
 
+  /// Lean with the phone's physical tilt (device-orientation sensor on web).
+  final bool gyro;
+
   const TiltCard({
     super.key,
     required this.child,
     this.maxTilt = 9,
     this.glare = true,
     this.idle = false,
+    this.gyro = true,
   });
 
   @override
@@ -53,6 +59,11 @@ class _TiltCardState extends State<TiltCard> with SingleTickerProviderStateMixin
           if (mounted && !_hover) setState(() {});
         });
     }
+    if (widget.gyro) deviceTilt.addListener(_onDeviceTilt);
+  }
+
+  void _onDeviceTilt() {
+    if (mounted && !_hover) setState(() {});
   }
 
   @override
@@ -71,6 +82,7 @@ class _TiltCardState extends State<TiltCard> with SingleTickerProviderStateMixin
 
   @override
   void dispose() {
+    if (widget.gyro) deviceTilt.removeListener(_onDeviceTilt);
     _idle?.dispose();
     super.dispose();
   }
@@ -96,9 +108,15 @@ class _TiltCardState extends State<TiltCard> with SingleTickerProviderStateMixin
     final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
     Offset p = _p;
-    if (!_hover && _idle != null && !reduce) {
-      final t = _idle!.value * 2 * math.pi;
-      p = Offset(math.sin(t) * 0.34, math.cos(t * 0.8) * 0.2); // gentle sway
+    if (!_hover) {
+      // Device tilt (phone held + leaned) wins; otherwise the gentle idle sway.
+      final d = widget.gyro && !reduce ? deviceTilt.value : Offset.zero;
+      if (d != Offset.zero) {
+        p = d;
+      } else if (_idle != null && !reduce) {
+        final t = _idle!.value * 2 * math.pi;
+        p = Offset(math.sin(t) * 0.34, math.cos(t * 0.8) * 0.2); // gentle sway
+      }
     }
 
     final rx = reduce ? 0.0 : (-p.dy * widget.maxTilt) * math.pi / 180;
