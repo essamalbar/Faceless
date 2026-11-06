@@ -1,6 +1,6 @@
 # Animated Song-Video Motion & Animation Overhaul — Design
 
-> **Status:** P1 + P2 shipped (branch `feat/animated-motion-overhaul`); P3 pending
+> **Status:** P1 + P2 + P3 shipped (branch `feat/animated-motion-overhaul`)
 > **Date:** 2026-11-06
 > **Scope owner:** song animated ($0) path
 > **Supersedes nothing** — extends `docs/superpowers/specs/2026-08-20-animated-genre-song-video-design.md`.
@@ -16,7 +16,13 @@
 >   now the framing/concat backdrop whose per-clip punch is re-anchored to the
 >   global grid via `t0=seg.start`, so drift is bounded per short clip; the
 >   single-still fallback (`framing=False`) keeps the one-period envelope.
-> - **P3 pending** — §5.7 hero kinetic lyrics + the stray-glyph-box fix.
+> - **P3 shipped** — §5.7 hero kinetic lyrics: hero font size (84→134), heavy
+>   outline (3→6), per-line fade/scale entrances, bigger hook pulse, and the
+>   `\r`-cancels-entrance fix. Verified on prod 5.1.9. The **stray glyph-box is
+>   NOT in the animated path** — Amiri renders Arabic punctuation cleanly; the
+>   `□` is in the CINEMATIC caption path (`captions.ar.ass` uses Cairo-Black,
+>   not bundled → libass tofu). Fixing that is a separate caption-path task
+>   (bundle the font or switch to a bundled one), out of this spec's scope.
 
 ## 1. Goal
 
