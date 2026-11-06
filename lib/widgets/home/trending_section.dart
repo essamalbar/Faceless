@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../l10n/l10n.dart';
 import '../../theme.dart';
+import '../../ui/motion.dart';
 
 class TrendingSection extends StatelessWidget {
   final Future<List<TrendBrief>>? trendsFuture;
@@ -101,7 +102,12 @@ class TrendingSection extends StatelessWidget {
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
                 itemBuilder: (_, i) {
                   final b = briefs[i];
-                  return Container(
+                  // Stagger the first visible cards on load; later cards (built
+                  // lazily as they scroll in) reveal immediately — no lag.
+                  return Reveal(
+                    delayMs: i < 6 ? 60 * i : 0,
+                    offset: 18,
+                    child: Container(
                     width: 250,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -144,7 +150,7 @@ class TrendingSection extends StatelessWidget {
                         ),
                       ],
                     ),
-                  );
+                  ));
                 },
               ),
             ),
