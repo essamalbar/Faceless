@@ -1012,6 +1012,28 @@ def _llm_fallback_marker() -> Path:
 _LLM_FALLBACK_WINDOW_H = 24.0
 
 
+# Clear-cut TRANSIENT (self-recovering) provider failures — an overloaded or
+# momentarily-unavailable model. A fallback caused by one of these must NOT pin
+# the global "Lyric quality reduced" banner: the primary writer recovers on its
+# own, so a one-off spike shouldn't tell every user quality is reduced for a day.
+# Persistent failures (auth, exhausted quota/credits) are deliberately NOT listed
+# here, so they still surface the banner until an operator acts.
+_TRANSIENT_LLM_ERROR_MARKERS = (
+    "503", "unavailable", "overloaded", "high demand",
+    "temporar", "try again", "timeout", "timed out",
+)
+
+
+def _is_transient_llm_error(error: str | None) -> bool:
+    """True when a recorded fallback error reads as a self-recovering provider
+    blip (overload / temporary unavailability) rather than a persistent
+    failure. Substring match, case-insensitive — provider error strings vary."""
+    if not error:
+        return False
+    e = error.lower()
+    return any(m in e for m in _TRANSIENT_LLM_ERROR_MARKERS)
+
+
 def _llm_fallback_status() -> dict:
     """Read the runtime LLM-fallback marker with a freshness window.
 
@@ -1028,8 +1050,12 @@ def _llm_fallback_status() -> dict:
         data = json.loads(p.read_text(encoding="utf-8"))
         ts = datetime.fromisoformat(data.get("last_fallback_at"))
         age_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
+        fresh = age_h <= _LLM_FALLBACK_WINDOW_H
+        # Fresh AND persistent. A transient provider overload self-recovers, so
+        # it must not keep the quality banner up (see _is_transient_llm_error).
+        degraded = fresh and not _is_transient_llm_error(data.get("error"))
         return {
-            "degraded": age_h <= _LLM_FALLBACK_WINDOW_H,
+            "degraded": degraded,
             "last_fallback_at": data.get("last_fallback_at"),
             "error": data.get("error"),
         }

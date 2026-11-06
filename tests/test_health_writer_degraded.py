@@ -49,3 +49,33 @@ def test_health_writer_degraded_false_for_stale_fallback(client):
     c, out = client
     _write_marker(out, hours_ago=48)
     assert c.get("/health").json()["writer_degraded"] is False
+
+
+def _write_marker_err(out: Path, error: str, *, hours_ago: float = 0.5) -> None:
+    ts = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)) \
+        .isoformat(timespec="seconds")
+    (out / "llm_fallback.json").write_text(
+        json.dumps({"last_fallback_at": ts, "error": error}), encoding="utf-8")
+
+
+def test_health_not_degraded_for_transient_provider_overload(client):
+    # A TRANSIENT provider overload (503 / "high demand" / "temporary") that
+    # recovers on its own must NOT pin the global "Lyric quality reduced"
+    # banner — only a persistent failure should. Regression: a one-off 503
+    # held the banner up for a full 24h even after the provider recovered.
+    c, out = client
+    _write_marker_err(
+        out,
+        "complete failed after 3 attempts: 503 UNAVAILABLE. {'error': "
+        "{'code': 503, 'message': 'This model is currently experiencing high "
+        "demand. Spikes in demand are usually temporary. Please try again "
+        "later.', 'status': 'UNAVAILABLE'}}")
+    assert c.get("/health").json()["writer_degraded"] is False
+
+
+def test_health_degraded_for_persistent_quota_error(client):
+    # A PERSISTENT failure (exhausted quota / credits) SHOULD show the banner —
+    # the primary writer stays down until the operator acts.
+    c, out = client
+    _write_marker_err(out, "429 quota exhausted")
+    assert c.get("/health").json()["writer_degraded"] is True
