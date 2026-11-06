@@ -53,6 +53,7 @@ _FLASH_SAT_K = 0.18        # saturation lift at the beat peak (scaled by the env
 _GLITCH_WINDOW = 0.05      # seconds the rgb-shift glitch holds per beat
 _CAM_FPS = 30              # zoompan output rate (defines the `-loop 1` still's rate)
 _ZOOM_CEILING = 1.30       # hard cap: a long song can never zoom past this
+_OVERLAY_PULSE_SCALE = 0.30  # maps MotionProfile.overlay_pulse (0..1) to eq brightness
 
 # Beat-cut still backdrop (multi-image / "cinematic" mode) render constants.
 # Deliberately mirrors pipeline/song_cinematic.py's per-clip pipeline (bounded
@@ -301,12 +302,24 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
         # rather than silently discarding all but the first sorted asset.
         # Inputs are decoded from alpha VP9 by the caller and remain bounded
         # by the song audio via -shortest.
+        #
+        # P2c -- REACTIVE overlays: each loop's brightness breathes with the
+        # beat (eq pulse, eval=frame) so the particles/shapes pop on each hit
+        # instead of sitting at flat opacity. eq keeps the alpha channel, so the
+        # overlay stays semi-transparent (no regression to the opaque-overlay
+        # bug). Amplitude is MotionProfile.overlay_pulse, scaled to a tasteful
+        # brightness range.
+        pulse = _beat_env_expr(beats, tvar="t", decay=_FLASH_DECAY)
+        pulse_amp = template.motion.overlay_pulse * _OVERLAY_PULSE_SCALE
         for i in range(max(1, overlay_count)):
             ov, nxt = f"ov{i}", f"bg_ov{i}"
-            stmts.append(
+            ov_chain = (
                 f"[{i + 1}:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
-                f"crop={w}:{h},format=yuva420p[{ov}]"
+                f"crop={w}:{h},format=yuva420p"
             )
+            if pulse and pulse_amp > 0:
+                ov_chain += f",eq=brightness='{pulse_amp:.3f}*({pulse})':eval=frame"
+            stmts.append(f"{ov_chain}[{ov}]")
             stmts.append(f"[{cur}][{ov}]overlay=shortest=0[{nxt}]")
             cur = nxt
 

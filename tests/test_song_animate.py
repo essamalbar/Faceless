@@ -86,6 +86,27 @@ def test_beat_env_expr_t0_reanchors_to_the_global_grid_for_per_clip_use():
     assert e0 != e_quarter
 
 
+def test_overlays_breathe_with_the_beat_when_overlay_pulse_set():
+    # P2c: overlay elements brighten on each beat (reactive), driven by
+    # MotionProfile.overlay_pulse + the beat envelope, applied PER overlay with
+    # eval=frame. eq keeps the alpha channel so the overlay stays semi-
+    # transparent (does not regress to the opaque-overlay bug).
+    fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
+                              beats={"beat_times": [0.5, 1.0], "tempo_bpm": 120},
+                              has_overlay=True, size=(1080, 1920), overlay_count=2)
+    # each overlay path gets its own beat-driven brightness pulse
+    assert fg.count("format=yuva420p,eq=brightness=") == 2
+    assert "eval=frame" in fg
+
+
+def test_overlays_have_no_beat_pulse_without_beats():
+    # No beats -> no reactive pulse (the overlay is just composited flat).
+    fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
+                              beats={"beat_times": []},
+                              has_overlay=True, size=(1080, 1920), overlay_count=1)
+    assert "format=yuva420p,eq=brightness=" not in fg
+
+
 def test_grade_neon_bloom_is_damped_not_full_strength():
     # Regression: grade_neon's FULL-strength screen-blend bloom (+1.4/1.5
     # saturation) blew bright frames into garish, washed-out magenta (a real
