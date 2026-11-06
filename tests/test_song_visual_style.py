@@ -3,7 +3,12 @@ from __future__ import annotations
 import re
 
 from pipeline.song_style import GENRE_RECIPES
-from pipeline.song_visual_style import VisualTemplate, visual_template_for, _TEMPLATES
+from pipeline.song_visual_style import (
+    MotionProfile,
+    VisualTemplate,
+    visual_template_for,
+    _TEMPLATES,
+)
 
 
 def test_every_genre_key_resolves_to_a_full_template():
@@ -26,6 +31,32 @@ def test_trap_is_high_energy_and_ballad_is_soft():
     ballad = visual_template_for("arabic_ballad")
     assert "beat_flash" in trap.fx_set and "rgb_glitch" in trap.fx_set
     assert "beat_flash" not in ballad.fx_set  # ballad is bold-but-soft, not strobing
+
+
+# --- MotionProfile (P1): per-genre MOTION character, not just color. The unit
+# that makes a ballad drift soft/slow while trap/EDM punch hard. ---
+
+def test_every_template_carries_a_motion_profile_with_sane_ranges():
+    for key, template in _TEMPLATES.items():
+        m = template.motion
+        assert isinstance(m, MotionProfile), f"{key} missing MotionProfile"
+        # Beat-punch amplitude is a small zoom fraction — never a wild zoom.
+        assert 0.0 <= m.punch_amp <= 0.12, f"{key}.punch_amp out of range: {m.punch_amp}"
+        assert 0.0 < m.punch_decay <= 1.0, f"{key}.punch_decay out of range: {m.punch_decay}"
+        # Drift is a slow, always-positive continuous push.
+        assert 0.0 <= m.drift_rate <= 0.001, f"{key}.drift_rate out of range: {m.drift_rate}"
+        assert 0.0 <= m.flash_amp <= 0.5, f"{key}.flash_amp out of range: {m.flash_amp}"
+        assert 0.0 <= m.overlay_pulse <= 1.0, f"{key}.overlay_pulse out of range: {m.overlay_pulse}"
+        assert m.cut_bars >= 1, f"{key}.cut_bars must be >= 1: {m.cut_bars}"
+
+
+def test_motion_character_differs_by_genre_trap_punches_ballad_breathes():
+    trap = visual_template_for("arabic_trap").motion
+    ballad = visual_template_for("arabic_ballad").motion
+    # Trap hits harder on the beat than a ballad.
+    assert trap.punch_amp > ballad.punch_amp
+    # A ballad's punch eases out slowly (longer decay); trap snaps back fast.
+    assert ballad.punch_decay > trap.punch_decay
 
 
 def test_lyric_color_format_and_accent_alignment():

@@ -16,29 +16,84 @@ def test_filtergraph_uses_asplit_when_a_label_is_reused():
     assert "ass=" in fg                      # lyrics burned last
 
 
-def test_beat_flash_uses_compact_periodic_enable():
-    fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
+def test_beat_flash_is_an_eased_envelope_not_a_rectangular_strobe():
+    # P1: the beat-flash SWELLS and DECAYS with an exponential envelope instead
+    # of the old rectangular `enable='lt(mod(...),window)'` gate. khaleeji has
+    # beat_flash but no rgb_glitch, so it isolates the flash (no other filter
+    # contributes an lt/mod gate).
+    fg = sa.build_filtergraph(template=visual_template_for("khaleeji"),
                               beats={"beat_times": [0.5, 1.0], "tempo_bpm": 120},
                               has_overlay=False, size=(1080, 1920))
-    # Periodic pulse on the tempo grid (period 60/120=0.5, offset=first beat),
-    # NOT one between() term per beat.
-    assert "lt(mod(t-0.500," in fg
+    assert "exp(-mod(t-0.500" in fg   # eased decay from each beat drives the flash
+    assert "eval=frame" in fg          # re-evaluated per frame (continuous)
+    assert "lt(mod(" not in fg         # no rectangular on/off gate anywhere here
     assert "between(t," not in fg
 
 
-def test_beat_enable_stays_compact_for_a_full_length_song():
+def test_beat_filtergraph_does_not_grow_with_beat_count():
     """Regression: a real ~2.5-min song has hundreds of beats. Enumerating one
     `between(t,...)` term per beat built a -filter_complex so large that prod
     ffmpeg failed at parse with 'Cannot allocate memory' and the animated render
-    silently fell back to a static cover. The periodic enable must NOT grow with
-    beat count."""
-    many = [0.5 * n for n in range(1, 400)]  # ~399 beats (~200s)
+    silently fell back to a static cover. Every beat-synced expression stays a
+    single periodic/envelope term, so the filtergraph is IDENTICAL whether the
+    song has 4 beats or 399 (same tempo) -- the strongest statement of the
+    'does not grow with beat count' invariant."""
+    tpl = visual_template_for("arabic_trap")
+    few = sa.build_filtergraph(template=tpl, size=(1080, 1920), has_overlay=False,
+                               beats={"beat_times": [0.5, 1.0], "tempo_bpm": 120})
+    many = sa.build_filtergraph(template=tpl, size=(1080, 1920), has_overlay=False,
+                                beats={"beat_times": [0.5 * n for n in range(1, 400)],
+                                       "tempo_bpm": 120})
+    assert many == few                 # byte-identical regardless of beat count
+    assert "between(t," not in many    # no per-beat enumeration
+    assert len(many) < 3000            # bounded
+
+
+def test_beat_env_expr_is_an_eased_decay_not_a_rectangular_gate():
+    # P1: the beat envelope SWELLS and DECAYS (reads musical) instead of the
+    # old rectangular on/off `lt(mod(...),window)` gate (reads as a strobe).
+    expr = sa._beat_env_expr({"beat_times": [0.5, 1.0], "tempo_bpm": 120}, decay=0.1)
+    assert expr is not None
+    assert "exp(-mod(t-0.500" in expr   # exponential decay from each beat
+    assert "lt(mod(" not in expr         # not a rectangular gate
+    assert ",0.5000)" in expr            # period = 60/120 = 0.5s
+
+
+def test_beat_env_expr_supports_a_custom_time_variable_for_zoompan():
+    # zoompan evaluates the output-frame index `on`, not `t`; the helper must
+    # emit the pulse in terms of a caller-supplied time expression so the same
+    # envelope drives both eq (t) and zoompan (on/fps).
+    expr = sa._beat_env_expr({"beat_times": [0.5], "tempo_bpm": 120},
+                             tvar="(on/30)", decay=0.1)
+    assert expr is not None
+    assert "mod((on/30)-0.500" in expr
+
+
+def test_beat_env_expr_is_none_without_beats():
+    assert sa._beat_env_expr({"beat_times": []}, decay=0.1) is None
+
+
+def test_camera_is_beat_synced_center_anchored_and_bounded_for_every_genre():
+    # P1: the camera is ALWAYS on (not gated on a push_in token) and PUNCHES on
+    # the beat via the on-based envelope, center-anchored and bounded. Even trap
+    # (which has no push_in token) now gets a living, beat-reactive camera.
     fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
-                              beats={"beat_times": many, "tempo_bpm": 120},
+                              beats={"beat_times": [0.5, 1.0], "tempo_bpm": 120},
                               has_overlay=False, size=(1080, 1920))
-    assert "between(t," not in fg      # no per-beat enumeration
-    assert fg.count("mod(t-") == 2     # exactly one each for flash + glitch
-    assert len(fg) < 3000              # bounded regardless of beat count
+    assert "zoompan" in fg
+    assert "exp(-mod((on/30)-0.500" in fg   # beat punch via the frame-indexed envelope
+    assert "iw/2-(iw/zoom/2)" in fg          # center-anchored zoom (not top-left)
+    assert "min(" in fg                       # bounded -> no runaway zoom
+
+
+def test_camera_drifts_gently_without_beats_and_adds_no_punch():
+    # arabic_ballad has no beat_flash, so with an empty beat grid NOTHING emits
+    # an exp envelope -- the camera is a pure gentle drift.
+    fg = sa.build_filtergraph(template=visual_template_for("arabic_ballad"),
+                              beats={"beat_times": []},
+                              has_overlay=False, size=(1080, 1920))
+    assert "zoompan" in fg          # still a continuous drift (push-in)
+    assert "exp(-mod(" not in fg    # but no beat punch when there are no beats
 
 
 def test_build_animated_video_invokes_ffmpeg_and_writes_output(monkeypatch, tmp_path):

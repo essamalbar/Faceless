@@ -47,8 +47,11 @@ _FONTS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 # -- HANDOFF from Task 3's report, see docstring of build_filtergraph below.
 _FONTS_DIR_ESCAPED = _escape_ffmpeg_filter_path(_FONTS_DIR)
 
-_BEAT_FLASH_WINDOW = 0.08  # seconds the brightness pop holds per beat
+_FLASH_DECAY = 0.12        # seconds the eased brightness pop decays over
+_FLASH_SAT_K = 0.18        # saturation lift at the beat peak (scaled by the env)
 _GLITCH_WINDOW = 0.05      # seconds the rgb-shift glitch holds per beat
+_CAM_FPS = 30              # zoompan output rate (defines the `-loop 1` still's rate)
+_ZOOM_CEILING = 1.30       # hard cap: a long song can never zoom past this
 
 # Beat-cut still backdrop (multi-image / "cinematic" mode) render constants.
 # Deliberately mirrors pipeline/song_cinematic.py's per-clip pipeline (bounded
@@ -63,17 +66,13 @@ _STILL_UPSCALE_FACTOR = 2  # pre-zoompan upscale to avoid resampling blur
 _STILL_ZOOM_END = 1.13
 
 
-def _beat_pulse_expr(beats: dict, window: float) -> str | None:
-    """A COMPACT periodic enable expression that pulses once per beat on the
-    tempo grid -- `lt(mod(t-offset,period),window)` -- instead of enumerating
-    one `between(t,...)` term PER BEAT.
-
-    A full song has hundreds of beats; enumerating them all built a
-    -filter_complex string so large that prod ffmpeg failed at PARSE with
-    "Cannot allocate memory", and the animated render silently fell back to a
-    static cover. `period` comes from tempo_bpm (or the mean beat gap); `offset`
-    is the first beat so the pulse aligns to the downbeat. None when there are
-    no beats (caller emits a `null` passthrough)."""
+def _beat_grid(beats: dict) -> tuple[float, float] | None:
+    """`(offset, period)` seconds for the beat grid, or None if there are no
+    beats. `offset` is the first beat so pulses align to the downbeat; `period`
+    comes from `tempo_bpm`, else the mean beat gap, else a 120-BPM assumption.
+    Shared by every beat-synced expression builder below so they agree on the
+    grid (and so a full song's hundreds of beats never enter the filtergraph
+    string -- the OOM that once sank the animated render)."""
     bt = beats.get("beat_times") or []
     if not bt:
         return None
@@ -84,17 +83,50 @@ def _beat_pulse_expr(beats: dict, window: float) -> str | None:
         period = (float(bt[-1]) - float(bt[0])) / (len(bt) - 1)
     else:
         period = 0.5  # unknown tempo + single beat -> assume 120 BPM
-    offset = float(bt[0])
+    return float(bt[0]), period
+
+
+def _beat_pulse_expr(beats: dict, window: float) -> str | None:
+    """A COMPACT periodic enable expression that pulses once per beat on the
+    tempo grid -- `lt(mod(t-offset,period),window)` -- instead of enumerating
+    one `between(t,...)` term PER BEAT (the per-beat form OOM'd prod ffmpeg at
+    parse). None when there are no beats (caller emits a `null` passthrough)."""
+    grid = _beat_grid(beats)
+    if grid is None:
+        return None
+    offset, period = grid
     # Plain commas inside enable='...' — same convention the between() form used.
     return f"lt(mod(t-{offset:.3f},{period:.4f}),{window:.3f})"
 
 
-def _beat_flash(beats: dict) -> str:
-    """Brightness POP + saturation kick on each beat -- short window so it reads
-    as a hit, not a fade. Compact periodic enable (see _beat_pulse_expr)."""
-    expr = _beat_pulse_expr(beats, _BEAT_FLASH_WINDOW)
-    return (f"eq=brightness=0.14:saturation=1.12:enable='{expr}'"
-            if expr else "null")
+def _beat_env_expr(beats: dict, *, tvar: str = "t", decay: float) -> str | None:
+    """A COMPACT, CONTINUOUS beat envelope: a value that spikes to ~1 at each
+    beat and decays exponentially over `decay` seconds. Expressed in terms of
+    the time expression `tvar` -- "t" for eq-style filters, "(on/FPS)" for
+    zoompan (which evaluates the output-frame index `on`, not `t`). This is the
+    eased replacement for the rectangular `_beat_pulse_expr` gate: brightness/
+    zoom driven by it SWELL and FALL (musical) instead of popping on then off
+    (strobe). Like the pulse form it stays ONE periodic term regardless of beat
+    count, so it never approaches the OOM regime. None when there are no beats."""
+    grid = _beat_grid(beats)
+    if grid is None:
+        return None
+    offset, period = grid
+    return f"exp(-mod({tvar}-{offset:.3f},{period:.4f})/{decay:.4f})"
+
+
+def _beat_flash(beats: dict, amp: float) -> str:
+    """Brightness POP + saturation kick EASED on each beat: an exponential
+    swell/decay (reads as a musical hit) instead of the old rectangular on/off
+    `enable=` gate (reads as a strobe). `amp` is the per-genre
+    MotionProfile.flash_amp. Continuous via eval=frame -- contributes ~0
+    between beats, so no `enable` gate is needed. Compact: one envelope term
+    regardless of beat count (see _beat_env_expr)."""
+    env = _beat_env_expr(beats, tvar="t", decay=_FLASH_DECAY)
+    if not env:
+        return "null"
+    return (f"eq=brightness='{amp:.3f}*({env})':"
+            f"saturation='1+{_FLASH_SAT_K:.3f}*({env})':eval=frame")
 
 
 def _rgb_glitch(beats: dict) -> str:
@@ -136,16 +168,25 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
         f"crop={w}:{h}[base]"
     )
 
-    if "push_in" in fx:
-        nxt = f"{cur}_zoom"
-        # z=... bounded by min(...) so a long song can't zoom past 1.25x;
-        # fps=30 gives the zoompan filter (fed by an otherwise-undefined-
-        # rate `-loop 1` still) a defined output rate.
-        stmts.append(
-            f"[{cur}]zoompan=z='min(1.0+0.0009*on,1.30)':d=1:"
-            f"s={w}x{h}:fps=30[{nxt}]"
-        )
-        cur = nxt
+    # Beat-synced camera (ALWAYS on, every genre): a slow continuous drift
+    # (push-in) with a zoom PUNCH layered on each beat, both from the per-genre
+    # MotionProfile. zoompan is not commandable, so this rides an EXPRESSION --
+    # the same proven mechanism the old monotonic push_in used -- now center-
+    # anchored and beat-reactive. Bounded by min() so a long song can never zoom
+    # past the ceiling; fps gives the `-loop 1` still a defined output rate.
+    # (The legacy "push_in" token in some fx_sets is now a no-op: the camera is
+    # unconditional, differing only by MotionProfile amplitude/decay.)
+    m = template.motion
+    nxt = f"{cur}_cam"
+    drift = f"1+{m.drift_rate:.6f}*on"
+    punch = _beat_env_expr(beats, tvar=f"(on/{_CAM_FPS})", decay=m.punch_decay)
+    z = (f"min({drift}+{m.punch_amp:.3f}*({punch}),{_ZOOM_CEILING:.2f})"
+         if punch else f"min({drift},{_ZOOM_CEILING:.2f})")
+    stmts.append(
+        f"[{cur}]zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+        f"d=1:s={w}x{h}:fps={_CAM_FPS}[{nxt}]"
+    )
+    cur = nxt
 
     if "grade_neon" in fx:
         a, b, nxt = f"{cur}_a", f"{cur}_b", f"{cur}_grade"
@@ -177,7 +218,7 @@ def build_filtergraph(*, template: VisualTemplate, beats: dict,
 
     if "beat_flash" in fx:
         nxt = f"{cur}_flash"
-        stmts.append(f"[{cur}]{_beat_flash(beats)}[{nxt}]")
+        stmts.append(f"[{cur}]{_beat_flash(beats, template.motion.flash_amp)}[{nxt}]")
         cur = nxt
 
     if "rgb_glitch" in fx:
