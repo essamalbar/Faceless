@@ -73,6 +73,19 @@ def test_beat_env_expr_is_none_without_beats():
     assert sa._beat_env_expr({"beat_times": []}, decay=0.1) is None
 
 
+def test_beat_env_expr_t0_reanchors_to_the_global_grid_for_per_clip_use():
+    # P2: a backdrop SEGMENT's `on` resets to 0 at the clip start, but beats do
+    # not. Passing t0=<clip start seconds> shifts the envelope offset so the
+    # per-clip punch still lands on the GLOBAL beat grid. For offset=0.5s,
+    # period=0.5s: effective offset is (offset - t0).
+    beats = {"beat_times": [0.5, 1.0], "tempo_bpm": 120}
+    e0 = sa._beat_env_expr(beats, tvar="(on/30)", decay=0.1, t0=0.0)
+    e_quarter = sa._beat_env_expr(beats, tvar="(on/30)", decay=0.1, t0=0.25)
+    assert "mod((on/30)-0.5000," in e0          # t0=0   -> 0.5 - 0.0
+    assert "mod((on/30)-0.2500," in e_quarter   # t0=.25 -> 0.5 - 0.25
+    assert e0 != e_quarter
+
+
 def test_grade_neon_bloom_is_damped_not_full_strength():
     # Regression: grade_neon's FULL-strength screen-blend bloom (+1.4/1.5
     # saturation) blew bright frames into garish, washed-out magenta (a real
@@ -97,6 +110,27 @@ def test_camera_is_beat_synced_center_anchored_and_bounded_for_every_genre():
     assert "min(" in fg                       # bounded -> no runaway zoom
 
 
+def test_no_compositor_zoompan_when_backdrop_is_pre_rendered_video():
+    # P2: zoompan d=1 on a looped CFR video input is the documented prod
+    # failure mode (proven only on -loop 1 stills). When the backdrop is a
+    # pre-rendered framing/concat clip, the per-clip punch already lives INSIDE
+    # it, so the compositor must NOT stack a second zoompan camera on top.
+    fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
+                              beats={"beat_times": [0.5, 1.0], "tempo_bpm": 120},
+                              has_overlay=False, size=(1080, 1920),
+                              backdrop_is_video=True)
+    assert "zoompan" not in fg
+    assert "ass=" in fg            # still a complete graph ending in the burn
+
+
+def test_compositor_zoompan_present_for_a_single_still_backdrop():
+    # Default (single still, -loop 1) keeps the P1 in-compositor beat camera.
+    fg = sa.build_filtergraph(template=visual_template_for("arabic_trap"),
+                              beats={"beat_times": [0.5, 1.0], "tempo_bpm": 120},
+                              has_overlay=False, size=(1080, 1920))
+    assert "zoompan" in fg
+
+
 def test_camera_drifts_gently_without_beats_and_adds_no_punch():
     # arabic_ballad has no beat_flash, so with an empty beat grid NOTHING emits
     # an exp envelope -- the camera is a pure gentle drift.
@@ -105,6 +139,31 @@ def test_camera_drifts_gently_without_beats_and_adds_no_punch():
                               has_overlay=False, size=(1080, 1920))
     assert "zoompan" in fg          # still a continuous drift (push-in)
     assert "exp(-mod(" not in fg    # but no beat punch when there are no beats
+
+
+def test_framing_plan_offers_varied_framings():
+    # P2a: variety from ONE cover comes from multiple FRAMINGS (crop + zoom),
+    # not multiple images. The plan must offer real variety.
+    plan = sa._framing_plan()
+    assert len(plan) >= 3
+    distinct = {(round(f.anchor_x, 2), round(f.base_zoom, 2)) for f in plan}
+    assert len(distinct) >= 3   # genuinely different pan/zoom, not N copies
+
+
+def test_backdrop_segment_vf_pans_to_framing_and_punches_on_the_global_beat():
+    from pipeline.song_scenes import Segment
+    seg = Segment(image_idx=0, start=4.0, end=6.0, zoom_dir="in")
+    framing = sa.Framing(anchor_x=0.20, anchor_y=0.50, base_zoom=1.10)
+    motion = visual_template_for("arabic_trap").motion
+    vf = sa._backdrop_segment_vf(
+        seg, framing, frames=50, w=1080, h=1920,
+        beats={"beat_times": [0.5, 1.0], "tempo_bpm": 120}, motion=motion)
+    assert "zoompan" in vf
+    assert "*0.200" in vf                        # crop pans to anchor_x
+    # per-clip beat punch re-anchored to the GLOBAL grid via t0=seg.start=4.0
+    # (_STILL_FPS=25 -> tvar (on/25); offset 0.5 - 4.0 = -3.5 -> +3.5000)
+    assert "exp(-mod((on/25)+3.5000," in vf
+    assert "1.100" in vf                         # base zoom folded into z
 
 
 def test_build_animated_video_invokes_ffmpeg_and_writes_output(monkeypatch, tmp_path):
@@ -200,16 +259,52 @@ def test_no_overlay_does_not_force_libvpx_vp9_on_cover_input(monkeypatch, tmp_pa
     cover = tmp_path / "cover.png"; cover.write_bytes(b"png")
     song = tmp_path / "song.mp3"; song.write_bytes(b"mp3")
     ass = tmp_path / "k.ass"; ass.write_text("[Script Info]\n")
+    # framing=False exercises the simple single-loop path where the cover IS
+    # input 0 of the final compositor (the thing this test guards).
     sa.build_animated_video(backdrop=cover, song_mp3=song, ass_path=ass,
                             beats={"beat_times": [0.5]},
                             template=visual_template_for("arabic_trap"),
-                            out_path=out)
+                            out_path=out, framing=False)
 
     cmd = captured["cmd"]
     assert "libvpx-vp9" not in cmd
     cover_i_idx = cmd.index(str(cover)) - 1
     assert cmd[cover_i_idx] == "-i"
     assert cmd[cover_i_idx - 2:cover_i_idx] != ["-c:v", "libvpx-vp9"]
+
+
+def test_single_cover_framing_renders_a_beatcut_video_backdrop(monkeypatch, tmp_path):
+    # P2a: a single cover with framing on (the default) must synthesize a
+    # beat-cut concat backdrop from that ONE image -- multiple segment renders
+    # + a concat pass -- and the final compositor loops that video (not the
+    # bare cover) so the "camera explores the frame".
+    seen = []
+    def fake_run(cmd, **kw):
+        seen.append(cmd)
+        Path(cmd[-1]).write_bytes(b"mp4")
+        class R: returncode = 0; stderr = b""
+        return R()
+    monkeypatch.setattr(sa.subprocess, "run", fake_run)
+    monkeypatch.setattr(sa, "overlay_clips_for", lambda k: [])
+
+    out = tmp_path / "final.mp4"
+    cover = tmp_path / "cover.png"; cover.write_bytes(b"png")
+    song = tmp_path / "song.mp3"; song.write_bytes(b"mp3")
+    ass = tmp_path / "k.ass"; ass.write_text("[Script Info]\n")
+    # Dense beat grid so build_cut_schedule yields several framing segments.
+    beats = {"beat_times": [0.5 * n for n in range(1, 49)], "tempo_bpm": 120}
+    res = sa.build_animated_video(backdrop=cover, song_mp3=song, ass_path=ass,
+                                  beats=beats,
+                                  template=visual_template_for("arabic_trap"),
+                                  out_path=out)   # framing on by default
+    assert res == out and out.exists()
+    assert any("concat" in c for cmd in seen for c in cmd)   # a concat pass ran
+    final_cmd = seen[-1]
+    assert "-stream_loop" in final_cmd                       # final loops the bg video
+    assert "zoompan" not in " ".join(final_cmd)              # NO compositor camera
+    # More than one backdrop segment was rendered from the single cover.
+    seg_renders = [cmd for cmd in seen if any("bg_seg_" in c for c in cmd)]
+    assert len(seg_renders) >= 2
 
 
 # --- faststart-off-Fuse: the ffmpeg call that does +faststart must write to
