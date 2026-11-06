@@ -14,6 +14,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'ui/motion.dart';
+
 class FacelessTheme {
   // --- Palette (obsidian + champagne) ------------------------------------
   static const bg = Color(0xFF0C0B0E); // warm near-black base (mesh paints wash)
@@ -126,6 +128,16 @@ class FacelessTheme {
 
     return base.copyWith(
       colorScheme: scheme,
+      // App-wide navigation motion: a soft fade + settle on every push, so
+      // moving between screens feels of a piece with their own reveals.
+      pageTransitionsTheme: const PageTransitionsTheme(builders: {
+        TargetPlatform.android: FadeSettleTransitionBuilder(),
+        TargetPlatform.iOS: FadeSettleTransitionBuilder(),
+        TargetPlatform.macOS: FadeSettleTransitionBuilder(),
+        TargetPlatform.windows: FadeSettleTransitionBuilder(),
+        TargetPlatform.linux: FadeSettleTransitionBuilder(),
+        TargetPlatform.fuchsia: FadeSettleTransitionBuilder(),
+      }),
       // Transparent so the global MeshBackground (main.dart) shows through.
       // canvasColor must stay SOLID: dropdown/popup menus paint on it — a
       // transparent canvas makes open dropdowns overlap the page behind
