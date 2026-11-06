@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../l10n/l10n.dart';
 import '../theme.dart';
 import '../ui/brand.dart';
+import '../ui/motion.dart';
 import '../ui/song_genres.dart';
 import '../widgets/genre_grid.dart';
 import 'legal_screen.dart';
@@ -723,6 +724,11 @@ class _NewSongScreenState extends State<NewSongScreen> {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 2),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: LivingWaveform(bars: 40, seed: 1.2, height: 58),
             ),
             GradientButton(
               label: _submitting

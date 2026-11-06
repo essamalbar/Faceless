@@ -12,6 +12,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'motion.dart';
 
 /// Full-bleed obsidian backdrop: a vertical near-black gradient lit by a
 /// soft champagne wash from the top and a cool jade/teal breath rising from
@@ -187,7 +188,8 @@ class GlassCard extends StatelessWidget {
       ),
     );
     if (onTap != null) {
-      card = InkWell(borderRadius: r, onTap: onTap, child: card);
+      // Scale-down press feedback reads more "luxury" than a Material ripple.
+      card = Pressable(onTap: onTap, scale: 0.975, child: card);
     }
     return card;
   }
@@ -196,7 +198,7 @@ class GlassCard extends StatelessWidget {
 /// Primary CTA — a dark ground with a faint champagne wash (NOT a solid gold
 /// fill), a champagne hairline border, a champagne label, and a subtle inner
 /// sheen along the top edge.
-class GradientButton extends StatelessWidget {
+class GradientButton extends StatefulWidget {
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
@@ -214,22 +216,75 @@ class GradientButton extends StatelessWidget {
   });
 
   @override
+  State<GradientButton> createState() => _GradientButtonState();
+}
+
+class _GradientButtonState extends State<GradientButton>
+    with SingleTickerProviderStateMixin {
+  // A champagne sheen that sweeps the CTA ONCE when it becomes active — a
+  // brand flourish on appear, not a constant shimmer. A one-time forward (not
+  // repeat) keeps it off the infinite-ticker path that would hang pumpAndSettle
+  // in widget tests (see the MeshBackground test note). Created eagerly in
+  // initState (NOT a lazy `late final` initializer): a disabled button never
+  // touches it in build/_syncSheen, so a lazy field would first construct it
+  // inside dispose(), which throws.
+  late final AnimationController _sheen;
+  bool _down = false;
+  bool _sheened = false;
+
+  bool get _disabled => widget.onPressed == null || widget.loading;
+
+  @override
+  void initState() {
+    super.initState();
+    _sheen = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500));
+  }
+
+  void _syncSheen() {
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (!_disabled && !reduce && !_sheened) {
+      _sheened = true;
+      _sheen.forward(from: 0);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncSheen();
+  }
+
+  @override
+  void didUpdateWidget(covariant GradientButton old) {
+    super.didUpdateWidget(old);
+    _syncSheen();
+  }
+
+  @override
+  void dispose() {
+    _sheen.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final disabled = onPressed == null || loading;
+    final disabled = _disabled;
+    final radius = BorderRadius.circular(13);
     final child = Row(
-      mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (loading)
+        if (widget.loading)
           const SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(
                   strokeWidth: 2, color: FacelessTheme.accent2))
-        else if (icon != null)
-          Icon(icon, size: 19, color: FacelessTheme.accent2),
-        if (!loading && icon != null) const SizedBox(width: 9),
-        Text(label,
+        else if (widget.icon != null)
+          Icon(widget.icon, size: 19, color: FacelessTheme.accent2),
+        if (!widget.loading && widget.icon != null) const SizedBox(width: 9),
+        Text(widget.label,
             style: const TextStyle(
                 color: FacelessTheme.accent2,
                 fontWeight: FontWeight.w600,
@@ -241,52 +296,111 @@ class GradientButton extends StatelessWidget {
       child: Semantics(
         button: true,
         enabled: !disabled,
-        child: Container(
-          decoration: BoxDecoration(
-            // Dark ground lit by a faint champagne wash top-to-bottom.
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                FacelessTheme.accent.withValues(alpha: 0.15),
-                FacelessTheme.accent.withValues(alpha: 0.045),
-              ],
+        child: AnimatedScale(
+          scale: _down ? 0.97 : 1.0,
+          duration: const Duration(milliseconds: 130),
+          curve: Curves.easeOut,
+          child: Container(
+            decoration: BoxDecoration(
+              // Dark ground lit by a faint champagne wash top-to-bottom.
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  FacelessTheme.accent.withValues(alpha: 0.15),
+                  FacelessTheme.accent.withValues(alpha: 0.045),
+                ],
+              ),
+              borderRadius: radius,
+              border: Border.all(color: FacelessTheme.borderAccent),
+              boxShadow: disabled
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.40),
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
             ),
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: FacelessTheme.borderAccent),
-            boxShadow: disabled
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.40),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-          ),
-          // Subtle inner sheen along the top edge — an outer BoxShadow can't
-          // fake an inset highlight, so this is a fading gradient overlay.
-          foregroundDecoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(13),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.white.withValues(alpha: 0.06), Colors.transparent],
-              stops: const [0.0, 0.22],
+            // Subtle inner sheen along the top edge — an outer BoxShadow can't
+            // fake an inset highlight, so this is a fading gradient overlay.
+            foregroundDecoration: BoxDecoration(
+              borderRadius: radius,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white.withValues(alpha: 0.06), Colors.transparent],
+                stops: const [0.0, 0.22],
+              ),
             ),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(13),
-              onTap: disabled ? null : onPressed,
-              child: Padding(padding: padding, child: child),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: radius,
+                onTap: disabled ? null : widget.onPressed,
+                // Only when enabled — an InkWell with ANY non-null callback
+                // counts as interactive, which would make a disabled button
+                // report enabled semantics.
+                onHighlightChanged:
+                    disabled ? null : (v) => setState(() => _down = v),
+                child: ClipRRect(
+                  borderRadius: radius,
+                  child: Stack(
+                    children: [
+                      Padding(padding: widget.padding, child: child),
+                      if (!disabled)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: AnimatedBuilder(
+                              animation: _sheen,
+                              builder: (context, _) => CustomPaint(
+                                painter: _SheenPainter(_sheen.value),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// A soft champagne light band that crosses the button briefly once per cycle,
+/// then rests off-screen — sparing, not a constant shimmer.
+class _SheenPainter extends CustomPainter {
+  final double t;
+  _SheenPainter(this.t);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0) return;
+    // A short settle, then one sweep across and off.
+    final double phase = t < 0.3 ? -0.5 : (t - 0.3) / 0.7 * 1.7 - 0.5;
+    final x = phase * size.width;
+    final bandW = size.width * 0.34;
+    final rect = Rect.fromLTWH(x - bandW / 2, 0, bandW, size.height);
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Colors.transparent,
+          Colors.white.withValues(alpha: 0.12),
+          Colors.transparent,
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, paint);
+  }
+
+  @override
+  bool shouldRepaint(_SheenPainter o) => o.t != t;
 }
 
 /// Paints text with the champagne brand gradient (accent headline words).
