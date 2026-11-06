@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
 import '../../ui/brand.dart';
+import '../../ui/motion.dart';
 
 class ComposeCta extends StatelessWidget {
   final VoidCallback onPressed;
@@ -14,13 +15,16 @@ class ComposeCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-      child: GradientButton(
-        label: context.l10n.homeNewSong,
-        icon: Icons.auto_awesome,
-        expand: true,
-        onPressed: onPressed,
+    return Reveal(
+      delayMs: 120,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+        child: GradientButton(
+          label: context.l10n.homeNewSong,
+          icon: Icons.auto_awesome,
+          expand: true,
+          onPressed: onPressed,
+        ),
       ),
     );
   }

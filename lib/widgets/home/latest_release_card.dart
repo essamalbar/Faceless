@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
 import '../../theme.dart';
 import '../../ui/brand.dart';
+import '../../ui/motion.dart';
 import '../../ui/primitives.dart';
 import 'home_shared.dart';
 
@@ -31,7 +32,9 @@ class LatestReleaseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final st = songStatusStyle(context.l10n, status);
-    return Padding(
+    return Reveal(
+      delayMs: 200,
+      child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
       child: GlassCard(
         padding: EdgeInsets.zero,
@@ -117,6 +120,7 @@ class LatestReleaseCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

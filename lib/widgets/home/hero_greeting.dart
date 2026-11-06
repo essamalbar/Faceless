@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
+import '../../ui/motion.dart';
 import '../../ui/primitives.dart';
 
 class HeroGreeting extends StatelessWidget {
@@ -13,19 +14,22 @@ class HeroGreeting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Eyebrow(context.l10n.homeGreetingEyebrow),
-          const SizedBox(height: 12),
-          EditorialHeading(
-            context.l10n.homeHeroHeading,
-            size: 30,
-            accentLast: true,
-          ),
-        ],
+    return Reveal(
+      delayMs: 40,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Eyebrow(context.l10n.homeGreetingEyebrow),
+            const SizedBox(height: 12),
+            EditorialHeading(
+              context.l10n.homeHeroHeading,
+              size: 30,
+              accentLast: true,
+            ),
+          ],
+        ),
       ),
     );
   }
