@@ -15,7 +15,7 @@ def test_new_artist_has_agent_enabled_default_false():
 
 def test_config_has_agent_block():
     ag = load_config(REPO_ROOT / "config.yaml").agent
-    assert ag.enabled is False
+    assert ag.enabled is True
     assert ag.model == "claude-opus-5"
     assert ag.worker_model == "claude-sonnet-5"
     assert ag.max_iterations == 12
